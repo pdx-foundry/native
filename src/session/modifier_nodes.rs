@@ -25,11 +25,11 @@ impl Native {
     pub fn modifier_nodes(&self) -> Result<Answer<Vec<ModifierNode>>, Error> {
         self.answer("modifier_nodes", None, || {
             let operation = Operation::ModifierNodes;
-            let input = self
+            let result = self
                 .declaration_analysis(operation)?
-                .modifier_node_input()
+                .modifier_node_result()
                 .map_err(|failure| error(operation, failure))?;
-            Ok(normalize(&modifier_nodes::analyze(&input), self.build()))
+            Ok(normalize(result, self.build()))
         })
     }
 }
@@ -208,6 +208,7 @@ mod tests {
                 (0xc, Ok(None)),
                 (EVERY_CATEGORY, Ok(Some("All".into()))),
             ]),
+            initialized_words: BTreeMap::new(),
         }
     }
 

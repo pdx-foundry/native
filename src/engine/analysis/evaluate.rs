@@ -93,21 +93,32 @@ impl ReadOnlyData {
     /// section; consecutive words outside every section become sections of their own. A word
     /// that crosses a section boundary is left out.
     pub fn with_words(&self, words: &BTreeMap<u64, u64>) -> Self {
+        self.with_words_of(8, words)
+    }
+
+    /// These bytes with each 32-bit word of `words` at its address, as [`Self::with_words`]
+    /// places 8-byte words.
+    pub fn with_32_bit_words(&self, words: &BTreeMap<u64, u64>) -> Self {
+        self.with_words_of(4, words)
+    }
+
+    fn with_words_of(&self, width: u64, words: &BTreeMap<u64, u64>) -> Self {
         let mut sections = self.sections.clone();
         let mut outside = BTreeMap::<u64, Vec<u8>>::new();
         let mut run: Option<(u64, Vec<u8>)> = None;
         for (&address, &word) in words {
-            let Some(end) = address.checked_add(8) else {
+            let Some(end) = address.checked_add(width) else {
                 continue;
             };
+            let bytes_of_word = &word.to_le_bytes()[..width as usize];
             let within = sections
                 .range_mut(..=address)
                 .next_back()
                 .filter(|(start, bytes)| address < **start + bytes.len() as u64);
             if let Some((start, bytes)) = within {
                 let offset = (address - start) as usize;
-                if let Some(slot) = bytes.get_mut(offset..offset + 8) {
-                    slot.copy_from_slice(&word.to_le_bytes());
+                if let Some(slot) = bytes.get_mut(offset..offset + width as usize) {
+                    slot.copy_from_slice(bytes_of_word);
                 }
                 continue;
             }
@@ -116,13 +127,13 @@ impl ReadOnlyData {
             }
             match &mut run {
                 Some((start, bytes)) if *start + bytes.len() as u64 == address => {
-                    bytes.extend_from_slice(&word.to_le_bytes());
+                    bytes.extend_from_slice(bytes_of_word);
                 }
                 _ => {
                     if let Some((start, bytes)) = run.take() {
                         outside.insert(start, bytes);
                     }
-                    run = Some((address, word.to_le_bytes().to_vec()));
+                    run = Some((address, bytes_of_word.to_vec()));
                 }
             }
         }

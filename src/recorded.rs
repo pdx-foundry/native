@@ -190,7 +190,8 @@ fn layout(operation: crate::Operation) -> Layout {
         | GameRules
         | Defines
         | DynamicNames
-        | ModifierNodes => Layout::File,
+        | ModifierNodes
+        | ModifierCategoryKeys => Layout::File,
     }
 }
 

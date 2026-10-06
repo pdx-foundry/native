@@ -13,7 +13,7 @@ fn recorded_field(name: &str, kind: &str) -> serde_json::Value {
     json!({ "name": name, "reader": { "id": if kind == "Unknown" { None } else { Some(name) }, "kind": kind, "family": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved" },
         "shape": { "value": "Unknown", "repeat": "Unknown" },
         "read": [{ "condition": "Unresolved", "outcome": "Unresolved" }],
-        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved" })
+        "members": "Unresolved", "domain": "Unknown", "uses": [], "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "NotApplicable" })
 }
 
 fn source() -> serde_json::Value {
@@ -311,6 +311,32 @@ fn modifier_nodes_read_recorded_owners_masks_and_basis() {
         native.modifier_nodes(),
         Err(Error::NotRecorded { .. })
     ));
+}
+
+#[test]
+fn modifier_category_keys_read_recorded_categories_and_basis() {
+    let root = recorded();
+    write(
+        root.path(),
+        "modifier_category_keys.json",
+        json!({ "Ok": {
+            "value": [
+                { "name": "none", "categories": { "Listed": [] } },
+                { "name": "ship", "categories": { "Listed": ["Ships"] } }
+            ],
+            "completeness": "Complete",
+            "gaps": [],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let answer = native.modifier_category_keys().unwrap();
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(answer.value[0].categories, DeclaredTags::Listed(vec![]));
+    assert_eq!(
+        answer.value[1].categories,
+        DeclaredTags::Listed(vec!["Ships".into()])
+    );
 }
 
 #[test]

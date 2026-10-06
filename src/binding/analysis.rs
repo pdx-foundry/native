@@ -39,6 +39,11 @@ pub(crate) struct BoundAnalysis {
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
+    modifier_nodes: OnceLock<
+        Result<crate::engine::analysis::modifier_nodes::ModifierNodeResult, AnalysisError>,
+    >,
+    category_input:
+        OnceLock<Result<crate::engine::analysis::modifiers::CategoryInput, AnalysisError>>,
     names: OnceLock<crate::engine::analysis::names::NameInput>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
@@ -276,6 +281,18 @@ impl VerifiedAnalysis<'_> {
         recipe: &super::targets::DeclarationRecipe,
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
         binary::language::modifiers(
+            &self.executable,
+            &self.catalog.symbols,
+            &self.catalog.strings,
+            recipe,
+        )
+    }
+
+    fn category_key_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
+        binary::language::category_keys(
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
@@ -543,6 +560,8 @@ impl BoundAnalysis {
             triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
+            modifier_nodes: OnceLock::new(),
+            category_input: OnceLock::new(),
             names: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
         }
@@ -1203,19 +1222,52 @@ impl BoundAnalysis {
         self.verified()?.modifier_input(recipe)
     }
 
-    /// The node type symbols, node constructor calls and static initializers.
-    pub(crate) fn modifier_node_input(
+    /// The category switch, the reader checks after each call of it, and the token names.
+    pub(crate) fn category_key_input(
         &self,
-    ) -> Result<crate::engine::analysis::modifier_nodes::ModifierNodeInput, AnalysisError> {
+    ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+        self.verified()?.category_key_input(recipe)
+    }
+
+    /// The modifier node graph, read once from the node type symbols, node constructor calls and
+    /// static initializers.
+    pub(crate) fn modifier_node_result(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifier_nodes::ModifierNodeResult, AnalysisError> {
         let verified = self.verified()?;
-        binary::modifier_nodes::read(
-            &verified.executable,
-            &verified.catalog.symbols,
-            &verified.catalog.pointers,
-            &verified.catalog.bound_slots,
-            recipe,
-        )
+        self.modifier_nodes
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                let input = binary::modifier_nodes::read(
+                    &verified.executable,
+                    &verified.catalog.symbols,
+                    &verified.catalog.pointers,
+                    &verified.catalog.bound_slots,
+                    recipe,
+                )?;
+                Ok(crate::engine::analysis::modifier_nodes::analyze(&input))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The category-name switch and what running it needs.
+    pub(crate) fn category_input(
+        &self,
+    ) -> Result<&crate::engine::analysis::modifiers::CategoryInput, AnalysisError> {
+        let verified = self.verified()?;
+        self.category_input
+            .get_or_init(|| {
+                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
+                binary::language::category_input(
+                    &verified.executable,
+                    &verified.catalog.symbols,
+                    recipe,
+                )
+            })
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     /// Every generation call, its joins to the named registries, and each registry's code.

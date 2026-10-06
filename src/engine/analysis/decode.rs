@@ -93,6 +93,16 @@ pub fn decode_arm64(bytes: &[u8], address: u64) -> Result<Vec<Instruction>, Deco
     })
 }
 
+/// Whether an instruction with this mnemonic can leave straight-line flow: a branch, call or
+/// return.
+pub fn is_control_transfer(operation: &str) -> bool {
+    operation.starts_with("b.")
+        || matches!(
+            operation,
+            "b" | "bl" | "blr" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
+}
+
 /// The destination register and page of an `adrp` word at `address`.
 pub fn adrp(word: u32, address: u64) -> Option<(usize, u64)> {
     if word & 0x9f00_0000 != 0x9000_0000 {

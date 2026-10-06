@@ -28,12 +28,13 @@ mod work_directory;
 pub mod supervisor;
 
 pub use answer::{
-    Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes, Declaration, DeclarationKind,
-    DeclaredScopes, DeclaredTags, Define, DefineValueType, DerivedName, Disposal, EntryContext,
-    EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
-    GenerationCondition, KeptCategories, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
-    LocalizationCommand, LocalizationContext, LocalizationContextId, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationLink, LocalizationOutput, MissingName, ModifierCategory,
+    AcceptedCategories, Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes,
+    Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Define, DefineValueType,
+    DerivedName, Disposal, EntryContext, EntryScope, Error, Field, GameRule, Gap, GapKind,
+    GapSubject, GeneratedName, GenerationCondition, KeptCategories, LinkData, LoadedContent,
+    LoadedModifier, LoadedModifiers, LocalizationCommand, LocalizationContext,
+    LocalizationContextId, LocalizationContextReference, LocalizationDeclarations,
+    LocalizationLink, LocalizationOutput, MissingName, ModifierCategory, ModifierCategoryKey,
     ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId, ModifierNodeOwner,
     NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader, ReaderId,
     ReaderKind, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory,
@@ -84,6 +85,7 @@ pub(crate) use engine::analysis::AnalysisError;
 #[doc(hidden)]
 pub mod internals {
     pub use crate::binding::inspect;
+    pub use crate::engine::analysis::category_keys::METHOD as MODIFIER_CATEGORY_KEYS_METHOD;
     pub use crate::engine::analysis::defines::METHOD as DEFINES_METHOD;
     pub use crate::engine::analysis::dynamic_names::METHOD as DYNAMIC_NAMES_METHOD;
     pub use crate::engine::analysis::evaluate::trace_causes;

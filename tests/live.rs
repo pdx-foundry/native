@@ -186,6 +186,7 @@ enum Case {
     FixtureRelicPortrait,
     FixtureBlockParsing,
     FixtureReadScope,
+    FixtureModifierCategory,
     FixtureModifierBlock,
     FixtureTriggeredModifier,
     FixtureWeightBlock,
@@ -302,6 +303,10 @@ fn cases() -> Vec<(String, Case)> {
         ),
         ("loader_fixture".to_owned(), Case::LoaderFixture),
         ("fixture_read_scope".to_owned(), Case::FixtureReadScope),
+        (
+            "fixture_modifier_category".to_owned(),
+            Case::FixtureModifierCategory,
+        ),
         (
             "loaded_modifier_key_layouts".to_owned(),
             Case::LoadedModifierKeyLayouts,
@@ -680,6 +685,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
+        Case::FixtureModifierCategory => fixture_modifier_category(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
         Case::FixtureTriggeredModifier => fixture_triggered_modifier(native).await,
         Case::FixtureWeightBlock => fixture_weight_block(native).await,
@@ -1533,6 +1539,76 @@ async fn fixture_read_scope(native: &Native) -> Outcome {
         }
         Ok(())
     }.await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// A plain tradition `modifier` accepts a country modifier, and the tradition's country clause
+/// rejects a federation modifier with one parser message at its line, as the static container
+/// categories say.
+async fn fixture_modifier_category(native: &Native) -> Outcome {
+    use pdx_native::{
+        AcceptedCategories, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
+        FixtureFieldQuestion, FixtureRequest,
+    };
+    let file = "common/traditions/native_category.txt";
+    let text = "native_category_plain = {\n modifier = {\n  country_naval_cap_add = 1\n }\n}\n\
+        native_category_positive = {\n triggered_modifier = {\n  key = native_category_positive\n  \
+        modifier = {\n   federation_fleet_cap_add = 1\n  }\n }\n}\n";
+    let rejected_line = 10;
+
+    let fields = native.registry_fields(TRADITIONS)?;
+    let accepted = |name: &str| {
+        let field = fields.value.iter().find(|field| field.name == name);
+        field.map(|field| field.accepted_categories.clone())
+    };
+    let plain_accepts_country = matches!(accepted("modifier"),
+        Some(AcceptedCategories::Listed(names)) if names.iter().any(|name| name == "Countries"));
+    let clause_rejects_federation = matches!(accepted("triggered_modifier"),
+        Some(AcceptedCategories::Listed(names)) if !names.iter().any(|name| name == "Federations"));
+    if !plain_accepts_country || !clause_rejects_federation {
+        return Err(format!(
+            "static categories: modifier {:?}, triggered_modifier {:?}",
+            accepted("modifier"),
+            accepted("triggered_modifier")
+        )
+        .into());
+    }
+
+    let questions = [
+        ("native_category_plain", "modifier"),
+        ("native_category_positive", "triggered_modifier"),
+    ]
+    .map(|(definition, field)| FixtureFieldQuestion::new(TRADITIONS, definition, field));
+    let request = FixtureRequest::field_outcomes(file, text, questions);
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        if answer.value.diagnostic_coverage
+            != (DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoad,
+            })
+        {
+            return Err(format!("category diagnostic coverage: {:?}", answer.gaps).into());
+        }
+        let category: Vec<_> = answer
+            .value
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.text.contains("not allowed by category"))
+            .collect();
+        let [diagnostic] = category.as_slice() else {
+            return Err(format!("category diagnostics: {category:?}").into());
+        };
+        let joined = diagnostic.stage == "engine-parser-log"
+            && matches!(&diagnostic.join, DiagnosticJoin::Source { file: source, line, .. }
+                if source == file && *line == rejected_line);
+        if !joined {
+            return Err(format!("category diagnostic: {diagnostic:?}").into());
+        }
+        Ok(())
+    }
+    .await;
     and_close(&mut result, &mut game).await;
     result
 }

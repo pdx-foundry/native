@@ -242,6 +242,9 @@ pub struct RegistryFieldResult {
     /// Constructor-agreed words inside persistent destinations, by destination and offset within
     /// it. Only the words that `PersistentInput::requested_words` names are read.
     pub stored_words: BTreeMap<(i64, u64), u64>,
+    /// The category mask of each modifier container that the owner constructors build at a
+    /// persistent destination, or why it is not established.
+    pub container_masks: BTreeMap<i64, Result<u64, Unresolved>>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
     /// Named root fields, with explicit reader alternatives.
@@ -304,6 +307,9 @@ pub struct CollectionField {
     pub reader: Option<PointReader>,
     /// Loader fields and gaps discovered for the inserted object's class.
     pub fields: Box<RegistryFieldResult>,
+    /// The category mask that the inserted object's constructor gives it, when that constructor
+    /// builds a modifier container.
+    pub container_mask: Option<Result<u64, Unresolved>>,
 }
 
 /// A conditional selection of a stored field in an owner method.
@@ -358,6 +364,25 @@ pub struct PersistentInput {
     /// The offsets of the words to read inside each persistent object, by its address point.
     #[serde(default)]
     pub requested_words: BTreeMap<u64, BTreeSet<u64>>,
+    /// How owner constructors build a modifier container and where it keeps its mask.
+    #[serde(default)]
+    pub containers: ModifierContainers,
+    /// 32-bit words in zero-fill memory, with the value that the static initializer that stores
+    /// each one leaves there.
+    #[serde(default)]
+    pub initialized_words: BTreeMap<u64, u64>,
+}
+
+/// The constructors of a modifier container, which store its category mask, and where the
+/// container keeps the mask.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModifierContainers {
+    /// Constructors that take the mask as their category argument in `w2`.
+    pub category: BTreeSet<u64>,
+    /// Constructors that store the mask of every category.
+    pub default: BTreeSet<u64>,
+    /// Offset of the 32-bit category mask from the container's start.
+    pub mask_offset: u64,
 }
 
 /// Signature addresses for shared compound key-reader idioms.

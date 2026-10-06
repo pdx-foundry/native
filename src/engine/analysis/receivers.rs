@@ -35,6 +35,11 @@ impl ConstructorImage {
         }
     }
 
+    /// The read-only sections with the targets of the constant pointer slots.
+    pub fn constant_data(&self) -> &ReadOnlyData {
+        &self.constant
+    }
+
     /// Attach import semantics and helper bodies to the entered-constructor route.
     pub fn with_calls(mut self, calls: ConstructorCalls) -> Self {
         self.calls = calls;

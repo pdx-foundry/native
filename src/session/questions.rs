@@ -10,6 +10,8 @@ use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
     fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
+    modifier_nodes::ModifierNodeResult,
+    modifiers::{self, CategoryInput, CategoryNames},
     readers,
     references::ReferenceFacts,
     stop::Unresolved,
@@ -120,7 +122,8 @@ impl Native {
             | Operation::GameRules
             | Operation::DynamicNames
             | Operation::DerivedNames
-            | Operation::ModifierNodes => match &binding.analysis {
+            | Operation::ModifierNodes
+            | Operation::ModifierCategoryKeys => match &binding.analysis {
                 Some(analysis) => match analysis.executable() {
                     Ok(_) => Support::Supported,
                     Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
@@ -263,6 +266,7 @@ impl Native {
             weights: self.weight_block_facts()?,
             triggered: self.triggered_modifier_facts()?,
             blocks: self.block_facts()?,
+            categories: modifiers::category_names(self.category_input()?, []),
         };
         let owner = &input.selection.owner_candidate;
         let answer = self.registry_field_answer(registry, owner, &result, &facts);
@@ -307,6 +311,28 @@ impl Native {
             })?
             .weight_block_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
+    }
+
+    fn category_input(&self) -> Result<&CategoryInput, Error> {
+        self.registry_field_analysis()?
+            .category_input()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
+    }
+
+    fn modifier_node_result(&self) -> Result<&ModifierNodeResult, Error> {
+        self.registry_field_analysis()?
+            .modifier_node_result()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
+    }
+
+    fn registry_field_analysis(&self) -> Result<&crate::binding::BoundAnalysis, Error> {
+        self.bound()
+            .analysis
+            .as_deref()
+            .ok_or_else(|| Error::Unsupported {
+                operation: Operation::RegistryFields,
+                reason: "this build has no static analysis recipe".into(),
+            })
     }
 
     pub(crate) fn triggered_modifier_facts(
@@ -390,6 +416,13 @@ impl Native {
             scope_names: facts.blocks.scope_names.as_deref(),
         };
         super::triggered_modifiers::attach(&mut value, result, &clauses, &mut gaps);
+        super::container_masks::attach(
+            &mut value,
+            result,
+            facts.triggered,
+            &facts.categories,
+            &mut gaps,
+        );
         super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
         let weights = super::weight_blocks::WeightFacts {
@@ -434,6 +467,7 @@ impl Native {
             .map_err(|e| error(operation, e))?;
         if let Some(persistent) = &mut input.persistent {
             persistent.requested_words = self.weight_block_facts()?.stored_scopes();
+            persistent.initialized_words = self.modifier_node_result()?.initialized_words.clone();
         }
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
 
@@ -450,6 +484,8 @@ struct RegistryFieldFacts<'a> {
     weights: &'a crate::engine::analysis::weight_blocks::WeightBlockFacts,
     triggered: &'a crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts,
     blocks: &'a crate::binding::BlockFacts,
+    /// The name of each single category, which container masks are listed by.
+    categories: CategoryNames,
 }
 
 pub(crate) fn normalized_fields(
@@ -851,6 +887,7 @@ mod field_gap_tests {
             persistent_points: Default::default(),
             scoped_destinations: Default::default(),
             stored_words: Default::default(),
+            container_masks: Default::default(),
             uses: vec![],
             collections: vec![],
             fields: vec![RootField {

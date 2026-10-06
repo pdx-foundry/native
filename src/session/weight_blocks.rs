@@ -561,6 +561,7 @@ mod tests {
             uses: Vec::new(),
             entry_contexts: Vec::new(),
             read_scope: GrammarProperty::Known(Vec::new()),
+            accepted_categories: crate::AcceptedCategories::NotApplicable,
             reference: FieldReference::NotEstablished,
         }
     }

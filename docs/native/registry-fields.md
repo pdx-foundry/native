@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M451 sweep
 
-`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v17`) holds
+`tests/population/m451-hotfix/registry-field-sweep.json` (recorded at `registry-fields/v18`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).

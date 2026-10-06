@@ -1,5 +1,6 @@
 [
  {
+  "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "Unresolved",
@@ -26,6 +27,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [
    {
@@ -101,6 +103,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": {
@@ -162,6 +165,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "Unresolved",
@@ -188,6 +192,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "Unresolved",
@@ -214,6 +219,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "Unresolved",
@@ -240,6 +246,7 @@
   "uses": []
  },
  {
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": "None",

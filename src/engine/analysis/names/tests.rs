@@ -915,6 +915,7 @@ fn field_result(
         persistent_points: BTreeMap::new(),
         scoped_destinations: BTreeMap::new(),
         stored_words: BTreeMap::new(),
+        container_masks: Default::default(),
         collections,
         fields,
         paths: Vec::new(),
@@ -938,6 +939,7 @@ fn storage_reads_string_and_boolean_fields_of_the_item_and_its_collections() {
         offset: SWAPS.into(),
         data_offset: Some(8),
         count_offset: Some(0x14),
+        container_mask: None,
         class: "CSwap".into(),
         reader: None,
         fields: Box::new(field_result(

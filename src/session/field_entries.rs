@@ -112,7 +112,8 @@ mod tests {
                 "numeric": "Unresolved", "scoped_operand": "Unresolved" },
             "shape": { "value": "Unknown", "repeat": "Unknown" }, "read": [],
             "members": "Unresolved", "domain": "Unknown", "uses": [],
-            "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved"
+            "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
+            "accepted_categories": "NotApplicable"
         }))
         .unwrap()
     }
@@ -140,6 +141,7 @@ mod tests {
             persistent_points: BTreeMap::new(),
             scoped_destinations: BTreeMap::new(),
             stored_words: BTreeMap::new(),
+            container_masks: Default::default(),
             collections: vec![],
             fields,
             paths: vec![],

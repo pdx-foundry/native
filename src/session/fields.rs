@@ -8,9 +8,10 @@ use crate::engine::analysis::references::{
     self, Lookup, ReferenceFacts, initialization::InitializationLookup,
 };
 use crate::{
-    EmptyKey, Field, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative,
-    FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage, MissingResult, Reader,
-    ReaderId, ReaderKind, ReferenceLookup, ReferenceTarget, RepeatBehavior, ValueShape,
+    AcceptedCategories, BlockFamily, EmptyKey, Field, FieldCondition, FieldDomain, FieldMembers,
+    FieldReadAlternative, FieldReadOutcome, FieldReference, FieldShape, KeyMatch, LookupStage,
+    MissingResult, Reader, ReaderId, ReaderKind, ReferenceLookup, ReferenceTarget, RepeatBehavior,
+    ValueShape,
 };
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -94,7 +95,7 @@ fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>
         {
             first.family
         } else {
-            crate::BlockFamily::Unknown
+            BlockFamily::Unknown
         };
     }
     joined
@@ -325,17 +326,18 @@ fn ordinary_field(
                     reader.kind = ReaderKind::Unknown;
                 }
                 if alternative.family != reader.family {
-                    reader.family = crate::BlockFamily::Unknown;
+                    reader.family = BlockFamily::Unknown;
                 }
             }
             FieldReadOutcome::Unresolved => {
                 reader.id = None;
                 reader.kind = ReaderKind::Unknown;
-                reader.family = crate::BlockFamily::Unknown;
+                reader.family = BlockFamily::Unknown;
             }
             FieldReadOutcome::Rejected => {}
         }
     }
+    let accepted_categories = accepted_categories(reader.family);
     Field {
         name: field.name.clone(),
         reader,
@@ -351,6 +353,7 @@ fn ordinary_field(
         uses: Vec::new(),
         entry_contexts: Vec::new(),
         read_scope: crate::GrammarProperty::Unresolved,
+        accepted_categories,
         reference: if lookups.is_empty() {
             FieldReference::NotEstablished
         } else {
@@ -513,7 +516,7 @@ fn collection_field(
                 "CPersistent::Read(CReader&)",
                 &format!("{}::ReadMember(CReader&, int)", collection.class),
             ),
-            crate::BlockFamily::Unknown,
+            BlockFamily::Unknown,
             FieldMembers::Fields(
                 collection
                     .fields
@@ -552,7 +555,22 @@ fn collection_field(
         uses: Vec::new(),
         entry_contexts: Vec::new(),
         read_scope: crate::GrammarProperty::Unresolved,
+        accepted_categories: match (&collection.reader, &collection.container_mask) {
+            (None, None) => AcceptedCategories::NotApplicable,
+            _ => accepted_categories(family),
+        },
         reference: FieldReference::NotEstablished,
+    }
+}
+
+/// A field's container categories before the container pass: a modifier reader reads a
+/// container, an unknown reader may, and an established reader of another family does not.
+fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
+    match family {
+        BlockFamily::Modifier | BlockFamily::TriggeredModifier | BlockFamily::Unknown => {
+            AcceptedCategories::Unresolved
+        }
+        _ => AcceptedCategories::NotApplicable,
     }
 }
 
@@ -779,7 +797,7 @@ mod tests {
         let reader = |delegate: Option<&str>| ConcreteReader {
             read: "CPersistent::Read(CReader&)".into(),
             member: "Base::ReadMember(CReader&, int)".into(),
-            family: crate::BlockFamily::TriggeredModifier,
+            family: BlockFamily::TriggeredModifier,
             delegate: delegate.map(Into::into),
         };
         let undelegated = persistent_reader_id(&reader(None));
@@ -1171,6 +1189,7 @@ mod tests {
             persistent_points: BTreeMap::new(),
             scoped_destinations: BTreeMap::new(),
             stored_words: BTreeMap::new(),
+            container_masks: Default::default(),
             uses: vec![],
             collections,
             fields,
@@ -1198,6 +1217,7 @@ mod tests {
                 offset: 0x20,
                 data_offset: None,
                 count_offset: None,
+                container_mask: None,
                 class: "CEntry".into(),
                 reader: None,
                 fields: Box::new(child),

@@ -5,6 +5,7 @@ use crate::engine::analysis::{
     declarations::{Function, branch_alias},
     decode::decode_arm64,
     discovery::Symbol,
+    fields::ModifierContainers,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -332,7 +333,38 @@ pub(super) fn persistent(
             .into_iter()
             .collect(),
         requested_words: Default::default(),
+        containers: modifier_containers(symbols, recipe),
+        initialized_words: Default::default(),
     })
+}
+
+/// The default constructors of a modifier container. Each stores the mask of every category.
+const DEFAULT_CONTAINERS: [&str; 3] = [
+    "CStaticModifier::CStaticModifier()",
+    "CStaticModifier::CStaticModifier(CString const&)",
+    "CCustomDescriptionModifier::CCustomDescriptionModifier()",
+];
+
+/// The constructors that store a modifier container's category mask: each constructor whose first
+/// arguments are an int and the mask, and the default constructors. A branch-island stub carries
+/// the name of its body, so it is one of them.
+fn modifier_containers(symbols: &[Symbol], recipe: &PersistentRecipe) -> ModifierContainers {
+    let mut containers = ModifierContainers {
+        mask_offset: recipe.container_mask_offset,
+        ..Default::default()
+    };
+
+    for symbol in symbols {
+        if DEFAULT_CONTAINERS.contains(&symbol.name.as_str()) {
+            containers.default.insert(symbol.address);
+        } else if constructor_class(&symbol.name).is_some()
+            && symbol.name.contains("(int, ModifierCategory")
+        {
+            containers.category.insert(symbol.address);
+        }
+    }
+
+    containers
 }
 
 #[cfg(test)]
@@ -379,6 +411,7 @@ mod tests {
             token_text: 0,
             read_slot: 0,
             member_slot: 0,
+            container_mask_offset: 0xac,
             families: &[],
         };
         let bind = |symbols: &[Symbol]| {
@@ -428,6 +461,7 @@ mod tests {
             token_text: 0,
             read_slot: 0,
             member_slot: 0,
+            container_mask_offset: 0xac,
             families: &[],
         };
         let bind = |symbols: &[Symbol]| {

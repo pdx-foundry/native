@@ -50,6 +50,7 @@
 //! static, not observed live ownership. Deeper grammars, full post-read behavior and dynamic names
 //! stay open. Names come only from literal engine
 //! token constructors; no config or content file is an authority.
+mod containers;
 mod control_flow;
 mod dispatch;
 mod inventory;
@@ -88,7 +89,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v17";
+pub const METHOD: &str = "registry-fields/v18";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
@@ -147,6 +148,7 @@ pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, I
         persistent_points: persistent.points,
         scoped_destinations: persistent.scoped,
         stored_words: persistent.words,
+        container_masks: persistent.containers,
         uses,
         collections,
         fields,

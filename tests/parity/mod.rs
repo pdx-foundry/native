@@ -3,6 +3,35 @@ mod compact;
 pub mod comparison;
 mod layout;
 
+/// The accepted categories of each modifier container field, and of each modifier key of a
+/// triggered modifier clause as `field.key`.
+fn container_categories(fields: &[Field]) -> BTreeMap<String, AcceptedCategories> {
+    let mut containers = BTreeMap::new();
+    for field in fields.iter().filter(|field| {
+        matches!(
+            field.reader.family,
+            BlockFamily::Modifier | BlockFamily::TriggeredModifier
+        )
+    }) {
+        containers.insert(field.name.clone(), field.accepted_categories.clone());
+        let FieldMembers::TriggeredModifier(block) = &field.members else {
+            continue;
+        };
+        let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &block.fixed_keys
+        else {
+            continue;
+        };
+        for key in keys
+            .iter()
+            .filter(|key| key.reader.family == BlockFamily::Modifier)
+        {
+            let name = format!("{}.{}", field.name, key.name);
+            containers.insert(name, key.accepted_categories.clone());
+        }
+    }
+    containers
+}
+
 /// Compact read-time scope answers; the tracked file supplies only sample identities.
 pub fn read_scopes(native: &Native, expected: &Value) -> Result<Value> {
     let mut registries = BTreeMap::new();
@@ -91,6 +120,8 @@ pub const FILES: &[&str] = &[
     "modifier-categories.json",
     "modifier-families.json",
     "modifier-nodes.json",
+    "modifier-category-keys.json",
+    "modifier-containers.json",
     "derived-names-traditions.json",
     "derived-names-tradition_categories.json",
     "modifier-blocks.json",
@@ -206,14 +237,37 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             current_answer(native, native.modifier_categories()?)?
                 .value
                 .iter()
-                .map(|item| &item.name)
-                .collect::<Vec<_>>()
+                .map(|item| (&item.name, &item.categories))
+                .collect::<BTreeMap<_, _>>()
         )),
+        "modifier-category-keys.json" => {
+            let answer = current_answer(native, native.modifier_category_keys()?)?;
+            let keys: BTreeMap<_, _> = answer
+                .value
+                .iter()
+                .map(|key| (&key.name, &key.categories))
+                .collect();
+            Ok(json!({
+                "completeness": answer.completeness, "gaps": answer.gaps, "keys": keys
+            }))
+        }
         "modifier-nodes.json" => {
             let answer = current_answer(native, native.modifier_nodes()?)?;
             Ok(json!({
                 "completeness": answer.completeness, "gaps": answer.gaps, "nodes": answer.value
             }))
+        }
+        "modifier-containers.json" => {
+            let mut registries = BTreeMap::new();
+            for registry in expected
+                .as_object()
+                .ok_or("expected container registry selection")?
+                .keys()
+            {
+                let answer = current_answer(native, native.registry_fields(registry)?)?;
+                registries.insert(registry, container_categories(&answer.value));
+            }
+            Ok(json!(registries))
         }
         "modifier-blocks.json" => modifier_blocks(native),
         "weight-blocks.json" => weight_blocks(native),
