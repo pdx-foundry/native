@@ -77,7 +77,11 @@ Milestone 4 completes only when all of these hold:
    `agenda_finish_modifier_duration`; trigger family and entry scopes for `potential` and `allow`;
    effect family and entry scopes for `effect` and `init_effect`; the content-directory target of
    `finish_modifier`; the member family of `modifier`; and `ai_weight` keys, reader kinds and
-   nested `modifier` entries. The test uses the public API and the exact supported executable.
+   nested `modifier` entries. The test uses the public API and the exact supported executable:
+   `council_agenda_fields_are_complete_with_every_milestone_4_fact` in `tests/static_questions.rs`
+   (`cargo parity council_agenda`). It checks each fact on the answer's value and requires
+   `Complete`, so a missing observation, a typed gap or an `OutsideMethod` exclusion fails it,
+   and it reports every missing fact in one run.
 2. **Fixture criteria:** the dated 2026-10-02 amendments on the Linear tickets govern SDK-541 to
    SDK-550. SDK-544 retains numeric storage controls. SDK-545 checks weight parsing and
    source-located diagnostics; SDK-549 checks read entry scope (`this`) with a fixture diagnostic;
