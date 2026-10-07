@@ -5,6 +5,7 @@
 //! create method's return.
 use super::{DeclarationInput, Function, decode, number};
 use crate::engine::analysis::{
+    decode::general_register,
     evaluate::{Call, Code, Exit, Machine, ReturnTaint},
     receivers::{Constructors, accept_entered_path, install_vtables, join_byte_traces},
     stop::{CauseKind, Trace, Unresolved},
@@ -285,21 +286,13 @@ pub(crate) fn register_move_tail_target(body: &Function) -> Option<u64> {
     }
     for row in moves {
         let (destination, source) = row.operands.split_once(',')?;
-        if row.operation != "mov" || !general_register(destination) || !general_register(source) {
+        if row.operation != "mov"
+            || general_register(destination).is_none()
+            || general_register(source).is_none()
+        {
             return None;
         }
     }
     let target = number(&tail.operands)?;
     (!(body.address..body.address + body.code.len() as u64).contains(&target)).then_some(target)
-}
-
-fn general_register(operand: &str) -> bool {
-    let operand = operand.trim();
-    let Some(number) = operand
-        .strip_prefix('x')
-        .or_else(|| operand.strip_prefix('w'))
-    else {
-        return false;
-    };
-    number.parse::<u8>().is_ok_and(|index| index <= 30)
 }

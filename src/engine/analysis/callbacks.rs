@@ -30,7 +30,7 @@ mod names;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
-use super::decode::Instruction;
+use super::decode::{Instruction, general_register};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 
 pub use contexts::ScopeFunctions;
@@ -1007,7 +1007,7 @@ fn equal_edge(rows: &[Instruction], position: &BTreeMap<u64, usize>, at: usize) 
     let [register, target] = operands.as_slice() else {
         return None;
     };
-    if names::register(register) != Some(0) {
+    if general_register(register) != Some(0) {
         return None;
     }
     let target = position.get(&(names::immediate(target)? as u64)).copied()?;
@@ -1029,7 +1029,7 @@ fn database_store(row: &Instruction, state: &State) -> Option<i64> {
     }
     let inner = memory.strip_prefix('[')?.strip_suffix(']')?;
     let mut parts = inner.split(',');
-    let base = names::register(parts.next()?)?;
+    let base = general_register(parts.next()?)?;
     let displacement = match parts.next() {
         None => 0,
         Some(text) => names::immediate(text)?,

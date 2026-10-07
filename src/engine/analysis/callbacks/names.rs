@@ -22,7 +22,7 @@
 //! not tracked.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::analysis::decode::Instruction;
+use crate::engine::analysis::decode::{Instruction, general_register};
 
 /// The most facts that one value holds before it becomes unknown.
 pub(super) const VALUE_LIMIT: usize = 16;
@@ -371,7 +371,9 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
 
     match (operation, operands.as_slice()) {
         ("adrp" | "adr", [destination, target]) => {
-            if let (Some(destination), Some(target)) = (register(destination), immediate(target)) {
+            if let (Some(destination), Some(target)) =
+                (general_register(destination), immediate(target))
+            {
                 state.set(destination, single(Fact::Constant(target as u64)));
             }
         }
@@ -379,7 +381,7 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
             state.sp = moved_stack(state, source, amount, rest, operation);
         }
         ("add" | "sub", [destination, source, amount, rest @ ..]) => {
-            let Some(destination) = register(destination) else {
+            let Some(destination) = general_register(destination) else {
                 return;
             };
             let value = amounts(state, amount, rest).and_then(|amounts| {
@@ -394,7 +396,7 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
         }
         ("mov", ["sp", source]) => state.sp = moved_stack(state, source, "#0", &[], "add"),
         ("mov", [destination, source]) => {
-            let Some(destination) = register(destination) else {
+            let Some(destination) = general_register(destination) else {
                 return;
             };
             let value = match immediate(source) {
@@ -407,7 +409,7 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
             state.set(destination, value);
         }
         ("ldr", [destination, memory]) if destination.starts_with('x') && memory.ends_with(']') => {
-            let Some(destination) = register(destination) else {
+            let Some(destination) = general_register(destination) else {
                 return;
             };
             let value = match stack_address(state, memory) {
@@ -419,7 +421,7 @@ fn step(row: &Instruction, strings: &StringFunctions, state: &mut State) {
         ("ldp", [first, second, memory]) if first.starts_with('x') && memory.ends_with(']') => {
             let slot = stack_address(state, memory);
             for (index, destination) in [first, second].into_iter().enumerate() {
-                if let Some(destination) = register(destination) {
+                if let Some(destination) = general_register(destination) {
                     let value = slot
                         .and_then(|slot| state.slots.get(&(slot + 8 * index as i64)).cloned())
                         .flatten();
@@ -524,7 +526,7 @@ fn amounts(state: &State, amount: &str, rest: &[&str]) -> Option<Vec<i64>> {
         Some(value) if amount.starts_with('#') => vec![value],
         _ => state
             .registers
-            .get(register(amount)?)?
+            .get(general_register(amount)?)?
             .as_ref()?
             .iter()
             .map(|fact| match fact {
@@ -547,7 +549,7 @@ fn moved_stack(
 ) -> Option<i64> {
     let base = match source {
         "sp" => state.sp?,
-        source => state.stack_offset(register(source)?)?,
+        source => state.stack_offset(general_register(source)?)?,
     };
     match amounts(state, amount, rest)?.as_slice() {
         [amount] if operation == "sub" => Some(base - amount),
@@ -571,7 +573,7 @@ fn stack_address(state: &State, memory: &str) -> Option<i64> {
     let base = if base == "sp" {
         state.sp?
     } else {
-        state.stack_offset(register(base)?)?
+        state.stack_offset(general_register(base)?)?
     };
     Some(base + displacement)
 }
@@ -612,7 +614,7 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
     if source == "sp" {
         return single(Fact::Stack(state.sp? + amount));
     }
-    let source = register(source)?;
+    let source = general_register(source)?;
     let facts = state.registers.get(source)?.as_ref()?;
     let moved = facts
         .iter()
@@ -633,7 +635,7 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
 fn load(state: &State, memory: &str) -> Value {
     let inner = memory.strip_prefix('[')?.strip_suffix(']')?;
     let mut parts = inner.split(',');
-    let base = register(parts.next()?)?;
+    let base = general_register(parts.next()?)?;
     let displacement = match parts.next() {
         None => 0,
         Some(text) => immediate(text)?,
@@ -683,11 +685,12 @@ fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, 
                 | "isb"
                 | "hint"
         ));
-    if writes_first && let Some(first) = operands.first().and_then(|first| register(first)) {
+    if writes_first && let Some(first) = operands.first().and_then(|first| general_register(first))
+    {
         state.clear(first);
     }
     if matches!(operation, "ldp" | "ldpsw" | "ldnp" | "ldaxp" | "ldxp")
-        && let Some(second) = operands.get(1).and_then(|second| register(second))
+        && let Some(second) = operands.get(1).and_then(|second| general_register(second))
     {
         state.clear(second);
     }
@@ -702,7 +705,7 @@ fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, 
 
         if base == "sp" {
             state.sp = state.sp.map(|sp| sp + amount.unwrap_or(0));
-        } else if let Some(index) = register(base) {
+        } else if let Some(index) = general_register(base) {
             let moved = amount.and_then(|amount| offset(state, base, amount));
             state.set(index, moved);
         }
@@ -754,7 +757,7 @@ fn forget_stored_strings(operation: &str, operands: &[&str], object_size: i64, s
     let address = if base == "sp" {
         state.sp.map(|sp| sp + displacement)
     } else {
-        register(base)
+        general_register(base)
             .and_then(|base| state.stack_offset(base))
             .map(|offset| offset + displacement)
     };
@@ -790,20 +793,8 @@ fn store_width(operation: &str, operands: &[&str]) -> i64 {
     }
 }
 
-/// General register number of an operand such as `x1`, `w20`, `fp` or `lr`; `None` for the stack
-/// pointer, a zero register or anything else.
-pub(super) fn register(text: &str) -> Option<usize> {
-    match text {
-        "fp" => return Some(29),
-        "lr" => return Some(30),
-        _ => {}
-    }
-    let number = text.strip_prefix(['x', 'w'])?.parse::<usize>().ok()?;
-    (number <= 30).then_some(number)
-}
-
 fn destination_is_wide(text: &str) -> bool {
-    text.starts_with('x') || matches!(text, "fp" | "lr")
+    text.starts_with('x')
 }
 
 fn truncate(value: u64, wide: bool) -> u64 {

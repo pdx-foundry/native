@@ -1,5 +1,5 @@
 use super::{FieldGap, FieldGapKind, FieldInput, Function};
-use crate::engine::analysis::decode::{Instruction, decode_arm64};
+use crate::engine::analysis::decode::{Instruction, decode_arm64, general_register};
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::stop::{Obstacle, Unknown, Unresolved};
 use std::collections::BTreeMap;
@@ -20,15 +20,13 @@ pub(super) fn number(operand: &str) -> Option<i64> {
         Some(value)
     }
 }
+/// The 64-bit name of register `operand`, such as `x8` for `w8` and `xzr` for `wzr`; `sp`
+/// stays `sp`. `None` for any other operand.
 pub(super) fn register(operand: &str) -> Option<String> {
     if matches!(operand, "sp" | "xzr" | "wzr") {
         return Some(if operand == "wzr" { "xzr" } else { operand }.into());
     }
-    let digits = operand
-        .strip_prefix('x')
-        .or_else(|| operand.strip_prefix('w'))?;
-    let index: u8 = digits.parse().ok()?;
-    (index <= 30).then(|| format!("x{index}"))
+    general_register(operand).map(|index| format!("x{index}"))
 }
 /// Named function input borrowed from either registry or command discovery.
 #[derive(Clone, Copy)]

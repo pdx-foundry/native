@@ -304,11 +304,13 @@ that object's vtable, so it reads the registers that the slot's signature uses.
 **Instance pointers** (`callbacks/instances.rs`, `src/binding/binary/instances.rs`). A global word
 that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
 run time (`Allocate` stores the address that `ProtectedMemoryAccessBuffer` returns), so the image
-does not hold the object. The binding takes the pointer slots through which a virtual call in the
-decoded functions loads its receiver, and every function that loads such a slot and has an `adrp`
-of a page that holds a vtable. A forward pass over each function's branches finds the ones that
-may write through the slot: a store whose base or stored register may hold the pointer's address
-or its object, or a call that may receive the pointer's address. Each of those runs with the
+does not hold the object. One forward pass over a function's branches (`register_flow`) keeps
+what each register may hold: a slot's page, the pointer's address, its object, the object's
+vtable and a vtable slot. The binding takes the pointer slots through which a virtual call in the
+decoded functions may load its receiver, and every function that loads such a slot and has an
+`adrp` of a page that holds a vtable. The same pass finds the ones that may write through the
+slot: a store whose base or stored register may hold the pointer's address or its object, or a
+call that may receive the pointer's address. Each of those runs with the
 pointer holding a scratch object, calls not followed. The pointer is proven when every path of
 every such writer returns, leaves the object in place or clears the pointer (the destructor), and
 either leaves its first word unwritten or stores one vtable address point there, and no call

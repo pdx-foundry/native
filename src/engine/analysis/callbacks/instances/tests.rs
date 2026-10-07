@@ -245,6 +245,22 @@ fn a_virtual_call_through_an_instance_pointer_names_its_slot() {
 }
 
 #[test]
+fn a_virtual_call_whose_receiver_is_replaced_on_every_path_names_no_slot() {
+    let call = rows(&[
+        (0x1000, "adrp", "x8,#0x7000"),
+        (0x1004, "ldr", "x8,[x8]"),
+        (0x1008, "ldr", "x20,[x8]"),
+        (0x100c, "mov", "x20,x0"), // an argument replaces the receiver
+        (0x1010, "ldr", "x8,[x20]"),
+        (0x1014, "ldr", "x8,[x8,#0x40]"),
+        (0x1018, "blr", "x8"),
+        (0x101c, "ret", ""),
+    ]);
+
+    assert!(virtual_call_slots(&call, &pointers()).is_empty());
+}
+
+#[test]
 fn a_virtual_call_through_an_argument_names_no_slot() {
     let call = rows(&[
         (0x1000, "ldr", "x8,[x0]"),

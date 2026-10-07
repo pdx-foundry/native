@@ -41,6 +41,14 @@ Each step has an equivalence test. None of them blocks a method ticket.
   ([SDK-594](https://linear.app/unnamed-system/issue/SDK-594)). The decoder now gives string
   operands, and several private text parsers read them again. Keep the raw-word `adrp`/`add`
   fallback of the family method for functions that do not decode, unless a tested replacement
-  covers them: it is a conservative second tier, not duplication.
+  covers them: it is a conservative second tier, not duplication. `decode::general_register` is
+  the one register-name reader (SDK-727): `x0`–`x30` and `w0`–`w30`, never `sp`, `xzr`, `fp` or
+  `lr`, because the pinned decoder writes `x29` and `x30`. The `adrp`, load and store operand
+  readers in `callbacks/instances.rs` wait for this step.
 - Step 3: fold the ad hoc register trackers onto `Machine` only where their semantics are shown
-  equal ([SDK-595](https://linear.app/unnamed-system/issue/SDK-595)).
+  equal ([SDK-595](https://linear.app/unnamed-system/issue/SDK-595)). The instance-pointer pass
+  has one register flow, `register_flow` (SDK-727). It stays apart from `Machine` on purpose:
+  it must cover every path, so it has no search bound, joins by union and follows no value
+  through memory. `clears_moved_source` (binding `fields.rs`) asks the opposite question, a
+  clear on every return, so it joins by intersection; a shared worklist would be a trait for
+  two lattices.

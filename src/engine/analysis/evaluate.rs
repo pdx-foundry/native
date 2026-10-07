@@ -29,7 +29,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
-use super::decode::{Instruction, decode_arm64};
+use super::decode::{Instruction, decode_arm64, general_register};
 use super::stop::{Bound, CauseKind, Obstacle, Unknown, Unresolved};
 
 mod owner;
@@ -3073,8 +3073,6 @@ impl Register {
             "wsp" => (Name::StackPointer, false),
             "xzr" => (Name::Zero, true),
             "wzr" => (Name::Zero, false),
-            "fp" => (Name::General(29), true),
-            "lr" => (Name::General(30), true),
             _ if text.starts_with('v') => return Self::arranged_vector(&text[1..]),
             _ if text.starts_with(['q', 'd', 's', 'h', 'b']) => {
                 let bytes = match text.as_bytes()[0] {
@@ -3093,12 +3091,10 @@ impl Register {
                     lane: bytes,
                 });
             }
-            _ => {
-                let wide = text.starts_with('x');
-                let number = text.strip_prefix(['x', 'w'])?.parse::<usize>().ok()?;
-                (number <= 30).then_some(())?;
-                (Name::General(number), wide)
-            }
+            _ => (
+                Name::General(general_register(text)?),
+                text.starts_with('x'),
+            ),
         };
         let bytes = if wide { 8 } else { 4 };
         Some(Self {
