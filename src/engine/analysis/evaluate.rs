@@ -73,6 +73,11 @@ const DYNAMIC_STACK: u64 = 0x10_0000;
 /// First address of scratch objects that a caller allocates.
 const OBJECT_BASE: u64 = 0x7ffe_0000_0000;
 
+/// First address of objects that a caller places in read-only data, such as the object that an
+/// instance pointer holds. It is outside every mapped section, below the scratch objects and the
+/// stack, so no run allocates there or reads it as stack.
+pub const DATA_OBJECT_BASE: u64 = 0x7ffd_0000_0000;
+
 /// Read-only bytes that code can load: jump tables and string literals.
 #[derive(Debug, Clone, Default)]
 pub struct ReadOnlyData {
@@ -235,6 +240,16 @@ impl Code {
             .collect()
     }
 
+    /// Whether the instruction at `address` is in the prologue of the function at `entry`: every
+    /// instruction from the entry up to it can be part of a prologue.
+    fn in_prologue(&self, entry: u64, address: u64) -> bool {
+        address >= entry
+            && self
+                .rows
+                .range(entry..=address)
+                .all(|(_, operation)| operation.is_prologue_row())
+    }
+
     /// Build code from rows that are already decoded.
     pub fn from_rows(rows: impl IntoIterator<Item = Instruction>) -> Self {
         Self {
@@ -329,6 +344,8 @@ pub struct Machine<'a> {
     next_object: u64,
     /// Ranges `(start, end)` that a store to an unknown address leaves known.
     protected: Vec<(u64, u64)>,
+    /// The 8-byte stack words that hold a register save: see [`Machine::is_register_save`].
+    register_saves: BTreeSet<u64>,
     read_watch: Option<ReadWatch>,
     provenance: Option<Provenance>,
     returned_values: BTreeMap<u64, Option<u64>>,
@@ -391,6 +408,7 @@ struct HeadState {
     flags: Option<Flags>,
     possible_flags: u16,
     memory: BTreeMap<u64, Option<u8>>,
+    register_saves: BTreeSet<u64>,
     stack_pointer: u64,
     frames: Vec<u64>,
     labels: BTreeMap<u64, u64>,
@@ -428,6 +446,7 @@ impl<'a> Machine<'a> {
             memory: BTreeMap::new(),
             next_object: OBJECT_BASE,
             protected: Vec::new(),
+            register_saves: BTreeSet::new(),
             read_watch: None,
             provenance: None,
             returned_values: BTreeMap::new(),
@@ -670,6 +689,9 @@ impl<'a> Machine<'a> {
     /// A definite store of `width` bytes at `address`, of an owner-derived value or not.
     fn note_store(&mut self, address: u64, width: u64, derived: bool) {
         self.store_owner_bytes(address, width, derived);
+        let end = address.saturating_add(width);
+        self.register_saves
+            .retain(|word| *word >= end || word.saturating_add(8) <= address);
 
         if let Some(watch) = &mut self.read_watch {
             watch.written.extend(
@@ -788,6 +810,14 @@ impl<'a> Machine<'a> {
             .range(start..end)
             .map(|(&address, _)| address & !3)
             .collect()
+    }
+
+    /// Whether the 8-byte word at `address` holds a register save: a store of a callee-saved
+    /// register (`x19` to `x30`) to a stack address in the prologue of the function that the
+    /// path is in, which no later store has overwritten. A callee that receives a lower stack
+    /// address does not reach a register save.
+    pub fn is_register_save(&self, address: u64) -> bool {
+        self.register_saves.contains(&address)
     }
 
     /// Whether this path wrote or explicitly invalidated any byte of reserved memory.
@@ -1197,6 +1227,9 @@ impl<'a> Machine<'a> {
                 self.memory.insert(address, None);
             }
         }
+        lost |= !kept.register_saves.is_subset(&self.register_saves);
+        self.register_saves
+            .retain(|word| kept.register_saves.contains(word));
 
         lost |= self.widen_owner(kept.owner.as_deref());
 
@@ -1225,6 +1258,7 @@ impl<'a> Machine<'a> {
             flags: self.flags,
             possible_flags: self.possible_flags,
             memory: self.memory.clone(),
+            register_saves: self.register_saves.clone(),
             stack_pointer: self.stack_pointer,
             frames: self.frames.clone(),
             labels: self.labels.clone(),
@@ -2021,24 +2055,27 @@ impl<'a> Machine<'a> {
                     Some(address) => {
                         self.restore_inputs(value_inputs);
                         self.store(address, width, value);
+                        self.mark_register_save(source, address);
                     }
                     None => self.store_to_unknown(&[value], memory),
                 }
             }
             ("stp", [first, second, Operand::Memory(memory), rest @ ..]) => {
                 let width = if first.is_wide() { 8 } else { 4 };
-                let first = self.operand(first)?;
+                let first_value = self.operand(first)?;
                 let first_inputs = self.take_inputs();
-                let second = self.operand(second)?;
+                let second_value = self.operand(second)?;
                 let second_inputs = self.take_inputs();
                 match self.address(memory, rest)? {
                     Some(address) => {
                         self.restore_inputs(first_inputs);
-                        self.store(address, width, first);
+                        self.store(address, width, first_value);
                         self.restore_inputs(second_inputs);
-                        self.store(address + width, width, second);
+                        self.store(address + width, width, second_value);
+                        self.mark_register_save(first, address);
+                        self.mark_register_save(second, address + width);
                     }
-                    None => self.store_to_unknown(&[first, second], memory),
+                    None => self.store_to_unknown(&[first_value, second_value], memory),
                 }
             }
             _ => return Ok(false),
@@ -2331,6 +2368,15 @@ impl<'a> Machine<'a> {
         }
         // The owner is protected only from this store.
         self.protected.truncate(protected_before);
+    }
+
+    /// Mark the word that `source` was stored to at `address` as a register save, when `source`
+    /// is a callee-saved general register and the store is in the prologue of the function that
+    /// the path is in.
+    fn mark_register_save(&mut self, source: &Operand, address: u64) {
+        if source.is_callee_saved_general() && self.code.in_prologue(self.entered(), self.pc) {
+            self.register_saves.insert(address);
+        }
     }
 
     fn store(&mut self, address: u64, width: u64, value: Option<u64>) {
@@ -2735,6 +2781,34 @@ impl Operation {
         }
     }
 
+    /// Whether the instruction can be part of a prologue: a stack allocation, a store of
+    /// callee-saved registers to the stack, or the frame pointer set from the stack pointer.
+    fn is_prologue_row(&self) -> bool {
+        let Self::Parsed { mnemonic, operands } = self else {
+            return false;
+        };
+        let on_stack =
+            |memory: &Memory| memory.base.name == Name::StackPointer && memory.index.is_none();
+
+        match (mnemonic.as_str(), operands.as_slice()) {
+            ("sub", [destination, source, Operand::Immediate(_)]) => {
+                destination.is_register(Name::StackPointer)
+                    && source.is_register(Name::StackPointer)
+            }
+            ("add", [destination, source, Operand::Immediate(_)])
+            | ("mov", [destination, source]) => {
+                destination.is_register(Name::General(29)) && source.is_register(Name::StackPointer)
+            }
+            ("stp", [first, second, Operand::Memory(memory), ..]) => {
+                first.is_callee_saved() && second.is_callee_saved() && on_stack(memory)
+            }
+            ("str", [source, Operand::Memory(memory), ..]) => {
+                source.is_callee_saved() && on_stack(memory)
+            }
+            _ => false,
+        }
+    }
+
     /// The instructions that can run next by direct control flow, or `None` for a branch through
     /// a register. A call continues after itself.
     fn successors(&self, address: u64) -> Option<Vec<u64>> {
@@ -2904,6 +2978,35 @@ impl Operand {
 
     fn is_wide(&self) -> bool {
         matches!(self, Self::Register(register) if register.wide)
+    }
+
+    /// Whether this is a callee-saved general register, `x19` to `x30`.
+    fn is_callee_saved_general(&self) -> bool {
+        matches!(
+            self,
+            Self::Register(Register {
+                name: Name::General(19..=30),
+                wide: true,
+                ..
+            })
+        )
+    }
+
+    /// Whether this is a callee-saved register: `x19` to `x30`, or `d8` to `d15`.
+    fn is_callee_saved(&self) -> bool {
+        self.is_callee_saved_general()
+            || matches!(
+                self,
+                Self::Register(Register {
+                    name: Name::Vector(8..=15),
+                    bytes: 8,
+                    ..
+                })
+            )
+    }
+
+    fn is_register(&self, name: Name) -> bool {
+        matches!(self, Self::Register(register) if register.name == name)
     }
 }
 
@@ -3775,6 +3878,102 @@ mod tests {
         assert_eq!(machine.read(words, 8), Some(0x5566_7788_5566_7788));
         assert_eq!(machine.read(words + 8, 8), Some(0x5566_7788_5566_7788));
         assert_eq!(machine.register(1), Some(0x8004));
+    }
+
+    /// A prologue that saves `d8` and `d9` first, then `x19` and `x20`, then the frame record,
+    /// followed by `body` from 0x110.
+    fn saves_then(body: &[(u64, &str, &str)]) -> Code {
+        let mut lines = vec![
+            (0x100, "stp", "d9,d8,[sp,#-0x30]!"),
+            (0x104, "stp", "x20,x19,[sp,#0x10]"),
+            (0x108, "stp", "x29,x30,[sp,#0x20]"),
+            (0x10c, "add", "x29,sp,#0x20"),
+        ];
+        lines.extend_from_slice(body);
+        rows(&lines)
+    }
+
+    fn run_saving<'a>(code: &'a Code, data: &'a ReadOnlyData) -> Machine<'a> {
+        let mut machine = Machine::new(code, data);
+        machine.set_register(9, 7);
+        machine.set_register(19, 0x19);
+        machine.set_register(20, 0x20);
+        machine
+            .run(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .unwrap();
+        machine
+    }
+
+    #[test]
+    fn a_prologue_store_of_a_callee_saved_register_is_a_register_save() {
+        let code = saves_then(&[
+            (0x110, "mov", "x19,x0"),
+            (0x114, "str", "x19,[sp,#0x8]"), // a body store of a callee-saved register
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let machine = run_saving(&code, &data);
+
+        for word in [0x10, 0x18, 0x20, 0x28] {
+            assert!(
+                machine.is_register_save(STACK_TOP - 0x30 + word),
+                "{word:#x}"
+            );
+        }
+        assert!(!machine.is_register_save(STACK_TOP - 0x30));
+        assert!(!machine.is_register_save(STACK_TOP - 0x28));
+    }
+
+    #[test]
+    fn a_later_store_over_a_register_save_ends_it() {
+        let code = saves_then(&[
+            (0x110, "str", "x9,[sp,#0x10]"),
+            (0x114, "strb", "w9,[sp,#0x1f]"),
+            (0x118, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = run_saving(&code, &data);
+        let frame = STACK_TOP - 0x30;
+
+        assert!(!machine.is_register_save(frame + 0x10));
+        assert!(!machine.is_register_save(frame + 0x18));
+        assert!(machine.is_register_save(frame + 0x20));
+        machine.copy_bytes(frame + 0x24, frame, 4);
+        assert!(!machine.is_register_save(frame + 0x20));
+    }
+
+    /// A store in the loop body writes the same bytes over the save of `x20`. The head runs again
+    /// for the path without the save, so a path leaves the loop without it.
+    #[test]
+    fn a_join_keeps_only_the_register_saves_of_both_paths() {
+        let code = rows(&[
+            (0x100, "stp", "x20,x19,[sp,#-0x20]!"),
+            (0x104, "cbz", "x1,#0x110"),
+            (0x108, "str", "x20,[sp]"),
+            (0x10c, "b", "#0x104"),
+            (0x110, "bl", "#0x900"),
+            (0x114, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(20, 0x20);
+        let paths = machine.run_paths_joining(0x100, &mut |_, _| Ok(Call::Return(None)));
+        let returned: Vec<&Machine<'_>> = paths
+            .iter()
+            .filter(|path| path.end == Ok(Exit::Returned))
+            .map(|path| &path.machine)
+            .collect();
+
+        assert!(
+            returned
+                .iter()
+                .any(|machine| !machine.is_register_save(STACK_TOP - 0x20))
+        );
+        assert!(
+            returned
+                .iter()
+                .all(|machine| machine.is_register_save(STACK_TOP - 0x18))
+        );
     }
 
     #[test]

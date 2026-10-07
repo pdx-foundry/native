@@ -24,6 +24,7 @@
 //! recover is an unnamed site; the method never guesses its name.
 pub mod blocks;
 mod contexts;
+pub mod instances;
 mod names;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -190,6 +191,10 @@ pub struct CallbacksInput {
     pub arguments: BTreeMap<u64, usize>,
     /// How many argument registers a call through a pointer reads, by the call instruction.
     pub call_arguments: BTreeMap<u64, usize>,
+    /// The vtable address point of the object that each proven instance pointer holds
+    /// ([`instances`]). `data` holds the pointer slots that name these pointers and the slots of
+    /// their vtables; the method places the objects, so a virtual call on one has a known target.
+    pub instances: BTreeMap<u64, u64>,
 }
 
 /// One entry scope at a site.
@@ -286,12 +291,13 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         return Err(InputError(format!("no {family:?} call site")));
     }
 
+    let data = instances::with_objects(&input.data, &input.instances);
     let runner = Runner {
         scope_code: &input.scope_code,
         scopes: &input.scope_functions,
         strings: &input.strings,
         lookups: &input.lookups,
-        data: &input.data,
+        data: &data,
         layout: input.layout,
         arguments: &input.arguments,
         call_arguments: &input.call_arguments,

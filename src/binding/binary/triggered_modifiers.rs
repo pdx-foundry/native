@@ -46,7 +46,7 @@ pub(in crate::binding) fn read(
     let classes = points
         .keys()
         .map(|&point| {
-            let class = point_class(image, &data, point)
+            let class = super::families::point_class(image.symbols, &data, point)
                 .ok_or_else(|| Unresolved::new("triggered-class"))
                 .and_then(|class| {
                     super::receivers::persistent(
@@ -81,26 +81,4 @@ pub(in crate::binding) fn read(
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
         reader_token_offset: recipe.reader_token_offset,
     })
-}
-
-/// The class whose vtable group holds `point`: the nearest vtable symbol at or below it.
-fn point_class(
-    image: &Image<'_>,
-    data: &crate::engine::analysis::evaluate::ReadOnlyData,
-    point: u64,
-) -> Option<String> {
-    let class = image
-        .symbols
-        .iter()
-        .filter(|symbol| symbol.address <= point)
-        .filter_map(|symbol| Some((symbol.address, symbol.name.strip_prefix("vtable for ")?)))
-        .max_by_key(|(address, _)| *address)?
-        .1;
-    let group = super::families::vtable_group(image.symbols, data, class)?;
-
-    group
-        .address_points
-        .values()
-        .any(|&held| held == point)
-        .then(|| class.to_owned())
 }

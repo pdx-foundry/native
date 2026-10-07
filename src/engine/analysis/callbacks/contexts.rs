@@ -11,19 +11,22 @@
 //! registers and the link slots of tracked objects. So a tracked object *escapes* when its
 //! address is an argument of a call that the pass does not follow, is stored where the call can
 //! reach it, or is linked from an escaped object. A call reads the argument registers that its
-//! signature uses, or all of them when the signature is not known. It reaches all memory outside
-//! the stack, and the stack from each stack address that it receives, or that is stored in what
-//! it reaches, up to the top of the frame that holds that address. From that call on, every call
-//! that the pass does not follow makes the slots of every escaped object unknown. Until it escapes, a store to an unknown
-//! address leaves its slots known. The pass assumes that a callee that receives a pointer to
-//! another member of the object does not write its type or links, and that no stack array
-//! indexed by an unknown value reaches a scope object.
+//! signature uses, or all of them when the signature is not known; a virtual call on the object
+//! that a proven instance pointer holds has a known target ([`super::instances`]), so its
+//! signature is known. It reaches all memory outside the stack, and the stack from each stack
+//! address that it receives, or that is stored in what it reaches, up to the top of the frame
+//! that holds that address, except the register saves of each function's prologue
+//! ([`Machine::is_register_save`]). From that call on, every call that
+//! the pass does not follow makes the slots of every escaped object unknown. Until it escapes, a
+//! store to an unknown address leaves its slots known. The pass assumes that a callee that
+//! receives a pointer to another member of the object does not write its type or links, and that
+//! no stack array indexed by an unknown value reaches a scope object.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{CallbackLayout, Context, Slot};
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
-use crate::engine::analysis::stop::{Obstacle, Unresolved};
+use crate::engine::analysis::stop::Unresolved;
 
 use super::names::StringFunctions;
 
@@ -128,10 +131,7 @@ pub(super) struct Evaluations {
 
 impl Evaluations {
     fn record(&mut self, unresolved: &Unresolved) {
-        let bound = unresolved
-            .stop
-            .is_some_and(|stop| matches!(stop.obstacle, Obstacle::Bound(_)));
-        if bound {
+        if unresolved.is_bound() {
             self.bounded.insert(unresolved.reason);
         } else {
             self.unresolved.insert(unresolved.reason);
@@ -472,7 +472,11 @@ impl Runner<'_> {
             .passed(target, machine.pc())
             .filter_map(|index| machine.register(index))
             .collect();
-        let words = machine.known_words();
+        let words: Vec<(u64, u64)> = machine
+            .known_words()
+            .into_iter()
+            .filter(|(address, _)| !machine.is_register_save(*address))
+            .collect();
         let reachable = reachable_stack(machine, &words, &arguments);
         let stored: BTreeSet<u64> = words
             .iter()

@@ -286,13 +286,15 @@ and the other `const` members of trigger and effect classes that take a scope, s
   child's prev to the received scope and sets the child's type. It only reads the received scope.
 - A scope-changing effect, `CEveryInListEffect::ExecuteActual` (`0x101d225cc`), does the same.
 
-**Result on M451-hotfix.** 294 on_actions; 281 have at least one context and 207 have at least
-one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
+**Result on M452.** The same as on M451-hotfix: 294 on_actions; 281 have at least one context and
+207 have at least one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
 example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
 astral rift as from. Three name a typed prev: `on_modification_complete`,
 `on_subspecies_integration_step` and `on_subspecies_integration_complete` link the colony as prev.
 223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved
-scope. These call sites were checked by hand in the disassembly:
+scope. The register-save and instance-pointer rules of the
+[block entry contexts](registry-fields.md#block-entry-contexts) change no answer here. These call
+sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_leader_level_up`: country, from leader.
@@ -386,7 +388,8 @@ Each item below gave a wrong or missing answer once.
 - Fork on unknown flags, and keep every flag state that stays possible on each side, not one
   sample state. Later decisions on the same flags then stay consistent.
 - An indirect call (`blr`) to an unknown destination is an unknown call. Follow one whose
-  destination is known.
+  destination is known, such as a virtual call on the object of a proven instance pointer
+  ([block entry contexts](registry-fields.md#block-entry-contexts)).
 - Follow every function that takes `CGameText&`. The first run did not follow 26 calls to text
   helpers.
 - Instructions that were missing once: `mul`, traps, `ubfx`, `bfi`, multiply-add, `dup`, `bic`.

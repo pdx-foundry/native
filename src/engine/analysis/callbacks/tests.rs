@@ -193,6 +193,7 @@ impl Program {
             layout: layout(),
             arguments: BTreeMap::new(),
             call_arguments: BTreeMap::new(),
+            instances: BTreeMap::new(),
         }
     }
 }

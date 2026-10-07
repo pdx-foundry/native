@@ -18,9 +18,9 @@ use std::path::Path;
 use object::{Architecture, Object};
 
 use super::binary::declarations::Text;
-use super::binary::families::written_registers;
 use super::binary::fixups::{self, FixupDiagnostic, Fixups};
 use super::binary::inventory::{self, Inventory};
+use crate::engine::analysis::decode::written_registers;
 use crate::engine::analysis::decode::{Instruction, add_immediate, adrp, decode_arm64};
 use crate::engine::analysis::stop::Stop;
 

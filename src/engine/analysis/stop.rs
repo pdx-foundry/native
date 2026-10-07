@@ -61,6 +61,13 @@ impl Unresolved {
         }
     }
 
+    /// Whether a walk stopped at a bound of its search, such as the path limit, rather than at
+    /// something that it could not follow.
+    pub fn is_bound(&self) -> bool {
+        self.stop
+            .is_some_and(|stop| matches!(stop.obstacle, Obstacle::Bound(_)))
+    }
+
     /// This obstruction with `trace`, the causes of the unknown value that it needed.
     pub fn traced(self, trace: Option<Trace>) -> Self {
         Self {
