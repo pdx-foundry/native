@@ -223,12 +223,12 @@ fn writeback_base(operands: &str) -> Option<usize> {
     general_register(inside.split(',').next()?)
 }
 
-/// The number of general register `name`, such as `x8` or `w8`.
+/// The number of general register `name`, from `x0` or `w0` to `x30` or `w30`. Register 31 is
+/// the stack pointer or the zero register by name (`sp`, `xzr`), so it is not a general register.
+/// The pinned decoder writes `x29` and `x30`, never `fp` or `lr`, so no alias is read.
 pub fn general_register(name: &str) -> Option<usize> {
-    name.strip_prefix('x')
-        .or_else(|| name.strip_prefix('w'))?
-        .parse()
-        .ok()
+    let number = name.strip_prefix(['x', 'w'])?.parse().ok()?;
+    (number <= 30).then_some(number)
 }
 
 #[cfg(test)]
@@ -277,6 +277,20 @@ mod tests {
         assert_eq!(ldr_immediate(0xf941_2508), Some((8, 8, 0x248)));
         assert_eq!(decoded(0xb940_0108, 0).0, "ldr");
         assert_eq!(ldr_immediate(0xb940_0108), None);
+    }
+
+    #[test]
+    fn the_frame_and_link_registers_are_general_registers_by_number() {
+        assert_eq!(
+            decoded(0xa9bf_7bfd, 0),
+            ("stp".into(), "x29,x30,[sp,#-0x10]!".into())
+        );
+        assert_eq!(decoded(0xaa1e_03e0, 0), ("mov".into(), "x0,x30".into()));
+        assert_eq!(general_register("x29"), Some(29));
+        assert_eq!(general_register("w30"), Some(30));
+        for name in ["fp", "lr", "sp", "wsp", "xzr", "wzr", "x31"] {
+            assert_eq!(general_register(name), None, "{name}");
+        }
     }
 
     #[test]

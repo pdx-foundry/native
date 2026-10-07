@@ -4,7 +4,7 @@
 //! The engine sets such a word at run time, so the executable does not hold the object. The pass
 //! proves the object's first word from the code that writes it instead. Of the functions that load
 //! the word and form an address on a vtable's page, a forward pass over each one's branches finds
-//! those that may store through the word or its object ([`written_slots`]). Each of those runs
+//! those that may store through the word or its object ([`register_flow`]). Each of those runs
 //! with the word holding a scratch object. Every path must return, leave the word holding that
 //! object or null, and either leave the object's first word unwritten or store one known value
 //! there; no call may receive the object or the word after that store. The binding then keeps a
@@ -163,14 +163,16 @@ fn outcome(machine: &Machine<'_>, pointer: u64, object: u64) -> Outcome {
     }
 }
 
-/// What a register holds on the way from a pointer slot to a virtual call.
-#[derive(Debug, Clone, Copy)]
+/// What a register may hold on the way from a pointer slot to a store or a virtual call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Held {
     /// An address that `adrp` gives.
     Page(u64),
-    /// The address of the instance pointer that this pointer slot names.
+    /// The address of the instance pointer that this pointer slot names, or an address formed
+    /// from it.
     Slot(u64),
-    /// The object that the instance pointer named by this slot holds.
+    /// The object that the instance pointer named by this slot holds, or an address formed from
+    /// it.
     Object(u64),
     /// That object's vtable.
     Vtable(u64),
@@ -193,83 +195,69 @@ impl Held {
     }
 }
 
+/// What each register may hold before an instruction.
+type Holds = BTreeMap<usize, BTreeSet<Held>>;
+
 /// The pointer slots through which a virtual call in `rows` loads its receiver: `adrp` and
 /// `ldr` load the slot, a load through it gives the object, a load through the object gives its
-/// vtable, and a load from the vtable gives the target of a `blr`. The rows are read in address
-/// order and a register keeps its value through other writes, so a slot may be wrong; the proof
-/// decides.
+/// vtable, and a load from the vtable gives the target of a `blr`. The flow may name a slot that
+/// no call uses; the proof decides.
 pub fn virtual_call_slots(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSet<u64> {
-    let mut held: BTreeMap<usize, Held> = BTreeMap::new();
-    let mut slots = BTreeSet::new();
-    for row in rows {
-        let operands = row.operands.as_str();
-        let next = match row.operation.as_str() {
-            "adrp" => page(operands).map(|(destination, page)| (destination, Held::Page(page))),
-            "ldr" => memory(operands).and_then(|(destination, base, offset)| {
-                Some((destination, held.get(&base)?.loaded(offset, pointers)?))
-            }),
-            "blr" => {
-                if let Some(Held::Target(slot)) =
-                    general_register(operands).and_then(|r| held.get(&r))
-                {
-                    slots.insert(*slot);
-                }
-                None
-            }
+    let flow = register_flow(rows, pointers);
+    rows.iter()
+        .zip(&flow)
+        .filter(|(row, _)| row.operation == "blr")
+        .filter_map(|(row, holds)| holds.as_ref()?.get(&general_register(&row.operands)?))
+        .flatten()
+        .filter_map(|held| match held {
+            Held::Target(slot) => Some(*slot),
             _ => None,
-        };
-        if let Some((destination, value)) = next {
-            held.insert(destination, value);
-        }
-    }
-    slots
+        })
+        .collect()
 }
-
-/// What a register may hold in [`written_slots`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Taint {
-    Page(u64),
-    /// The address of the instance pointer that this pointer slot names, or an address formed
-    /// from it.
-    Slot(u64),
-    /// The object that the instance pointer named by this slot holds, or an address formed from
-    /// it.
-    Object(u64),
-}
-
-/// What each register may hold before an instruction.
-type Taints = BTreeMap<usize, BTreeSet<Taint>>;
 
 /// The pointer slots through which `rows` may write the instance pointer or its object: a store
 /// whose base or stored register may hold the pointer's address or its object, and a call that
-/// may receive the pointer's address. A forward pass over the function's branches keeps, before
-/// each instruction, every value that some path may leave in a register; a branch through a
-/// register may go to any instruction. A value that passes through memory is not followed.
+/// may receive the pointer's address.
 fn written_slots(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSet<u64> {
+    let flow = register_flow(rows, pointers);
+    rows.iter()
+        .zip(&flow)
+        .filter_map(|(row, holds)| Some(slots_written_by(row, holds.as_ref()?)))
+        .flatten()
+        .collect()
+}
+
+/// What the registers may hold before each instruction of `rows`, or `None` for one that no
+/// branch reaches. A forward pass over the function's branches keeps every value that some path
+/// may leave in a register; a branch through a register may go to any instruction.
+///
+/// It differs from [`Machine`] on purpose: it reads register values only, follows no value through
+/// memory, joins paths by union and has no search bound, so it covers every path that a bounded
+/// run would leave unread.
+fn register_flow(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Vec<Option<Holds>> {
     let index: BTreeMap<u64, usize> = rows
         .iter()
         .enumerate()
         .map(|(position, row)| (row.address, position))
         .collect();
-    let mut before: Vec<Option<Taints>> = vec![None; rows.len()];
+    let mut before: Vec<Option<Holds>> = vec![None; rows.len()];
     let mut pending = Vec::new();
     if !rows.is_empty() {
-        before[0] = Some(Taints::new());
+        before[0] = Some(Holds::new());
         pending.push(0);
     }
 
-    let mut written = BTreeSet::new();
     while let Some(position) = pending.pop() {
         let row = &rows[position];
-        let mut taints = before[position].clone().unwrap_or_default();
-        written.extend(slots_written_by(row, &taints));
-        apply(row, &mut taints, pointers);
+        let mut holds = before[position].clone().unwrap_or_default();
+        apply(row, &mut holds, pointers);
 
         for next in successors(row, position, &index, rows.len()) {
             let reached = before[next].is_some();
-            let known = before[next].get_or_insert_with(Taints::new);
+            let known = before[next].get_or_insert_with(Holds::new);
             let mut grew = false;
-            for (register, values) in &taints {
+            for (register, values) in &holds {
                 let held = known.entry(*register).or_default();
                 for value in values {
                     grew |= held.insert(*value);
@@ -280,19 +268,19 @@ fn written_slots(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSe
             }
         }
     }
-    written
+    before
 }
 
 /// The slots that `row` may write through, given what the registers may hold before it.
-fn slots_written_by(row: &Instruction, taints: &Taints) -> Vec<u64> {
+fn slots_written_by(row: &Instruction, holds: &Holds) -> Vec<u64> {
     let held = |register: usize, slot_only: bool| {
-        taints
+        holds
             .get(&register)
             .into_iter()
             .flatten()
-            .filter_map(move |taint| match taint {
-                Taint::Slot(slot) => Some(*slot),
-                Taint::Object(slot) if !slot_only => Some(*slot),
+            .filter_map(move |held| match held {
+                Held::Slot(slot) => Some(*slot),
+                Held::Object(slot) if !slot_only => Some(*slot),
                 _ => None,
             })
     };
@@ -311,24 +299,18 @@ fn slots_written_by(row: &Instruction, taints: &Taints) -> Vec<u64> {
 }
 
 /// Update what the registers may hold after `row`.
-fn apply(row: &Instruction, taints: &mut Taints, pointers: &BTreeMap<u64, u64>) {
+fn apply(row: &Instruction, holds: &mut Holds, pointers: &BTreeMap<u64, u64>) {
     let operands = row.operands.as_str();
-    let produced: Option<(usize, BTreeSet<Taint>)> = match row.operation.as_str() {
+    let produced: Option<(usize, BTreeSet<Held>)> = match row.operation.as_str() {
         "adrp" => {
-            page(operands).map(|(destination, page)| (destination, [Taint::Page(page)].into()))
+            page(operands).map(|(destination, page)| (destination, [Held::Page(page)].into()))
         }
         "ldr" | "ldur" => memory(operands).map(|(destination, base, offset)| {
-            let loaded = taints
+            let loaded = holds
                 .get(&base)
                 .into_iter()
                 .flatten()
-                .filter_map(|taint| match taint {
-                    Taint::Page(page) => pointers
-                        .contains_key(&(page + offset))
-                        .then_some(Taint::Slot(page + offset)),
-                    Taint::Slot(slot) if offset == 0 => Some(Taint::Object(*slot)),
-                    _ => None,
-                });
+                .filter_map(|held| held.loaded(offset, pointers));
             (destination, loaded.collect())
         }),
         "mov" | "add" | "sub" => {
@@ -336,11 +318,11 @@ fn apply(row: &Instruction, taints: &mut Taints, pointers: &BTreeMap<u64, u64>) 
             let destination = parts.next().and_then(general_register);
             let source = parts.next().and_then(general_register);
             destination.zip(source).map(|(destination, source)| {
-                let carried = taints.get(&source).into_iter().flatten().copied();
+                let carried = holds.get(&source).into_iter().flatten().copied();
                 (
                     destination,
                     carried
-                        .filter(|taint| !matches!(taint, Taint::Page(_)))
+                        .filter(|held| !matches!(held, Held::Page(_)))
                         .collect(),
                 )
             })
@@ -349,12 +331,12 @@ fn apply(row: &Instruction, taints: &mut Taints, pointers: &BTreeMap<u64, u64>) 
     };
 
     for register in written_registers(&row.operation, operands) {
-        taints.remove(&register);
+        holds.remove(&register);
     }
     if let Some((destination, values)) = produced
         && !values.is_empty()
     {
-        taints.insert(destination, values);
+        holds.insert(destination, values);
     }
 }
 
@@ -386,6 +368,10 @@ fn successors(
         _ => next.into_iter().collect(),
     }
 }
+
+// The decoder gives operands as text, so these readers parse it until decoded instructions have
+// typed operands (SDK-594). The raw-word readers in `decode` do not serve: authored rows carry
+// no instruction bytes, and `memory` also reads 32-bit and unscaled loads.
 
 /// The base and the stored registers of a store's operands, such as `x8,x9,[x19,#0x10]!`.
 fn stored_registers(operands: &str) -> impl Iterator<Item = usize> + '_ {
