@@ -64,32 +64,38 @@ impl Installation {
         ))
     }
 
-    /// The executable bytes verified at `open`. The file is read and hashed again only when its
-    /// metadata stamp differs from the one taken at `open`; performance.md states the limit.
+    /// The executable bytes verified at `open`. A static read hashes the file again only when
+    /// its metadata stamp differs from the one taken at `open`; performance.md states the limit.
     pub fn executable_bytes(&self) -> Result<Arc<[u8]>, UnavailableReason> {
-        match fs::canonicalize(&self.locator) {
-            Ok(current) if current != self.executable => {
-                return Err(UnavailableReason::TargetChanged);
-            }
-            Err(_) => return Err(UnavailableReason::InputUnavailable),
-            _ => {}
-        }
+        self.located()?;
         let Ok(metadata) = fs::metadata(&self.executable) else {
             return Err(UnavailableReason::InputUnavailable);
         };
         if Stamp::of(&metadata) != self.executable_stamp {
-            let Ok(bytes) = fs::read(&self.executable) else {
-                return Err(UnavailableReason::InputUnavailable);
-            };
-            if hash(&bytes) != self.executable_hash {
-                return Err(UnavailableReason::TargetChanged);
-            }
+            self.hashed()?;
         }
         Ok(self.executable_bytes.clone())
     }
 
+    /// The check before a game starts: every byte, whatever the stamp says.
     pub fn target_integrity(&self) -> Option<UnavailableReason> {
-        self.executable_bytes().err()
+        self.located().and_then(|()| self.hashed()).err()
+    }
+
+    fn located(&self) -> Result<(), UnavailableReason> {
+        match fs::canonicalize(&self.locator) {
+            Ok(current) if current == self.executable => Ok(()),
+            Ok(_) => Err(UnavailableReason::TargetChanged),
+            Err(_) => Err(UnavailableReason::InputUnavailable),
+        }
+    }
+
+    fn hashed(&self) -> Result<(), UnavailableReason> {
+        let bytes = fs::read(&self.executable).map_err(|_| UnavailableReason::InputUnavailable)?;
+        if hash(&bytes) != self.executable_hash {
+            return Err(UnavailableReason::TargetChanged);
+        }
+        Ok(())
     }
 
     pub fn default_content_integrity(&self) -> Option<UnavailableReason> {
@@ -313,5 +319,25 @@ impl Installation {
     }
     pub(super) fn root(&self) -> &Path {
         &self.root
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_game_start_checks_every_byte_when_the_stamp_hides_a_change() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("stellaris");
+        fs::write(&path, "authored test bytes").unwrap();
+        let (mut installation, _) = Installation::open(&path).unwrap();
+        fs::write(&path, "changed test bytes!").unwrap();
+        installation.executable_stamp = Stamp::of(&fs::metadata(&path).unwrap());
+        assert!(installation.executable_bytes().is_ok());
+        assert_eq!(
+            installation.target_integrity(),
+            Some(UnavailableReason::TargetChanged)
+        );
     }
 }

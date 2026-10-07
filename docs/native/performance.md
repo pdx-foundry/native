@@ -37,12 +37,15 @@ same for `cpp_demangle`) and prebuild before measuring.
   it uses the catalog.
 - A detected change, a missing file or a path retarget invalidates the `BoundAnalysis`
   permanently, even if the original bytes return.
-- **Accepted limit:** a byte change that leaves the stamp equal is not detected between
-  queries. On Unix every write sets the status-change time, but the file system can update it
+- The integrity check before a game starts (`start_game` and each supervisor check before
+  spawn) does not use the stamp: it reads and hashes every byte, because a game that starts
+  from a changed executable would use layouts and bindings of another build. It costs about one
+  second against a launch of 16–21 s.
+- **Accepted limit:** a byte change that leaves the stamp equal is not detected between static
+  queries; static answers then come from the bytes verified at `open`. On Unix every write sets the status-change time, but the file system can update it
   late (for example through a writable shared mapping) or at a granularity that hides a second
   change. On Windows, a write that keeps the length and restores the modification time is not
-  detected, and neither is a loss of read access (queries still answer from the verified
-  bytes). Steam updates replace the file, so they change the inode and the status-change
+  detected, and neither is a loss of read access. Steam updates replace the file, so they change the inode and the status-change
   time; the 4.5.1 to 4.5.2 update under an open session on 2026-10-06 is that case. The cost
   that this removes is about one second per query (below). Return to a full hash on each query,
   or add one at a different point, if a supported host or file system does not change these
