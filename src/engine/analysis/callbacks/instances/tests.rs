@@ -1,5 +1,5 @@
 //! Authored-input tests of the instance-pointer proof, with negative controls.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::instance_vtables;
 use crate::engine::analysis::callbacks::tests::{Rows, rows};
@@ -16,11 +16,10 @@ fn data() -> ReadOnlyData {
     ReadOnlyData::new(vec![(0x7000, slots)])
 }
 
-fn prove(writers: &[Rows<'_>], points: &[u64]) -> BTreeMap<u64, u64> {
+fn prove(writers: &[Rows<'_>]) -> BTreeMap<u64, u64> {
     let writers = BTreeMap::from([(POINTER, writers.iter().map(|lines| rows(lines)).collect())]);
-    let points: BTreeSet<u64> = points.iter().copied().collect();
 
-    instance_vtables(&writers, &points, &data())
+    instance_vtables(&writers, &data())
 }
 
 /// Builds the object once, as a null object's initializer does, then sets the flag.
@@ -65,12 +64,7 @@ fn stores(value_rows: &[(&'static str, &'static str)]) -> Vec<(u64, &'static str
 
 #[test]
 fn an_initializer_that_stores_one_point_proves_the_vtable() {
-    assert_eq!(prove(&[INITIALIZES], &[POINT]), [(POINTER, POINT)].into());
-}
-
-#[test]
-fn a_point_outside_the_candidate_points_proves_nothing() {
-    assert!(prove(&[INITIALIZES], &[OTHER_POINT]).is_empty());
+    assert_eq!(prove(&[INITIALIZES]), [(POINTER, POINT)].into());
 }
 
 #[test]
@@ -83,29 +77,23 @@ fn a_reader_alone_proves_nothing() {
         (0x2010, "ret", ""),
     ];
 
-    assert!(prove(&[reads], &[POINT]).is_empty());
-    assert_eq!(
-        prove(&[INITIALIZES, reads], &[POINT]),
-        [(POINTER, POINT)].into()
-    );
+    assert!(prove(&[reads]).is_empty());
+    assert_eq!(prove(&[INITIALIZES, reads]), [(POINTER, POINT)].into());
 }
 
 #[test]
 fn a_second_writer_with_another_point_rejects_the_pointer() {
     let other = stores(&[("adrp", "x8,#0x6000"), ("add", "x8,x8,#0x20")]);
 
-    assert_eq!(
-        prove(&[&other], &[OTHER_POINT]),
-        [(POINTER, OTHER_POINT)].into()
-    );
-    assert!(prove(&[INITIALIZES, &other], &[POINT, OTHER_POINT]).is_empty());
+    assert_eq!(prove(&[&other]), [(POINTER, OTHER_POINT)].into());
+    assert!(prove(&[INITIALIZES, &other]).is_empty());
 }
 
 #[test]
 fn a_writer_that_stores_an_unknown_vtable_rejects_the_pointer() {
     let unknown = stores(&[("bl", "#0x9900"), ("mov", "x8,x0")]);
 
-    assert!(prove(&[INITIALIZES, &unknown], &[POINT]).is_empty());
+    assert!(prove(&[INITIALIZES, &unknown]).is_empty());
 }
 
 #[test]
@@ -118,7 +106,7 @@ fn a_writer_that_replaces_the_object_rejects_the_pointer() {
         (0x2010, "ret", ""),
     ];
 
-    assert!(prove(&[INITIALIZES, replaces], &[POINT]).is_empty());
+    assert!(prove(&[INITIALIZES, replaces]).is_empty());
 }
 
 #[test]
@@ -133,7 +121,7 @@ fn a_replacement_conditional_on_the_vtable_rejects_the_pointer() {
         ("add", "x8,x8,#0x20"),
     ]);
 
-    assert!(prove(&[INITIALIZES, &swaps], &[POINT, OTHER_POINT]).is_empty());
+    assert!(prove(&[INITIALIZES, &swaps]).is_empty());
 }
 
 #[test]
@@ -141,7 +129,7 @@ fn a_store_through_an_unknown_address_keeps_the_proof() {
     let mut lines = INITIALIZES.to_vec();
     lines[15] = (0x103c, "str", "x0,[x1]");
 
-    assert_eq!(prove(&[&lines], &[POINT]), [(POINTER, POINT)].into());
+    assert_eq!(prove(&[&lines]), [(POINTER, POINT)].into());
 }
 
 #[test]
@@ -156,17 +144,12 @@ fn a_destructor_that_clears_the_pointer_keeps_the_proof() {
         (0x2018, "ret", ""),
     ];
 
-    assert_eq!(
-        prove(&[INITIALIZES, destroys], &[POINT]),
-        [(POINTER, POINT)].into()
-    );
+    assert_eq!(prove(&[INITIALIZES, destroys]), [(POINTER, POINT)].into());
 }
 
 /// Reads the pointer, then branches on seven unknown values, which make more paths than a run
-/// follows, and runs `last` before it returns.
-fn branches_after_reading(
-    last: (&'static str, &'static str),
-) -> Vec<(u64, &'static str, &'static str)> {
+/// follows.
+fn branches_after_reading() -> Vec<(u64, &'static str, &'static str)> {
     vec![
         (0x2000, "adrp", "x19,#0x7000"),
         (0x2004, "ldr", "x19,[x19]"),
@@ -178,19 +161,20 @@ fn branches_after_reading(
         (0x201c, "cbz", "x5,#0x2020"),
         (0x2020, "cbz", "x6,#0x2024"),
         (0x2024, "cbz", "x7,#0x2028"),
-        (0x2028, last.0, last.1),
-        (0x202c, "ret", ""),
+        (0x2028, "ret", ""),
     ]
 }
 
 #[test]
-fn a_search_that_stops_only_at_its_bound_keeps_the_proof() {
-    let bounded = branches_after_reading(("nop", ""));
-    let unfollowed = branches_after_reading(("hint", "#0x22")); // an instruction the run refuses
+fn a_writer_whose_search_stops_at_its_bound_rejects_the_pointer() {
+    assert!(prove(&[INITIALIZES, &branches_after_reading()]).is_empty());
+}
 
-    assert_eq!(
-        prove(&[INITIALIZES, &bounded], &[POINT]),
-        [(POINTER, POINT)].into()
-    );
-    assert!(prove(&[INITIALIZES, &unfollowed], &[POINT]).is_empty());
+#[test]
+fn a_call_that_receives_the_object_after_its_vtable_rejects_the_pointer() {
+    let mut passes_on = INITIALIZES.to_vec();
+    passes_on[14] = (0x1038, "mov", "x0,x9"); // the object
+    passes_on[15] = (0x103c, "bl", "#0x9900");
+
+    assert!(prove(&[&passes_on]).is_empty());
 }

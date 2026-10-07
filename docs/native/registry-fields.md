@@ -305,14 +305,19 @@ that object's vtable, so it reads the registers that the slot's signature uses.
 that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
 run time (`Allocate` stores the address that `ProtectedMemoryAccessBuffer` returns), so the image
 does not hold the object. The binding takes the pointer slots through which a virtual call in the
-decoded functions loads its receiver, and the functions that load such a slot and form a vtable
-address point (`Initialize`). Each runs with the pointer holding a scratch object, calls not
-followed. The pointer is proven when every returned path leaves the object in place, or clears the
-pointer (the destructor), and either leaves its first word unwritten or stores one vtable address
-point there; a path that stops at a search bound is no contradiction. The method then places the
-object in the read-only data with only that word known. On M452 42 pointers are proven, all
-`TPdxNullObject<T>` null objects. Finding the writers decodes about 5,100 functions and adds about
-1 s to the block input; narrow the slot filter if that grows.
+decoded functions loads its receiver, and every function that loads such a slot and has an `adrp`
+of a page that holds a vtable. A forward pass over each function's branches finds the ones that
+may write through the slot: a store whose base or stored register may hold the pointer's address
+or its object, or a call that may receive the pointer's address. Each of those runs with the
+pointer holding a scratch object, calls not followed. The pointer is proven when every path of
+every such writer returns, leaves the object in place or clears the pointer (the destructor), and
+either leaves its first word unwritten or stores one vtable address point there, and no call
+receives the object or the pointer after that store; a path that stops at a search bound, or a
+writer that does not decode, rejects it. The method then places the object in the read-only data
+with only that word known. On M452 the block input proves one pointer,
+`TPdxNullObject<CTraditionSwap>::_pInstance`. The null ship's pointer is not proven: 66 functions
+may store it and their searches stop at the path limit. The proof runs about 2,900 writers and
+adds about 1.4 s to the block input; narrow the writer test if that grows.
 
 **Assumptions.** Beside the self-link rule:
 
@@ -329,11 +334,12 @@ object in the read-only data with only that word known. On M452 42 pointers are 
   `CColonyType::IsPotential` saves `x20`, the from country, at `sp+0x90`. Each then passes a local
   string below the saves to `CString::CString` on the script profiler's path.
 - The object that an instance pointer holds gets its vtable only in code that loads the pointer
-  and forms an address point, keeps that vtable once set, and is never written through an unknown
-  address. Checked by hand for `TPdxNullObject<CTraditionSwap>`, `<CCouncilAgenda>` and `<CShip>`:
-  `Initialize` clears the object, runs its base constructor and then stores `vtable for
-  TPdxNullObject<T>` + 0x10 at word 0; the calls after it only change memory protection, and the
-  destructor stores null in the pointer.
+  and forms an address on a vtable's page, keeps that vtable once set (a call on it, such as
+  `IsValid`, does not change it), and is never written through an unknown address or through a
+  copy of the pointer in memory. Checked by hand for `TPdxNullObject<CTraditionSwap>`,
+  `<CCouncilAgenda>` and `<CShip>`: `Initialize` clears the object, runs its base constructor and
+  then stores `vtable for TPdxNullObject<T>` + 0x10 at word 0; the calls after it only change
+  memory protection, and the destructor stores null in the pointer.
 
 **Result on M452.** 239 root trigger and effect blocks in 164 registries: 118 have contexts and no
 entry gap, 46 have contexts and a gap, 75 have none. 20 blocks keep several contexts with a known
@@ -341,7 +347,7 @@ entry gap, 46 have contexts and a gap, 75 have none. 20 blocks keep several cont
 block the method cannot name. The two rules above changed 10 blocks in 6 registries, and each
 change only removes an unresolved context and its gaps: the register saves those of astral action
 `potential` and `is_exhausted`, colony type, observation mission and system type `potential`, and
-diplomatic action `potential`, `possible` and `proposable`; the instance pointers those of council
+diplomatic action `potential`, `possible` and `proposable`; the instance pointer those of council
 agenda `potential` and `allow`. These call sites were checked by hand in the disassembly:
 
 - council agenda `potential` and `allow`: `CGovernment::UpdateCouncilAgenda` builds a country scope
@@ -406,8 +412,13 @@ Pitfalls:
 - Only a prologue's save is a register save. A save after the function's first other instruction,
   and a spill of the same pointer in the body, are stack memory like any other; telling them from
   an object field needs object extents, which the method does not have.
-- An instance pointer's writers include its destructor, which clears the pointer, and functions
-  whose search stops at the path limit. Rejecting either rejects every null object.
+- An instance pointer's writers include its destructor, which clears the pointer; rejecting a
+  cleared pointer rejects every null object. Tooltip builders such as `CTraditionType::GetDesc`
+  load the null swap and form vtable addresses but only read it, and their searches stop at the
+  path limit, so a writer must be one that may store through the pointer. A pass in address order
+  that keeps a register's value through later writes marks them as writers, because they reuse
+  the register; one that clears a register on any write misses a store on a branch around that
+  write.
 - The stand-in objects lie 1 MiB apart in the read-only data, so a load from one at a field
   offset reads an unknown word, not the next object's vtable.
 - `run_paths_to` skips the site checks inside an entered call, and `follow` runs a setter outside the

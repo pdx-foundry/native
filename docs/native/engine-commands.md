@@ -293,11 +293,8 @@ astral rift as from. Three name a typed prev: `on_modification_complete`,
 `on_subspecies_integration_step` and `on_subspecies_integration_complete` link the colony as prev.
 223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved
 scope. The register-save and instance-pointer rules of the
-[block entry contexts](registry-fields.md#block-entry-contexts) change no context here. They remove
-the path-limit gaps of `on_survey_planet` and `on_survey_astral_rift`:
-`CSurveyDepositHolderFleetOrder::Finish` tests `TPdxNullObject<CShip>::_pInstance` for null, and a
-proven pointer is not null, so the search follows fewer paths. These call sites were checked by
-hand in the disassembly:
+[block entry contexts](registry-fields.md#block-entry-contexts) change no answer here. These call
+sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_leader_level_up`: country, from leader.
