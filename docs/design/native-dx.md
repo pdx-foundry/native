@@ -52,3 +52,16 @@ Each step has an equivalence test. None of them blocks a method ticket.
   through memory. `clears_moved_source` (binding `fields.rs`) asks the opposite question, a
   clear on every return, so it joins by intersection; a shared worklist would be a trait for
   two lattices.
+
+## DX 8. Entry-context diagnostics
+
+SDK-728 added the per-site view of block entry contexts (`inspect --entry-contexts`), the block
+counts in the field sweep's `entry_contexts` section, the on_action and game rule counts
+(`tools/population/callbacks.py`) and name-keyed comparison of the two callback parity files
+([method authoring](../native/method-authoring.md)). Two parts stay open; add them when a ticket
+needs them:
+
+- A per-site view of the callback context pass (`callbacks/contexts.rs`, `Runner::contexts`) for
+  on_actions and game rules. It combines reasons across paths and keeps only the reason word.
+- The wrapper and call behind a reason charged while climbing to an entry (`no-caller`,
+  `caller-depth`, `caller-not-decoded`). These belong to no entry run.

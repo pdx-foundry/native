@@ -14,8 +14,16 @@
 //! }
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::Native;
-use crate::{Answer, Error, Field, Operation};
+use super::field_entries;
+use super::questions::RegistryFieldRun;
+use crate::binding::BlockFacts;
+use crate::{Answer, BlockFamily, Error, Field, Gap, Operation};
+
+pub use crate::engine::analysis::callbacks::blocks::{Block, EntryRun};
+pub use crate::engine::analysis::callbacks::{Context, Slot};
 
 pub use crate::engine::analysis::fields::{
     Condition, FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RegistryFieldResult, RootField,
@@ -32,6 +40,27 @@ pub struct Run {
     pub answer: Answer<Vec<Field>>,
     /// The method's own result, from which `answer` is derived.
     pub result: RegistryFieldResult,
+    /// What the block entry context method found for the registry's root trigger and effect
+    /// blocks.
+    pub entry_contexts: EntryContexts,
+}
+
+/// The block entry context method's findings for one registry.
+#[derive(Debug, Clone)]
+pub struct EntryContexts {
+    /// The owner type of the registry's items, which owns its blocks.
+    pub owner: String,
+    /// The gaps that entry contexts add to the answer.
+    pub gaps: Vec<Gap>,
+    /// The storage offsets of each root trigger and effect field's blocks, by field name. A
+    /// field whose storage is not established has none.
+    pub block_offsets: BTreeMap<String, BTreeSet<i64>>,
+    /// The context pass from each entry call that reaches one of the owner's blocks.
+    pub runs: Vec<EntryRun>,
+    /// The evaluator calls in the owner's methods whose block the method cannot name.
+    pub unnamed_evaluations: usize,
+    /// The engine's scope names by type bit, when the table could be read.
+    pub scope_names: Option<Vec<String>>,
 }
 
 /// Run the registry field method once for `registry` on an opened installation. A `Native` over
@@ -39,7 +68,50 @@ pub struct Run {
 /// written to a recorder.
 pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
     native.method_result(Operation::RegistryFields, || {
-        let (answer, result) = native.registry_field_answer_and_result(registry)?;
-        Ok(Run { answer, result })
+        let run = native.registry_field_run(registry)?;
+        let entry_contexts = entry_contexts(&run, native.block_facts()?);
+        Ok(Run {
+            answer: run.answer,
+            result: run.result,
+            entry_contexts,
+        })
     })
+}
+
+/// The block method's findings for the owner of `run`'s registry.
+fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
+    let block_offsets = run
+        .answer
+        .value
+        .iter()
+        .zip(&run.result.fields)
+        .filter(|(field, _)| {
+            matches!(
+                field.reader.family,
+                BlockFamily::Trigger | BlockFamily::Effect
+            )
+        })
+        .map(|(field, root)| (field.name.clone(), field_entries::destinations(root)))
+        .collect();
+    let runs = facts
+        .entries
+        .runs
+        .iter()
+        .filter(|entry| entry.blocks.iter().any(|block| block.owner == run.owner))
+        .cloned()
+        .collect();
+
+    EntryContexts {
+        owner: run.owner.clone(),
+        gaps: run.entry_gaps.clone(),
+        block_offsets,
+        runs,
+        unnamed_evaluations: facts
+            .entries
+            .unattributed
+            .get(&run.owner)
+            .copied()
+            .unwrap_or_default(),
+        scope_names: facts.scope_names.clone(),
+    }
 }

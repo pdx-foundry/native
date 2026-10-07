@@ -206,13 +206,16 @@ pub enum Slot {
     NotSet,
     /// The link points back to the scope that holds it.
     SelfLink,
+    /// A slot that the pass could not read.
     Unresolved,
 }
 
 /// The scopes that one path supplies at a site.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Context {
+    /// The scope itself.
     pub this: Slot,
+    /// The scope's root link.
     pub root: Slot,
     /// from, fromfrom, …; ends after the first slot that is not a scope.
     pub from: Vec<Slot>,

@@ -343,9 +343,11 @@ adds about 1.4 s to the block input; narrow the writer test if that grows.
   then stores `vtable for TPdxNullObject<T>` + 0x10 at word 0; the calls after it only change
   memory protection, and the destructor stores null in the pointer.
 
-**Result on M452.** 239 root trigger and effect blocks in 164 registries: 118 have contexts and no
-entry gap, 46 have contexts and a gap, 75 have none. 20 blocks keep several contexts with a known
-`this`, 47 name a typed `from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
+**Result on M452.** The field sweep's `entry_contexts` section gives these counts
+([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
+effect blocks in 82 of the 164 registries: 118 have contexts and no entry gap, 46 have contexts
+and a gap, 75 have none. 20 blocks keep several contexts with a known `this`, 47 name a typed
+`from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
 block the method cannot name. The two rules above changed 10 blocks in 6 registries, and each
 change only removes an unresolved context and its gaps: the register saves those of astral action
 `potential` and `is_exhausted`, colony type, observation mission and system type `potential`, and

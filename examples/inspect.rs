@@ -1,7 +1,9 @@
 //! Look inside any ARM64 executable, catalogued or not: symbols, a function's code, its direct
 //! callers, the code that forms a string's address, and fixed-up slots such as a vtable's. On a
 //! catalogued build, `--registry-fields` runs the registry field method and shows where each
-//! token path stopped; `--trigger-grammar` and `--effect-grammar` do the same for one command's
+//! token path stopped; `--entry-contexts` shows, for each call that builds the scope of one of the
+//! registry's trigger or effect blocks, the evaluations it reaches with their contexts and where
+//! its paths stopped; `--trigger-grammar` and `--effect-grammar` do the same for one command's
 //! child grammar, and name each child key whose initial owner storage the factory does not
 //! establish. With `--trace`, an obstruction at an unknown value also lists where that value may
 //! have been lost. No game starts. Addresses in this output are for development only.
@@ -14,18 +16,18 @@ mod shapes;
 use pdx_native::internals::command_grammar_stops::{self, GrammarResult};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::registry_field_stops::{
-    self, CAUSE_LIMIT, Cause, Obstacle, PathOutcome, ReaderJoin, RegistryFieldResult, TokenPath,
-    Unresolved,
+    self, Block, CAUSE_LIMIT, Cause, Context, EntryContexts, EntryRun, Obstacle, PathOutcome,
+    ReaderJoin, RegistryFieldResult, Slot, TokenPath, Unresolved,
 };
 use pdx_native::internals::trace_causes;
-use pdx_native::{DeclarationKind, Native};
+use pdx_native::{DeclarationKind, GapSubject, Native};
 
 const USAGE: &str = "usage: inspect [--image PATH] \
     (--symbols TEXT | --function NAME|0xADDRESS [--limit BYTES] | --callers NAME|0xADDRESS \
     | --lookup-lines NAME|0xADDRESS | --lookup-census PATTERN [--normalize-field-offsets] \
     | --derive-shape NAME... \
     | --strings TEXT | --slots NAME|0xADDRESS [--count N] | --registry-fields DIRECTORY \
-    | --trigger-grammar NAME | --effect-grammar NAME) [--trace]";
+    | --entry-contexts DIRECTORY | --trigger-grammar NAME | --effect-grammar NAME) [--trace]";
 
 /// The instructions shown before each stop.
 const TRAIL: usize = 8;
@@ -114,6 +116,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 registry_field_stops::run(&native, &registry)
             })?;
             print_registry_fields(&image, &registry, &run.result, arguments.trace);
+        }
+        Command::EntryContexts(registry) => {
+            let native = Native::open(&arguments.image)?;
+            let run = traced_if(arguments.trace, || {
+                registry_field_stops::run(&native, &registry)
+            })?;
+            print_entry_contexts(&image, &registry, &run.entry_contexts, arguments.trace);
         }
         Command::Grammar(kind, name) => {
             let native = Native::open(&arguments.image)?;
@@ -214,6 +223,105 @@ fn print_registry_fields(
             println!("{}", image.place_stop(stop));
         }
     }
+}
+
+/// Each trigger and effect field with its blocks and entry gaps, then each entry run that reaches
+/// one of its blocks.
+fn print_entry_contexts(image: &Image, registry: &str, entries: &EntryContexts, traced: bool) {
+    println!(
+        "registry {registry}: owner {}; {} trigger and effect fields; {} entry runs; {} evaluation \
+         calls whose block the method cannot name",
+        entries.owner,
+        entries.block_offsets.len(),
+        entries.runs.len(),
+        entries.unnamed_evaluations
+    );
+    for (field, offsets) in &entries.block_offsets {
+        let offsets: Vec<_> = offsets
+            .iter()
+            .map(|offset| format!("+{offset:#x}"))
+            .collect();
+        println!("\nfield {field}: blocks [{}]", offsets.join(", "));
+        let gaps = entries.gaps.iter().filter(
+            |gap| matches!(&gap.subject, Some(GapSubject::Field { name }) if name == field),
+        );
+        for gap in gaps {
+            println!("  {:?}: {}", gap.kind, gap.detail);
+        }
+    }
+
+    for run in &entries.runs {
+        print_entry_run(image, entries, run, traced);
+    }
+}
+
+fn print_entry_run(image: &Image, entries: &EntryContexts, run: &EntryRun, traced: bool) {
+    let selected = run.wrapper.map_or_else(
+        || "an evaluator".to_owned(),
+        |wrapper| format!("wrapper {}", image.place(wrapper)),
+    );
+    println!("\nentry {} calls {selected}", image.place(run.site));
+    if run.reached.is_empty() {
+        println!("  no evaluation reached");
+    }
+    for (evaluation, block, context) in &run.reached {
+        println!(
+            "  reached {}: {} {}",
+            image.place(*evaluation),
+            block_name(entries, block),
+            context_text(context, entries.scope_names.as_deref())
+        );
+    }
+    for unresolved in &run.unresolved {
+        print!("  unresolved ");
+        print_stop(image, unresolved, traced);
+    }
+    let charged = if run.contradicted {
+        "charged"
+    } else {
+        "not charged"
+    };
+    for bound in &run.bounded {
+        let place = bound.stop.map_or_else(
+            || "no instruction".to_owned(),
+            |stop| image.place(stop.instruction),
+        );
+        println!("  bound, {charged}: {} at {place}", bound.reason);
+    }
+}
+
+/// The fields that store `block`, or the block's owner and offset when no root field does.
+fn block_name(entries: &EntryContexts, block: &Block) -> String {
+    let fields: Vec<&str> = entries
+        .block_offsets
+        .iter()
+        .filter(|(_, offsets)| block.owner == entries.owner && offsets.contains(&block.offset))
+        .map(|(field, _)| field.as_str())
+        .collect();
+    match fields.as_slice() {
+        [] => format!("{} +{:#x}", block.owner, block.offset),
+        _ => format!("{} (+{:#x})", fields.join(", "), block.offset),
+    }
+}
+
+/// A context in the form of the callback parity files: `this=country root=SelfLink from=[…]`.
+fn context_text(context: &Context, scope_names: Option<&[String]>) -> String {
+    let slot = |slot: &Slot| match slot {
+        Slot::Scope(bit) => scope_names
+            .and_then(|names| names.get(*bit as usize))
+            .filter(|name| !name.is_empty())
+            .cloned()
+            .unwrap_or_else(|| format!("type {bit}")),
+        other => format!("{other:?}"),
+    };
+    let chain = |slots: &[Slot]| slots.iter().map(slot).collect::<Vec<_>>().join(",");
+    format!(
+        "this={} root={} from=[{}] prev=[{}]",
+        slot(&context.this),
+        slot(&context.root),
+        chain(&context.from),
+        chain(&context.prev)
+    )
 }
 
 /// The child paths that stopped, with the grammar's own stops and its numeric child grammar.
@@ -382,6 +490,7 @@ enum Command {
     Strings(String),
     Slots(String),
     RegistryFields(String),
+    EntryContexts(String),
     Grammar(DeclarationKind, String),
 }
 
@@ -438,6 +547,7 @@ impl Arguments {
                 "--strings" => command = Some(Command::Strings(value)),
                 "--slots" => command = Some(Command::Slots(value)),
                 "--registry-fields" => command = Some(Command::RegistryFields(value)),
+                "--entry-contexts" => command = Some(Command::EntryContexts(value)),
                 "--trigger-grammar" => {
                     command = Some(Command::Grammar(DeclarationKind::Trigger, value));
                 }

@@ -22,13 +22,14 @@
 //! evaluations outside the owner's methods and nested blocks are outside the method.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::contexts::{BlockCalls, EVALUATED_SCOPE, Runner, ScopeFunctions, Selected};
+use super::contexts::{BlockCalls, EVALUATED_SCOPE, Evaluations, Runner, ScopeFunctions, Selected};
 use super::instances;
 use super::names::{self, Fact, State, StringFunctions};
 use super::{CallbackLayout, Context, Findings};
 use crate::engine::analysis::declarations::number;
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::evaluate::{Code, ReadOnlyData};
+use crate::engine::analysis::stop::Unresolved;
 
 /// How many callers up the method follows a scope that wrappers pass on.
 pub const CALLER_DEPTH: usize = 2;
@@ -100,7 +101,9 @@ pub struct CallSite {
 /// A stored block: the owner type and the offset of the block in the owner object.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Block {
+    /// The owner type of the registry whose item stores the block.
     pub owner: String,
+    /// The block's storage offset from the item's `this`.
     pub offset: i64,
 }
 
@@ -111,6 +114,32 @@ pub struct BlockEntries {
     pub blocks: BTreeMap<Block, Findings>,
     /// By owner, the evaluator calls in its methods whose block the method could not name.
     pub unattributed: BTreeMap<String, usize>,
+    /// What the context pass found from each entry, for Native's developers.
+    pub runs: Vec<EntryRun>,
+}
+
+/// What the context pass found from one entry call.
+#[derive(Debug, Clone)]
+pub struct EntryRun {
+    /// The start of the function that holds the entry call.
+    pub function: u64,
+    /// The entry call.
+    pub site: u64,
+    /// The wrapper that the entry calls, or `None` when it calls an evaluator.
+    pub wrapper: Option<u64>,
+    /// The blocks that the entry reaches, which its reasons are charged to.
+    pub blocks: BTreeSet<Block>,
+    /// Each attributed evaluation that a path reached: the evaluator call, its block and the
+    /// context that it receives. Paths that agree give one entry.
+    pub reached: BTreeSet<(u64, Block, Context)>,
+    /// Why some path could not be followed, other than a bound of the search, each once with
+    /// where it stopped.
+    pub unresolved: Vec<Unresolved>,
+    /// The bounds of the search that some path reached, each once.
+    pub bounded: Vec<Unresolved>,
+    /// Whether the bounds were charged to the blocks: the run reached no evaluation, or one with
+    /// an unreadable context.
+    pub contradicted: bool,
 }
 
 /// A call from which the context pass reads the evaluations that it reaches.
@@ -305,30 +334,60 @@ fn collect_contexts(
     let entered: BTreeSet<u64> = wrappers.union(&input.receivers).copied().collect();
 
     for entry in entries {
-        let Some(code) = entry_code(input, &entered, entry.function) else {
-            charge(result, &entry.blocks, "site-not-decoded");
-            continue;
+        let run = match entry_code(input, &entered, entry.function) {
+            Some(code) => {
+                let found =
+                    runner.evaluations(&code, entry.function, entry.site, entry.selected, &calls);
+                entry_run(entry, found, evaluations)
+            }
+            None => EntryRun {
+                unresolved: vec![Unresolved::new("site-not-decoded")],
+                ..entry_run(entry, Evaluations::default(), evaluations)
+            },
         };
-        let found = runner.evaluations(&code, entry.function, entry.site, entry.selected, &calls);
-        let reached: Vec<(&Block, Context)> = found
-            .reached
-            .into_iter()
-            .filter_map(|(address, context)| Some((evaluations.get(&address)?, context)))
-            .collect();
-        let contradicted =
-            reached.is_empty() || reached.iter().any(|(_, context)| !context.is_established());
-        for (block, context) in reached {
+
+        for (_, block, context) in &run.reached {
             let findings = result.blocks.entry(block.clone()).or_default();
-            findings.contexts.insert(context);
+            findings.contexts.insert(context.clone());
         }
-        for reason in found.unresolved {
-            charge(result, &entry.blocks, reason);
+        for reason in &run.unresolved {
+            charge(result, &run.blocks, reason.reason);
         }
-        if contradicted {
-            for reason in found.bounded {
-                charge(result, &entry.blocks, reason);
+        if run.contradicted {
+            for reason in &run.bounded {
+                charge(result, &run.blocks, reason.reason);
             }
         }
+        result.runs.push(run);
+    }
+}
+
+/// The run of `entry`, from what the context pass `found`: the evaluations that it reached and
+/// that the name pass attributed, and why some path stopped.
+fn entry_run(entry: Entry, found: Evaluations, evaluations: &BTreeMap<u64, Block>) -> EntryRun {
+    let reached: BTreeSet<(u64, Block, Context)> = found
+        .reached
+        .into_iter()
+        .filter_map(|(address, context)| {
+            Some((address, evaluations.get(&address)?.clone(), context))
+        })
+        .collect();
+    let contradicted = reached.is_empty()
+        || reached
+            .iter()
+            .any(|(_, _, context)| !context.is_established());
+    EntryRun {
+        function: entry.function,
+        site: entry.site,
+        wrapper: match entry.selected {
+            Selected::Evaluator => None,
+            Selected::Wrapper(wrapper) => Some(wrapper),
+        },
+        blocks: entry.blocks,
+        reached,
+        unresolved: found.unresolved,
+        bounded: found.bounded,
+        contradicted,
     }
 }
 

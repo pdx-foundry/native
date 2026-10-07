@@ -299,3 +299,48 @@ fn duration_stamp_and_cases_are_required() {
             .has_input_errors()
     );
 }
+
+fn tracked_on_actions() -> Value {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/expected/m452/on-actions.json"
+    );
+    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+#[test]
+fn callback_answers_compare_by_name_and_gap_subject() {
+    let reviewed = tracked_on_actions();
+    let paths = |candidate: &Value| {
+        compare("on-actions.json", &reviewed, candidate)
+            .differences
+            .into_iter()
+            .map(|entry| (entry.category, entry.path))
+            .collect::<Vec<_>>()
+    };
+
+    let mut removed_gap = reviewed.clone();
+    removed_gap["gaps"].as_array_mut().unwrap().remove(1);
+    assert_eq!(
+        paths(&removed_gap),
+        [(
+            Category::Answer,
+            "/gaps/UnresolvedPath/answer_item/empire_init_add_technologies".to_owned()
+        )]
+    );
+
+    let mut changed_entry = reviewed.clone();
+    changed_entry["names"]["on_add_to_council"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    assert_eq!(
+        paths(&changed_entry),
+        [(Category::Answer, "/names/on_add_to_council".to_owned())]
+    );
+
+    let mut reordered = reviewed.clone();
+    reordered["gaps"].as_array_mut().unwrap().swap(0, 1);
+    assert_eq!(paths(&reordered), [(Category::Ordering, String::new())]);
+    assert!(!compare("on-actions.json", &reviewed, &reordered).passes());
+}
