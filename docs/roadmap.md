@@ -34,6 +34,9 @@ the product is the JSON snapshot.
 Coverage started at 0 of 56,551 Atlas-owned claims (item names answer no rule question). At the
 Milestone 3 gate, a live snapshot on config revision `8574760` covered 15,278 of 58,032 claims
 (26.33%); see Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
+At the Milestone 4 gate, SDK-625's live snapshot on M452 with Native `573e35f` covered 22,668 of
+58,032 claims (39.06%) on the same config revision; Atlas's [Milestone 4 capture](https://github.com/pdx-foundry/atlas/blob/baf003a8982db386f53b47b5d87b7ce9efe7d8d5/docs/coverage/milestone-4.md)
+gives the per-area figures.
 
 ## Ordering principle
 
@@ -93,9 +96,12 @@ Milestone 4 completes only when all of these hold:
    run; recordings support reproduction. SDK-597 owns the first slice (conditional branches,
    block families, shared directories, owner categories, stable gap reasons, the first live
    re-record with SDK-577). SDK-625 owns partial command grammars, the remaining claim types,
-   parser fixture conclusions and a fresh M451-hotfix recording. SDK-626 measures failure shapes
-   after that pin move and creates tickets only for compiler-relevant shapes with a dependent
-   config claim. Other shapes receive “out of scope, vision 2026-10-02”.
+   parser fixture conclusions and a fresh recording, made on M452 after SDK-714. SDK-626 measures
+   failure shapes after that pin move and creates tickets only for compiler-relevant shapes with
+   a dependent config claim. Other shapes receive “out of scope, vision 2026-10-02”. SDK-625's
+   final run credits each established command key only for its own claims, carries block,
+   scope, value-form, reference and naming answers, and measures the SDK-626 table again; weight
+   claims are credited at field level, and fixture conclusions stay Native parser checks.
 
 **Use-time inheritance.** Tradition inheritance affects the names and icons
 selected at use time, although the parser reads the fields without those tests. SDK-541 retains
