@@ -1803,8 +1803,9 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
     use pdx_native::{
-        BlockFamily, EntryScope, Field, FieldCondition, FieldMembers, FieldReadOutcome,
-        FieldReference, GrammarProperty, ReadScope, ReferenceTarget, ScopedOperandForm,
+        BlockFamily, EntryContext, EntryScope, Field, FieldCondition, FieldMembers,
+        FieldReadOutcome, FieldReference, GrammarProperty, NumericRepresentation,
+        NumericSignedness, ReadScope, ReferenceTarget, ScopeReference, ScopedOperandForm,
         ScopedReferenceKind, WeightOtherKeys,
     };
 
@@ -1823,6 +1824,18 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
 
     let native = native();
     let answer = native.registry_fields("common/council_agendas").unwrap();
+    let country = native
+        .scopes()
+        .unwrap()
+        .value
+        .types
+        .into_iter()
+        .find(|scope| scope.name == "country")
+        .map(|scope| ScopeReference {
+            id: scope.id,
+            name: scope.name,
+        })
+        .expect("the engine declares the country scope type");
     let mut missing = Vec::new();
     let mut require = |holds: bool, fact: String| {
         if !holds {
@@ -1880,13 +1893,13 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
         };
         require(
             numeric.is_some_and(|numeric| {
-                matches!(numeric.representation, GrammarProperty::Known(_))
-                    && matches!(numeric.width_bits, GrammarProperty::Known(_))
-                    && matches!(numeric.signedness, GrammarProperty::Known(_))
-                    && matches!(numeric.scale, GrammarProperty::Known(Some(_)))
+                numeric.representation == GrammarProperty::Known(NumericRepresentation::Integer)
+                    && numeric.width_bits == GrammarProperty::Known(32)
+                    && numeric.signedness == GrammarProperty::Known(NumericSignedness::Signed)
+                    && numeric.scale == GrammarProperty::Known(Some(1))
             }),
             format!(
-                "agenda_cost storage kind and scale are known: {:?}",
+                "agenda_cost is stored as a signed 32-bit integer with scale 1: {:?}",
                 cost.reader.numeric
             ),
         );
@@ -1932,7 +1945,13 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
     }
 
     // SDK-542, SDK-549 and SDK-677: the family, read scope and entry contexts of each block.
-    let country = |scopes: &[ReadScope]| matches!(scopes, [ReadScope::Types(types)] if types.len() == 1 && types[0].name == "country");
+    // Scope references join by id, so the country scope is the one that `scopes` declares.
+    let country_context = EntryContext {
+        this: EntryScope::Scope(country.clone()),
+        root: EntryScope::SelfLink,
+        from: vec![EntryScope::SelfLink],
+        prev: vec![EntryScope::SelfLink],
+    };
     for (name, family) in [
         ("potential", BlockFamily::Trigger),
         ("allow", BlockFamily::Trigger),
@@ -1948,7 +1967,8 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
             ),
         );
         require(
-            matches!(&block.read_scope, GrammarProperty::Known(scopes) if country(scopes)),
+            block.read_scope
+                == GrammarProperty::Known(vec![ReadScope::Types(vec![country.clone()])]),
             format!("{name} is read in a country scope: {:?}", block.read_scope),
         );
         let contexts: Vec<_> = block.entry_contexts.iter().map(entry).collect();
@@ -1964,8 +1984,8 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
             format!("{name} has only resolved entry contexts: {contexts:?}"),
         );
         require(
-            contexts.contains(&"this=country root=SelfLink from=[SelfLink] prev=[SelfLink]".into()),
-            format!("{name} is entered as a country: {contexts:?}"),
+            block.entry_contexts.contains(&country_context),
+            format!("{name} is entered as a country with self-linked links: {contexts:?}"),
         );
     }
 
@@ -2006,27 +2026,71 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
             ),
         );
         if let FieldMembers::WeightBlock(block) = &weight.members {
+            // Independent expectations: the config's `modifier_rule` grammar and the engine's
+            // switch of nineteen spellings, where the fixed `factor` key shadows its operation.
             let keys = match &block.fixed_keys {
                 GrammarProperty::Known(keys) => keys.as_slice(),
                 _ => &[],
             };
+            let mut inventory: Vec<_> = keys
+                .iter()
+                .map(|key| (key.name.as_str(), key.reader.kind))
+                .collect();
+            inventory.sort_unstable();
             require(
-                !keys.is_empty()
-                    && keys
-                        .iter()
-                        .all(|key| key.reader.kind != ReaderKind::Unknown),
-                format!(
-                    "every ai_weight key has a reader kind: {:?}",
-                    keys.iter()
-                        .map(|key| (key.name.as_str(), key.reader.kind))
-                        .collect::<Vec<_>>()
-                ),
+                inventory
+                    == [
+                        ("base", ReaderKind::FixedPoint),
+                        ("complex_trigger_modifier", ReaderKind::Block),
+                        ("days", ReaderKind::Integer),
+                        ("factor", ReaderKind::FixedPoint),
+                        ("modifier", ReaderKind::Block),
+                        ("months", ReaderKind::Integer),
+                        ("scaled_modifier", ReaderKind::Block),
+                        ("years", ReaderKind::Integer),
+                    ],
+                format!("ai_weight has the eight keys with their reader kinds: {inventory:?}"),
+            );
+            let operations = match &block.operations {
+                GrammarProperty::Known(operations) => operations.as_slice(),
+                _ => &[],
+            };
+            let mut spellings: Vec<_> = operations
+                .iter()
+                .map(|operation| operation.key.as_str())
+                .collect();
+            spellings.sort_unstable();
+            require(
+                spellings
+                    == [
+                        "abs",
+                        "add",
+                        "ceiling",
+                        "divide",
+                        "floor",
+                        "max",
+                        "min",
+                        "modulo",
+                        "mult",
+                        "multiply",
+                        "pow",
+                        "round",
+                        "round_to",
+                        "set",
+                        "square",
+                        "square_root",
+                        "subtract",
+                        "weight",
+                    ],
+                format!("ai_weight has the eighteen operation keys: {spellings:?}"),
             );
             require(
-                matches!(&block.operations, GrammarProperty::Known(operations)
-                if !operations.is_empty() && operations.iter().all(|operation| {
-                    operation.operand.as_ref().is_none_or(|operand| operand.kind != ReaderKind::Unknown)
-                })),
+                operations.iter().all(|operation| {
+                    operation
+                        .operand
+                        .as_ref()
+                        .is_none_or(|operand| operand.kind != ReaderKind::Unknown)
+                }),
                 format!(
                     "every ai_weight operation has an operand kind: {:?}",
                     block.operations
