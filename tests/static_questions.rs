@@ -1795,6 +1795,339 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
     }
 }
 
+/// The Milestone 4 council agenda acceptance test (SDK-600; `docs/roadmap.md`, "Milestone 4
+/// acceptance"). Every required fact is checked on the answer's value, so a missing field, an
+/// unresolved context or an `OutsideMethod` exclusion cannot satisfy it; the answer must also be
+/// `Complete`, so a typed gap fails it. The test reports every missing fact at once.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
+    use pdx_native::{
+        BlockFamily, EntryContext, EntryScope, Field, FieldCondition, FieldMembers,
+        FieldReadOutcome, FieldReference, GrammarProperty, NumericRepresentation,
+        NumericSignedness, ReadScope, ReferenceTarget, ScopeReference, ScopedOperandForm,
+        ScopedReferenceKind, WeightOtherKeys,
+    };
+
+    const FIELDS: [&str; 10] = [
+        "agenda_cost",
+        "agenda_cooldown",
+        "agenda_finish_modifier_duration",
+        "potential",
+        "allow",
+        "effect",
+        "init_effect",
+        "finish_modifier",
+        "modifier",
+        "ai_weight",
+    ];
+
+    let native = native();
+    let answer = native.registry_fields("common/council_agendas").unwrap();
+    let country = native
+        .scopes()
+        .unwrap()
+        .value
+        .types
+        .into_iter()
+        .find(|scope| scope.name == "country")
+        .map(|scope| ScopeReference {
+            id: scope.id,
+            name: scope.name,
+        })
+        .expect("the engine declares the country scope type");
+    let mut missing = Vec::new();
+    let mut require = |holds: bool, fact: String| {
+        if !holds {
+            missing.push(fact);
+        }
+    };
+
+    require(
+        answer.source.basis == Basis::StaticAnalysis,
+        format!("basis is static analysis, not {:?}", answer.source.basis),
+    );
+    let typed_gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind != GapKind::OutsideMethod)
+        .map(|gap| format!("  {:?} {:?}: {}", gap.kind, gap.subject, gap.detail))
+        .collect();
+    require(
+        answer.completeness == Completeness::Complete,
+        format!(
+            "the answer is complete; typed gaps:\n{}",
+            typed_gaps.join("\n")
+        ),
+    );
+    let mut names: Vec<_> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    names.sort_unstable();
+    let mut expected = FIELDS;
+    expected.sort_unstable();
+    require(names == expected, format!("the ten fields are {names:?}"));
+
+    let field =
+        |name: &str| -> Option<&Field> { answer.value.iter().find(|field| field.name == name) };
+    for name in FIELDS {
+        let Some(field) = field(name) else { continue };
+        require(
+            field.reader.id.is_some() && field.reader.kind != ReaderKind::Unknown,
+            format!(
+                "{name} has an established reader kind, not {:?}",
+                field.reader.kind
+            ),
+        );
+    }
+
+    // SDK-544: agenda_cost's numeric storage kind, scale, and script-value acceptance.
+    if let Some(cost) = field("agenda_cost") {
+        let numeric = match &cost.reader.numeric {
+            GrammarProperty::Known(Some(numeric)) | GrammarProperty::Partial(Some(numeric)) => {
+                Some(numeric)
+            }
+            _ => None,
+        };
+        require(
+            numeric.is_some_and(|numeric| {
+                numeric.representation == GrammarProperty::Known(NumericRepresentation::Integer)
+                    && numeric.width_bits == GrammarProperty::Known(32)
+                    && numeric.signedness == GrammarProperty::Known(NumericSignedness::Signed)
+                    && numeric.scale == GrammarProperty::Known(Some(1))
+            }),
+            format!(
+                "agenda_cost is stored as a signed 32-bit integer with scale 1: {:?}",
+                cost.reader.numeric
+            ),
+        );
+        let forms = match &cost.reader.scoped_operand {
+            GrammarProperty::Known(Some(operand)) | GrammarProperty::Partial(Some(operand)) => {
+                match &operand.forms {
+                    GrammarProperty::Known(forms) | GrammarProperty::Partial(forms) => {
+                        forms.as_slice()
+                    }
+                    GrammarProperty::Unresolved => &[],
+                }
+            }
+            _ => &[],
+        };
+        require(
+            forms.iter().any(|form| {
+                matches!(
+                    form,
+                    ScopedOperandForm::Prefixed {
+                        kind: ScopedReferenceKind::ScriptValue,
+                        ..
+                    }
+                )
+            }),
+            format!("agenda_cost accepts a script value: {forms:?}"),
+        );
+    }
+
+    // SDK-541: the normalized read condition of each duration field.
+    for name in ["agenda_cooldown", "agenda_finish_modifier_duration"] {
+        let Some(duration) = field(name) else {
+            continue;
+        };
+        require(
+            duration.read.len() == 1
+                && duration.read[0].condition == FieldCondition::Always
+                && matches!(&duration.read[0].outcome, FieldReadOutcome::Read { reader, .. } if reader.kind != ReaderKind::Unknown),
+            format!(
+                "{name} has one normalized read condition: {:?}",
+                duration.read
+            ),
+        );
+    }
+
+    // SDK-542, SDK-549 and SDK-677: the family, read scope and entry contexts of each block.
+    // Scope references join by id, so the country scope is the one that `scopes` declares.
+    let country_context = EntryContext {
+        this: EntryScope::Scope(country.clone()),
+        root: EntryScope::SelfLink,
+        from: vec![EntryScope::SelfLink],
+        prev: vec![EntryScope::SelfLink],
+    };
+    for (name, family) in [
+        ("potential", BlockFamily::Trigger),
+        ("allow", BlockFamily::Trigger),
+        ("effect", BlockFamily::Effect),
+        ("init_effect", BlockFamily::Effect),
+    ] {
+        let Some(block) = field(name) else { continue };
+        require(
+            block.reader.family == family,
+            format!(
+                "{name} accepts {family:?} commands, not {:?}",
+                block.reader.family
+            ),
+        );
+        require(
+            block.read_scope
+                == GrammarProperty::Known(vec![ReadScope::Types(vec![country.clone()])]),
+            format!("{name} is read in a country scope: {:?}", block.read_scope),
+        );
+        let contexts: Vec<_> = block.entry_contexts.iter().map(entry).collect();
+        let resolved = |scope: &EntryScope| !matches!(scope, EntryScope::Unresolved);
+        require(
+            !block.entry_contexts.is_empty()
+                && block.entry_contexts.iter().all(|context| {
+                    resolved(&context.this)
+                        && resolved(&context.root)
+                        && context.from.iter().all(resolved)
+                        && context.prev.iter().all(resolved)
+                }),
+            format!("{name} has only resolved entry contexts: {contexts:?}"),
+        );
+        require(
+            block.entry_contexts.contains(&country_context),
+            format!("{name} is entered as a country with self-linked links: {contexts:?}"),
+        );
+    }
+
+    // SDK-543: the content directory that finish_modifier's value is looked up in.
+    if let Some(reference) = field("finish_modifier") {
+        let lookups = match &reference.reference {
+            FieldReference::Lookups(lookups) => lookups.as_slice(),
+            _ => &[],
+        };
+        require(
+            !lookups.is_empty()
+                && lookups.iter().all(|lookup| {
+                    matches!(&lookup.target, ReferenceTarget::Registry { name } if name == "common/static_modifiers")
+                }),
+            format!("finish_modifier is looked up in common/static_modifiers: {:?}", reference.reference),
+        );
+    }
+
+    // SDK-542 and SDK-607: the member family of modifier.
+    if let Some(modifier) = field("modifier") {
+        require(
+            modifier.reader.family == BlockFamily::Modifier
+                && matches!(modifier.members, FieldMembers::ModifierBlock(_)),
+            format!(
+                "modifier accepts modifier entries: {:?}",
+                modifier.reader.family
+            ),
+        );
+    }
+
+    // SDK-545 and SDK-705: ai_weight's keys, each key's reader kind, and the nested modifier entries.
+    if let Some(weight) = field("ai_weight") {
+        require(
+            weight.reader.family == BlockFamily::Weight,
+            format!(
+                "ai_weight accepts weight entries: {:?}",
+                weight.reader.family
+            ),
+        );
+        if let FieldMembers::WeightBlock(block) = &weight.members {
+            // Independent expectations: the config's `modifier_rule` grammar and the engine's
+            // switch of nineteen spellings, where the fixed `factor` key shadows its operation.
+            let keys = match &block.fixed_keys {
+                GrammarProperty::Known(keys) => keys.as_slice(),
+                _ => &[],
+            };
+            let mut inventory: Vec<_> = keys
+                .iter()
+                .map(|key| (key.name.as_str(), key.reader.kind))
+                .collect();
+            inventory.sort_unstable();
+            require(
+                inventory
+                    == [
+                        ("base", ReaderKind::FixedPoint),
+                        ("complex_trigger_modifier", ReaderKind::Block),
+                        ("days", ReaderKind::Integer),
+                        ("factor", ReaderKind::FixedPoint),
+                        ("modifier", ReaderKind::Block),
+                        ("months", ReaderKind::Integer),
+                        ("scaled_modifier", ReaderKind::Block),
+                        ("years", ReaderKind::Integer),
+                    ],
+                format!("ai_weight has the eight keys with their reader kinds: {inventory:?}"),
+            );
+            let operations = match &block.operations {
+                GrammarProperty::Known(operations) => operations.as_slice(),
+                _ => &[],
+            };
+            let mut spellings: Vec<_> = operations
+                .iter()
+                .map(|operation| operation.key.as_str())
+                .collect();
+            spellings.sort_unstable();
+            require(
+                spellings
+                    == [
+                        "abs",
+                        "add",
+                        "ceiling",
+                        "divide",
+                        "floor",
+                        "max",
+                        "min",
+                        "modulo",
+                        "mult",
+                        "multiply",
+                        "pow",
+                        "round",
+                        "round_to",
+                        "set",
+                        "square",
+                        "square_root",
+                        "subtract",
+                        "weight",
+                    ],
+                format!("ai_weight has the eighteen operation keys: {spellings:?}"),
+            );
+            require(
+                operations.iter().all(|operation| {
+                    operation
+                        .operand
+                        .as_ref()
+                        .is_none_or(|operand| operand.kind != ReaderKind::Unknown)
+                }),
+                format!(
+                    "every ai_weight operation has an operand kind: {:?}",
+                    block.operations
+                ),
+            );
+            require(
+                !matches!(block.other_keys, WeightOtherKeys::Unresolved),
+                "ai_weight's other keys have a known disposition".into(),
+            );
+            let nested = keys.iter().find(|key| key.name == "modifier");
+            require(
+                nested.is_some_and(|entry| {
+                    entry.reader.kind == ReaderKind::Block
+                        && matches!(&entry.members, FieldMembers::WeightBlock(nested)
+                            if matches!(nested.fixed_keys, GrammarProperty::Known(_))
+                                && matches!(nested.operations, GrammarProperty::Known(_)))
+                }),
+                format!(
+                    "ai_weight nests modifier entries with their own keys: {:?}",
+                    nested.map(|entry| &entry.members)
+                ),
+            );
+        } else {
+            require(
+                false,
+                format!("ai_weight carries its weight block: {:?}", weight.members),
+            );
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "missing Milestone 4 facts:\n{}",
+        missing.join("\n")
+    );
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn dynamic_names_group_flag_commands_by_the_store_they_reach() {

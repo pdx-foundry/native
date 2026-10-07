@@ -32,6 +32,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter as a country with self-linked root, from and prev; `potential` and
   `allow` keep two contradicted call sites ([block entry contexts](#block-entry-contexts)).
+  The acceptance test `council_agenda_fields_are_complete_with_every_milestone_4_fact`
+  (`cargo parity council_agenda`) lists each missing fact and typed gap in one run.
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
   from unresolved root paths, not from unclassified reader signatures (`CVariableValue::Read`,
   `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`).
