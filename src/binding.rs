@@ -427,7 +427,8 @@ pub(crate) struct Machine {
 impl std::fmt::Debug for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Binding")
-            .field("installation", &self.installation)
+            .field("installation", &self.installation.locator())
+            .field("build", &self.build())
             .finish_non_exhaustive()
     }
 }

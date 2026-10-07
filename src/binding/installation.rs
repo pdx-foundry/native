@@ -1,7 +1,10 @@
 use std::{
     collections::BTreeMap,
     fs,
+    io::Read,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
 };
 
 use super::{binary::hash, targets::M45_DEFAULT_REGISTRIES};
@@ -10,18 +13,22 @@ use crate::{OpenError, UnavailableReason};
 /// SHA-256 of each content file, by its path relative to the installation root.
 pub(crate) type ContentIdentity = BTreeMap<String, String>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(super) struct Installation {
     locator: PathBuf,
     executable: PathBuf,
     root: PathBuf,
     executable_hash: String,
+    /// The bytes that `executable_hash` was taken from.
+    executable_bytes: Arc<[u8]>,
+    /// The executable file's metadata when `executable_bytes` were read.
+    executable_stamp: Stamp,
     default_directories: Vec<String>,
     pub content: Result<ContentIdentity, UnavailableReason>,
 }
 
 impl Installation {
-    pub fn open(hint: &Path) -> Result<(Self, Vec<u8>), OpenError> {
+    pub fn open(hint: &Path) -> Result<(Self, Arc<[u8]>), OpenError> {
         let metadata = fs::metadata(hint).map_err(|error| access_error(hint, error))?;
         let executable = if metadata.is_file() {
             hint.to_owned()
@@ -35,7 +42,9 @@ impl Installation {
         let executable =
             fs::canonicalize(&executable).map_err(|error| access_error(&executable, error))?;
         let root = installation_root(&executable);
-        let bytes = fs::read(&executable).map_err(|error| access_error(&executable, error))?;
+        let (executable_stamp, bytes) =
+            read_stamped(&executable).map_err(|error| access_error(&executable, error))?;
+        let bytes: Arc<[u8]> = bytes.into();
         let default_directories: Vec<String> = M45_DEFAULT_REGISTRIES
             .iter()
             .map(|name| (*name).into())
@@ -43,6 +52,8 @@ impl Installation {
         Ok((
             Self {
                 executable_hash: hash(&bytes),
+                executable_bytes: bytes.clone(),
+                executable_stamp,
                 content: content_snapshot(&root, &default_directories, false),
                 default_directories,
                 root,
@@ -53,7 +64,9 @@ impl Installation {
         ))
     }
 
-    pub fn executable_bytes(&self) -> Result<Vec<u8>, UnavailableReason> {
+    /// The executable bytes verified at `open`. The file is read and hashed again only when its
+    /// metadata stamp differs from the one taken at `open`; performance.md states the limit.
+    pub fn executable_bytes(&self) -> Result<Arc<[u8]>, UnavailableReason> {
         match fs::canonicalize(&self.locator) {
             Ok(current) if current != self.executable => {
                 return Err(UnavailableReason::TargetChanged);
@@ -61,13 +74,18 @@ impl Installation {
             Err(_) => return Err(UnavailableReason::InputUnavailable),
             _ => {}
         }
-        let Ok(bytes) = fs::read(&self.executable) else {
+        let Ok(metadata) = fs::metadata(&self.executable) else {
             return Err(UnavailableReason::InputUnavailable);
         };
-        if hash(&bytes) != self.executable_hash {
-            return Err(UnavailableReason::TargetChanged);
+        if Stamp::of(&metadata) != self.executable_stamp {
+            let Ok(bytes) = fs::read(&self.executable) else {
+                return Err(UnavailableReason::InputUnavailable);
+            };
+            if hash(&bytes) != self.executable_hash {
+                return Err(UnavailableReason::TargetChanged);
+            }
         }
-        Ok(bytes)
+        Ok(self.executable_bytes.clone())
     }
 
     pub fn target_integrity(&self) -> Option<UnavailableReason> {
@@ -99,6 +117,46 @@ impl Installation {
     ) -> bool {
         content_snapshot(&self.root, directories, true).is_ok_and(|current| current == *expected)
     }
+}
+
+/// File metadata that a write or a replacement changes. On Unix the status-change time changes
+/// on each write, rename or permission change, and a user cannot set it. Windows has only the
+/// length and the modification time.
+#[derive(Clone, PartialEq, Eq)]
+struct Stamp {
+    length: u64,
+    modified: Option<SystemTime>,
+    /// Device, inode, and status-change seconds and nanoseconds.
+    #[cfg(unix)]
+    unix: (u64, u64, i64, i64),
+}
+
+impl Stamp {
+    fn of(metadata: &fs::Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            length: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            unix: (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.ctime(),
+                metadata.ctime_nsec(),
+            ),
+        }
+    }
+}
+
+/// The stamp is taken from the open file before the read, so a write or a replacement during
+/// the read leaves a stamp that the next check sees as changed.
+fn read_stamped(path: &Path) -> std::io::Result<(Stamp, Vec<u8>)> {
+    let mut file = fs::File::open(path)?;
+    let stamp = Stamp::of(&file.metadata()?);
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok((stamp, bytes))
 }
 
 fn access_error(path: &Path, error: std::io::Error) -> OpenError {
