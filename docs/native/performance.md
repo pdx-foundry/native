@@ -1,13 +1,13 @@
 # Static analysis and live-test costs
 
-## Hashing dominates static queries
+## Hashing dominates the first static query
 
-SHA-256 hashing of the executable dominates a static query in both profiles; reading the file is
-a small part. The pinned `sha2` 0.10.9 uses its software SHA-256 on ARM64: the hardware path
-needs the `asm` feature, which Native does not enable. A public static question costs about one
-second per call on M45-release, while the developer population route
-(`internals::command_grammar_stops::population`) answers the whole command inventory in about 80
-seconds (SDK-651).
+SHA-256 hashing of the executable dominates the first static query in both profiles; reading the
+file is a small part. The pinned `sha2` 0.10.9 uses its software SHA-256 on ARM64: the hardware
+path needs the `asm` feature, which Native does not enable. `open` hashes once, and later queries
+compare a metadata stamp (below). Before that change each public query hashed again and cost
+about 1.2 s on M452-release; `record-command-grammars` over all 2,178 commands took about 43
+minutes, and now takes 170 s.
 
 The dev profile therefore optimizes two dependencies; Native's own code stays debuggable:
 
@@ -25,15 +25,34 @@ same for `cpp_demangle`) and prebuild before measuring.
 
 ## The static-query invariant
 
-- Each public static query reads and hashes the executable once, and uses that one verified
-  buffer for discovery and field input. The full-file hash covers the ARM64 slice that `open`
-  selected and hashed, so a later read needs no second slice hash.
+- `open` reads the executable once, hashes it, and keeps that buffer with the file's metadata
+  stamp: length and modification time, and on Unix also device, inode and status-change time.
+  The full-file hash covers the ARM64 slice that `open` selected, so no read needs a slice hash.
+- Each public static query checks the locator and compares the stamp, then uses the kept buffer
+  for discovery and field input. When the stamp differs, it reads and hashes the whole file
+  again, and refuses with `TargetChanged` if the hash differs. A file whose stamp changed but
+  whose bytes did not is hashed again on each query.
 - `BoundAnalysis` computes its catalog once: the named candidates, symbols and strings that
-  public questions, bindings and fixture field setup share. It keeps no executable buffer, and
-  every read still loads and hashes the executable before it uses the catalog.
+  public questions, bindings and fixture field setup share. Every read checks the stamp before
+  it uses the catalog.
 - A detected change, a missing file or a path retarget invalidates the `BoundAnalysis`
-  permanently, even if the original bytes return. Do not use modification times or file length
-  as a substitute for byte integrity.
+  permanently, even if the original bytes return.
+- The integrity check before a game starts (`start_game` and each supervisor check before
+  spawn) does not use the stamp: it reads and hashes every byte, because a game that starts
+  from a changed executable would use layouts and bindings of another build. It costs about one
+  second against a launch of 16–21 s.
+- **Accepted limit:** a byte change that leaves the stamp equal is not detected between static
+  queries; static answers then come from the bytes verified at `open`. On Unix every write sets the status-change time, but the file system can update it
+  late (for example through a writable shared mapping) or at a granularity that hides a second
+  change. On Windows, a write that keeps the length and restores the modification time is not
+  detected, and neither is a loss of read access. Steam updates replace the file, so they change the inode and the status-change
+  time; the 4.5.1 to 4.5.2 update under an open session on 2026-10-06 is that case. The cost
+  that this removes is about one second per query (below). Return to a full hash on each query,
+  or add one at a different point, if a supported host or file system does not change these
+  fields on write (such as a network file system with cached metadata), or if an update path is
+  seen that writes the executable in place and keeps its stamp.
+- The kept buffer holds the whole executable (about 160 MB on M452) for the life of the
+  `Native`.
 - The supervisor builds its own `Binding` from the installation and does not accept addresses
   that the caller cached. Live answers, pauses, fixture state and `Complete` witnesses are never
   cached across sessions.

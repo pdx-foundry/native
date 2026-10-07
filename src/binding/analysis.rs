@@ -77,7 +77,7 @@ pub(crate) struct PreparedDurations<'a> {
 }
 
 pub(crate) struct VerifiedAnalysis<'a> {
-    executable: Vec<u8>,
+    executable: Arc<[u8]>,
     catalog: &'a Catalog,
     persistent: Option<&'static super::targets::PersistentRecipe>,
 }
@@ -578,7 +578,7 @@ impl BoundAnalysis {
         }
     }
 
-    pub(crate) fn executable(&self) -> Result<Vec<u8>, AnalysisError> {
+    pub(crate) fn executable(&self) -> Result<Arc<[u8]>, AnalysisError> {
         let mut invalidated = self
             .invalidated
             .lock()

@@ -382,10 +382,10 @@ fn reader_uses_verified_executable_bytes_without_content_or_live_tools() {
     let (root, binding) = fixture();
     assert!(!root.path().join("common").exists());
     let image = support::macho_with_text(&support::sample_arm64_code());
-    assert_eq!(binding.executable().unwrap(), image);
+    assert_eq!(*binding.executable().unwrap(), *image);
     fs::create_dir(root.path().join("common")).unwrap();
     fs::write(root.path().join("common/arbitrary.txt"), "content changed").unwrap();
-    assert_eq!(binding.executable().unwrap(), image);
+    assert_eq!(*binding.executable().unwrap(), *image);
 }
 
 #[test]
@@ -416,6 +416,43 @@ fn a_changed_or_missing_executable_permanently_invalidates_static_reads() {
     }
 }
 
+#[test]
+fn an_unchanged_executable_is_hashed_once_and_a_metadata_change_is_checked_again() {
+    let (root, binding) = fixture();
+    let path = root.path().join("image");
+    let first = binding.executable().unwrap();
+    assert!(Arc::ptr_eq(&first, &binding.executable().unwrap()));
+    let opened = fs::metadata(&path).unwrap().modified().unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(opened + std::time::Duration::from_secs(60))
+        .unwrap();
+    assert_eq!(*binding.executable().unwrap(), *first);
+
+    // The length and modification time at open, on the same inode: only the status-change time
+    // differs.
+    #[cfg(unix)]
+    {
+        let mut bytes = fs::read(&path).unwrap();
+        *bytes.last_mut().unwrap() ^= 1;
+        let file = fs::File::options().write(true).open(&path).unwrap();
+        std::os::unix::fs::FileExt::write_all_at(&file, &bytes, 0).unwrap();
+        file.set_modified(opened).unwrap();
+        let error = binding.executable().unwrap_err();
+        assert_eq!(
+            error,
+            AnalysisError::Unavailable {
+                reasons: vec![UnavailableReason::TargetChanged]
+            }
+        );
+        *bytes.last_mut().unwrap() ^= 1;
+        fs::write(&path, bytes).unwrap();
+        assert_eq!(binding.executable().unwrap_err(), error);
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn retargeted_executable_permanently_invalidates_static_reads() {
@@ -431,7 +468,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     symlink(&original, &hint).unwrap();
     let (installation, _) = Installation::open(&hint).unwrap();
     let analysis = BoundAnalysis::new(None, None, installation, Default::default());
-    assert_eq!(analysis.executable().unwrap(), image);
+    assert_eq!(*analysis.executable().unwrap(), *image);
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();
     let error = analysis.executable().unwrap_err();

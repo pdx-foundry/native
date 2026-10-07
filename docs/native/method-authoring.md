@@ -377,8 +377,7 @@ cargo run --release --example record-command-grammars -- "$STELLARIS_PATH"
 cargo run --release --example record-command-grammars -- --verify .local/sdk-548/recorded-answers "$STELLARIS_PATH"
 ```
 
-Each question reads and hashes the whole executable, so a full recording takes about 21 minutes;
-do not skip the check (SDK-640).
+A full recording takes about three minutes on M452-release; do not skip the check (SDK-640).
 
 For commands, [`declaration-list.rs`](../../examples/declaration-list.rs) prints both full
 inventories and their gaps when no name filter is supplied:

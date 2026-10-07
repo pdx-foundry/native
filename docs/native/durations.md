@@ -218,6 +218,5 @@ a shared method proves it.
   rift scope.
 - Do not claim `SharedFactor` from the read paths alone. A constant store beside an operand is a
   multiplier only when the execute body multiplies that operand by that slot.
-- Asking `command_grammar` once per command costs about one second per command. Run
-  whole-inventory measurements through `internals::command_grammar_stops::population`, as
+- Run whole-inventory measurements through `internals::command_grammar_stops::population`, as
   `examples/duration-population.rs` does (SDK-651).
