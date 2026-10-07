@@ -32,6 +32,8 @@ struct Program {
     arguments: BTreeMap<u64, usize>,
     call_arguments: BTreeMap<u64, usize>,
     receivers: BTreeSet<u64>,
+    instances: BTreeMap<u64, u64>,
+    words: BTreeMap<u64, u64>,
 }
 
 impl Program {
@@ -42,7 +44,17 @@ impl Program {
             arguments: BTreeMap::new(),
             call_arguments: BTreeMap::new(),
             receivers: BTreeSet::new(),
+            instances: BTreeMap::new(),
+            words: BTreeMap::new(),
         }
+    }
+
+    /// The instance pointer at `pointer` holds an object with the vtable at `point`, and `words`
+    /// are the loaded words that a virtual call on it reads.
+    fn instance(mut self, pointer: u64, point: u64, words: &[(u64, u64)]) -> Self {
+        self.instances.insert(pointer, point);
+        self.words.extend(words.iter().copied());
+        self
     }
 
     /// The call through a pointer at `call` reads `count` argument registers.
@@ -116,11 +128,12 @@ impl Program {
                 readers: BTreeSet::new(),
             },
             strings: StringFunctions::default(),
-            data: ReadOnlyData::default(),
+            data: ReadOnlyData::default().with_words(&self.words),
             layout: layout(),
             scope_names: None,
             arguments: self.arguments,
             call_arguments: self.call_arguments,
+            instances: self.instances,
             receivers: self.receivers,
             never_return: BTreeSet::from([NEVER_RETURNS]),
         })
@@ -979,4 +992,134 @@ fn a_call_that_receives_an_address_in_an_inner_frame_does_not_reach_an_outer_fra
         [fresh(COUNTRY)]
     );
     assert_eq!(contexts(&run(("mov", "x0,x2")), POTENTIAL), [unreadable()]);
+}
+
+/// A caller that builds scope A, keeps its address in `x20` and calls the wrapper at 0x2000 with
+/// it.
+fn caller_keeping_a_in_x20() -> Vec<Line> {
+    let mut lines = builds_a(0x1000, COUNTRY_TYPE);
+    lines.extend([
+        (0x1018, "add", "x20,sp,#0x100"),
+        (0x101c, "mov", "x0,x21"),
+        (0x1020, "mov", "x1,x20"),
+        (0x1024, "bl", "#0x2000"),
+        (0x1028, "ret", ""),
+    ]);
+    lines
+}
+
+/// A wrapper at 0x2000 that runs `entry`, keeps its receiver and scope, passes the local at
+/// sp+0x8 to an unknown call that reads one argument, and evaluates `potential`.
+fn wrapper_with_a_local(entry: &[(&'static str, &'static str)]) -> Vec<Line> {
+    let mut lines: Vec<Line> = entry
+        .iter()
+        .map(|(operation, operands)| (0, *operation, *operands))
+        .collect();
+    lines.extend([
+        (0, "mov", "x19,x0"),
+        (0, "mov", "x20,x1"),
+        (0, "add", "x0,sp,#0x8"), // a local below the saves
+        (0, "mov", "x8,#0"),
+        (0, "bl", "#0x9900"),
+        (0, "add", "x0,x19,#0x40"),
+        (0, "mov", "x1,x20"),
+        (0, "bl", "#0x9400"),
+        (0, "ldp", "x29,x30,[sp,#0x30]"),
+        (0, "ldp", "x20,x19,[sp,#0x20]"),
+        (0, "add", "sp,sp,#0x40"),
+        (0, "ret", ""),
+    ]);
+    for (index, line) in lines.iter_mut().enumerate() {
+        line.0 = 0x2000 + 4 * index as u64;
+    }
+    lines
+}
+
+const PROLOGUE: &[(&str, &str)] = &[
+    ("sub", "sp,sp,#0x40"),
+    ("stp", "x20,x19,[sp,#0x20]"), // the caller's x20: scope A
+    ("stp", "x29,x30,[sp,#0x30]"),
+    ("add", "x29,sp,#0x30"),
+];
+
+#[test]
+fn a_prologue_save_of_the_callers_scope_does_not_reach_a_call_that_gets_a_lower_local() {
+    let result = Program::new()
+        .function(&caller_keeping_a_in_x20())
+        .method(&wrapper_with_a_local(PROLOGUE))
+        .arguments(0x9900, 1)
+        .analyze();
+
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+}
+
+#[test]
+fn a_save_after_the_prologue_reaches_a_call_that_gets_a_lower_local() {
+    let late_save = [
+        ("sub", "sp,sp,#0x40"),
+        ("mov", "x9,x0"),
+        ("stp", "x20,x19,[sp,#0x20]"), // after a body row: an ordinary store
+        ("stp", "x29,x30,[sp,#0x30]"),
+    ];
+    let result = Program::new()
+        .function(&caller_keeping_a_in_x20())
+        .method(&wrapper_with_a_local(&late_save))
+        .arguments(0x9900, 1)
+        .analyze();
+
+    assert_eq!(contexts(&result, POTENTIAL), [unreadable()]);
+}
+
+#[test]
+fn a_body_spill_of_the_scope_reaches_a_call_that_gets_a_lower_local() {
+    let mut spills = PROLOGUE.to_vec();
+    spills.extend([("mov", "x22,x1"), ("str", "x22,[sp,#0x18]")]); // the scope in the frame
+    let result = Program::new()
+        .function(&caller_keeping_a_in_x20())
+        .method(&wrapper_with_a_local(&spills))
+        .arguments(0x9900, 1)
+        .analyze();
+
+    assert_eq!(contexts(&result, POTENTIAL), [unreadable()]);
+}
+
+/// The instance pointer at 0x9d50, named by the slot at 0x7248, holds an object whose vtable
+/// point is 0x6010; that vtable's slot +0x40 holds the function at 0x3000.
+const INSTANCE_POINTER: u64 = 0x9d50;
+const INSTANCE_WORDS: &[(u64, u64)] = &[(0x7248, INSTANCE_POINTER), (0x6050, 0x3000)];
+
+/// Before evaluating, the wrapper calls slot +0x40 of the object that the instance pointer holds,
+/// while `x1` holds its scope.
+const CALLS_THE_INSTANCE: [Line; 7] = [
+    (0x2008, "adrp", "x9,#0x7000"),
+    (0x200c, "ldr", "x9,[x9,#0x248]"),
+    (0x2010, "ldr", "x0,[x9]"),
+    (0x2014, "ldr", "x8,[x0]"),
+    (0x2018, "ldr", "x8,[x8,#0x40]"),
+    (0x201c, "mov", "x1,x20"),
+    (0x2020, "blr", "x8"),
+];
+
+#[test]
+fn a_virtual_call_on_a_proven_instance_reads_the_registers_of_its_target() {
+    let run = |program: Program| {
+        program
+            .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
+            .method(&wrapper_doing(&CALLS_THE_INSTANCE))
+            .analyze()
+    };
+    let proven = || Program::new().instance(INSTANCE_POINTER, 0x6010, INSTANCE_WORDS);
+
+    assert_eq!(
+        contexts(&run(proven().arguments(0x3000, 1)), POTENTIAL),
+        [fresh(COUNTRY)]
+    );
+    assert_eq!(
+        contexts(&run(proven().arguments(0x3000, 2)), POTENTIAL),
+        [unreadable()]
+    );
+    assert_eq!(
+        contexts(&run(Program::new().arguments(0x3000, 1)), POTENTIAL),
+        [unreadable()]
+    );
 }

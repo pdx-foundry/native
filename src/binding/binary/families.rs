@@ -815,6 +815,23 @@ pub(super) fn vtable_group(
     group.address_points.contains_key(&0).then_some(group)
 }
 
+/// The class whose vtable group holds `point`: the nearest vtable symbol at or below it.
+pub(super) fn point_class(symbols: &[Symbol], data: &ReadOnlyData, point: u64) -> Option<String> {
+    let class = symbols
+        .iter()
+        .filter(|symbol| symbol.address <= point)
+        .filter_map(|symbol| Some((symbol.address, symbol.name.strip_prefix("vtable for ")?)))
+        .max_by_key(|(address, _)| *address)?
+        .1;
+    let group = vtable_group(symbols, data, class)?;
+
+    group
+        .address_points
+        .values()
+        .any(|&held| held == point)
+        .then(|| class.to_owned())
+}
+
 /// Every call and every branch out of the function at `start`, with its address.
 pub(super) fn calls(text: &Text, start: u64) -> Result<Vec<(u64, Call)>, AnalysisError> {
     let (address, code) = text.function(start)?;

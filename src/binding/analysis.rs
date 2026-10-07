@@ -391,13 +391,14 @@ impl VerifiedAnalysis<'_> {
         &self,
         recipe: &super::targets::DeclarationRecipe,
     ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
-        binary::callbacks::callbacks(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.imports,
-            recipe,
-        )
+        let image = binary::references::Image {
+            bytes: &self.executable,
+            symbols: &self.catalog.symbols,
+            strings: &self.catalog.strings,
+            pointers: &self.catalog.pointers,
+            imports: &self.catalog.imports,
+        };
+        binary::callbacks::callbacks(&image, &self.catalog.bound_slots, recipe)
     }
 
     fn block_input(
@@ -410,14 +411,14 @@ impl VerifiedAnalysis<'_> {
             .iter()
             .map(|candidate| candidate.record.owner_candidate.as_str())
             .collect();
-        binary::callbacks::block_evaluations(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.imports,
-            &owners,
-            recipe,
-        )
+        let image = binary::references::Image {
+            bytes: &self.executable,
+            symbols: &self.catalog.symbols,
+            strings: &self.catalog.strings,
+            pointers: &self.catalog.pointers,
+            imports: &self.catalog.imports,
+        };
+        binary::callbacks::block_evaluations(&image, &self.catalog.bound_slots, &owners, recipe)
     }
 
     fn reference_facts(&self) -> Result<ReferenceFacts, AnalysisError> {

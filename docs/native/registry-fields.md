@@ -30,8 +30,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   stays partial for the conversion, zero-mask, keyword-domain, `trigger` lookup, `parameters` and
   repeat gaps listed there. `CPersistent` block classification of `modifier` does not
   establish its member family. `potential`, `allow`, `effect`
-  and `init_effect` enter as a country with self-linked root, from and prev; `potential` and
-  `allow` keep two contradicted call sites ([block entry contexts](#block-entry-contexts)).
+  and `init_effect` enter only as a country with self-linked root, from and prev
+  ([block entry contexts](#block-entry-contexts)).
   The acceptance test `council_agenda_fields_are_complete_with_every_milestone_4_fact`
   (`cargo parity council_agenda`) lists each missing fact and typed gap in one run.
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
@@ -296,7 +296,23 @@ selected call, evaluations act only through their effects. A call reads the argu
 its demangled signature uses; a call through an import pointer to the stack probe
 (`___chkstk_darwin`) reads none; a call to a function that never returns ends the path. A copy of a
 scope pointer in the stack reaches a call only in the frame of a stack address that the call
-receives, at or above that address.
+receives, at or above that address, and not in a register save: a store of `x19` to `x30` to the
+stack in a function's prologue, before its first other instruction, that no later store has
+overwritten. A virtual call on the object that a proven instance pointer holds calls the slot of
+that object's vtable, so it reads the registers that the slot's signature uses.
+
+**Instance pointers** (`callbacks/instances.rs`, `src/binding/binary/instances.rs`). A global word
+that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
+run time (`Allocate` stores the address that `ProtectedMemoryAccessBuffer` returns), so the image
+does not hold the object. The binding takes the pointer slots through which a virtual call in the
+decoded functions loads its receiver, and the functions that load such a slot and form a vtable
+address point (`Initialize`). Each runs with the pointer holding a scratch object, calls not
+followed. The pointer is proven when every returned path leaves the object in place, or clears the
+pointer (the destructor), and either leaves its first word unwritten or stores one vtable address
+point there; a path that stops at a search bound is no contradiction. The method then places the
+object in the read-only data with only that word known. On M452 42 pointers are proven, all
+`TPdxNullObject<T>` null objects. Finding the writers decodes about 5,100 functions and adds about
+1 s to the block input; narrow the slot filter if that grows.
 
 **Assumptions.** Beside the self-link rule:
 
@@ -306,14 +322,35 @@ receives, at or above that address.
   step limit, and every evaluation that the followed paths reach receives a scope that the method
   can read, the found contexts stand with no gap. A path that reaches an evaluation with an
   unreadable scope is a contradiction; then the bounds are gaps too.
+- A prologue's register save is not memory that a callee can reach through a lower stack address
+  that it receives. Checked by hand at three of the eleven call sites that the rule changes:
+  `CDiplomaticActionType::IsPotential(CEventScope const&, CString*)` saves the caller's `x23`, the
+  from scope, at `sp+0x88`; `CSystemType::IsPotential` saves `x22`, the from country, at `sp+0x60`;
+  `CColonyType::IsPotential` saves `x20`, the from country, at `sp+0x90`. Each then passes a local
+  string below the saves to `CString::CString` on the script profiler's path.
+- The object that an instance pointer holds gets its vtable only in code that loads the pointer
+  and forms an address point, keeps that vtable once set, and is never written through an unknown
+  address. Checked by hand for `TPdxNullObject<CTraditionSwap>`, `<CCouncilAgenda>` and `<CShip>`:
+  `Initialize` clears the object, runs its base constructor and then stores `vtable for
+  TPdxNullObject<T>` + 0x10 at word 0; the calls after it only change memory protection, and the
+  destructor stores null in the pointer.
 
-**Result on M451-hotfix.** 237 root trigger and effect blocks in 164 registries: 109 have contexts
-and no entry gap, 53 have contexts and a gap, 75 have none. 24 blocks keep several readable
-contexts, 47 name a typed `from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
-block the method cannot name. These call sites were checked by hand in the disassembly:
+**Result on M452.** 239 root trigger and effect blocks in 164 registries: 118 have contexts and no
+entry gap, 46 have contexts and a gap, 75 have none. 20 blocks keep several contexts with a known
+`this`, 47 name a typed `from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
+block the method cannot name. The two rules above changed 10 blocks in 6 registries, and each
+change only removes an unresolved context and its gaps: the register saves those of astral action
+`potential` and `is_exhausted`, colony type, observation mission and system type `potential`, and
+diplomatic action `potential`, `possible` and `proposable`; the instance pointers those of council
+agenda `potential` and `allow`. These call sites were checked by hand in the disassembly:
 
 - council agenda `potential` and `allow`: `CGovernment::UpdateCouncilAgenda` builds a country scope
   and calls `IsPotential` and then `IsAllowed` with it (`this + 0x1c8`, `this + 0x280`).
+  `CAIInteriorMinister::HandleCouncilAgenda` passes its country scope through
+  `SelectByWeightedRandom<CCouncilAgenda>`, which keeps it in `x20`. `ExecuteTradition` passes its
+  country scope to `CTraditionType::GetUnlocksAgenda`, which, for a tradition with no swaps, calls
+  slot `+0x40` of the null tradition swap (`TPdxNullObject<CTraditionSwap>::IsValid() const`) while
+  `x1` still holds the scope.
 - council agenda `init_effect`: `CGovernment::SetCouncilAgenda` builds a country scope;
   `ExecuteInitialEffect` tail-calls `CEffect::Execute` on `this + 0x580`.
 - tradition `potential`: `CTraditionType::IsPotential` builds its own country scope.
@@ -322,7 +359,8 @@ block the method cannot name. These call sites were checked by hand in the disas
 - tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`,
   a virtual call, so the block has a gap.
 
-**Comparison with the config's `replace_scopes`.** Read through the self-link rule, comparing the
+**Comparison with the config's `replace_scopes`** (M451-hotfix; the M452 changes above remove only
+unresolved contexts). Read through the self-link rule, comparing the
 keys that the config states (`system` is the engine's `galactic_object`; `any` matches any scope):
 107 blocks have a readable context and a config expectation. 82 agree, 5 agree on the stated keys
 where the engine also sets a first link that the config omits, and 20 disagree. 103 blocks have no
@@ -355,21 +393,22 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
 
 - 63 blocks have no direct evaluation in the owner's methods: they run through a virtual call
   (tradition `on_enabled` and `on_disabled`), outside the owner's methods, or only as nested blocks.
-- 44 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
-  Council agenda `potential` and `allow` keep two. `ExecuteTradition` passes the scope to
-  `CTraditionType::GetUnlocksAgenda`, which, for a tradition with no swaps, makes a virtual call
-  while `x1` still holds the scope; the swap paths stop at the loop limit. The AI's
-  `SelectByWeightedRandom<CCouncilAgenda>` keeps the scope pointer in a callee-saved register that
-  `IsPotential` saves in its own frame above a local string that it passes to `CString::operator+=`.
-- Path, loop and step limits are gaps only where a contradiction appears (45 path, 17 loop).
+- 35 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
+- Path, loop and step limits are gaps only where a contradiction appears (36 path, 15 loop).
 - 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
   (`caller-depth`). Weights, script values, modifier blocks and nested blocks are outside the method.
 
 Pitfalls:
 
 - A scope pointer left in an argument register is not an argument when the callee's signature does
-  not take it; an unknown virtual call cannot be checked this way.
-- A callee-saved register spill is stack memory like any other; telling it from an object field
-  needs object extents, which the method does not have.
+  not take it; an unknown virtual call cannot be checked this way, but a call on a proven instance
+  pointer's object can.
+- Only a prologue's save is a register save. A save after the function's first other instruction,
+  and a spill of the same pointer in the body, are stack memory like any other; telling them from
+  an object field needs object extents, which the method does not have.
+- An instance pointer's writers include its destructor, which clears the pointer, and functions
+  whose search stops at the path limit. Rejecting either rejects every null object.
+- The stand-in objects lie 1 MiB apart in the read-only data, so a load from one at a field
+  offset reads an unknown word, not the next object's vtable.
 - `run_paths_to` skips the site checks inside an entered call, and `follow` runs a setter outside the
   entered calls; without them a prefix that enters a wrapper is lost or runs into the caller.

@@ -130,6 +130,19 @@ pub fn add_immediate(word: u32) -> Option<(usize, usize, u64)> {
     ))
 }
 
+/// The destination register, base register and offset of a 64-bit `ldr` with an unsigned
+/// immediate offset, such as `ldr x8,[x8,#0x248]`.
+pub fn ldr_immediate(word: u32) -> Option<(usize, usize, u64)> {
+    if word & 0xffc0_0000 != 0xf940_0000 {
+        return None;
+    }
+    Some((
+        (word & 0x1f) as usize,
+        (word >> 5 & 0x1f) as usize,
+        u64::from(word >> 10 & 0xfff) * 8,
+    ))
+}
+
 /// The destination register, source register and subtrahend of a 64-bit `sub` of an
 /// immediate, with its optional `lsl #12`. Register 31 is the stack pointer.
 pub fn sub_immediate(word: u32) -> Option<(usize, usize, u64)> {
@@ -174,5 +187,16 @@ mod tests {
         assert_eq!(add_immediate(0x9140_07e0), Some((0, 31, 0x1000)));
         assert_eq!(decoded(0x9181_0020, 0).0, "addg");
         assert_eq!(add_immediate(0x9181_0020), None);
+    }
+
+    #[test]
+    fn ldr_immediate_reads_a_scaled_offset_and_refuses_other_loads() {
+        assert_eq!(
+            decoded(0xf941_2508, 0),
+            ("ldr".into(), "x8,[x8,#0x248]".into())
+        );
+        assert_eq!(ldr_immediate(0xf941_2508), Some((8, 8, 0x248)));
+        assert_eq!(decoded(0xb940_0108, 0).0, "ldr");
+        assert_eq!(ldr_immediate(0xb940_0108), None);
     }
 }

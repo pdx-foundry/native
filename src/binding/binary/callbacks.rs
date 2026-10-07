@@ -19,6 +19,8 @@ use crate::engine::analysis::{
 use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, read_only_data, unique};
 use super::families::never_return;
+use super::instances::instances;
+use super::references::Image;
 use crate::engine::analysis::declarations::number;
 
 const EXTRA: &str = "CPdxUnorderedMap<EEffectUserDataKey, unsigned long long, SPdxHash<EEffectUserDataKey, void>, std::__1::equal_to<EEffectUserDataKey>, false>";
@@ -131,12 +133,17 @@ const SCRIPT_FIRED: &str = "CFireOnActionEffect::";
 
 /// Read the callback method's input.
 pub(in crate::binding) fn callbacks(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    strings: &BTreeMap<u64, String>,
-    imports: &BTreeMap<u64, String>,
+    image: &Image<'_>,
+    bound_slots: &BTreeSet<u64>,
     recipe: &DeclarationRecipe,
 ) -> Result<CallbacksInput, AnalysisError> {
+    let Image {
+        bytes,
+        symbols,
+        strings,
+        imports,
+        ..
+    } = *image;
     let text = Text::read(bytes, symbols)?;
     let CallbackSites {
         sites,
@@ -189,6 +196,7 @@ pub(in crate::binding) fn callbacks(
     }
 
     let call_arguments = import_call_arguments(&functions, imports);
+    let instances = instances(&text, image, bound_slots, &functions)?;
     Ok(CallbacksInput {
         functions,
         scope_code,
@@ -214,10 +222,11 @@ pub(in crate::binding) fn callbacks(
         },
         tokens: text.token_names(symbols, strings)?,
         scope_names: text.scope_names(symbols, strings).map(|table| table.names),
-        data: read_only_data(bytes)?,
+        data: read_only_data(bytes)?.with_words(&instances.words),
         layout: recipe.callbacks,
         arguments: argument_registers(symbols),
         call_arguments,
+        instances: instances.vtables,
     })
 }
 
@@ -238,13 +247,18 @@ fn evaluator_names() -> Vec<String> {
 
 /// Read the block method's input for the registry owner types `owners`.
 pub(in crate::binding) fn block_evaluations(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    strings: &BTreeMap<u64, String>,
-    imports: &BTreeMap<u64, String>,
+    image: &Image<'_>,
+    bound_slots: &BTreeSet<u64>,
     owners: &BTreeSet<&str>,
     recipe: &DeclarationRecipe,
 ) -> Result<BlockInput, AnalysisError> {
+    let Image {
+        bytes,
+        symbols,
+        strings,
+        imports,
+        ..
+    } = *image;
     let text = Text::read(bytes, symbols)?;
     let function_of = |address: u64| text.starts.range(..=address).next_back().copied();
 
@@ -315,6 +329,7 @@ pub(in crate::binding) fn block_evaluations(
         .copied()
         .collect();
     let receivers = decode_receivers(&text, symbols, &not_followed, &mut functions);
+    let instances = instances(&text, image, bound_slots, &functions)?;
 
     Ok(BlockInput {
         sites,
@@ -328,10 +343,11 @@ pub(in crate::binding) fn block_evaluations(
         scope_code: scope_code(&text, &scope_functions),
         scope_functions,
         strings: string_functions(symbols, recipe),
-        data: read_only_data(bytes)?,
+        data: read_only_data(bytes)?.with_words(&instances.words),
         layout: recipe.callbacks,
         scope_names: text.scope_names(symbols, strings).map(|table| table.names),
         arguments: argument_registers(symbols),
+        instances: instances.vtables,
     })
 }
 

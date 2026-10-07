@@ -1115,16 +1115,16 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
 
     // CGovernment::UpdateCouncilAgenda builds a country scope and passes it to
     // CCouncilAgenda::IsPotential and IsAllowed, which evaluate the blocks at this + 0x1c8 and
-    // this + 0x280.
-    assert!(
-        field("common/council_agendas", "potential")
-            .0
-            .contains(&country.into())
+    // this + 0x280. ExecuteTradition passes its country scope through
+    // CTraditionType::GetUnlocksAgenda, whose virtual call on the null tradition swap
+    // (TPdxNullObject<CTraditionSwap>::IsValid) reads only its receiver.
+    assert_eq!(
+        field("common/council_agendas", "potential"),
+        (vec![country.to_string()], vec![])
     );
-    assert!(
-        field("common/council_agendas", "allow")
-            .0
-            .contains(&country.into())
+    assert_eq!(
+        field("common/council_agendas", "allow"),
+        (vec![country.to_string()], vec![])
     );
     // CGovernment::SetCouncilAgenda builds a country scope for
     // CCouncilAgenda::ExecuteInitialEffect, which tail-calls CEffect::Execute on this + 0x580.

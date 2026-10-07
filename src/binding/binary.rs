@@ -157,6 +157,7 @@ pub(super) mod expansions;
 pub(super) mod families;
 pub(super) mod fields;
 pub(super) mod grammar;
+pub(super) mod instances;
 pub(super) mod language;
 pub(crate) mod modifier_blocks;
 pub(super) mod modifier_nodes;
