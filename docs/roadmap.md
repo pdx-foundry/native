@@ -101,7 +101,9 @@ Milestone 4 completes only when all of these hold:
    a dependent config claim. Other shapes receive “out of scope, vision 2026-10-02”. SDK-625's
    final run credits each established command key only for its own claims, carries block,
    scope, value-form, reference and naming answers, and measures the SDK-626 table again; weight
-   claims are credited at field level, and fixture conclusions stay Native parser checks.
+   claims are credited at field level. Atlas publishes the conclusions of its own fixture games
+   apart from static answers; the method tickets' parser checks are Native tests and earn no
+   Atlas credit.
 
 **Use-time inheritance.** Tradition inheritance affects the names and icons
 selected at use time, although the parser reads the fields without those tests. SDK-541 retains
