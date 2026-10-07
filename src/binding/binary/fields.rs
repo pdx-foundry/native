@@ -412,7 +412,9 @@ fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) ->
             && parts[0].starts_with('x')
             && source.registers.contains(parts[1]);
 
-        for register in super::families::written_registers(&row.operation, &row.operands) {
+        for register in
+            crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+        {
             source.registers.remove(&format!("x{register}"));
         }
 
@@ -626,7 +628,9 @@ fn array_count_offsets(
             }
             _ => {}
         }
-        for register in super::families::written_registers(&row.operation, &row.operands) {
+        for register in
+            crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+        {
             loaded.remove(&format!("w{register}"));
             incremented.remove(&format!("w{register}"));
         }
@@ -678,7 +682,9 @@ fn receiver_states(
             && parts.len() == 2
             && parts[0].starts_with('x')
             && receiver.contains(parts[1]);
-        for register in super::families::written_registers(&row.operation, &row.operands) {
+        for register in
+            crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+        {
             receiver.remove(&format!("x{register}"));
         }
         if copied {

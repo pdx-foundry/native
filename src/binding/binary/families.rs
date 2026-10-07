@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::{Instruction, add_immediate, adrp, decode_arm64},
+    decode::{Instruction, add_immediate, adrp, decode_arm64, general_register, written_registers},
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     families::{
@@ -524,14 +524,14 @@ fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
         let value = match (row.operation.as_str(), operands.as_slice()) {
             ("adrp", [_, page]) => parse_immediate(page),
             ("add", [_, source, addend, shift @ ..]) if matches!(shift, [] | ["lsl#12"]) => {
-                let source_value = register(source).and_then(|source| values.get(&source));
+                let source_value = general_register(source).and_then(|source| values.get(&source));
                 let addend = parse_immediate(addend).map(|addend| addend << (12 * shift.len()));
                 source_value
                     .zip(addend)
                     .map(|(value, addend)| value.wrapping_add(addend))
             }
             ("mov", [_, source]) => {
-                register(source).and_then(|source| values.get(&source).copied())
+                general_register(source).and_then(|source| values.get(&source).copied())
             }
             _ => None,
         };
@@ -542,91 +542,12 @@ fn forms(rows: &[Instruction], points: &BTreeSet<u64>) -> bool {
             values.remove(&written);
         }
         if let (Some(value), Some(destination)) =
-            (value, operands.first().and_then(|o| register(o)))
+            (value, operands.first().and_then(|o| general_register(o)))
         {
             values.insert(destination, value);
         }
     }
     false
-}
-
-/// The general registers that an instruction may write. A branch writes none and a call writes
-/// the caller-saved registers and the link register. Any other instruction writes its
-/// destination operands and the base of a pre- or post-index access; a store or a comparison
-/// has no destination operand.
-pub(in crate::binding) fn written_registers(operation: &str, operands: &str) -> Vec<usize> {
-    if operation == "bl" || operation.starts_with("blr") {
-        return (0..=18).chain([30]).collect();
-    }
-    if is_branch(operation) {
-        return Vec::new();
-    }
-
-    let mut written: Vec<usize> = operands
-        .split(',')
-        .take(destination_count(operation))
-        .filter_map(register)
-        .collect();
-    written.extend(writeback_base(operands));
-    written
-}
-
-/// `b`, `b.cond`, `br`, `cbz`, `cbnz`, `tbz`, `tbnz`, `ret` and their pointer-authenticated
-/// forms. `bl` and `blr` are calls.
-fn is_branch(operation: &str) -> bool {
-    operation == "b"
-        || operation.starts_with("b.")
-        || operation.starts_with("br")
-        || operation.starts_with("cb")
-        || matches!(operation, "tbz" | "tbnz")
-        || operation.starts_with("ret")
-}
-
-/// How many leading operands an instruction that is not a branch writes.
-fn destination_count(operation: &str) -> usize {
-    let exclusive_store = ["stxr", "stlxr", "stxp", "stlxp"]
-        .iter()
-        .any(|prefix| operation.starts_with(prefix));
-    let writes_nothing = (operation.starts_with("st") && !exclusive_store)
-        || ["cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "nop", "prfm"].contains(&operation);
-    let pair = ["ldp", "ldnp", "ldxp", "ldaxp", "casp"]
-        .iter()
-        .any(|prefix| operation.starts_with(prefix));
-    // An atomic load-and-operate reads its first operand and writes the loaded value to its
-    // second, so the count includes the operand that is only read.
-    let atomic = [
-        "ldadd", "ldclr", "ldeor", "ldset", "ldsmax", "ldsmin", "ldumax", "ldumin", "swp",
-    ]
-    .iter()
-    .any(|prefix| operation.starts_with(prefix));
-
-    if writes_nothing {
-        0
-    } else if pair || atomic {
-        2
-    } else {
-        1
-    }
-}
-
-/// The base register of a pre-index (`[x8,#8]!`) or post-index (`[x8],#8`) operand.
-fn writeback_base(operands: &str) -> Option<usize> {
-    let (_, address) = operands.split_once('[')?;
-    let (inside, after) = address.split_once(']')?;
-    let writes_back = after.starts_with('!') || after.starts_with(',');
-    if !writes_back {
-        return None;
-    }
-
-    register(inside.split(',').next()?)
-}
-
-/// The number of general register `name`, such as `x8` or `w8`.
-pub(in crate::binding) fn register(name: &str) -> Option<usize> {
-    name.strip_prefix('x')
-        .or_else(|| name.strip_prefix('w'))?
-        .parse()
-        .ok()
 }
 
 /// An immediate operand such as `#0x10`.
@@ -1235,51 +1156,5 @@ mod tests {
         assert!(takes_any("f(int, CStrategicResource*)", &classes));
         assert!(!takes_any("f(CStrategicResourceGroup const&)", &classes));
         assert!(!takes_any("CStrategicResource::InitPostRead()", &classes));
-    }
-
-    #[test]
-    fn an_instruction_that_is_not_a_branch_writes_its_destination() {
-        assert_eq!(written_registers("bfi", "x19,x8,#0,#8"), [19]);
-        assert_eq!(written_registers("bfxil", "w19,w8,#0,#8"), [19]);
-        assert_eq!(written_registers("bic", "x19,x19,x8"), [19]);
-        assert_eq!(written_registers("ldp", "x8,x9,[x0]"), [8, 9]);
-        assert_eq!(written_registers("stlxr", "w9,x8,[x0]"), [9]);
-        assert!(written_registers("ldaddal", "x8,x9,[x0]").contains(&9));
-    }
-
-    #[test]
-    fn a_store_or_comparison_writes_no_operand() {
-        assert!(written_registers("str", "x0,[x8,#8]").is_empty());
-        assert!(written_registers("stp", "x0,x1,[x8]").is_empty());
-        assert!(written_registers("cmp", "x0,x1").is_empty());
-        assert!(written_registers("ccmp", "x0,#0,#4,ne").is_empty());
-    }
-
-    #[test]
-    fn a_pre_or_post_index_access_writes_its_base() {
-        assert_eq!(written_registers("ldr", "x0,[x8,#8]"), [0]);
-        assert_eq!(written_registers("ldr", "x0,[x8,#8]!"), [0, 8]);
-        assert_eq!(written_registers("ldr", "x0,[x9],#16"), [0, 9]);
-        assert_eq!(written_registers("str", "x0,[x8,#8]!"), [8]);
-        assert_eq!(written_registers("ldp", "x0,x1,[sp],#16"), [0, 1]);
-    }
-
-    #[test]
-    fn a_branch_writes_nothing_and_a_call_writes_the_caller_saved_registers() {
-        let branches = [
-            ("b", "#0x2000"),
-            ("b.ne", "#0x2000"),
-            ("br", "x8"),
-            ("cbz", "x0,#0x2000"),
-            ("tbnz", "w0,#3,#0x2000"),
-            ("ret", ""),
-        ];
-        for (operation, operands) in branches {
-            assert!(written_registers(operation, operands).is_empty());
-        }
-
-        let caller_saved: Vec<usize> = (0..=18).chain([30]).collect();
-        assert_eq!(written_registers("bl", "#0x2000"), caller_saved);
-        assert_eq!(written_registers("blraa", "x8,x9"), caller_saved);
     }
 }
