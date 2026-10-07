@@ -62,12 +62,28 @@ obstruction when the command's receiver join stops, and list each child key whos
 storage the factory does not establish: a scoped destination's vtable point or a duration group's
 omitted count. Record new engine facts and failed shapes on the method page as you find them.
 
+For the [block entry contexts](registry-fields.md#block-entry-contexts) of one registry's trigger
+and effect fields, use `--entry-contexts`:
+
+```sh
+cargo run --release --example inspect -- --entry-contexts common/council_agendas
+```
+
+It lists each field with its block offsets and entry gaps, then each entry run that reaches one
+of the owner's blocks: the entry call, the wrapper or evaluator that it calls, each evaluation
+reached with its block and context, each unresolved stop, and each bound with whether it was
+charged. A bound is charged only on a contradiction: no evaluation reached, or one with an
+unreadable context. A reason charged while climbing to the entry (`no-caller`, `caller-depth`)
+belongs to no run; it appears only in the field's gaps.
+
 The internal results of registry fields, scopes, scope links, localization, modifiers and
-modifier families keep the stop diagnostic of `src/engine/analysis/stop.rs`. Callbacks and
-defines keep only the reason word, because they combine reasons across paths. Declaration scopes
+modifier families keep the stop diagnostic of `src/engine/analysis/stop.rs`, and so do the block
+entry runs (`EntryRun`). Callbacks and defines keep only the reason word, because they combine
+reasons across paths. Declaration scopes
 are read without a walk, so they have no stop.
 `pdx_native::internals::registry_field_stops::run` runs the registry field method once and
-returns its internal result with the public answer derived from it.
+returns its internal result with the public answer derived from it, and the block entry runs and
+entry gaps of the registry's owner.
 
 Add `--trace` to learn where a needed value may have been lost:
 
@@ -203,8 +219,12 @@ file, and the comparison is offline. Pass the exact candidate build ID from `Nat
 the [target catalogue](targets.md), without JSON quotes. Exit status is 0 for parity, 1 for parity
 failures, 2 for invalid input. `Answer` and `Provenance` differences fail (a permitted build change
 is checked against the candidate stamp); `Ordering` permits only moves of complete
-dynamic-namespace rows; other files keep byte equality (`Layout`). A clipped terminal report ends with the
-path of the full report under `.local/parity/`.
+dynamic-namespace rows; other files keep byte equality (`Layout`). `on-actions.json` and
+`game-rules.json` compare by name: one difference for each name whose entries changed
+(`/names/<name>`) and for each gap kind and subject whose details changed
+(`/gaps/<kind>/answer_item/<name>`), so one removed gap is one line; the same content in another
+order is one `Ordering` failure. A clipped terminal report ends with the path of the full report
+under `.local/parity/`.
 
 Stored-duration behavior can be compared against an existing fresh live report without repeating
 the session:
@@ -346,6 +366,18 @@ git worktree add --detach .local/main origin/main
 cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
 cargo run --release --example command-population -- --diff .local/population/commands-main.json .local/population/commands.json
 git worktree remove .local/main
+```
+
+The field report's `entry_contexts` section holds the block counts that
+[registry fields](registry-fields.md#block-entry-contexts) records: trigger and effect blocks with
+contexts and no entry gap, with contexts and a gap, and with none; several known `this`, typed
+`from` and `prev`; contexts with an unresolved scope; entry gaps by detail; and unnamed evaluation
+calls by registry. The on_action and game rule counts that
+[engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) records come
+from the parity files, offline:
+
+```sh
+python3 tools/population/callbacks.py tests/expected/m452/on-actions.json tests/expected/m452/game-rules.json
 ```
 
 `registry-field-sweep` takes the same steps. `dynamic-name-population` has no `--diff`; compare its

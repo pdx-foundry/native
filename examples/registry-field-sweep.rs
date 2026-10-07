@@ -8,6 +8,8 @@
 //!
 //! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
+#[path = "support/entry_contexts.rs"]
+mod entry_contexts;
 #[path = "support/modifier_blocks.rs"]
 mod modifier_blocks;
 #[path = "support/population.rs"]
@@ -98,7 +100,14 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
         let elapsed_ms = query_started.elapsed().as_millis();
 
         match run {
-            Ok(registry_field_stops::Run { answer, result }) => {
+            Ok(registry_field_stops::Run {
+                answer,
+                result,
+                entry_contexts,
+            }) => {
+                report
+                    .entry_contexts
+                    .add(&registry.name, &answer, &entry_contexts);
                 report
                     .modifier_blocks
                     .add(&registry.name, &answer, &result)?;
@@ -214,6 +223,7 @@ struct SweepReport {
     fields_without_reader_identity: Vec<String>,
     failure_shapes: BTreeMap<String, Vec<Value>>,
     references: ReferenceTally,
+    entry_contexts: entry_contexts::Tally,
     modifier_blocks: modifier_blocks::Tally,
     weight_blocks: weight_blocks::Tally,
     triggered_modifiers: triggered_modifiers::Tally,
@@ -382,6 +392,7 @@ impl SweepReport {
                 "failure_shapes": self.references.shapes,
                 "readers": reference_readers,
             },
+            "entry_contexts": self.entry_contexts.report(),
             "modifier_blocks": self.modifier_blocks.report(),
             "weight_blocks": self.weight_blocks.report(),
             "triggered_modifiers": self.triggered_modifiers.report(),
@@ -390,6 +401,7 @@ impl SweepReport {
                 "failure_shapes": "Grouped by public gap detail.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
+                "entry_contexts": "Root fields whose reader family is trigger or effect. A block's gaps are the gaps that entry contexts add with its field as subject. several_known_this: more than one context whose this is established; typed_from and typed_prev: a context whose chain holds a scope type; with_unresolved_slot: a context with an unresolved scope. unnamed_evaluations: by registry, the evaluator calls in the owner's methods whose block the method cannot name.",
                 "weight_blocks": "Root fields whose constructor-proven reader is a weight reader, grouped by reader identity. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
                 "triggered_modifiers": "Fields whose collected object has a triggered modifier clause reader, grouped by reader identity. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
                 "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
@@ -895,6 +907,63 @@ mod tests {
         assert_eq!(
             shapes["TokenTable: conflicting names for token 5"]["count"],
             json!(1)
+        );
+    }
+
+    #[test]
+    fn entry_context_tally_counts_blocks_by_their_contexts_and_entry_gaps() {
+        let country = json!({ "Scope": { "id": "c", "name": "country" } });
+        let known =
+            json!({ "this": country, "root": "SelfLink", "from": [country], "prev": ["SelfLink"] });
+        let unresolved = json!({ "this": "Unresolved", "root": "Unresolved", "from": ["Unresolved"], "prev": ["Unresolved"] });
+        let field = |name: &str, family: &str, contexts: Value| json!({ "name": name, "reader": { "id": null, "kind": "Block", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": family }, "shape": {"value": "Block", "repeat": "Unknown"}, "read": [], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": contexts, "read_scope": "Unresolved", "accepted_categories": "NotApplicable" });
+        let fields = json!([
+            field("potential", "Trigger", json!([known, unresolved])),
+            field("allow", "Trigger", json!([known])),
+            field("effect", "Effect", json!([])),
+            field("cost", "Unknown", json!([])),
+        ]);
+        let gap = |name: &str, detail: &str| json!({ "kind": "UnresolvedPath", "subject": { "kind": "field", "name": name }, "detail": detail });
+        let unrelated = gap("allow", "read-scope: zero-mask");
+        let entry_gap = gap(
+            "potential",
+            "some entry scopes of a call site could not be established",
+        );
+        let answer: Answer<Vec<Field>> = answer(
+            "fields/v1",
+            "Partial",
+            fields,
+            json!([unrelated, entry_gap]),
+        );
+        let entries = registry_field_stops::EntryContexts {
+            owner: "COwner".into(),
+            gaps: serde_json::from_value(json!([entry_gap])).unwrap(),
+            block_offsets: BTreeMap::new(),
+            runs: Vec::new(),
+            unnamed_evaluations: 2,
+            scope_names: None,
+        };
+
+        let mut tally = entry_contexts::Tally::default();
+        tally.add("common/a", &answer, &entries);
+
+        assert_eq!(
+            tally.report(),
+            json!({
+                "blocks": 3,
+                "registries_with_blocks": 1,
+                "counts": {
+                    "contexts_with_gap": 1,
+                    "contexts_without_gap": 1,
+                    "without_contexts": 1,
+                    "several_known_this": 0,
+                    "typed_from": 2,
+                    "typed_prev": 0,
+                    "with_unresolved_slot": 1,
+                },
+                "gaps": { "UnresolvedPath: some entry scopes of a call site could not be established": 1 },
+                "unnamed_evaluations": { "common/a": 2 },
+            })
         );
     }
 }

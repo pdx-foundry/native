@@ -249,15 +249,11 @@ impl Native {
     }
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        self.registry_field_answer_and_result(registry)
-            .map(|(answer, _)| answer)
+        self.registry_field_run(registry).map(|run| run.answer)
     }
 
     /// The public registry field answer, with the method's own result that it is derived from.
-    pub(crate) fn registry_field_answer_and_result(
-        &self,
-        registry: &str,
-    ) -> Result<(Answer<Vec<Field>>, RegistryFieldResult), Error> {
+    pub(crate) fn registry_field_run(&self, registry: &str) -> Result<RegistryFieldRun, Error> {
         let (input, result) = self.registry_field_input_and_result(registry)?;
         let facts = RegistryFieldFacts {
             references: self.reference_facts(Operation::RegistryFields)?,
@@ -269,9 +265,14 @@ impl Native {
             blocks: self.block_facts()?,
             categories: modifiers::category_names(self.category_input()?, []),
         };
-        let owner = &input.selection.owner_candidate;
-        let answer = self.registry_field_answer(registry, owner, &result, &facts);
-        Ok((answer, result))
+        let owner = input.selection.owner_candidate;
+        let (answer, entry_gaps) = self.registry_field_answer(registry, &owner, &result, &facts);
+        Ok(RegistryFieldRun {
+            answer,
+            result,
+            owner,
+            entry_gaps,
+        })
     }
 
     pub(crate) fn block_facts(&self) -> Result<&crate::binding::BlockFacts, Error> {
@@ -395,14 +396,15 @@ impl Native {
             .map_err(|failure| error(operation, failure))
     }
 
-    /// The public answer that the registry field method's `result` gives for `registry`.
+    /// The public answer that the registry field method's `result` gives for `registry`, and the
+    /// gaps of that answer that block entry contexts add.
     fn registry_field_answer(
         &self,
         registry: &str,
         owner: &str,
         result: &RegistryFieldResult,
         facts: &RegistryFieldFacts<'_>,
-    ) -> Answer<Vec<Field>> {
+    ) -> (Answer<Vec<Field>>, Vec<Gap>) {
         let registry = registry.trim_end_matches('/');
         let references = facts.references;
         let mut gaps = normalized_gaps(result, registry, references);
@@ -441,13 +443,23 @@ impl Native {
             &[],
             &mut gaps,
         );
-        super::field_entries::attach(&mut value, result, registry, owner, facts.blocks, &mut gaps);
-        Answer {
+        let mut entry_gaps = Vec::new();
+        super::field_entries::attach(
+            &mut value,
+            result,
+            registry,
+            owner,
+            facts.blocks,
+            &mut entry_gaps,
+        );
+        gaps.extend(entry_gaps.iter().cloned());
+        let answer = Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
-        }
+        };
+        (answer, entry_gaps)
     }
 
     /// The registry field method's input and its result.
@@ -474,6 +486,16 @@ impl Native {
 
         Ok((input, result))
     }
+}
+
+/// One run of the registry field method, with the public answer derived from it.
+pub(crate) struct RegistryFieldRun {
+    pub answer: Answer<Vec<Field>>,
+    pub result: RegistryFieldResult,
+    /// The owner type of the registry's items.
+    pub owner: String,
+    /// The gaps of `answer` that block entry contexts add.
+    pub entry_gaps: Vec<Gap>,
 }
 
 /// The executable-wide facts that a registry field answer joins.

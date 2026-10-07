@@ -4,7 +4,7 @@ mod report;
 
 use pdx_native::{BuildId, Source};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Why an entry differs, independently of whether parity permits it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,6 +140,9 @@ pub fn compare_static(build: &BuildId, file: &str, reviewed: &[u8], candidate: &
                 Some(&reviewed_value),
                 Some(&candidate_value),
             );
+        }
+        "on-actions.json" | "game-rules.json" if reviewed_value != candidate_value => {
+            compare_callbacks(&mut report, file, &reviewed_value, &candidate_value);
         }
         _ => compare_bytes(
             &mut report,
@@ -438,6 +441,91 @@ fn compare_namespaces(report: &mut Report, file: &str, reviewed: &Value, candida
             report.record_failure(file, &format!("/namespaces/{index}"), None, Some(row));
         }
     }
+}
+
+/// Compare on_action or game rule answers by name: one difference for each name whose entries
+/// differ and for each gap kind and subject whose details differ, so one removed gap is one line
+/// rather than a shift of every later position.
+fn compare_callbacks(report: &mut Report, file: &str, reviewed: &Value, candidate: &Value) {
+    let (Some(reviewed_keyed), Some(candidate_keyed)) =
+        (keyed_callbacks(reviewed), keyed_callbacks(candidate))
+    else {
+        report.notice(
+            file,
+            "",
+            Category::Input,
+            Status::Fail,
+            Some(reviewed),
+            Some(candidate),
+            "callback answers need a names object and gap rows of kind, subject and detail",
+        );
+        return;
+    };
+
+    let before = report.differences.len();
+    diff_json(
+        report,
+        file,
+        "/completeness",
+        reviewed.get("completeness"),
+        candidate.get("completeness"),
+    );
+    let paths: BTreeSet<&String> = reviewed_keyed
+        .keys()
+        .chain(candidate_keyed.keys())
+        .collect();
+    for path in paths {
+        let (left, right) = (reviewed_keyed.get(path), candidate_keyed.get(path));
+        if left != right {
+            report.record_failure(file, path, left, right);
+        }
+    }
+
+    if report.differences.len() == before {
+        report.notice(
+            file,
+            "",
+            Category::Ordering,
+            Status::Fail,
+            None,
+            None,
+            "the same names and gaps in a different order",
+        );
+    }
+}
+
+/// Each name's entries at `/names/<name>`, and the sorted details of each gap kind and subject at
+/// `/gaps/<kind>[/<subject kind>/<subject name>]`. `None` when the answer has another shape.
+fn keyed_callbacks(answer: &Value) -> Option<BTreeMap<String, Value>> {
+    let mut keyed: BTreeMap<String, Value> = answer
+        .get("names")?
+        .as_object()?
+        .iter()
+        .map(|(name, entries)| (child_path("/names", name), entries.clone()))
+        .collect();
+
+    let mut details: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for gap in answer.get("gaps")?.as_array()? {
+        let [kind, subject, detail] = gap.as_array()?.as_slice() else {
+            return None;
+        };
+        let mut path = child_path("/gaps", kind.as_str()?);
+        if !subject.is_null() {
+            for part in ["kind", "name"] {
+                path = child_path(&path, subject.get(part)?.as_str()?);
+            }
+        }
+        details
+            .entry(path)
+            .or_default()
+            .push(detail.as_str()?.to_owned());
+    }
+
+    for (path, mut group) in details {
+        group.sort();
+        keyed.insert(path, serde_json::json!(group));
+    }
+    Some(keyed)
 }
 
 fn compare_bytes(

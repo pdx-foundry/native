@@ -286,7 +286,9 @@ and the other `const` members of trigger and effect classes that take a scope, s
   child's prev to the received scope and sets the child's type. It only reads the received scope.
 - A scope-changing effect, `CEveryInListEffect::ExecuteActual` (`0x101d225cc`), does the same.
 
-**Result on M452.** The same as on M451-hotfix: 294 on_actions; 281 have at least one context and
+**Result on M452.** `tools/population/callbacks.py` gives these counts and the gap counts below
+from the parity files ([method authoring](method-authoring.md#run-over-the-whole-population)).
+The same as on M451-hotfix: 294 on_actions; 281 have at least one context and
 207 have at least one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
 example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
 astral rift as from. Three name a typed prev: `on_modification_complete`,

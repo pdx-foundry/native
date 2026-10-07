@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{CallbackLayout, Context, Slot};
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
-use crate::engine::analysis::stop::Unresolved;
+use crate::engine::analysis::stop::{Unresolved, sort_and_dedup};
 
 use super::names::StringFunctions;
 
@@ -123,18 +123,18 @@ pub(super) struct Evaluations {
     /// Each evaluator call that a path reached, with the context of the scope that it received.
     pub reached: Vec<(u64, Context)>,
     /// Why some path could not be followed to the selected call, or through it, other than a
-    /// bound of the search.
-    pub unresolved: BTreeSet<&'static str>,
-    /// The bounds of the search that some path reached, such as the path limit.
-    pub bounded: BTreeSet<&'static str>,
+    /// bound of the search, each once with where it stopped.
+    pub unresolved: Vec<Unresolved>,
+    /// The bounds of the search that some path reached, such as the path limit, each once.
+    pub bounded: Vec<Unresolved>,
 }
 
 impl Evaluations {
-    fn record(&mut self, unresolved: &Unresolved) {
+    fn record(&mut self, unresolved: Unresolved) {
         if unresolved.is_bound() {
-            self.bounded.insert(unresolved.reason);
+            self.bounded.push(unresolved);
         } else {
-            self.unresolved.insert(unresolved.reason);
+            self.unresolved.push(unresolved);
         }
     }
 }
@@ -225,11 +225,11 @@ impl Runner<'_> {
                 Ok(Exit::Reached) => {}
                 Ok(Exit::Stopped(_) | Exit::Trapped) => continue,
                 Ok(_) => {
-                    result.unresolved.insert("left-the-site");
+                    result.unresolved.push(Unresolved::new("left-the-site"));
                     continue;
                 }
                 Err(unresolved) => {
-                    result.record(&unresolved);
+                    result.record(unresolved);
                     continue;
                 }
             }
@@ -253,11 +253,13 @@ impl Runner<'_> {
             });
             for path in through {
                 if let Err(unresolved) = path.end {
-                    result.record(&unresolved);
+                    result.record(unresolved);
                 }
             }
         }
 
+        sort_and_dedup(&mut result.unresolved);
+        sort_and_dedup(&mut result.bounded);
         result
     }
 

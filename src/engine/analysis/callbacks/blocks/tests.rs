@@ -738,6 +738,32 @@ fn callers_with_different_scopes_give_two_contexts_and_equal_ones_merge() {
         [fresh(COUNTRY), fresh(LEADER)]
     );
     assert_eq!(contexts(&run(COUNTRY_TYPE), POTENTIAL), [fresh(COUNTRY)]);
+
+    let runs: Vec<_> = run(LEADER_TYPE)
+        .runs
+        .into_iter()
+        .map(|run| {
+            let reached: Vec<_> = run.reached.into_iter().collect();
+            (run.function, run.site, run.wrapper, reached)
+        })
+        .collect();
+    assert_eq!(
+        runs,
+        [
+            (
+                0x1000,
+                0x1020,
+                Some(0x2000),
+                vec![(0x2010, block(POTENTIAL), fresh(COUNTRY))]
+            ),
+            (
+                0x1100,
+                0x1120,
+                Some(0x2000),
+                vec![(0x2010, block(POTENTIAL), fresh(LEADER))]
+            ),
+        ]
+    );
 }
 
 #[test]
@@ -920,9 +946,25 @@ fn a_search_that_ends_at_a_bound_with_no_contradiction_has_no_gap() {
             .analyze()
     };
 
+    let bounds = |result: &BlockEntries| -> BTreeSet<(&'static str, bool, bool)> {
+        result
+            .runs
+            .iter()
+            .flat_map(|run| {
+                run.bounded
+                    .iter()
+                    .map(|bound| (bound.reason, bound.stop.is_some(), run.contradicted))
+            })
+            .collect()
+    };
+
     let clean = run(false);
     assert_eq!(contexts(&clean, POTENTIAL), [fresh(COUNTRY)]);
     assert!(unresolved(&clean, POTENTIAL).is_empty());
+    assert_eq!(
+        bounds(&clean),
+        BTreeSet::from([("path-limit", true, false)])
+    );
 
     let contradicted = run(true);
     assert_eq!(
@@ -930,6 +972,10 @@ fn a_search_that_ends_at_a_bound_with_no_contradiction_has_no_gap() {
         [fresh(COUNTRY), unreadable()]
     );
     assert_eq!(unresolved(&contradicted, POTENTIAL), ["path-limit"]);
+    assert_eq!(
+        bounds(&contradicted),
+        BTreeSet::from([("path-limit", true, true)])
+    );
 }
 
 #[test]

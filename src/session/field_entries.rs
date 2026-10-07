@@ -8,7 +8,7 @@ use crate::answer::{BlockFamily, Field, Gap, GapKind, GapSubject};
 use crate::binding::BlockFacts;
 use crate::engine::analysis::callbacks::Findings;
 use crate::engine::analysis::callbacks::blocks::Block;
-use crate::engine::analysis::fields::RegistryFieldResult;
+use crate::engine::analysis::fields::{RegistryFieldResult, RootField};
 use crate::engine::analysis::readers;
 
 /// What the search for entry contexts leaves out.
@@ -36,11 +36,7 @@ pub(super) fn attach(
         }
 
         let subject = GapSubject::field(&field.name);
-        let destinations: BTreeSet<i64> = root
-            .readers
-            .iter()
-            .filter_map(readers::destination)
-            .collect();
+        let destinations = destinations(root);
         if destinations.is_empty() {
             gaps.push(gap_for_subject(
                 GapKind::UnresolvedPath,
@@ -73,6 +69,14 @@ pub(super) fn attach(
         ));
     }
     gaps.push(gap_for_subject(GapKind::OutsideMethod, None, LIMIT));
+}
+
+/// The storage offsets of the blocks that `root`'s readers fill.
+pub(super) fn destinations(root: &RootField) -> BTreeSet<i64> {
+    root.readers
+        .iter()
+        .filter_map(readers::destination)
+        .collect()
 }
 
 /// The findings of every block that `owner` stores at one of `destinations`.
@@ -177,6 +181,7 @@ mod tests {
                     .then(|| (OWNER.to_string(), unattributed))
                     .into_iter()
                     .collect(),
+                runs: Vec::new(),
             },
             scope_names: Some(vec!["none".into(), "planet".into(), "country".into()]),
         }
