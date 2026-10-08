@@ -649,12 +649,41 @@ fn a_flag_that_the_wrapper_writes_selects_the_callers_next_scope() {
     lines.extend(calls_with_a(0x103c, "#0x2100"));
     lines.push((0x1048, "ret", ""));
     let result = Program::new()
+        .arguments(EVALUATE, 2)
         .function(&lines)
         .method(&potential)
         .method(&wrapper(0x2100, ALLOW_OF_X19))
         .analyze();
 
     assert_eq!(contexts(&result, ALLOW), [fresh(LEADER)]);
+}
+
+#[test]
+fn an_evaluation_or_a_tooltip_call_forgets_the_local_that_it_receives() {
+    let run = |call, passed| {
+        let mut lines = builds_a(0x1000, COUNTRY_TYPE);
+        lines.extend([
+            (0x1018, "str", "xzr,[sp,#0x20]"),
+            (0x101c, "add", passed),
+            (0x1020, "bl", call),
+            (0x1024, "ldr", "x8,[sp,#0x20]"),
+            (0x1028, "cbz", "x8,#0x1034"),
+            (0x102c, "add", "x0,sp,#0x100"),
+            (0x1030, "bl", "#0x8200"),
+        ]);
+        lines.extend(calls_with_a(0x1034, "#0x2100"));
+        lines.push((0x1040, "ret", ""));
+        let result = Program::new()
+            .function(&lines)
+            .method(&wrapper(0x2100, ALLOW_OF_X19))
+            .analyze();
+        contexts(&result, ALLOW)
+    };
+
+    for call in ["#0x9400", "#0x9410"] {
+        assert_eq!(run(call, "x1,sp,#0x20"), [fresh(COUNTRY), fresh(LEADER)]);
+        assert_eq!(run(call, "x1,sp,#0x28"), [fresh(COUNTRY)]);
+    }
 }
 
 /// A `potential` wrapper that stores its scope pointer where `x2` points when `keeps` is set.
