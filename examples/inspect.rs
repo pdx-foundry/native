@@ -232,14 +232,14 @@ fn print_entry_contexts(image: &Image, registry: &str, entries: &EntryContexts, 
         "registry {registry}: owner {}; {} trigger, effect and weight fields; {} entry runs; {} evaluation \
          calls whose block the method cannot name",
         entries.owner,
-        entries.block_offsets.len(),
+        entries.field_blocks.len(),
         entries.runs.len(),
         entries.unnamed_evaluations
     );
-    for (field, offsets) in &entries.block_offsets {
-        let offsets: Vec<_> = offsets
+    for (field, blocks) in &entries.field_blocks {
+        let offsets: Vec<_> = blocks
             .iter()
-            .map(|offset| format!("+{offset:#x}"))
+            .map(|block| format!("+{:#x}", block.offset))
             .collect();
         println!("\nfield {field}: blocks [{}]", offsets.join(", "));
         let gaps = entries.gaps.iter().filter(
@@ -290,16 +290,17 @@ fn print_entry_run(image: &Image, entries: &EntryContexts, run: &EntryRun, trace
     }
 }
 
-/// The fields that store `block`, or the block's owner and offset when no root field does.
+/// The fields that store `block`, or the block's owner, offset and family when no root field of
+/// its family does.
 fn block_name(entries: &EntryContexts, block: &Block) -> String {
     let fields: Vec<&str> = entries
-        .block_offsets
+        .field_blocks
         .iter()
-        .filter(|(_, offsets)| block.owner == entries.owner && offsets.contains(&block.offset))
+        .filter(|(_, blocks)| blocks.contains(block))
         .map(|(field, _)| field.as_str())
         .collect();
     match fields.as_slice() {
-        [] => format!("{} +{:#x}", block.owner, block.offset),
+        [] => format!("{} +{:#x} {:?}", block.owner, block.offset, block.family),
         _ => format!("{} (+{:#x})", fields.join(", "), block.offset),
     }
 }

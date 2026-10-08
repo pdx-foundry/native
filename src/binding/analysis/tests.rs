@@ -1307,3 +1307,46 @@ fn fixture_constructor_joins_only_one_direct_or_matching_new_entry_route() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
+    use crate::BlockFamily::{Effect, Trigger};
+    use crate::engine::analysis::callbacks::blocks::TypePointers;
+
+    let installation =
+        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let analysis = binding.analysis.as_ref().unwrap();
+    let recipe = analysis.declarations.unwrap();
+    let input = analysis.verified().unwrap().block_input(recipe).unwrap();
+    assert_eq!(
+        input.evaluation_slots,
+        std::collections::BTreeMap::from([
+            (0x10, Trigger),
+            (0x18, Trigger),
+            (0x20, Trigger),
+            (0x48, Effect)
+        ])
+    );
+
+    let pointers = |function: u64| input.type_pointers.get(&function).cloned();
+    let member = |register: usize, offset: i64, owner: &str| TypePointers {
+        method_of: None,
+        registers: Default::default(),
+        members: [((register, offset), owner.into())].into(),
+    };
+    // CMission::Start: its mission type is the word at this + 0x18.
+    assert_eq!(pointers(0x1009531d4), Some(member(0, 0x18, "CMissionType")));
+    // CCountry::AddEdict(CEdict const*).
+    assert_eq!(
+        pointers(0x10028d49c).map(|pointers| pointers.registers),
+        Some([(1, "CEdict".into())].into())
+    );
+    // CGalacticCommunity::PassResolution(CResolution&, bool, bool): the resolution's type is the
+    // word at x1 + 0x18.
+    assert_eq!(
+        pointers(0x10055ce08).map(|pointers| pointers.members),
+        Some([((1, 0x18), "CResolutionType".into())].into())
+    );
+}

@@ -367,6 +367,21 @@ impl<'a> Text<'a> {
             .collect()
     }
 
+    /// Every `blr` in address order, with the register that it calls through.
+    pub fn register_calls(&self) -> Vec<(u64, usize)> {
+        self.code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, word)| {
+                let word = u32::from_le_bytes(*word);
+                let at = self.address + (index * 4) as u64;
+                (word & 0xffff_fc1f == 0xd63f_0000).then_some((at, (word >> 5) as usize & 0x1f))
+            })
+            .collect()
+    }
+
     /// Up to `length` bytes of code that end with the instruction at `at`.
     pub fn window_ending_at(&self, at: u64, length: u64) -> Result<Function, AnalysisError> {
         let start = at.saturating_sub(length).max(self.address);

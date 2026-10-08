@@ -20,7 +20,7 @@ impl Tally {
         let blocks: Vec<&Field> = answer
             .value
             .iter()
-            .filter(|field| entries.block_offsets.contains_key(&field.name))
+            .filter(|field| entries.field_blocks.contains_key(&field.name))
             .collect();
         if !blocks.is_empty() {
             self.registries += 1;

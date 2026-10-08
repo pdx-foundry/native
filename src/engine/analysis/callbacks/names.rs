@@ -10,16 +10,24 @@
 //! names, and a stack slot that the compiler reuses for another object keeps no stale name.
 //!
 //! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate or a register
-//! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant or a
-//! loaded global, and 64-bit stores and loads of stack slots. Any other instruction makes the
-//! registers that it may write unknown. A call makes `x0`–`x18` unknown and `x0` the result of
-//! that call. Stack offsets are relative to the stack pointer at entry; the state also knows
-//! where the stack pointer is now, until it moves by an amount that is not known.
+//! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant, a
+//! loaded global or an address that an argument leads to, and 64-bit stores and loads of stack
+//! slots. Any other instruction makes the registers that it may write unknown. A call makes
+//! `x0`–`x18` unknown and `x0` the result of that call. Stack offsets are relative to the stack
+//! pointer at entry; the state also knows where the stack pointer is now, until it moves by an
+//! amount that is not known.
 //!
 //! A stack slot keeps the 64-bit value last stored to it on every path. A callee writes only
 //! inside the objects that it receives, and an object never starts above its address, so a call
 //! that receives a stack address forgets every slot at or above that address. Other memory is
 //! not tracked.
+//!
+//! A load from an argument names the loaded word by its address, three loads deep: a member of the
+//! object that the argument points at, the vtable of the object that a member points at, and a
+//! slot of that vtable. This is what a virtual call on a block needs: `x0` is a type pointer plus
+//! the block's offset, and the called register is a slot of the vtable at that address. Memory
+//! that is not tracked can change between two loads, so two loads of one address give the same
+//! fact even when a store or a call came between them.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::decode::{Instruction, general_register};
@@ -35,6 +43,14 @@ pub(super) enum Fact {
     Stack(i64),
     /// Argument register `n` at entry, plus this offset.
     Argument(usize, i64),
+    /// The word at `Argument(n, k)`, plus an offset: `Member(n, k, offset)`.
+    Member(usize, i64, i64),
+    /// The word at `Member(n, k, j)`: `Vtable(n, k, j)`. It is the vtable of the object that
+    /// `Member(n, k, j)` points at, and slot `j` of the vtable of the object at `Argument(n, k)`.
+    Vtable(usize, i64, i64),
+    /// The word `s` bytes past `Vtable(n, k, j)`: `Slot(n, k, j, s)`, slot `s` of the vtable of
+    /// the object at `Member(n, k, j)`.
+    Slot(usize, i64, i64, i64),
     /// The value stored at this global address.
     Global(u64),
     /// The value stored at the address held in a global, plus this offset.
@@ -191,6 +207,76 @@ pub(super) fn sole_fact(value: &Value) -> Option<Fact> {
     }
 
     facts.first().copied()
+}
+
+/// The vtable slot that `target` holds when it is a slot of the vtable of the object at `object`:
+/// the displacement of a virtual call on the object that `x0` holds, from its vtable's address
+/// point.
+pub(super) fn vtable_slot(object: Fact, target: Fact) -> Option<i64> {
+    match (object, target) {
+        (Fact::Argument(n, k), Fact::Vtable(vtable_n, vtable_k, slot)) => {
+            ((n, k) == (vtable_n, vtable_k)).then_some(slot)
+        }
+        (Fact::Member(n, k, j), Fact::Slot(slot_n, slot_k, slot_j, slot)) => {
+            ((n, k, j) == (slot_n, slot_k, slot_j)).then_some(slot)
+        }
+        _ => None,
+    }
+}
+
+/// The argument registers whose values at entry `rows`, one whole function, stores unchanged into
+/// the object that `x0` addresses at entry, by the offset of each 64-bit store in that object.
+pub(super) fn receiver_stores(
+    rows: &[Instruction],
+    strings: &StringFunctions,
+) -> BTreeMap<i64, BTreeSet<usize>> {
+    let mut stores: BTreeMap<i64, BTreeSet<usize>> = BTreeMap::new();
+    each_state(rows, strings, |row, state| {
+        if !matches!(row.operation.as_str(), "str" | "stur" | "stp") {
+            return;
+        }
+        let operands = split(&row.operands);
+        let Some(position) = operands.iter().position(|operand| operand.starts_with('[')) else {
+            return;
+        };
+        let (sources, memory) = (&operands[..position], operands[position]);
+        let Some(address) = stored_address(state, memory) else {
+            return;
+        };
+
+        for (index, source) in sources.iter().enumerate() {
+            let parameter = general_register(source)
+                .filter(|_| source.starts_with('x'))
+                .and_then(|register| match sole_fact(state.register(register))? {
+                    Fact::Argument(parameter, 0) => Some(parameter),
+                    _ => None,
+                });
+            if let Some(parameter) = parameter {
+                let offset = address + 8 * index as i64;
+                stores.entry(offset).or_default().insert(parameter);
+            }
+        }
+    });
+    stores
+}
+
+/// The offset in the object that `x0` addresses at entry that a store's memory operand
+/// addresses: `[base]`, `[base,#d]`, or `[base,#d]!`. A post-index store writes at its base.
+fn stored_address(state: &State, memory: &str) -> Option<i64> {
+    let inner = memory.strip_prefix('[')?;
+    let inner = inner
+        .strip_suffix("]!")
+        .or_else(|| inner.strip_suffix(']'))?;
+    let mut parts = inner.split(',');
+    let base = general_register(parts.next()?)?;
+    let displacement = match parts.next() {
+        None => 0,
+        Some(text) => immediate(text)?,
+    };
+    match sole_fact(state.register(base))? {
+        Fact::Argument(0, offset) => Some(offset + displacement),
+        _ => None,
+    }
 }
 
 /// Run the pass over one function and give `visit` the state before each instruction, once the
@@ -622,16 +708,22 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
             Fact::Constant(value) => Some(Fact::Constant(value.wrapping_add(amount as u64))),
             Fact::Stack(base) => Some(Fact::Stack(base + amount)),
             Fact::Argument(index, base) => Some(Fact::Argument(index, base + amount)),
+            Fact::Member(index, member, base) => Some(Fact::Member(index, member, base + amount)),
             Fact::Field(global, base) => Some(Fact::Field(global, base + amount)),
-            Fact::Global(_) | Fact::Result(_) if amount == 0 => Some(*fact),
-            Fact::Global(_) | Fact::Result(_) => None,
+            Fact::Global(_) | Fact::Vtable(..) | Fact::Slot(..) | Fact::Result(_)
+                if amount == 0 =>
+            {
+                Some(*fact)
+            }
+            Fact::Global(_) | Fact::Vtable(..) | Fact::Slot(..) | Fact::Result(_) => None,
         })
         .collect::<Option<BTreeSet<_>>>()?;
     Some(moved)
 }
 
 /// A 64-bit load without writeback: from a constant address it is that global's value; from a
-/// global's value it is a field of the object that the global points at.
+/// global's value it is a field of the object that the global points at. From an address that an
+/// argument leads to, it is the word at that address, up to a vtable slot.
 fn load(state: &State, memory: &str) -> Value {
     let inner = memory.strip_prefix('[')?.strip_suffix(']')?;
     let mut parts = inner.split(',');
@@ -651,6 +743,13 @@ fn load(state: &State, memory: &str) -> Value {
                 Some(Fact::Global(address.wrapping_add(displacement as u64)))
             }
             Fact::Global(global) => Some(Fact::Field(global, displacement)),
+            Fact::Argument(index, offset) => Some(Fact::Member(index, offset + displacement, 0)),
+            Fact::Member(index, member, offset) => {
+                Some(Fact::Vtable(index, member, offset + displacement))
+            }
+            Fact::Vtable(index, member, offset) => {
+                Some(Fact::Slot(index, member, offset, displacement))
+            }
             _ => None,
         })
         .collect::<Option<BTreeSet<_>>>()

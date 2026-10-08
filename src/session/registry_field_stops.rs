@@ -52,12 +52,13 @@ pub struct EntryContexts {
     pub owner: String,
     /// The gaps that entry contexts add to the answer.
     pub gaps: Vec<Gap>,
-    /// The storage offsets of each root trigger, effect and weight field's blocks, by field
-    /// name. A field whose storage is not established has none.
-    pub block_offsets: BTreeMap<String, BTreeSet<i64>>,
+    /// The blocks of each root trigger, effect and weight field, by field name: the owner, each
+    /// storage offset and the field's reader family. A field whose storage is not established has
+    /// none.
+    pub field_blocks: BTreeMap<String, BTreeSet<Block>>,
     /// The context pass from each entry call that reaches one of the owner's blocks.
     pub runs: Vec<EntryRun>,
-    /// The evaluator calls in the owner's methods whose block the method cannot name.
+    /// The direct evaluator calls in the owner's methods whose block the method cannot name.
     pub unnamed_evaluations: usize,
     /// The engine's scope names by type bit, when the table could be read.
     pub scope_names: Option<Vec<String>>,
@@ -80,13 +81,23 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
 
 /// The block method's findings for the owner of `run`'s registry.
 fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
-    let block_offsets = run
+    let field_blocks = run
         .answer
         .value
         .iter()
         .zip(&run.result.fields)
         .filter(|(field, _)| field_entries::takes_entry_contexts(field.reader.family))
-        .map(|(field, root)| (field.name.clone(), field_entries::destinations(root)))
+        .map(|(field, root)| {
+            let blocks = field_entries::destinations(root)
+                .into_iter()
+                .map(|offset| Block {
+                    owner: run.owner.clone(),
+                    offset,
+                    family: field.reader.family,
+                })
+                .collect();
+            (field.name.clone(), blocks)
+        })
         .collect();
     let runs = facts
         .entries
@@ -99,7 +110,7 @@ fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
     EntryContexts {
         owner: run.owner.clone(),
         gaps: run.entry_gaps.clone(),
-        block_offsets,
+        field_blocks,
         runs,
         unnamed_evaluations: facts
             .entries

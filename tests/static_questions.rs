@@ -1162,12 +1162,39 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
             .0
             .contains(&"this=country root=SelfLink from=[country,SelfLink] prev=[SelfLink]".into())
     );
-    // CTraditionType::OnEnabled runs the swap's or its own effect through a virtual call.
+    // CCountry::AddEdict(CEdict const*) builds a country scope and runs the effect at x1 + 0x2e0
+    // through its own vtable slot +0x48.
+    assert_eq!(
+        field("common/edicts", "effect"),
+        (vec![country.to_string()], vec![])
+    );
+    // CGalacticCommunity::PassResolution loads the resolution type from x1 + 0x18 and runs its
+    // effect at +0x3a8 through slot +0x48: a targeted resolution runs it on the target country with
+    // the resolution's country as from, another on the resolution's country.
+    assert_eq!(
+        field("common/resolutions", "effect"),
+        (
+            vec![
+                "this=country root=SelfLink from=[country,SelfLink] prev=[SelfLink]".to_string(),
+                country.to_string()
+            ],
+            vec![]
+        )
+    );
+    // CMission::Start runs the effect at [this + 0x18] + 0x190 through slot +0x48 with the scope
+    // that BuildEffectScopeForOperator fills; its from goes through a jump table.
+    let (entries, _) = field("common/missions/missions", "on_start");
+    assert!(
+        entries
+            .contains(&"this=country root=SelfLink from=[Unresolved] prev=[SelfLink]".to_string())
+    );
+    // CTraditionType::OnEnabled runs the swap's or its own effect through a virtual call on a
+    // `csel` of the two, which names no one block.
     let (entries, gaps) = field("common/traditions", "on_enabled");
     assert!(entries.is_empty());
     assert_eq!(
         gaps,
-        ["no direct call in the owner's methods evaluates this block"]
+        ["no evaluation that the method attributes evaluates this block"]
     );
 }
 
@@ -1824,13 +1851,13 @@ fn is_accepted_ai_weight_gap(gap: &pdx_native::Gap) -> bool {
             == Some(GapSubject::Field {
                 name: "ai_weight".into(),
             })
-        && gap.detail == "no direct call in the owner's methods evaluates this block"
+        && gap.detail == "no evaluation that the method attributes evaluates this block"
 }
 
 #[test]
 fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
     use pdx_native::Gap;
-    const ENTRY_GAP: &str = "no direct call in the owner's methods evaluates this block";
+    const ENTRY_GAP: &str = "no evaluation that the method attributes evaluates this block";
     let gap = |kind, field: &str, detail: &str| Gap {
         kind,
         subject: Some(GapSubject::Field { name: field.into() }),

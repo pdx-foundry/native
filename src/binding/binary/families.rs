@@ -695,6 +695,10 @@ pub(super) struct VtableGroup {
     /// Every known address in the group's slots, with the subobject offset of each vtable that
     /// holds it.
     pub(super) slots: BTreeMap<u64, BTreeSet<u64>>,
+    /// The known address in each slot of the primary vtable, by the slot's displacement from its
+    /// address point: what a virtual call through that displacement on an object of the class
+    /// calls.
+    pub(super) primary: BTreeMap<u64, u64>,
 }
 
 /// Read the vtable group of `class` from `vtable for <class>` up to the next symbol. Each vtable
@@ -730,6 +734,9 @@ pub(super) fn vtable_group(
         }
         if let (Some(offset), Some(slot)) = (subobject, data.read(at, 8)) {
             group.slots.entry(slot).or_default().insert(offset);
+            if let (0, Some(point)) = (offset, group.address_points.get(&0)) {
+                group.primary.insert(at - point, slot);
+            }
         }
         at += 8;
     }
@@ -983,6 +990,7 @@ mod tests {
                 (0x208, BTreeSet::from([0x38])),
             ])
         );
+        assert_eq!(group.primary, BTreeMap::from([(0, 0x100), (8, 0x104)]));
         assert_eq!(vtable_group(&symbols, &data, "COther"), None);
     }
 

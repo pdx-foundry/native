@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v20`. The method is
+`WeightBlock`. Source stamp `registry-fields/v21`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -171,25 +171,32 @@ starbase scope, links a country scope as its from (`str x21,[sp,#0x1a8]`) and ev
 `CArmyType::GetSpawnChance(CEventScope&)` is called by `CColony::CalcArmyTypeToSpawn`, which
 builds a pop group scope.
 
-**Result.** 73 weight blocks in 47 registries: 31 have contexts and no entry gap, 3 have contexts
-and a gap, 39 have none. 9 name a typed `from`, 4 keep several contexts with a known `this`, and 2
-keep an unreadable context (decision `ai_weight`, colony type `weight_modifier`). Of the 39
-without contexts, 37 have no direct evaluation in the owner's methods: another class evaluates
-them (`CTechnologyStatus::GetTechWeight` for technology weights, `CDepositTypesDatabase` and
-`CColonyCarrier::RandomizeDeposits` for deposit weights, `CAstralRiftManager` for astral rift
-`event_weight`), or a virtual call does. Megastructure `tooltip_system_score` keeps the path and
+**Result.** 73 weight blocks in 47 registries: 33 have contexts and no entry gap, 3 have contexts
+and a gap, 37 have none. 9 name a typed `from`, 4 keep several contexts with a known `this`, and 2
+keep an unreadable context (decision `ai_weight`, colony type `weight_modifier`). Of the 37
+without contexts, 35 have no attributed evaluation. SDK-732 attributes a direct evaluator call in
+another class when `x0` is a type pointer plus an offset
+([block entry contexts](registry-fields.md#block-entry-contexts)): technology `ai_weight` and
+`weight_modifier` gain a country context from `CTechnologyStatus::GetTechWeight(CTechnology
+const*)`, which evaluates `x1` plus their offsets on a fresh country scope; the config agrees. The
+other evaluations in another class are on items that no type pointer leads to: `GetTechWeight`'s
+two other calls (`+0x2c0`, `+0xea4`) evaluate `+0x40` of an element of a loaded array, and
+`CDepositTypesDatabase` and `CColonyCarrier::RandomizeDeposits` (deposit weights) and
+`CAstralRiftManager` (astral rift `event_weight`) stay unattributed. Megastructure `tooltip_system_score` keeps the path and
 loop bounds of `BuildBestSystemsText`, which reaches no evaluation, and pop faction `leader`
 (`CPopFactionType::GetLeaderWeight(CEventScope&)`) has no direct caller.
 
 **Council agenda `ai_weight` keeps the gap.** `NAIUtil::SelectByWeightedRandom<CCouncilAgenda>`
-(`0x100e911dc`) calls `GetRawFactor` with `x0` = an element of its agenda array plus `0x338`: not
-an owner method, and not `this` plus an offset. No Atlas `replace_scopes` claim needs these
+(`0x100e911dc`) calls `GetRawFactor` with `x0` = an element of its agenda array plus `0x338`, which
+no type pointer leads to. No Atlas `replace_scopes` claim needs these
 contexts, so the SDK-600 gate accepts this one gap (Jackson, 2026-10-08).
 
-**Unnamed evaluations.** Anomalies gain 2: `CAnomalyType::COutcomeEffect::HasValidOption` and
-`CAnomalyType::COutcomeOption::CalcMTTHRawFactor` evaluate a nested outcome option's weight. The
-binding takes a class name before the first `::` as the owner, so these nested-class methods count
-as owner methods. Civics gain 1: `CGovernmentCivicType::CalcRandomWeight(bool, CCountry const*)`
+**Unnamed evaluations.** SDK-733 counted 2 for anomalies:
+`CAnomalyType::COutcomeEffect::HasValidOption` and
+`CAnomalyType::COutcomeOption::CalcMTTHRawFactor` evaluate a nested outcome option's weight, and
+the binding then took the class before the first `::` as the owner. SDK-732 reads the exact
+qualifier, so these nested-class methods are not owner methods and are not counted. Civics count
+1: `CGovernmentCivicType::CalcRandomWeight(bool, CCountry const*)`
 selects `this + 0x3a0` or `this + 0x3d8` by its `bool` with `csel`, the shape of SDK-735.
 
 **Comparison with the config's `replace_scopes`.** Read through the self-link rule, with the

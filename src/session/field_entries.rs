@@ -12,9 +12,14 @@ use crate::engine::analysis::fields::{RegistryFieldResult, RootField};
 use crate::engine::analysis::readers;
 
 /// What the search for entry contexts leaves out.
-const LIMIT: &str = "Entry contexts cover the root trigger, effect and weight blocks that the \
-    owner's own methods evaluate by direct call. Virtual calls, evaluations outside the owner's \
-    methods, nested blocks, script values and modifier blocks are outside this method.";
+const LIMIT: &str = "Entry contexts cover the root trigger, effect and weight blocks that a \
+    direct evaluator call, or a call through the block's own vtable, evaluates as a pointer to the \
+    owner's item plus the block's offset, where the method establishes that the pointer leads to \
+    the owner. Other virtual calls, nested blocks, script values and modifier blocks are outside \
+    this method.";
+
+/// The gap of a block that no attributed evaluation reaches.
+const NOT_EVALUATED: &str = "no evaluation that the method attributes evaluates this block";
 
 /// Whether the method gives entry contexts to a root block whose reader accepts `family`.
 pub(super) fn takes_entry_contexts(family: BlockFamily) -> bool {
@@ -51,12 +56,12 @@ pub(super) fn attach(
             continue;
         }
 
-        let findings = merged(facts, owner, &destinations);
+        let findings = merged(facts, owner, field.reader.family, &destinations);
         if findings.contexts.is_empty() && findings.unresolved.is_empty() {
             gaps.push(gap_for_subject(
                 GapKind::UnresolvedPath,
                 Some(subject),
-                "no direct call in the owner's methods evaluates this block",
+                NOT_EVALUATED,
             ));
             continue;
         }
@@ -84,13 +89,19 @@ pub(super) fn destinations(root: &RootField) -> BTreeSet<i64> {
         .collect()
 }
 
-/// The findings of every block that `owner` stores at one of `destinations`.
-fn merged(facts: &BlockFacts, owner: &str, destinations: &BTreeSet<i64>) -> Findings {
+/// The findings of every block of `family` that `owner` stores at one of `destinations`.
+fn merged(
+    facts: &BlockFacts,
+    owner: &str,
+    family: BlockFamily,
+    destinations: &BTreeSet<i64>,
+) -> Findings {
     let mut findings = Findings::default();
     for &offset in destinations {
         let block = Block {
             owner: owner.into(),
             offset,
+            family,
         };
         if let Some(found) = facts.entries.blocks.get(&block) {
             findings.contexts.extend(found.contexts.iter().cloned());
@@ -169,15 +180,16 @@ mod tests {
         }
     }
 
-    fn facts(blocks: &[(i64, Findings)], unattributed: usize) -> BlockFacts {
+    fn facts(blocks: &[(i64, BlockFamily, Findings)], unattributed: usize) -> BlockFacts {
         BlockFacts {
             entries: BlockEntries {
                 blocks: blocks
                     .iter()
-                    .map(|(offset, findings)| {
+                    .map(|(offset, family, findings)| {
                         let block = Block {
                             owner: OWNER.into(),
                             offset: *offset,
+                            family: *family,
                         };
                         (block, findings.clone())
                     })
@@ -225,7 +237,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("potential", Some(0x40))],
-            &facts(&[(0x40, found(&[country()]))], 0),
+            &facts(&[(0x40, BlockFamily::Trigger, found(&[country()]))], 0),
         );
 
         assert_eq!(fields[0].entry_contexts.len(), 1);
@@ -235,7 +247,7 @@ mod tests {
         assert!(field_gaps(&gaps, "potential").is_empty());
         assert!(gaps.iter().any(|gap| gap.kind == GapKind::OutsideMethod
             && gap.subject.is_none()
-            && gap.detail.contains("Virtual calls")));
+            && gap.detail.contains("Other virtual calls")));
     }
 
     #[test]
@@ -244,14 +256,24 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("potential", Some(0x40))],
-            &facts(&[(0x48, found(&[country()]))], 0),
+            &facts(&[(0x48, BlockFamily::Trigger, found(&[country()]))], 0),
         );
 
         assert!(fields[0].entry_contexts.is_empty());
-        assert_eq!(
-            field_gaps(&gaps, "potential"),
-            ["no direct call in the owner's methods evaluates this block"]
+        assert_eq!(field_gaps(&gaps, "potential"), [NOT_EVALUATED]);
+    }
+
+    #[test]
+    fn a_trigger_block_does_not_join_an_evaluation_through_an_effect_slot() {
+        let mut fields = [field("potential", "Trigger")];
+        let gaps = attached(
+            &mut fields,
+            vec![root("potential", Some(0x40))],
+            &facts(&[(0x40, BlockFamily::Effect, found(&[country()]))], 0),
         );
+
+        assert!(fields[0].entry_contexts.is_empty());
+        assert_eq!(field_gaps(&gaps, "potential"), [NOT_EVALUATED]);
     }
 
     #[test]
@@ -260,7 +282,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("potential", None)],
-            &facts(&[(0x40, found(&[country()]))], 0),
+            &facts(&[(0x40, BlockFamily::Trigger, found(&[country()]))], 0),
         );
 
         assert!(fields[0].entry_contexts.is_empty());
@@ -286,7 +308,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("potential", Some(0x40))],
-            &facts(&[(0x40, findings)], 0),
+            &facts(&[(0x40, BlockFamily::Trigger, findings)], 0),
         );
 
         assert_eq!(fields[0].entry_contexts.len(), 2);
@@ -301,7 +323,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("ai_weight", Some(0x40))],
-            &facts(&[(0x40, found(&[country()]))], 0),
+            &facts(&[(0x40, BlockFamily::Weight, found(&[country()]))], 0),
         );
 
         assert_eq!(fields[0].entry_contexts.len(), 1);
@@ -314,14 +336,11 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("ai_weight", Some(0x40))],
-            &facts(&[(0x48, found(&[country()]))], 0),
+            &facts(&[(0x48, BlockFamily::Weight, found(&[country()]))], 0),
         );
 
         assert!(fields[0].entry_contexts.is_empty());
-        assert_eq!(
-            field_gaps(&gaps, "ai_weight"),
-            ["no direct call in the owner's methods evaluates this block"]
-        );
+        assert_eq!(field_gaps(&gaps, "ai_weight"), [NOT_EVALUATED]);
     }
 
     #[test]
@@ -330,7 +349,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("modifier", Some(0x40))],
-            &facts(&[(0x40, found(&[country()]))], 0),
+            &facts(&[(0x40, BlockFamily::Trigger, found(&[country()]))], 0),
         );
 
         assert!(fields[0].entry_contexts.is_empty());
@@ -343,7 +362,7 @@ mod tests {
         let gaps = attached(
             &mut fields,
             vec![root("potential", Some(0x40))],
-            &facts(&[(0x40, found(&[country()]))], 2),
+            &facts(&[(0x40, BlockFamily::Trigger, found(&[country()]))], 2),
         );
 
         assert_eq!(fields[0].entry_contexts.len(), 1);
