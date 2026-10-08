@@ -354,9 +354,9 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 126 have contexts and no entry gap, 46 have contexts
-and a gap, 67 have none. 22 blocks keep several contexts with a known `this`, 53 name a typed
-`from` and 2 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
+effect blocks in 82 of the 164 registries: 127 have contexts and no entry gap, 45 have contexts
+and a gap, 67 have none. 21 blocks keep several contexts with a known `this`, 53 name a typed
+`from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
 context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
 colony type, observation mission and system type `potential`, and diplomatic action `potential`,
@@ -368,6 +368,11 @@ an unresolved one or narrows a gap: the new direct evaluators add armies `potent
 `CButtonEffect::ExecuteEffect`); `x8` and the firing readers resolve megastructure
 `on_build_start` and `on_build_complete`; `ands` and `bics` open pop faction `can_join_faction`,
 pop job `possible` and the buildings `on_queued` paths, and situation `on_abort` gains a context.
+SDK-729 changed 3 blocks: ship size limit `show` gains a country context, which a stale value hid
+(no `replace_scopes`); the path to ai budget `potential` and to megastructure `on_build_complete`'s
+context with a starbase `prev` now passes the path limit. The budget keeps its bound gaps; the
+megastructure keeps its other, readable context, so by the bounded-search assumption below its
+bound is not a gap.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
 a trigger in an element of a component list, not `this` plus an offset. These call sites were
 checked by hand in the disassembly:
@@ -424,7 +429,7 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
 
 **Gaps.**
 
-- 57 blocks have no direct evaluation in the owner's methods. Most run through the block object's
+- 56 blocks have no direct evaluation in the owner's methods. Most run through the block object's
   own virtual `Execute` or `Evaluate` slot in another class's method, such as `CMission::Start` on
   its mission type, or in the owner through a `csel` of two objects (tradition `on_enabled` and
   `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it from a getter, or

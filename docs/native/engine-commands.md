@@ -308,12 +308,13 @@ known for the next. Checked by hand on M452:
   (`0x1004e8b74`). The `COnActionCommand` constructor copies the scope with `CopyInternalScopes`
   (`0x1001482f4`).
 
-The rule covers the type and links only. Like every call that the pass does not follow, a reader
-leaves other memory known (SDK-729).
+This rule and the evaluation rule cover the type and links only. A reader or an evaluation may
+write the other memory that it reaches (`AccessOrCreateTargetContainer` stores at `+0x48`), so,
+as at every call that the pass does not follow, that memory becomes unknown at the call.
 
 **Result on M452.** `tools/population/callbacks.py` gives these counts and the gap counts below
 from the parity files ([method authoring](method-authoring.md#run-over-the-whole-population)).
-294 on_actions; 282 have at least one context and 252 have at least one context with no
+294 on_actions; 285 have at least one context and 255 have at least one context with no
 unresolved scope. 14 names keep several contexts with no unresolved scope: for example, a fleet
 enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
 Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
@@ -321,8 +322,14 @@ Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_
 weighted); 220 have a context and 204 a context with no unresolved scope. SDK-712 changed 54
 on_actions and no rule: the firing-reader rule above, `x8` reaching only a callee that may read
 it (below), a `from` chain of any length, and the `ror` instruction (`on_colony_yearly_pulse`).
-Each change only removes an unresolved context or adds a context. These call sites were checked by
-hand in the disassembly:
+Each change only removes an unresolved context or adds a context. SDK-729, which makes unknown the
+memory that an unfollowed call or a reader reaches, gave a context to 3 on_actions that had none:
+`on_new_heir` (`RandomizeNewHeir`: `CPdxArray::InsertAt` fills a zeroed array), `on_system_occupied`
+(`CheckForFullOccupation`: `ShouldDisplayOccupation` writes a zeroed `bool&`) and
+`on_war_participant_leaves_early`, whose other paths still reach the path limit. A stale zero had
+hidden each site. `on_ruler_created` reaches a hidden site with its known context, and
+`on_astral_rift_exploration_complete` and `on_relic_activated`, which had only unresolved contexts,
+now also reach the path limit. These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
@@ -342,7 +349,9 @@ hand in the disassembly:
 
 - Before SDK-712 (M451-hotfix), 184 of 294 on_actions agreed with the vanilla scope comments in
   `common/on_actions`. Of the 54 that SDK-712 changed on M452, 47 agree, 2 have no scope comment,
-  and 5 disagree: the four debris names and `on_rebels_take_colony_owner_switched` (below).
+  and 5 disagree: the four debris names and `on_rebels_take_colony_owner_switched` (below). The 3
+  that SDK-729 resolved agree: an heir leader; a system with the conqueror as from and the owner
+  as fromfrom; the main ally with the actor as from and the war as fromfrom.
 - 181 of 223 game rules agree with the config's `replace_scopes`; SDK-712 changed no rule.
 
 Each disagreement was read by hand, and the engine agrees with Native in every case. Use these
@@ -375,12 +384,8 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 12 on_actions have no context: 9 reach the path limit (including
-  `on_war_participant_leaves_early`), and `on_press_begin`'s command builds its own scope.
-  `on_new_heir` and `on_system_occupied` are not reached from their function entry because of a
-  limit of the pass: a call that it does not follow leaves the memory that it can reach known, so
-  `RandomizeNewHeir` (`CPdxArray::InsertAt` fills a zeroed array) and `CheckForFullOccupation`
-  (`ShouldDisplayOccupation` writes a zeroed `bool&`) branch on stale zeros (SDK-729).
+- 9 on_actions have no context: 8 reach the path limit, and `on_press_begin`'s command builds its
+  own scope.
 - 30 on_actions have only unresolved contexts:
   - 9 fill or type the scope with a run-time value: `CDepositHolderRefCaster::FillEventScope` (the
     survey names, including `on_planet_surveyed`, whose fires are arms of one switch, not a reused

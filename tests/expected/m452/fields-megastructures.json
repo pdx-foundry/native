@@ -2203,39 +2203,6 @@
      "SelfLink"
     ],
     "prev": [
-     {
-      "Scope": {
-       "id": "a28a4564ee636659",
-       "name": "starbase"
-      }
-     },
-     "SelfLink"
-    ],
-    "root": "SelfLink",
-    "this": {
-     "Scope": {
-      "id": "5ab5fc854e81e429",
-      "name": "galactic_object"
-     }
-    }
-   },
-   {
-    "from": [
-     {
-      "Scope": {
-       "id": "44b5e21fe5e593d7",
-       "name": "country"
-      }
-     },
-     {
-      "Scope": {
-       "id": "8bb6b317643be13a",
-       "name": "megastructure"
-      }
-     },
-     "SelfLink"
-    ],
-    "prev": [
      "SelfLink"
     ],
     "root": "SelfLink",

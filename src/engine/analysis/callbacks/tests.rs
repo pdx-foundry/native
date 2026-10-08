@@ -128,6 +128,9 @@ struct Program {
     pulse: Option<Pulse>,
     readers: BTreeSet<u64>,
     ignores_x8: BTreeSet<u64>,
+    arguments: BTreeMap<u64, usize>,
+    constructors: BTreeMap<u64, Vec<Instruction>>,
+    setters: BTreeMap<u64, Vec<Instruction>>,
 }
 
 impl Program {
@@ -140,6 +143,9 @@ impl Program {
             pulse: None,
             readers: BTreeSet::new(),
             ignores_x8: BTreeSet::new(),
+            arguments: BTreeMap::new(),
+            constructors: BTreeMap::new(),
+            setters: BTreeMap::new(),
         }
     }
 
@@ -152,6 +158,24 @@ impl Program {
     /// A function that ignores the `x8` that it receives.
     fn ignores_x8(mut self, function: u64) -> Self {
         self.ignores_x8.insert(function);
+        self
+    }
+
+    /// `function` reads `count` argument registers.
+    fn arguments(mut self, function: u64, count: usize) -> Self {
+        self.arguments.insert(function, count);
+        self
+    }
+
+    /// A fresh constructor besides the one of [`scope_code`].
+    fn constructor(mut self, lines: Rows<'_>) -> Self {
+        self.constructors.insert(lines[0].0, rows(lines));
+        self
+    }
+
+    /// A scope setter besides those of [`scope_code`].
+    fn setter(mut self, lines: Rows<'_>) -> Self {
+        self.setters.insert(lines[0].0, rows(lines));
         self
     }
 
@@ -178,10 +202,20 @@ impl Program {
     fn input(self) -> CallbacksInput {
         CallbacksInput {
             functions: self.functions,
-            scope_code: scope_code(),
+            scope_code: scope_code()
+                .into_iter()
+                .chain(self.constructors.values().flatten().cloned())
+                .chain(self.setters.values().flatten().cloned())
+                .collect(),
             scope_functions: ScopeFunctions {
-                fresh_constructors: BTreeSet::from([FRESH]),
-                setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, CLEAR, PASSES_ON]),
+                fresh_constructors: BTreeSet::from([FRESH])
+                    .into_iter()
+                    .chain(self.constructors.into_keys())
+                    .collect(),
+                setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, CLEAR, PASSES_ON])
+                    .into_iter()
+                    .chain(self.setters.into_keys())
+                    .collect(),
                 copies: BTreeSet::from([COPY]),
                 destructors: BTreeSet::new(),
                 readers: self.readers,
@@ -207,7 +241,7 @@ impl Program {
             scope_names: None,
             data: callback_name_data(),
             layout: layout(),
-            arguments: BTreeMap::new(),
+            arguments: self.arguments,
             call_arguments: BTreeMap::new(),
             ignores_x8: self.ignores_x8,
             instances: BTreeMap::new(),
@@ -693,6 +727,302 @@ fn a_scope_address_left_in_x8_reaches_only_a_call_that_reads_x8() {
             "on_test"
         ),
         [unresolved()]
+    );
+}
+
+/// Whether a path of `fires_country(middle)` reaches the site with the country scope. `middle`
+/// skips the site when the value that it last tests is zero.
+fn site_reached(middle: Rows<'_>, program: Program) -> bool {
+    let lines = fires_country(middle);
+    let result = on_actions(&program.function(&lines).site(0x1000, 0x1100, FIRE).input());
+    let findings = &result.on_actions["on_test"];
+    if findings.contexts.is_empty() {
+        assert!(findings.unresolved.contains("site-not-reached"));
+        return false;
+    }
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    true
+}
+
+#[test]
+fn a_call_forgets_the_local_that_it_receives_and_not_one_below() {
+    let middle = |passed| {
+        [
+            (0x1020, "stp", "xzr,xzr,[sp,#0x40]"), // an empty array
+            (0x1024, "add", passed),
+            (0x1028, "bl", "#0x9900"),
+            (0x102c, "ldr", "x8,[sp,#0x40]"),
+            (0x1030, "cbz", "x8,#0x1104"),
+        ]
+    };
+
+    assert!(site_reached(&middle("x0,sp,#0x40"), Program::new()));
+    assert!(!site_reached(&middle("x0,sp,#0x50"), Program::new()));
+}
+
+#[test]
+fn a_call_forgets_one_byte_that_it_receives() {
+    let middle = [
+        (0x1020, "strb", "wzr,[sp,#0x3f]"),
+        (0x1024, "add", "x1,sp,#0x3f"),
+        (0x1028, "bl", "#0x9900"),
+        (0x102c, "ldrb", "w8,[sp,#0x3f]"),
+        (0x1030, "cbz", "w8,#0x1104"),
+    ];
+
+    assert!(site_reached(&middle, Program::new()));
+    assert!(!site_reached(&middle, Program::new().arguments(0x9900, 1)));
+}
+
+/// The address of the local at sp+0x40, and a value that is not a stack address.
+const LOCAL_ADDRESS: (&str, &str) = ("add", "x8,sp,#0x40");
+const NOT_AN_ADDRESS: (&str, &str) = ("mov", "x8,#0x40");
+
+#[test]
+fn a_call_reaches_a_local_whose_address_is_stored_outside_the_stack() {
+    let middle = |(operation, operands)| {
+        [
+            (0x1020, "str", "xzr,[sp,#0x40]"),
+            (0x1024, operation, operands),
+            (0x1028, "adrp", "x9,#0x7000"),
+            (0x102c, "str", "x8,[x9]"),
+            (0x1030, "mov", "x8,#0"),
+            (0x1034, "bl", "#0x9900"),
+            (0x1038, "ldr", "x8,[sp,#0x40]"),
+            (0x103c, "cbz", "x8,#0x1104"),
+        ]
+    };
+
+    assert!(site_reached(&middle(LOCAL_ADDRESS), Program::new()));
+    assert!(!site_reached(&middle(NOT_AN_ADDRESS), Program::new()));
+}
+
+#[test]
+fn a_call_reaches_a_local_whose_address_is_stored_through_an_unknown_pointer() {
+    let middle = |(operation, operands)| {
+        [
+            (0x1020, operation, operands),
+            (0x1024, "str", "x8,[x19]"),
+            (0x1028, "str", "xzr,[sp,#0x40]"),
+            (0x102c, "mov", "x8,#0"),
+            (0x1030, "bl", "#0x9900"),
+            (0x1034, "ldr", "x8,[sp,#0x40]"),
+            (0x1038, "cbz", "x8,#0x1104"),
+        ]
+    };
+
+    assert!(site_reached(&middle(LOCAL_ADDRESS), Program::new()));
+    assert!(!site_reached(&middle(NOT_AN_ADDRESS), Program::new()));
+}
+
+#[test]
+fn a_local_that_an_earlier_call_could_reach_is_forgotten_at_a_later_call() {
+    let middle = |passed| {
+        [
+            (0x1020, "add", passed),
+            (0x1024, "bl", "#0x9900"),
+            (0x1028, "str", "xzr,[sp,#0x40]"),
+            (0x102c, "bl", "#0x9900"),
+            (0x1030, "ldr", "x8,[sp,#0x40]"),
+            (0x1034, "cbz", "x8,#0x1104"),
+        ]
+    };
+
+    assert!(site_reached(&middle("x0,sp,#0x40"), Program::new()));
+    assert!(!site_reached(&middle("x0,sp,#0x50"), Program::new()));
+}
+
+#[test]
+fn an_exposed_range_keeps_its_part_above_a_restored_stack_pointer() {
+    let middle = |passed| {
+        [
+            (0x1020, "sub", "sp,sp,#0x20"),
+            (0x1024, "add", passed),
+            (0x1028, "bl", "#0x9900"),
+            (0x102c, "add", "sp,sp,#0x20"),
+            (0x1030, "str", "xzr,[sp,#0x40]"),
+            (0x1034, "bl", "#0x9900"),
+            (0x1038, "ldr", "x8,[sp,#0x40]"),
+            (0x103c, "cbz", "x8,#0x1104"),
+        ]
+    };
+
+    assert!(site_reached(&middle("x0,sp,#0x0"), Program::new()));
+    assert!(!site_reached(&middle("x0,sp,#0x80"), Program::new()));
+}
+
+#[test]
+fn a_scope_whose_address_a_call_reaches_escapes_before_the_address_is_forgotten() {
+    let run = |passed| {
+        fire_country(&[
+            (0x1020, "add", "x8,sp,#0x100"),
+            (0x1024, "str", "x8,[sp,#0x48]"),
+            (0x1028, "mov", "x8,#0"),
+            (0x102c, "add", passed),
+            (0x1030, "bl", "#0x9900"),
+        ])
+    };
+
+    assert_eq!(contexts(&run("x0,sp,#0x40"), "on_test"), [unresolved()]);
+    assert_eq!(
+        contexts(&run("x0,sp,#0x50"), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_reader_forgets_a_local_above_its_scope_and_keeps_the_scope() {
+    let middle = |stored, loaded| {
+        [
+            (0x1020, "str", stored),
+            (0x1024, "add", "x0,sp,#0x100"),
+            (0x1028, "bl", "#0x9700"),
+            (0x102c, "ldr", loaded),
+            (0x1030, "cbz", "x8,#0x1104"),
+        ]
+    };
+    let above = middle("xzr,[sp,#0x180]", "x8,[sp,#0x180]");
+    let below = middle("xzr,[sp,#0x40]", "x8,[sp,#0x40]");
+
+    assert!(site_reached(&above, Program::new().reader(0x9700)));
+    assert!(!site_reached(&below, Program::new().reader(0x9700)));
+}
+
+/// A setter at 0x8600 that zeroes a local, passes `passed` to an unknown call, and sets the
+/// country type when the local is still zero and the leader type otherwise.
+fn sets_by_local(passed: &'static str) -> Vec<(u64, &'static str, &'static str)> {
+    vec![
+        (0x8600, "sub", "sp,sp,#0x20"),
+        (0x8604, "mov", "x19,x0"),
+        (0x8608, "str", "xzr,[sp,#0x8]"),
+        (0x860c, "add", passed),
+        (0x8610, "bl", "#0x9900"),
+        (0x8614, "ldr", "x8,[sp,#0x8]"),
+        (0x8618, "mov", "w9,#0x4"),
+        (0x861c, "cbz", "x8,#0x8624"),
+        (0x8620, "mov", "w9,#0x100"),
+        (0x8624, "str", "x9,[x19,#0x8]"),
+        (0x8628, "add", "sp,sp,#0x20"),
+        (0x862c, "ret", ""),
+    ]
+}
+
+#[test]
+fn a_call_inside_a_setter_forgets_the_local_that_it_receives() {
+    let run = |passed| {
+        let lines = fires_country(&[(0x1020, "add", "x0,sp,#0x100"), (0x1024, "bl", "#0x8600")]);
+        on_actions(
+            &Program::new()
+                .setter(&sets_by_local(passed))
+                .function(&lines)
+                .site(0x1000, 0x1100, FIRE)
+                .input(),
+        )
+    };
+
+    assert_eq!(
+        contexts(&run("x0,sp,#0x8"), "on_test"),
+        [context(Slot::Unresolved, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&run("x0,sp,#0x10"), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&run("x0,x19,#0x10"), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_constructor_keeps_its_links_from_a_call_that_receives_a_member() {
+    let constructor = |member| {
+        [
+            (0x8800, "str", "xzr,[x0,#0x8]"),
+            (0x8804, "stp", "x0,x0,[x0,#0x30]"),
+            (0x8808, "str", "x0,[x0,#0x40]"),
+            (0x880c, "add", member),
+            (0x8810, "bl", "#0x9900"),
+            (0x8814, "ret", ""),
+        ]
+    };
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8800"),
+        (0x100c, "add", "x0,sp,#0x10"),
+        (0x1010, "adrp", "x1,#0x5000"),
+        (0x1014, "bl", "#0x9100"),
+        (0x1018, "add", "x1,sp,#0x10"),
+        (0x101c, "add", "x2,sp,#0x100"),
+        (0x1020, "bl", "#0x9000"),
+        (0x1024, "ret", ""),
+    ];
+    let run = |member| {
+        let program = Program::new().constructor(&constructor(member));
+        contexts(
+            &on_actions(&program.function(&lines).site(0x1000, 0x1020, FIRE).input()),
+            "on_test",
+        )
+    };
+
+    assert_eq!(
+        run("x0,x0,#0x10"),
+        [context(Slot::NotSet, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(run("x0,x0,#0x0"), [unresolved()]);
+}
+
+#[test]
+fn a_register_save_stays_known_across_a_call_that_reaches_it() {
+    let prologue_save = [
+        (0x8700, "str", "x20,[sp,#-0x10]!"),
+        (0x8704, "mov", "x19,x0"),
+        (0x8708, "nop", ""),
+    ];
+    let body_spill = [
+        (0x8700, "sub", "sp,sp,#0x10"),
+        (0x8704, "mov", "x19,x0"),
+        (0x8708, "str", "x20,[sp]"),
+    ];
+    let run = |saves: &[(u64, &'static str, &'static str)]| {
+        let mut setter = saves.to_vec();
+        setter.extend([
+            (0x870c, "add", "x0,sp,#0x0"),
+            (0x8710, "bl", "#0x9900"),
+            (0x8714, "ldr", "x10,[sp]"), // the caller's x20
+            (0x8718, "mov", "w9,#0x4"),
+            (0x871c, "cbnz", "x10,#0x8724"),
+            (0x8720, "mov", "w9,#0x100"),
+            (0x8724, "str", "x9,[x19,#0x8]"),
+            (0x8728, "add", "sp,sp,#0x10"),
+            (0x872c, "ret", ""),
+        ]);
+        let lines = fires_country(&[
+            (0x1020, "mov", "x20,#1"),
+            (0x1024, "add", "x0,sp,#0x100"),
+            (0x1028, "bl", "#0x8700"),
+        ]);
+        let result = on_actions(
+            &Program::new()
+                .setter(&setter)
+                .function(&lines)
+                .site(0x1000, 0x1100, FIRE)
+                .input(),
+        );
+        contexts(&result, "on_test")
+    };
+
+    assert_eq!(
+        run(&prologue_save),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        run(&body_spill),
+        [context(Slot::Unresolved, Slot::SelfLink, &[Slot::SelfLink])]
     );
 }
 

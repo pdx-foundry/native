@@ -17,15 +17,31 @@
 //! may read `x8` before writing it; this relies on the ABI, as the signature rule does: compiled
 //! code never reads a caller-saved register after a call for its value before the call. A
 //! *reader*, such as a call that fires an on_action, receives a scope but changes no type or link
-//! and keeps no pointer, so it is not a call that makes a scope escape. A call reaches all memory
-//! outside the stack, and the stack from each stack address that it receives, or that is stored
-//! in what it reaches, up to the top of the frame that holds that address, except the register
-//! saves of each function's prologue ([`Machine::is_register_save`]). From that call on, every
-//! call that the pass does not follow makes the slots of every escaped object unknown. Until it
-//! escapes, a store to an unknown address leaves its slots known. The pass assumes that a callee
-//! that receives a pointer to another member of the object does not write its type or links, and
-//! that no stack array indexed by an unknown value reaches a scope object.
+//! and keeps no pointer, so a scope that it receives does not escape.
+//!
+//! A call reaches all memory outside the stack, and the stack from each live stack address that it
+//! receives, or that is stored outside the stack, through an unknown address or in what it
+//! reaches, up to the top of the frame that holds that address. What one call could reach stays
+//! reachable for the later calls on the path, down to the stack pointer. At each call that the
+//! pass does not follow, and at each reader, every known byte that the call reaches becomes
+//! unknown, except the register saves of each function's prologue
+//! ([`Machine::is_register_save`]) and the slots of a tracked object that has not escaped. A
+//! tracked object whose address is in that memory escapes first: the call may leave the address
+//! where a later call finds it. From that call on, every call that the pass does not follow makes
+//! the slots of every escaped object unknown. Until it escapes, a store to an unknown address
+//! leaves its slots known.
+//!
+//! The pass makes three assumptions. A callee that receives a pointer to another member of a scope
+//! object does not write its type or links. No stack array indexed by an unknown value reaches a
+//! scope object. A copy, a destructor, a string function or a lookup, which the pass recognizes
+//! without running it, writes only its own object; of a scope object, the pass reads only the type
+//! and link slots, and of a string object, nothing.
+//! The pass releases a range that an entered call exposed only at a call made after that call
+//! returns, so a second callee entered first at the same addresses forgets them at its own calls.
+//! This only makes memory unknown; give exposures a frame identity if a block run loses an answer
+//! to it.
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
 
 use super::{CallbackLayout, Context, Slot};
 use crate::engine::analysis::decode::Instruction;
@@ -38,6 +54,8 @@ use super::names::StringFunctions;
 const SCOPE: u64 = 1 << 56;
 const NAME: u64 = 2 << 56;
 const LIST: u64 = 3 << 56;
+/// A stack address that a call could reach.
+const EXPOSED: u64 = 4 << 56;
 
 /// Values of a scope label.
 const TRACKED: u64 = 1;
@@ -288,6 +306,7 @@ impl Runner<'_> {
             Some(target)
                 if calls.evaluators.contains(&target) || calls.scope_users.contains(&target) =>
             {
+                self.forget_reached(machine, Some(target), BTreeSet::new());
                 Call::Return(None)
             }
             _ => {
@@ -342,6 +361,7 @@ impl Runner<'_> {
                 self.untrack(machine, object);
             }
         } else if scopes.readers.contains(&target) {
+            self.forget_reached(machine, Some(target), BTreeSet::new());
         } else if self.strings.from_literal.contains(&target) {
             if let Some(object) = object {
                 match machine.register(1) {
@@ -386,14 +406,16 @@ impl Runner<'_> {
 
     /// Run a scope function on a copy of the machine, and keep its writes to the object's slots
     /// where every path agrees. A path that passes the object itself to a call that the pass does
-    /// not follow, or that reaches the call depth, makes the slots unknown.
+    /// not follow, or that reaches the call depth, makes the slots unknown. Another call that the
+    /// pass does not follow makes the memory that it reaches unknown, except the object's slots.
     fn follow(&self, target: u64, machine: &mut Machine<'_>, depth: usize) {
         let Some(object) = machine.register(0) else {
             self.unfollowed(machine, Some(target));
             return;
         };
 
-        let copy = machine.without_entered_calls();
+        let mut copy = machine.without_entered_calls();
+        copy.label(SCOPE | object, TRACKED);
         let paths = copy.run_paths(target, &mut |callee, inner| {
             let followed = callee.is_some_and(|callee| {
                 self.scopes.fresh_constructors.contains(&callee)
@@ -411,7 +433,10 @@ impl Runner<'_> {
                 {
                     Err(Unresolved::new("scope-passed-on"))
                 }
-                _ => Ok(Call::Return(None)),
+                _ => {
+                    self.forget_reached(inner, callee, BTreeSet::new());
+                    Ok(Call::Return(None))
+                }
             }
         });
 
@@ -460,13 +485,41 @@ impl Runner<'_> {
         (0..count.min(8)).chain(result_address.then_some(8))
     }
 
-    /// A call that the pass does not follow may change any object that has escaped, and it
-    /// changes a string object that it receives as its object.
+    /// A call that the pass does not follow may change any object that has escaped and the other
+    /// memory that it reaches, and it changes a string object that it receives as its object.
     fn unfollowed(&self, machine: &mut Machine<'_>, target: Option<u64>) {
         if let Some(object) = machine.register(0) {
             machine.unlabel(NAME | object);
         }
 
+        let escaping: BTreeSet<u64> = machine
+            .labels()
+            .range(SCOPE..NAME)
+            .filter(|(_, state)| **state == ESCAPED)
+            .map(|(key, _)| key & !SCOPE)
+            .chain(self.arguments(machine, target))
+            .chain(machine.unknown_stores().iter().copied())
+            .collect();
+        self.forget_reached(machine, target, escaping);
+    }
+
+    /// The values in the registers that the call at the present instruction reads.
+    fn arguments(&self, machine: &Machine<'_>, target: Option<u64>) -> BTreeSet<u64> {
+        self.passed(target, machine.pc())
+            .filter_map(|index| machine.register(index))
+            .collect()
+    }
+
+    /// Make unknown each known byte that the call at the present instruction reaches, except a
+    /// register save and the slots of a tracked object that has not escaped. First the tracked
+    /// objects in `escaping` escape, with each one whose address is in that memory outside a link
+    /// and each one that an escaped object links.
+    fn forget_reached(
+        &self,
+        machine: &mut Machine<'_>,
+        target: Option<u64>,
+        escaping: BTreeSet<u64>,
+    ) {
         let tracked: BTreeMap<u64, u64> = machine
             .labels()
             .range(SCOPE..NAME)
@@ -476,33 +529,20 @@ impl Runner<'_> {
             .keys()
             .flat_map(|object| self.link_offsets().map(move |offset| object + offset))
             .collect();
-        let arguments: BTreeSet<u64> = self
-            .passed(target, machine.pc())
-            .filter_map(|index| machine.register(index))
-            .collect();
-        let words: Vec<(u64, u64)> = machine
-            .known_words()
-            .into_iter()
-            .filter(|(address, _)| !machine.is_register_save(*address))
-            .collect();
-        let reachable = reachable_stack(machine, &words, &arguments);
-        let stored: BTreeSet<u64> = words
+        let arguments = self.arguments(machine, target);
+        let words = pointer_words(machine);
+        let reachable = expose_reachable_stack(machine, &words, &arguments);
+        let stored = words
             .iter()
             .filter(|(address, _)| {
-                !links.contains(address)
-                    && (!machine.is_stack(*address)
-                        || reachable.iter().any(|range| range.contains(address)))
+                !links.contains(address) && reaches(machine, &reachable, *address)
             })
-            .map(|(_, value)| *value)
-            .chain(machine.unknown_stores().iter().copied())
-            .collect();
+            .map(|(_, value)| *value);
 
-        let mut escaped: BTreeSet<u64> = tracked
-            .iter()
-            .filter(|(object, state)| {
-                **state == ESCAPED || arguments.contains(object) || stored.contains(object)
-            })
-            .map(|(object, _)| *object)
+        let mut escaped: BTreeSet<u64> = escaping
+            .into_iter()
+            .chain(stored)
+            .filter(|object| tracked.contains_key(object))
             .collect();
         loop {
             let linked: BTreeSet<u64> = escaped
@@ -520,6 +560,29 @@ impl Runner<'_> {
         for object in escaped {
             machine.label(SCOPE | object, ESCAPED);
             self.forget_slots(machine, object);
+        }
+
+        let kept: Vec<Range<u64>> = machine
+            .labels()
+            .range(SCOPE..NAME)
+            .filter(|(_, state)| **state == TRACKED)
+            .flat_map(|(key, _)| {
+                let object = key & !SCOPE;
+                self.slots()
+                    .map(move |(offset, width)| object + offset..object + offset + width)
+            })
+            .collect();
+        let reached: Vec<u64> = machine
+            .known_bytes(0, u64::MAX)
+            .into_keys()
+            .filter(|address| {
+                reaches(machine, &reachable, *address)
+                    && !machine.is_register_save(address & !7)
+                    && !kept.iter().any(|range| range.contains(address))
+            })
+            .collect();
+        for address in reached {
+            machine.forget(address, 1);
         }
     }
 
@@ -645,34 +708,84 @@ impl Runner<'_> {
     }
 }
 
-/// The stack ranges that a call receiving `arguments` reaches: from each stack address that it
-/// receives, or that is stored in a range that it reaches, up to the top of that address's frame.
-fn reachable_stack(
-    machine: &Machine<'_>,
+/// The known 8-byte words that may hold a pointer that a call follows: every known word except a
+/// register save.
+fn pointer_words(machine: &Machine<'_>) -> Vec<(u64, u64)> {
+    machine
+        .known_words()
+        .into_iter()
+        .filter(|(address, _)| !machine.is_register_save(*address))
+        .collect()
+}
+
+/// Whether a call reaches `address`: it is outside the stack or in a reachable stack range.
+fn reaches(machine: &Machine<'_>, reachable: &[Range<u64>], address: u64) -> bool {
+    !machine.is_stack(address) || reachable.iter().any(|range| range.contains(&address))
+}
+
+/// Record on the path, as exposed to later calls, and return the stack ranges that a call
+/// receiving `arguments` reaches: from each live stack address up to the top of its frame, where
+/// the address is one that the call receives, or one that is stored outside the stack, through an
+/// unknown address or in a range that the call reaches; and each range that an earlier call on
+/// the path could reach, from the stack pointer on. A stack address below the stack pointer is in
+/// memory that a returned frame or a restored stack pointer has released.
+fn expose_reachable_stack(
+    machine: &mut Machine<'_>,
     words: &[(u64, u64)],
     arguments: &BTreeSet<u64>,
-) -> Vec<std::ops::Range<u64>> {
-    let mut starts: BTreeSet<u64> = arguments
+) -> Vec<Range<u64>> {
+    let stack_pointer = machine.stack_pointer();
+    let live = |value: &u64| machine.is_stack(*value) && *value >= stack_pointer;
+    let frame = |start: u64| start..machine.frame_top(start);
+    let exposed: Vec<(u64, u64)> = machine
+        .labels()
+        .range(EXPOSED..EXPOSED + (1 << 56))
+        .map(|(key, end)| (key & !EXPOSED, *end))
+        .collect();
+    let outside = words
+        .iter()
+        .filter(|(address, _)| !machine.is_stack(*address))
+        .map(|(_, value)| *value);
+    let mut pending: Vec<Range<u64>> = arguments
         .iter()
         .copied()
-        .filter(|value| machine.is_stack(*value))
+        .chain(outside)
+        .chain(machine.unknown_stores().iter().copied())
+        .filter(live)
+        .map(frame)
+        .chain(
+            exposed
+                .iter()
+                .filter(|(_, end)| *end > stack_pointer)
+                .map(|(start, end)| *start.max(&stack_pointer)..*end),
+        )
         .collect();
-    let mut pending: Vec<u64> = starts.iter().copied().collect();
-    while let Some(start) = pending.pop() {
-        let range = start..machine.frame_top(start);
-        let pointed = words
-            .iter()
-            .filter(|(address, value)| range.contains(address) && machine.is_stack(*value))
-            .map(|(_, value)| *value);
-        for value in pointed.collect::<Vec<_>>() {
-            if starts.insert(value) {
-                pending.push(value);
-            }
+
+    let mut reachable = BTreeMap::<u64, u64>::new();
+    while let Some(range) = pending.pop() {
+        if reachable
+            .get(&range.start)
+            .is_some_and(|end| *end >= range.end)
+        {
+            continue;
         }
+        reachable.insert(range.start, range.end);
+        pending.extend(
+            words
+                .iter()
+                .filter(|(address, value)| range.contains(address) && live(value))
+                .map(|(_, value)| frame(*value)),
+        );
     }
 
-    starts
+    for (start, _) in exposed {
+        machine.unlabel(EXPOSED | start);
+    }
+    for (start, end) in &reachable {
+        machine.label(EXPOSED | start, *end);
+    }
+    reachable
         .into_iter()
-        .map(|start| start..machine.frame_top(start))
+        .map(|(start, end)| start..end)
         .collect()
 }
