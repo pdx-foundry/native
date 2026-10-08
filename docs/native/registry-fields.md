@@ -307,7 +307,7 @@ general register may not pass (pointers, references, integers, `bool` and `TPdxR
 an enumeration, which a demangled name does not tell from a class, ends them, and a function whose
 qualifier is not a known class has none. The candidate calls are the direct calls to an evaluator
 and every `blr`, in the functions that have a type pointer. The name pass names a load from an
-argument by its address, three loads deep (`Member`, `Vtable`, `Slot`), and attributes a call to
+argument by its chain of loads, three loads deep (`Member`, `Deref`, `DerefAt`), and attributes a call to
 `(owner, offset, family)` only when `x0` holds one type pointer plus one offset other than zero on
 every path. A `blr` must also call a slot of the vtable at that same address whose displacement is
 an evaluation slot. The binding derives the slots from the vtables: each slot of an evaluator

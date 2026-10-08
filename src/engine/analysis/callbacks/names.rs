@@ -22,10 +22,10 @@
 //! that receives a stack address forgets every slot at or above that address. Other memory is
 //! not tracked.
 //!
-//! A load from an argument names the loaded word by its address, three loads deep: a member of the
-//! object that the argument points at, the vtable of the object that a member points at, and a
-//! slot of that vtable. This is what a virtual call on a block needs: `x0` is a type pointer plus
-//! the block's offset, and the called register is a slot of the vtable at that address. Memory
+//! A load from an argument names the loaded word by the chain of loads that reached it, three
+//! loads deep. This is what a virtual call on a block needs: `x0` is a type pointer plus the
+//! block's offset, and the called register holds a word loaded through the first word at that
+//! address, which [`vtable_slot`] reads as a slot of the object's vtable. Memory
 //! that is not tracked can change between two loads, so two loads of one address give the same
 //! fact even when a store or a call came between them.
 use std::collections::{BTreeMap, BTreeSet};
@@ -45,12 +45,10 @@ pub(super) enum Fact {
     Argument(usize, i64),
     /// The word at `Argument(n, k)`, plus an offset: `Member(n, k, offset)`.
     Member(usize, i64, i64),
-    /// The word at `Member(n, k, j)`: `Vtable(n, k, j)`. It is the vtable of the object that
-    /// `Member(n, k, j)` points at, and slot `j` of the vtable of the object at `Argument(n, k)`.
-    Vtable(usize, i64, i64),
-    /// The word `s` bytes past `Vtable(n, k, j)`: `Slot(n, k, j, s)`, slot `s` of the vtable of
-    /// the object at `Member(n, k, j)`.
-    Slot(usize, i64, i64, i64),
+    /// The word at `Member(n, k, j)`: `Deref(n, k, j)`.
+    Deref(usize, i64, i64),
+    /// The word `s` bytes past `Deref(n, k, j)`: `DerefAt(n, k, j, s)`.
+    DerefAt(usize, i64, i64, i64),
     /// The value stored at this global address.
     Global(u64),
     /// The value stored at the address held in a global, plus this offset.
@@ -209,16 +207,18 @@ pub(super) fn sole_fact(value: &Value) -> Option<Fact> {
     facts.first().copied()
 }
 
-/// The vtable slot that `target` holds when it is a slot of the vtable of the object at `object`:
-/// the displacement of a virtual call on the object that `x0` holds, from its vtable's address
-/// point.
+/// The displacement `s` when `target` is the word `s` bytes past the first word of the object at
+/// `object`: a call through `target` with `object` in `x0` calls slot `s` of that object's vtable,
+/// when the object has one. The first word of the object at `Argument(n, k)` is `Member(n, k, 0)`,
+/// so its slot `s` is `Deref(n, k, s)`; the first word of the object at `Member(n, k, j)` is
+/// `Deref(n, k, j)`, so its slot `s` is `DerefAt(n, k, j, s)`.
 pub(super) fn vtable_slot(object: Fact, target: Fact) -> Option<i64> {
     match (object, target) {
-        (Fact::Argument(n, k), Fact::Vtable(vtable_n, vtable_k, slot)) => {
-            ((n, k) == (vtable_n, vtable_k)).then_some(slot)
+        (Fact::Argument(n, k), Fact::Deref(target_n, target_k, slot)) => {
+            ((n, k) == (target_n, target_k)).then_some(slot)
         }
-        (Fact::Member(n, k, j), Fact::Slot(slot_n, slot_k, slot_j, slot)) => {
-            ((n, k, j) == (slot_n, slot_k, slot_j)).then_some(slot)
+        (Fact::Member(n, k, j), Fact::DerefAt(target_n, target_k, target_j, slot)) => {
+            ((n, k, j) == (target_n, target_k, target_j)).then_some(slot)
         }
         _ => None,
     }
@@ -710,12 +710,12 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
             Fact::Argument(index, base) => Some(Fact::Argument(index, base + amount)),
             Fact::Member(index, member, base) => Some(Fact::Member(index, member, base + amount)),
             Fact::Field(global, base) => Some(Fact::Field(global, base + amount)),
-            Fact::Global(_) | Fact::Vtable(..) | Fact::Slot(..) | Fact::Result(_)
+            Fact::Global(_) | Fact::Deref(..) | Fact::DerefAt(..) | Fact::Result(_)
                 if amount == 0 =>
             {
                 Some(*fact)
             }
-            Fact::Global(_) | Fact::Vtable(..) | Fact::Slot(..) | Fact::Result(_) => None,
+            Fact::Global(_) | Fact::Deref(..) | Fact::DerefAt(..) | Fact::Result(_) => None,
         })
         .collect::<Option<BTreeSet<_>>>()?;
     Some(moved)
@@ -745,10 +745,10 @@ fn load(state: &State, memory: &str) -> Value {
             Fact::Global(global) => Some(Fact::Field(global, displacement)),
             Fact::Argument(index, offset) => Some(Fact::Member(index, offset + displacement, 0)),
             Fact::Member(index, member, offset) => {
-                Some(Fact::Vtable(index, member, offset + displacement))
+                Some(Fact::Deref(index, member, offset + displacement))
             }
-            Fact::Vtable(index, member, offset) => {
-                Some(Fact::Slot(index, member, offset, displacement))
+            Fact::Deref(index, member, offset) => {
+                Some(Fact::DerefAt(index, member, offset, displacement))
             }
             _ => None,
         })

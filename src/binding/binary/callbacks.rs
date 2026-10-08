@@ -890,30 +890,31 @@ pub(super) fn top_level(text: &str) -> impl Iterator<Item = &str> {
     parts.into_iter()
 }
 
+/// The integer types, with `bool`, that one general register passes.
+pub(super) const INTEGERS: &[&str] = &[
+    "bool",
+    "char",
+    "signed char",
+    "unsigned char",
+    "wchar_t",
+    "short",
+    "unsigned short",
+    "int",
+    "unsigned int",
+    "long",
+    "unsigned long",
+    "long long",
+    "unsigned long long",
+];
+
 /// A pointer, a reference or a plain number, which one register passes.
 fn is_passed_in_one_register(parameter: &str) -> bool {
-    const NUMBERS: &[&str] = &[
-        "bool",
-        "char",
-        "signed char",
-        "unsigned char",
-        "wchar_t",
-        "short",
-        "unsigned short",
-        "int",
-        "unsigned int",
-        "long",
-        "unsigned long",
-        "long long",
-        "unsigned long long",
-        "float",
-        "double",
-    ];
     parameter.ends_with('*')
         || parameter.ends_with('&')
         || parameter.ends_with("* const")
         || parameter.contains("(*)")
-        || NUMBERS.contains(&parameter)
+        || INTEGERS.contains(&parameter)
+        || matches!(parameter, "float" | "double")
 }
 
 /// The string functions that the name pass follows.

@@ -34,25 +34,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::engine::analysis::callbacks::blocks::{TypePointers, receiver_stores};
 use crate::engine::analysis::discovery::Symbol;
 
-use super::callbacks::{decoded, signature, top_level};
+use super::callbacks::{INTEGERS, decoded, signature, top_level};
 use super::declarations::Text;
-
-/// The integer types that one general register passes.
-const INTEGERS: &[&str] = &[
-    "bool",
-    "char",
-    "signed char",
-    "unsigned char",
-    "wchar_t",
-    "short",
-    "unsigned short",
-    "int",
-    "unsigned int",
-    "long",
-    "unsigned long",
-    "long long",
-    "unsigned long long",
-];
 
 /// The registry owners and the classes whose members lead to one.
 pub(super) struct TypeOwners<'a> {
