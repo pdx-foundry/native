@@ -273,7 +273,7 @@ persistent destinations are joined to constructor-installed virtual readers; a s
 
 `Field.entry_contexts` gives, for each root trigger and effect block, the scopes that the engine's
 direct evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
-(`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/contexts.rs`,
+(`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`,
 `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs`). The answer keeps
 `EntryScope::SelfLink`; read it by the [self-link rule](engine-commands.md#on_actions-game-rules-and-their-entry-scopes).
 `this` is the scope at the call; the scope that the engine reads the block in is SDK-549's.
@@ -304,8 +304,9 @@ stack in a function's prologue, before its first other instruction, that no late
 overwritten. A virtual call on the object that a proven instance pointer holds calls the slot of
 that object's vtable, so it reads the registers that the slot's signature uses. A call receives
 `x8` only when its target may read it ([engine commands](engine-commands.md#pitfalls)), and a
-call that fires an on_action is a scope reader
-([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)). A copy
+call that fires an on_action or evaluates a game rule is a scope reader
+([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)), whose
+method shares this caller climb (`callbacks/climb.rs`). A copy
 constructor of a scope that the pass can read, `CopyInternalScopes` and a function that builds a
 scope in the object that `x8` addresses are followed as the engine runs them (same page); a copy
 into an object that the pass does not know lets its source escape.

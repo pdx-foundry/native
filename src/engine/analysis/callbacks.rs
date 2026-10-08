@@ -14,6 +14,11 @@
 //! - The **context pass** ([`contexts`]) follows every path from the function entry to the site
 //!   and reads the scope object there. A path that the pass cannot follow gives no context.
 //!
+//! When a site fires or evaluates a scope that its function received as a parameter, the context
+//! pass instead runs from the function's direct callers that build the scope, through the same
+//! caller climb as the block method ([`climb`]). The site's name still comes only from the name
+//! pass at the site: a string label that a caller's path carries does not name it.
+//!
 //! A scope object has a type and three links: root, from and prev. A fresh scope has type 0 and
 //! each link points back to the scope itself; the engine tests the type of the linked scope, not
 //! the pointer, to decide whether a link is set. So the pass reports a self-link as
@@ -23,6 +28,7 @@
 //! binding and checked here before their callers are read. A site whose name the method cannot
 //! recover is an unnamed site; the method never guesses its name.
 pub mod blocks;
+pub mod climb;
 mod contexts;
 pub mod instances;
 mod names;
@@ -32,15 +38,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::InputError;
 use super::decode::{Instruction, general_register};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use super::stop::Unresolved;
 
 pub use contexts::ScopeFunctions;
 pub use names::StringFunctions;
 
-use contexts::{Runner, SiteContexts, Subject};
+use climb::{CallSite, Decoded, Wrapper};
+use contexts::{EntryCalls, Evaluations, Read, Runner, SiteContexts, Subject};
 use names::{Fact, State};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "callbacks/v3";
+pub const METHOD: &str = "callbacks/v4";
 
 /// A value that no rule enumeration reaches, for the probe of a rule forwarder.
 const PROBE: u64 = 7;
@@ -167,8 +175,14 @@ pub struct RuleTables {
 
 /// Executable-derived input for the callback method.
 pub struct CallbacksInput {
-    /// Decoded rows of every function that holds a site, and of the pulse load function.
+    /// Decoded rows of every function that holds a site, of the pulse load function, and of the
+    /// direct callers in `callers`.
     pub functions: BTreeMap<u64, Vec<Instruction>>,
+    /// The direct calls to each function of [`climbing_functions`] and to its callers short of
+    /// [`climb::CALLER_DEPTH`].
+    pub callers: BTreeMap<u64, Vec<CallSite>>,
+    /// Functions that never return.
+    pub never_return: BTreeSet<u64>,
     /// Decoded rows of the scope functions that the context pass runs.
     pub scope_code: Vec<Instruction>,
     pub scope_functions: ScopeFunctions,
@@ -274,6 +288,34 @@ pub struct CallbacksResult {
 }
 
 impl SiteCall {
+    /// Where the call holds the scope that it fires or evaluates, and its subject; `None` for a
+    /// call that holds no scope.
+    fn read(self) -> Option<Read> {
+        match self {
+            Self::Fire {
+                name,
+                scope: SiteScope::Register(scope),
+            } => Some(Read {
+                scope,
+                subject: Subject::String(name),
+            }),
+            Self::FireList { list, scope } => Some(Read {
+                scope,
+                subject: Subject::List(list),
+            }),
+            Self::Rule { scope, .. } => Some(Read {
+                scope,
+                subject: Subject::None,
+            }),
+            Self::Fire {
+                scope: SiteScope::BuiltByCallee,
+                ..
+            }
+            | Self::Lookup { .. }
+            | Self::Forwarded { .. } => None,
+        }
+    }
+
     fn family(self, forwarders: &[Forwarder]) -> Family {
         match self {
             Self::Fire { .. } | Self::Lookup { .. } | Self::FireList { .. } => Family::OnAction,
@@ -311,7 +353,11 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         call_arguments: &input.call_arguments,
         ignores_x8: &input.ignores_x8,
     };
-    let states = site_states(input);
+    let states = climb::states_at(
+        &input.functions,
+        &input.strings,
+        input.sites.iter().map(|site| (site.function, site.address)),
+    );
     let rule_names = match family {
         Family::GameRule => rule_names(input),
         Family::OnAction => Ok(BTreeMap::new()),
@@ -335,6 +381,12 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
 
     // Forwarders first: their own sites give the contexts and the check of their callers.
     let inner = verified_forwarders(input, &runner, &states, family);
+    let mut climbed = climbed_contexts(
+        input,
+        &runner,
+        &states,
+        input.sites.iter().filter(in_family),
+    );
 
     let lookup_uses = lookup_uses(input, &states);
     let lookup_names: BTreeMap<u64, Result<BTreeSet<String>, &'static str>> = input
@@ -365,7 +417,13 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
             continue;
         };
         let code = code_for(&mut codes, &runner, input, site.function);
-        if let Some(finding) = site_finding(input, &runner, code, site, state, &inner, &sources) {
+        let climbed = climbed.remove(&site.address);
+        let arrival = Arrival {
+            runner: &runner,
+            code,
+            climbed,
+        };
+        if let Some(finding) = site_finding(input, arrival, site, state, &inner, &sources) {
             assembly.record(input, finding);
         }
     }
@@ -399,6 +457,126 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
 
     assembly.result.script_fired_sites = input.script_fired_sites;
     Ok(assembly.result)
+}
+
+/// The functions that hold a site whose scope the method follows up the function's direct
+/// callers: a site outside the pinned forwarders that fires or evaluates a scope that its function
+/// received as a parameter, on every path. The binding gives these functions' callers.
+pub fn climbing_functions(
+    sites: &[Site],
+    forwarders: &[Forwarder],
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    strings: &StringFunctions,
+) -> BTreeSet<u64> {
+    let states = climb::states_at(
+        functions,
+        strings,
+        sites.iter().map(|site| (site.function, site.address)),
+    );
+    climbing_sites(sites.iter(), forwarders, &states)
+        .into_keys()
+        .map(|wrapper| wrapper.function)
+        .collect()
+}
+
+/// The sites of [`climbing_functions`], by the wrapper that their function is.
+fn climbing_sites<'s>(
+    sites: impl Iterator<Item = &'s Site>,
+    forwarders: &[Forwarder],
+    states: &BTreeMap<u64, State>,
+) -> BTreeMap<Wrapper, BTreeSet<u64>> {
+    let pinned: BTreeSet<u64> = forwarders
+        .iter()
+        .map(|forwarder| forwarder.function)
+        .collect();
+    let mut wrappers: BTreeMap<Wrapper, BTreeSet<u64>> = BTreeMap::new();
+    for site in sites.filter(|site| !pinned.contains(&site.function)) {
+        let Some(read) = site.call.read() else {
+            continue;
+        };
+        let parameter = states
+            .get(&site.address)
+            .and_then(|state| climb::parameter(state, read.scope));
+        let Some(parameter) = parameter else {
+            continue;
+        };
+
+        let wrapper = Wrapper {
+            function: site.function,
+            parameter,
+        };
+        wrappers.entry(wrapper).or_default().insert(site.address);
+    }
+    wrappers
+}
+
+/// The contexts that the callers of each climbing site among `sites` give it, by the site's
+/// address. The climb's charges and every reason that a run from an entry stopped, a bound of the
+/// search or not, are unresolved reasons of the sites that the entry reaches.
+fn climbed_contexts<'s>(
+    input: &CallbacksInput,
+    runner: &Runner<'_>,
+    states: &BTreeMap<u64, State>,
+    sites: impl Iterator<Item = &'s Site> + Clone,
+) -> BTreeMap<u64, SiteContexts> {
+    let wrappers = climbing_sites(sites.clone(), &input.forwarders, states);
+    let climbing: BTreeSet<u64> = wrappers.values().flatten().copied().collect();
+    let reads: BTreeMap<u64, Read> = sites
+        .filter(|site| climbing.contains(&site.address))
+        .filter_map(|site| Some((site.address, site.call.read()?)))
+        .collect();
+    let decoded = Decoded {
+        functions: &input.functions,
+        callers: &input.callers,
+        scope_code: &input.scope_code,
+        strings: &input.strings,
+    };
+    let climb = climb::climb(&decoded, wrappers);
+
+    let mut found: BTreeMap<u64, SiteContexts> = climbing
+        .iter()
+        .map(|&site| (site, SiteContexts::default()))
+        .collect();
+    for (site, reason) in climb.charges {
+        found.entry(site).or_default().unresolved.insert(reason);
+    }
+
+    let none = BTreeSet::new();
+    let calls = EntryCalls {
+        evaluators: &none,
+        scope_users: &none,
+        wrappers: &climb.wrappers,
+        receivers: &none,
+        never_return: &input.never_return,
+    };
+    for entry in climb.entries {
+        let run = match climb::entry_code(&decoded, &climb.wrappers, entry.function) {
+            Some(code) => runner.evaluations(
+                &code,
+                entry.function,
+                entry.site,
+                entry.selected,
+                &calls,
+                &reads,
+            ),
+            None => Evaluations {
+                unresolved: vec![Unresolved::new("caller-not-decoded")],
+                ..Evaluations::default()
+            },
+        };
+
+        for (site, literal, context) in run.reached {
+            let site = found.entry(site).or_default();
+            site.reached.push((literal, context));
+        }
+        for reason in run.unresolved.iter().chain(&run.bounded) {
+            for site in &entry.reaches {
+                let site = found.entry(*site).or_default();
+                site.unresolved.insert(reason.reason);
+            }
+        }
+    }
+    found
 }
 
 /// The contexts at the own site of each forwarder of `family` whose check succeeds, by the
@@ -464,38 +642,59 @@ enum SiteFinding {
     },
 }
 
-/// What the site at `site` in `code` establishes, with the name-pass `state` before it. `inner`
-/// holds the checked contexts of each forwarder, as [`verified_forwarders`] gives them. A lookup
-/// whose list a firing site uses establishes nothing; the firing site names its list.
+/// How the contexts that arrive at one site are found: from the callers that the climb followed,
+/// when the site climbs, or along the paths from the entry of the site's own function in `code`.
+struct Arrival<'a> {
+    runner: &'a Runner<'a>,
+    code: &'a Code,
+    /// The contexts that [`climbed_contexts`] gives a site that climbs.
+    climbed: Option<SiteContexts>,
+}
+
+impl Arrival<'_> {
+    /// The contexts that arrive at `site`, a call that fires or evaluates a scope. A climbed
+    /// path's literal comes from a caller, so it is kept only when the name pass at the site
+    /// proved a name (`named`): a path label never adds a name.
+    fn contexts(self, site: &Site, named: bool) -> SiteContexts {
+        match self.climbed {
+            Some(found) if named => found,
+            Some(found) => without_subject(&found),
+            None => site.call.read().map_or_else(SiteContexts::default, |read| {
+                self.runner
+                    .contexts(self.code, site.function, site.address, read)
+            }),
+        }
+    }
+}
+
+/// What `site` establishes, with the name-pass `state` before it and the contexts that `arrival`
+/// gives. `inner` holds the checked contexts of each forwarder, as [`verified_forwarders`] gives
+/// them. A lookup whose list a firing site uses establishes nothing; the firing site names its
+/// list.
 fn site_finding(
     input: &CallbacksInput,
-    runner: &Runner<'_>,
-    code: &Code,
+    arrival: Arrival<'_>,
     site: &Site,
     state: &State,
     inner: &[Option<SiteContexts>],
     sources: &NameSources<'_>,
 ) -> Option<SiteFinding> {
     let finding = match site.call {
-        SiteCall::Fire { name, scope } => {
+        SiteCall::Fire {
+            name,
+            scope: SiteScope::Register(_),
+        } => {
             let names = literal_names(input, state, name);
-            match scope {
-                SiteScope::Register(scope) => {
-                    let found = runner.contexts(
-                        code,
-                        site.function,
-                        site.address,
-                        Subject::String(name),
-                        scope,
-                    );
-                    SiteFinding::OnActionContexts { names, found }
-                }
-                SiteScope::BuiltByCallee => SiteFinding::OnActionNames {
-                    names,
-                    reason: "scope-built-by-callee",
-                },
-            }
+            let found = arrival.contexts(site, names.is_ok());
+            SiteFinding::OnActionContexts { names, found }
         }
+        SiteCall::Fire {
+            name,
+            scope: SiteScope::BuiltByCallee,
+        } => SiteFinding::OnActionNames {
+            names: literal_names(input, state, name),
+            reason: "scope-built-by-callee",
+        },
         SiteCall::Lookup { name } => {
             if sources.lookup_uses.contains(&site.address) {
                 return None;
@@ -506,24 +705,14 @@ fn site_finding(
                 reason: "looked-up-only",
             }
         }
-        SiteCall::FireList { list, scope } => {
+        SiteCall::FireList { list, .. } => {
             let names = list_names(input, state, list, sources.pulse, sources.lookup_names);
-            let found = runner.contexts(
-                code,
-                site.function,
-                site.address,
-                Subject::List(list),
-                scope,
-            );
+            let found = arrival.contexts(site, names.is_ok());
             SiteFinding::OnActionContexts { names, found }
         }
-        SiteCall::Rule {
-            family,
-            rule,
-            scope,
-        } => {
+        SiteCall::Rule { family, rule, .. } => {
             let name = rule_name(input, site, state, family, rule, sources.rule_names);
-            let found = runner.contexts(code, site.function, site.address, Subject::None, scope);
+            let found = arrival.contexts(site, name.is_ok());
             SiteFinding::Rule {
                 family,
                 name,
@@ -541,13 +730,15 @@ fn site_finding(
                 ForwarderKind::Fire { name, scope } => {
                     let names = literal_names(input, state, name);
                     let found = match scope {
-                        Some(scope) => runner.contexts(
-                            code,
-                            site.function,
-                            site.address,
-                            Subject::String(name),
-                            scope,
-                        ),
+                        Some(scope) => {
+                            let read = Read {
+                                scope,
+                                subject: Subject::String(name),
+                            };
+                            arrival
+                                .runner
+                                .contexts(arrival.code, site.function, site.address, read)
+                        }
                         None => without_subject(inner),
                     };
                     SiteFinding::OnActionContexts { names, found }
@@ -669,11 +860,11 @@ impl Assembly {
             findings
                 .contexts
                 .extend(attributed.remove(&name).unwrap_or_default());
-            findings.unresolved.extend(found.unresolved);
+            findings.unresolved.extend(found.unresolved.iter().copied());
             if unattributed {
                 findings.unresolved.insert("context-not-attributed");
             }
-            if reached_none && found.unresolved.is_none() {
+            if reached_none && found.unresolved.is_empty() {
                 findings.unresolved.insert("site-not-reached");
             }
         }
@@ -693,13 +884,13 @@ impl Assembly {
             }
         };
         let findings = self.result.rules.entry((name, family)).or_default();
-        findings.unresolved.extend(found.unresolved);
-        if found.reached.is_empty() && found.unresolved.is_none() {
+        if found.reached.is_empty() && found.unresolved.is_empty() {
             findings.unresolved.insert("site-not-reached");
         }
         findings
             .contexts
             .extend(found.reached.into_iter().map(|(_, context)| context));
+        findings.unresolved.extend(found.unresolved);
     }
 }
 
@@ -713,24 +904,6 @@ fn code_for<'c>(
     codes
         .entry(function)
         .or_insert_with(|| runner.code(input.functions.get(&function).map_or(&[], Vec::as_slice)))
-}
-
-/// The name-pass state before every site, for every function that holds a site.
-fn site_states(input: &CallbacksInput) -> BTreeMap<u64, State> {
-    let addresses: BTreeSet<u64> = input.sites.iter().map(|site| site.address).collect();
-    let functions: BTreeSet<u64> = input.sites.iter().map(|site| site.function).collect();
-    let mut states = BTreeMap::new();
-    for function in functions {
-        let Some(rows) = input.functions.get(&function) else {
-            continue;
-        };
-        names::each_state(rows, &input.strings, |row, state| {
-            if addresses.contains(&row.address) {
-                states.insert(row.address, state.clone());
-            }
-        });
-    }
-    states
 }
 
 /// The names that the string in register `name` can hold at a site.
@@ -863,13 +1036,13 @@ fn forwarder_contexts(
             }
             match scope {
                 Some(scope) => is_argument(inner_scope, scope).then(SiteContexts::default),
-                None => Some(runner.contexts(
-                    code,
-                    forwarder.function,
-                    site.address,
-                    Subject::None,
-                    inner_scope,
-                )),
+                None => {
+                    let read = Read {
+                        scope: inner_scope,
+                        subject: Subject::None,
+                    };
+                    Some(runner.contexts(code, forwarder.function, site.address, read))
+                }
             }
         }
         (
@@ -890,7 +1063,11 @@ fn forwarder_contexts(
             if passed.is_empty() || passed.iter().any(|rule| *rule != Some(expected)) {
                 return None;
             }
-            Some(runner.contexts(code, forwarder.function, site.address, Subject::None, scope))
+            let read = Read {
+                scope,
+                subject: Subject::None,
+            };
+            Some(runner.contexts(code, forwarder.function, site.address, read))
         }
         _ => None,
     }
@@ -904,7 +1081,7 @@ fn without_subject(inner: &SiteContexts) -> SiteContexts {
             .iter()
             .map(|(_, context)| (None, context.clone()))
             .collect(),
-        unresolved: inner.unresolved,
+        unresolved: inner.unresolved.clone(),
     }
 }
 

@@ -111,17 +111,25 @@ pub(super) enum Subject {
     None,
 }
 
+/// A call whose scope the pass reads: the register that holds the scope, and where the call
+/// holds its subject.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Read {
+    pub scope: usize,
+    pub subject: Subject,
+}
+
 /// What the paths that arrive at one site pass.
 #[derive(Debug, Clone, Default)]
 pub(super) struct SiteContexts {
     /// For each arriving path, the literal that it proves for the subject, and its context.
     pub reached: Vec<(Option<u64>, Context)>,
     /// Why some path could not be followed to the site.
-    pub unresolved: Option<&'static str>,
+    pub unresolved: BTreeSet<&'static str>,
 }
 
-/// The calls that a run for a registry field block treats as evaluations of a block.
-pub(super) struct BlockCalls<'a> {
+/// The calls that a run from an entry call treats apart from the calls that every run follows.
+pub(super) struct EntryCalls<'a> {
     /// Trigger evaluators and effect executors: each takes its block in `x0` and its scope in
     /// [`EVALUATED_SCOPE`].
     pub evaluators: &'a BTreeSet<u64>,
@@ -129,8 +137,8 @@ pub(super) struct BlockCalls<'a> {
     /// assumption, neither this code nor an evaluation changes a scope object's type or links or
     /// keeps a pointer to one, so the pass treats both as scope readers.
     pub scope_users: &'a BTreeSet<u64>,
-    /// Functions that pass a scope parameter on to an evaluation. The pass runs their code on
-    /// the path, with the caller's arguments and memory.
+    /// Functions that pass a scope parameter on to a read call. The pass runs their code on the
+    /// path, with the caller's arguments and memory.
     pub wrappers: &'a BTreeSet<u64>,
     /// Other functions that receive a scope. The pass runs their code on the path too, while
     /// the path is inside fewer than [`ENTER_LIMIT`] calls.
@@ -139,26 +147,27 @@ pub(super) struct BlockCalls<'a> {
     pub never_return: &'a BTreeSet<u64>,
 }
 
-/// How many calls deep a block run runs the code of functions that receive a scope.
+/// How many calls deep a run from an entry runs the code of functions that receive a scope.
 pub(super) const ENTER_LIMIT: usize = 6;
 
 /// The register in which an evaluator receives its scope.
 pub(super) const EVALUATED_SCOPE: usize = 1;
 
-/// What the selected call of a block run calls.
+/// What the selected call of a run from an entry calls.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Selected {
-    /// An evaluator: the selected call is itself an evaluation.
+    /// An evaluator: the selected call is itself a read call.
     Evaluator,
     /// A wrapper, which runs from the state that arrives at the call.
     Wrapper(u64),
 }
 
-/// What the evaluations that one selected call reaches receive.
+/// What the read calls that one selected call reaches receive.
 #[derive(Debug, Clone, Default)]
 pub(super) struct Evaluations {
-    /// Each evaluator call that a path reached, with the context of the scope that it received.
-    pub reached: Vec<(u64, Context)>,
+    /// Each read call that a path reached, with the literal that the path proves for its subject
+    /// and the context of the scope that it received.
+    pub reached: Vec<(u64, Option<u64>, Context)>,
     /// Why some path could not be followed to the selected call, or through it, other than a
     /// bound of the search, each once with where it stopped.
     pub unresolved: Vec<Unresolved>,
@@ -200,61 +209,45 @@ impl Runner<'_> {
         Code::from_rows(function.iter().chain(self.scope_code).cloned())
     }
 
-    /// Follow every path from `entry` to the call at `site`, and read the scope in register
-    /// `scope` and the subject there.
-    pub fn contexts(
-        &self,
-        code: &Code,
-        entry: u64,
-        site: u64,
-        subject: Subject,
-        scope: usize,
-    ) -> SiteContexts {
+    /// Follow every path from `entry` to the call at `site`, and read the call's scope and
+    /// subject there.
+    pub fn contexts(&self, code: &Code, entry: u64, site: u64, read: Read) -> SiteContexts {
         let machine = Machine::new(code, self.data);
         let paths = machine.run_paths_to(entry, site, &mut |target, machine| {
             Ok(self.path_call(target, machine))
         });
 
         let mut result = SiteContexts::default();
+        let mut stopped = None;
         for path in paths {
             match path.end {
-                Ok(Exit::Reached) => {
-                    let machine = &path.machine;
-                    let literal = match subject {
-                        Subject::String(register) => machine
-                            .register(register)
-                            .and_then(|object| machine.labelled(NAME | object)),
-                        Subject::List(register) => machine
-                            .register(register)
-                            .and_then(|list| machine.labelled(LIST | list)),
-                        Subject::None => None,
-                    };
-                    let context = self.read(machine, machine.register(scope));
-                    result.reached.push((literal, context));
-                }
-                Ok(_) => result.unresolved = Some("left-the-site"),
-                Err(Unresolved { reason, .. }) => result.unresolved = Some(reason),
+                Ok(Exit::Reached) => result.reached.push(self.read_call(&path.machine, read)),
+                Ok(_) => stopped = Some("left-the-site"),
+                Err(Unresolved { reason, .. }) => stopped = Some(reason),
             }
         }
+        // Only the last path's reason is kept, as the answers before the climb recorded it.
+        result.unresolved.extend(stopped);
         result
     }
 
-    /// Follow every path from `entry` to the call at `site`, then through that call, and give
-    /// the context that each evaluation reached through the call receives.
+    /// Follow every path from `entry` to the call at `site`, then through that call, and read
+    /// each call of `reads` that a path reaches through the call, by its address.
     ///
-    /// Before the site, evaluations act only through their effects, so an evaluation of a scope
-    /// that the function received gives nothing.
+    /// Before the site, read calls act only through their effects, so a read of a scope that the
+    /// function received gives nothing.
     pub fn evaluations(
         &self,
         code: &Code,
         entry: u64,
         site: u64,
         selected: Selected,
-        calls: &BlockCalls<'_>,
+        calls: &EntryCalls<'_>,
+        reads: &BTreeMap<u64, Read>,
     ) -> Evaluations {
         let machine = Machine::new(code, self.data);
         let prefix = machine.run_paths_to(entry, site, &mut |target, machine| {
-            Ok(self.block_call(target, machine, calls))
+            Ok(self.entry_call(target, machine, calls))
         });
 
         let mut result = Evaluations::default();
@@ -275,19 +268,22 @@ impl Runner<'_> {
             let machine = path.machine;
             let wrapper = match selected {
                 Selected::Evaluator => {
-                    let context = self.read(&machine, machine.register(EVALUATED_SCOPE));
-                    result.reached.push((site, context));
+                    if let Some(read) = reads.get(&site) {
+                        let (literal, context) = self.read_call(&machine, *read);
+                        result.reached.push((site, literal, context));
+                    }
                     continue;
                 }
                 Selected::Wrapper(wrapper) => wrapper,
             };
 
             let through = machine.run_paths(wrapper, &mut |target, machine| {
-                if target.is_some_and(|target| calls.evaluators.contains(&target)) {
-                    let context = self.read(machine, machine.register(EVALUATED_SCOPE));
-                    result.reached.push((machine.pc(), context));
+                let call = machine.pc();
+                if let Some(read) = reads.get(&call) {
+                    let (literal, context) = self.read_call(machine, *read);
+                    result.reached.push((call, literal, context));
                 }
-                Ok(self.block_call(target, machine, calls))
+                Ok(self.entry_call(target, machine, calls))
             });
             for path in through {
                 if let Err(unresolved) = path.end {
@@ -301,14 +297,14 @@ impl Runner<'_> {
         result
     }
 
-    /// Apply one call on a path of a block run: a function that never returns ends the path, a
-    /// wrapper or a scope receiver runs on the path, trigger and effect code reads the scope, and
-    /// every other call is applied by [`Runner::path_call`].
-    fn block_call(
+    /// Apply one call on a path of a run from an entry: a function that never returns ends the
+    /// path, a wrapper or a scope receiver runs on the path, trigger and effect code reads the
+    /// scope, and every other call is applied by [`Runner::path_call`].
+    fn entry_call(
         &self,
         target: Option<u64>,
         machine: &mut Machine<'_>,
-        calls: &BlockCalls<'_>,
+        calls: &EntryCalls<'_>,
     ) -> Call {
         match target {
             Some(target) if calls.never_return.contains(&target) => Call::Stop,
@@ -732,6 +728,22 @@ impl Runner<'_> {
             layout.scope_prev_offset,
         ]
         .into_iter()
+    }
+
+    /// The literal that the path proves for the subject of the call at the present instruction,
+    /// and the context of its scope.
+    fn read_call(&self, machine: &Machine<'_>, read: Read) -> (Option<u64>, Context) {
+        let literal = match read.subject {
+            Subject::String(register) => machine
+                .register(register)
+                .and_then(|object| machine.labelled(NAME | object)),
+            Subject::List(register) => machine
+                .register(register)
+                .and_then(|list| machine.labelled(LIST | list)),
+            Subject::None => None,
+        };
+        let context = self.read(machine, machine.register(read.scope));
+        (literal, context)
     }
 
     /// The context of the scope at `scope` when the path arrives at the site.
