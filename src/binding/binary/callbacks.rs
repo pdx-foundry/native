@@ -12,7 +12,7 @@ use crate::engine::analysis::{
         Site, SiteCall, SiteScope, StringFunctions,
         blocks::{BlockInput, CALLER_DEPTH, CallSite, EvaluationSite, RECEIVER_DEPTH},
     },
-    decode::{Instruction, decode_arm64},
+    decode::{Instruction, decode_arm64, reads_before_writing},
     discovery::Symbol,
 };
 
@@ -196,6 +196,7 @@ pub(in crate::binding) fn callbacks(
     }
 
     let call_arguments = import_call_arguments(&functions, imports);
+    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
     let instances = instances(&text, image, bound_slots, &functions)?;
     Ok(CallbacksInput {
         functions,
@@ -226,6 +227,7 @@ pub(in crate::binding) fn callbacks(
         layout: recipe.callbacks,
         arguments: argument_registers(symbols),
         call_arguments,
+        ignores_x8,
         instances: instances.vtables,
     })
 }
@@ -242,6 +244,9 @@ fn evaluator_names() -> Vec<String> {
         format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA} const&) const"),
         format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA}&&) const"),
         "CRootEffect::Execute(CEventScope&) const".into(),
+        "CAndTrigger::ActualEvaluate(CEventScope&) const".into(),
+        "SafeExecuteEffect(CEffect const&, CEventScope&)".into(),
+        format!("SafeExecuteEffectExtended(CEffect const&, CEventScope&, {EXTRA}&&)"),
     ]
 }
 
@@ -329,6 +334,8 @@ pub(in crate::binding) fn block_evaluations(
         .copied()
         .collect();
     let receivers = decode_receivers(&text, symbols, &not_followed, &mut functions);
+    let scope_code = scope_code(&text, &scope_functions);
+    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
     let instances = instances(&text, image, bound_slots, &functions)?;
 
     Ok(BlockInput {
@@ -340,13 +347,14 @@ pub(in crate::binding) fn block_evaluations(
         evaluators,
         functions,
         callers,
-        scope_code: scope_code(&text, &scope_functions),
+        scope_code,
         scope_functions,
         strings: string_functions(symbols, recipe),
         data: read_only_data(bytes)?.with_words(&instances.words),
         layout: recipe.callbacks,
         scope_names: text.scope_names(symbols, strings).map(|table| table.names),
         arguments: argument_registers(symbols),
+        ignores_x8,
         instances: instances.vtables,
     })
 }
@@ -472,6 +480,26 @@ fn scope_code(text: &Text, scope_functions: &ScopeFunctions) -> Vec<Instruction>
         .chain(&scope_functions.setters)
         .filter_map(|&start| decoded(text, start))
         .flatten()
+        .collect()
+}
+
+/// The targets of the direct calls in `rows` that ignore the `x8` that they receive: no path
+/// reads it before writing it. A demangled name does not state whether a function returns an
+/// object in memory, so its code decides whether a call to it receives `x8`.
+fn callees_ignoring_x8<'r>(
+    text: &Text,
+    rows: impl Iterator<Item = &'r Instruction>,
+) -> BTreeSet<u64> {
+    let targets: BTreeSet<u64> = rows
+        .filter(|row| row.operation == "bl")
+        .filter_map(|row| number(&row.operands))
+        .collect();
+
+    targets
+        .into_iter()
+        .filter(|&target| {
+            decoded(text, target).is_some_and(|callee| !reads_before_writing(&callee, 8))
+        })
         .collect()
 }
 
@@ -686,6 +714,25 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
     let mut setters = matching(&|name| name.starts_with("CScopeObjectReference::Set"));
     setters.extend(named(&["CEventScope::ClearRootFromPrev()"]));
 
+    // Firing an on_action runs its event in place and keeps only copies of the scope, and
+    // `AccessVariables` writes only the variables container: none changes a type or a link.
+    let firing: Vec<String> = anchors()
+        .into_iter()
+        .filter(|(_, call)| {
+            matches!(
+                call,
+                SiteCall::Fire {
+                    scope: SiteScope::Register(_),
+                    ..
+                } | SiteCall::FireList { .. }
+            )
+        })
+        .map(|(name, _)| name)
+        .collect();
+    let mut readers = matching(&|name| is_scope_member(name) && name.ends_with(" const"));
+    readers.extend(named(&["CEventScope::AccessVariables()"]));
+    readers.extend(firing.iter().flat_map(|name| addresses(symbols, name)));
+
     ScopeFunctions {
         fresh_constructors: named(&[
             "CEventScope::CEventScope()",
@@ -704,7 +751,7 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
             "CScopeObjectReference::operator=(CScopeObjectReference const&)",
         ]),
         destructors: named(&["CEventScope::~CEventScope()"]),
-        readers: matching(&|name| is_scope_member(name) && name.ends_with(" const")),
+        readers,
     }
 }
 

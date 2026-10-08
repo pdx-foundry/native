@@ -40,7 +40,7 @@ use contexts::{Runner, SiteContexts, Subject};
 use names::{Fact, State};
 
 /// Name and revision of this static method.
-pub const METHOD: &str = "callbacks/v2";
+pub const METHOD: &str = "callbacks/v3";
 
 /// A value that no rule enumeration reaches, for the probe of a rule forwarder.
 const PROBE: u64 = 7;
@@ -191,6 +191,9 @@ pub struct CallbacksInput {
     pub arguments: BTreeMap<u64, usize>,
     /// How many argument registers a call through a pointer reads, by the call instruction.
     pub call_arguments: BTreeMap<u64, usize>,
+    /// Functions that ignore the `x8` that they receive: no path reads it before writing it. A
+    /// call to one does not receive the address of a returned object.
+    pub ignores_x8: BTreeSet<u64>,
     /// The vtable address point of the object that each proven instance pointer holds
     /// ([`instances`]). `data` holds the pointer slots that name these pointers and the slots of
     /// their vtables; the method places the objects, so a virtual call on one has a known target.
@@ -304,6 +307,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         layout: input.layout,
         arguments: &input.arguments,
         call_arguments: &input.call_arguments,
+        ignores_x8: &input.ignores_x8,
     };
     let states = site_states(input);
     let rule_names = match family {

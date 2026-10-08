@@ -1,7 +1,11 @@
 //! ARM64 instruction decoding. Every byte of a range is accounted for, or the range is an
 //! error.
+use std::collections::BTreeMap;
+
 use capstone::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use super::declarations::number;
 
 /// One fully decoded ARM64 instruction. This establishes no higher-level reader semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +177,77 @@ pub fn written_registers(operation: &str, operands: &str) -> Vec<usize> {
     written
 }
 
+/// Whether some path from the start of `rows`, one whole function, may read `register` before
+/// it writes it. A call, a branch through a register, a branch out of the function and the end of
+/// `rows` count as a read, because the code that runs next is not in `rows`.
+pub fn reads_before_writing(rows: &[Instruction], register: usize) -> bool {
+    let index: BTreeMap<u64, usize> = rows
+        .iter()
+        .enumerate()
+        .map(|(position, row)| (row.address, position))
+        .collect();
+    let mut visited = vec![false; rows.len()];
+    let mut pending = vec![0];
+
+    while let Some(mut position) = pending.pop() {
+        loop {
+            let Some(row) = rows.get(position) else {
+                return true;
+            };
+
+            if std::mem::replace(&mut visited[position], true) {
+                break;
+            }
+
+            let operation = row.operation.as_str();
+            if operation == "bl" || operation.starts_with("blr") || operation.starts_with("br") {
+                return true;
+            }
+            if reads_register(operation, &row.operands, register) {
+                return true;
+            }
+            if operation.starts_with("ret")
+                || written_registers(operation, &row.operands).contains(&register)
+            {
+                break;
+            }
+
+            if is_branch(operation) {
+                let target = row.operands.rsplit(',').next().and_then(number);
+                let Some(&target) = target.and_then(|target| index.get(&target)) else {
+                    return true;
+                };
+                pending.push(target);
+                if operation == "b" {
+                    break;
+                }
+            }
+            position += 1;
+        }
+    }
+    false
+}
+
+/// Whether an instruction reads general register `register`: any operand after the ones that
+/// it only writes. An insertion (`movk`, `bfi`), a compare-and-swap and an atomic operation also
+/// read their first operand.
+fn reads_register(operation: &str, operands: &str, register: usize) -> bool {
+    let reads_first = matches!(operation, "movk" | "bfi" | "bfxil" | "bfm")
+        || operation.starts_with("cas")
+        || is_atomic(operation);
+    let written = if reads_first || is_branch(operation) {
+        0
+    } else {
+        destination_count(operation)
+    };
+
+    operands
+        .split(',')
+        .skip(written)
+        .map(|part| part.trim_start_matches('[').trim_end_matches(['!', ']']))
+        .any(|part| general_register(part) == Some(register))
+}
+
 /// `b`, `b.cond`, `br`, `cbz`, `cbnz`, `tbz`, `tbnz`, `ret` and their pointer-authenticated
 /// forms. `bl` and `blr` are calls.
 fn is_branch(operation: &str) -> bool {
@@ -194,21 +269,24 @@ fn destination_count(operation: &str) -> usize {
     let pair = ["ldp", "ldnp", "ldxp", "ldaxp", "casp"]
         .iter()
         .any(|prefix| operation.starts_with(prefix));
-    // An atomic load-and-operate reads its first operand and writes the loaded value to its
-    // second, so the count includes the operand that is only read.
-    let atomic = [
-        "ldadd", "ldclr", "ldeor", "ldset", "ldsmax", "ldsmin", "ldumax", "ldumin", "swp",
-    ]
-    .iter()
-    .any(|prefix| operation.starts_with(prefix));
 
     if writes_nothing {
         0
-    } else if pair || atomic {
+    } else if pair || is_atomic(operation) {
         2
     } else {
         1
     }
+}
+
+/// An atomic load-and-operate, which reads its first operand and writes the loaded value to its
+/// second, so the destination count includes the operand that is only read.
+fn is_atomic(operation: &str) -> bool {
+    [
+        "ldadd", "ldclr", "ldeor", "ldset", "ldsmax", "ldsmin", "ldumax", "ldumin", "swp",
+    ]
+    .iter()
+    .any(|prefix| operation.starts_with(prefix))
 }
 
 /// The base register of a pre-index (`[x8,#8]!`) or post-index (`[x8],#8`) operand.
@@ -290,6 +368,62 @@ mod tests {
         assert_eq!(general_register("w30"), Some(30));
         for name in ["fp", "lr", "sp", "wsp", "xzr", "wzr", "x31"] {
             assert_eq!(general_register(name), None, "{name}");
+        }
+    }
+
+    fn function(lines: &[(&str, &str)]) -> Vec<Instruction> {
+        lines
+            .iter()
+            .zip((0x100..).step_by(4))
+            .map(|((operation, operands), address)| Instruction {
+                address,
+                bytes: [0; 4],
+                operation: (*operation).into(),
+                operands: (*operands).into(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_register_written_first_on_every_path_is_not_read() {
+        let returns_a_field = function(&[("ldr", "w0,[x0,#0x438]"), ("ret", "")]);
+        let writes_on_both_branches = function(&[
+            ("cbz", "x0,#0x10c"),
+            ("mov", "x8,#1"),
+            ("b", "#0x110"),
+            ("add", "x8,sp,#0x10"),
+            ("str", "x8,[x0]"),
+            ("ret", ""),
+        ]);
+
+        assert!(!reads_before_writing(&returns_a_field, 8));
+        assert!(!reads_before_writing(&writes_on_both_branches, 8));
+    }
+
+    #[test]
+    fn a_read_call_or_exit_before_a_write_counts_as_a_read() {
+        let stores_through_it = function(&[("str", "xzr,[x8]"), ("ret", "")]);
+        let keeps_it = function(&[("mov", "x19,x8"), ("ret", "")]);
+        let calls_first = function(&[("bl", "#0x2000"), ("mov", "x8,#1"), ("ret", "")]);
+        let tail_branches = function(&[("b", "#0x2000")]);
+        let writes_on_one_branch = function(&[
+            ("cbz", "x0,#0x10c"),
+            ("mov", "x8,#1"),
+            ("ret", ""),
+            ("ldr", "x9,[x8]"),
+            ("ret", ""),
+        ]);
+        let inserts = function(&[("movk", "x8,#1,lsl#16"), ("ret", "")]);
+
+        for rows in [
+            stores_through_it,
+            keeps_it,
+            calls_first,
+            tail_branches,
+            writes_on_one_branch,
+            inserts,
+        ] {
+            assert!(reads_before_writing(&rows, 8), "{rows:?}");
         }
     }
 

@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v18`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v19`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -281,7 +281,8 @@ direct evaluation calls supply for `this`, `root`, the `from` chain and the `pre
 **How the engine evaluates a stored block.** A registry item evaluates its own blocks in its
 methods: it passes `this` plus the block's storage offset to a trigger evaluator or an effect
 executor (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffect::Execute`, `ExecuteExtended`,
-`CRootEffect::Execute`), with a scope in `x1`. The method either builds the scope itself
+`CRootEffect::Execute`, and, called directly, `CAndTrigger::ActualEvaluate`, `SafeExecuteEffect`
+and `SafeExecuteEffectExtended`), with a scope in `x1`. The method either builds the scope itself
 (`CTraditionType::IsPotential(CCountry const*)`: a fresh scope, `SetCountry`, then `this + 0x108`)
 or takes it from its caller (`CCouncilAgenda::IsPotential(CEventScope&, CString*)` evaluates
 `this + 0x1c8` with its scope parameter; `CGovernment::UpdateCouncilAgenda` builds that scope).
@@ -299,7 +300,10 @@ scope pointer in the stack reaches a call only in the frame of a stack address t
 receives, at or above that address, and not in a register save: a store of `x19` to `x30` to the
 stack in a function's prologue, before its first other instruction, that no later store has
 overwritten. A virtual call on the object that a proven instance pointer holds calls the slot of
-that object's vtable, so it reads the registers that the slot's signature uses.
+that object's vtable, so it reads the registers that the slot's signature uses. A call receives
+`x8` only when its target may read it ([engine commands](engine-commands.md#pitfalls)), and a
+call that fires an on_action is a scope reader
+([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)).
 
 **Instance pointers** (`callbacks/instances.rs`, `src/binding/binary/instances.rs`). A global word
 that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
@@ -319,7 +323,12 @@ writer that does not decode, rejects it. The method then places the object in th
 with only that word known. On M452 the block input proves one pointer,
 `TPdxNullObject<CTraditionSwap>::_pInstance`. The null ship's pointer is not proven: 66 functions
 may store it and their searches stop at the path limit. The proof runs about 2,900 writers and
-adds about 1.4 s to the block input; narrow the writer test if that grows.
+adds about 1.4 s to the block input; narrow the writer test if that grows. It serves one call
+site on M452, `ExecuteTradition` → `CTraditionType::GetUnlocksAgenda` (council agenda `potential`
+and `allow`), and stays because no other rule reads that virtual call's registers. None of the
+SDK-712 shapes goes through an instance pointer, so it was not extended; prove more pointers only
+with a plan review, because a deeper search or a weaker writer rule changes a stated soundness
+rule.
 
 **Assumptions.** Beside the self-link rule:
 
@@ -345,15 +354,27 @@ adds about 1.4 s to the block input; narrow the writer test if that grows.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 118 have contexts and no entry gap, 46 have contexts
-and a gap, 75 have none. 20 blocks keep several contexts with a known `this`, 47 name a typed
-`from` and 2 a typed `prev`. 3 registries have 4 evaluation calls whose
-block the method cannot name. The two rules above changed 10 blocks in 6 registries, and each
-change only removes an unresolved context and its gaps: the register saves those of astral action
-`potential` and `is_exhausted`, colony type, observation mission and system type `potential`, and
-diplomatic action `potential`, `possible` and `proposable`; the instance pointer those of council
-agenda `potential` and `allow`. These call sites were checked by hand in the disassembly:
+effect blocks in 82 of the 164 registries: 126 have contexts and no entry gap, 46 have contexts
+and a gap, 67 have none. 22 blocks keep several contexts with a known `this`, 53 name a typed
+`from` and 2 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
+name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
+context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
+colony type, observation mission and system type `potential`, and diplomatic action `potential`,
+`possible` and `proposable`; the instance pointer those of council agenda `potential` and
+`allow`. SDK-712 changed 15 blocks in 9 registries, and each change only adds a context, removes
+an unresolved one or narrows a gap: the new direct evaluators add armies `potential` and
+`potential_country`, megastructure `outliner_trigger`, `dismantle_potential` and
+`should_ai_dismantle`, and button effect `effect` (an unreadable context, from
+`CButtonEffect::ExecuteEffect`); `x8` and the firing readers resolve megastructure
+`on_build_start` and `on_build_complete`; `ands` and `bics` open pop faction `can_join_faction`,
+pop job `possible` and the buildings `on_queued` paths, and situation `on_abort` gains a context.
+Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
+a trigger in an element of a component list, not `this` plus an offset. These call sites were
+checked by hand in the disassembly:
 
+- armies `potential`: `CArmyType::IsPotentialTrigger` builds a colony scope at `sp+0x170`, sets a
+  second scope's type to species (`Set(0x800, …)`), links it as from (`str x21,[sp,#0x1a8]`) and
+  passes `this + 0x4f8` to `CAndTrigger::ActualEvaluate`.
 - council agenda `potential` and `allow`: `CGovernment::UpdateCouncilAgenda` builds a country scope
   and calls `IsPotential` and then `IsAllowed` with it (`this + 0x1c8`, `this + 0x280`).
   `CAIInteriorMinister::HandleCouncilAgenda` passes its country scope through
@@ -369,14 +390,16 @@ agenda `potential` and `allow`. These call sites were checked by hand in the dis
 - tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`,
   a virtual call, so the block has a gap.
 
-**Comparison with the config's `replace_scopes`** (M451-hotfix; the M452 changes above remove only
-unresolved contexts). Read through the self-link rule, comparing the
+**Comparison with the config's `replace_scopes`** (M451-hotfix; the SDK-726 changes above remove
+only unresolved contexts, and of the SDK-712 changes only armies `potential` disagrees). Read through the self-link rule, comparing the
 keys that the config states (`system` is the engine's `galactic_object`; `any` matches any scope):
 107 blocks have a readable context and a config expectation. 82 agree, 5 agree on the stated keys
 where the engine also sets a first link that the config omits, and 20 disagree. 103 blocks have no
 readable context and 27 have no `replace_scopes`. Each disagreement was read by hand:
 
-- **Source errors (10).** The engine agrees with Native. Armies `on_built`, `on_queued` and
+- **Source errors (10).** The engine agrees with Native. Armies `potential` (SDK-712, M452) is an
+  eleventh: the config gives a country, but `CArmyType::IsPotentialTrigger` evaluates it on a
+  colony with a species from. Armies `on_built`, `on_queued` and
   `on_unqueued` run on a colony with no from (`CArmyType::OnBuilt`: `SetColony`), not a planet with a
   species from. Starbase building and module `abort_trigger` and `destroy_trigger` run on a starbase
   with no from (`ShouldAbort`, `ShouldDestroy`: `SetStarbase`). Overclock `potential` and `possible`
@@ -401,12 +424,24 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
 
 **Gaps.**
 
-- 63 blocks have no direct evaluation in the owner's methods: they run through a virtual call
-  (tradition `on_enabled` and `on_disabled`), outside the owner's methods, or only as nested blocks.
+- 57 blocks have no direct evaluation in the owner's methods. Most run through the block object's
+  own virtual `Execute` or `Evaluate` slot in another class's method, such as `CMission::Start` on
+  its mission type, or in the owner through a `csel` of two objects (tradition `on_enabled` and
+  `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it from a getter, or
+  run only as nested blocks (SDK-732). Weight blocks are outside the method (SDK-733).
 - 35 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
-- Path, loop and step limits are gaps only where a contradiction appears (36 path, 15 loop).
+  The main shapes: a setter or filler whose scope type is a run-time value
+  (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
+  `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a scope that a factory
+  returns or that is copied (all psionic aura fields through `CPsionicAura::InitAuraScope`,
+  SDK-730); a `from` that is the caller's scope parameter (megastructure `potential`, `possible`,
+  `context_menu_potential`); a scope that is a member of a parameter or heap object (event chain
+  `abort_trigger`, casus belli `is_valid`); and a helper that the pass enters and that stops at the
+  path limit (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
+- Path, loop and step limits are gaps only where a contradiction appears (34 path, 14 loop); 8
+  stop at a branch on an unknown value and 4 at an instruction.
 - 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
-  (`caller-depth`). Weights, script values, modifier blocks and nested blocks are outside the method.
+  (`caller-depth`). Script values and modifier blocks are outside the method.
 
 Pitfalls:
 

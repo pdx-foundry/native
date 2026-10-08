@@ -1958,7 +1958,52 @@
   "entry_contexts": [
    {
     "from": [
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      "SelfLink"
@@ -2143,7 +2188,19 @@
   "entry_contexts": [
    {
     "from": [
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      {
@@ -2164,7 +2221,19 @@
    },
    {
     "from": [
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      "SelfLink"
@@ -3696,7 +3765,23 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "8bb6b317643be13a",
+      "name": "megastructure"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "outliner_trigger",
   "read": [
@@ -5363,7 +5448,29 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "8bb6b317643be13a",
+      "name": "megastructure"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "dismantle_potential",
   "read": [
@@ -5423,7 +5530,29 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "8bb6b317643be13a",
+      "name": "megastructure"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "should_ai_dismantle",
   "read": [

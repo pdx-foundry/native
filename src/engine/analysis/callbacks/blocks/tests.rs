@@ -32,6 +32,7 @@ struct Program {
     arguments: BTreeMap<u64, usize>,
     call_arguments: BTreeMap<u64, usize>,
     receivers: BTreeSet<u64>,
+    readers: BTreeSet<u64>,
     instances: BTreeMap<u64, u64>,
     words: BTreeMap<u64, u64>,
 }
@@ -44,9 +45,16 @@ impl Program {
             arguments: BTreeMap::new(),
             call_arguments: BTreeMap::new(),
             receivers: BTreeSet::new(),
+            readers: BTreeSet::new(),
             instances: BTreeMap::new(),
             words: BTreeMap::new(),
         }
+    }
+
+    /// A function that receives a scope and changes no type or link.
+    fn reader(mut self, function: u64) -> Self {
+        self.readers.insert(function);
+        self
     }
 
     /// The instance pointer at `pointer` holds an object with the vtable at `point`, and `words`
@@ -125,7 +133,7 @@ impl Program {
                 setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, PASSES_ON]),
                 copies: BTreeSet::from([COPY]),
                 destructors: BTreeSet::new(),
-                readers: BTreeSet::new(),
+                readers: self.readers,
             },
             strings: StringFunctions::default(),
             data: ReadOnlyData::default().with_words(&self.words),
@@ -133,6 +141,7 @@ impl Program {
             scope_names: None,
             arguments: self.arguments,
             call_arguments: self.call_arguments,
+            ignores_x8: BTreeSet::new(),
             instances: self.instances,
             receivers: self.receivers,
             never_return: BTreeSet::from([NEVER_RETURNS]),
@@ -510,6 +519,24 @@ fn a_scope_passed_to_an_unknown_call_between_evaluations_is_unresolved() {
 
     assert_eq!(contexts(&result, POTENTIAL), [unreadable()]);
     assert_eq!(contexts(&result, ALLOW), [unreadable()]);
+}
+
+#[test]
+fn a_scope_that_a_reader_receives_between_evaluations_stays_known() {
+    let between = [(0x1018, "add", "x2,sp,#0x100"), (0x101c, "bl", "#0x9700")];
+    let run = |program: Program| {
+        program
+            .function(&evaluates_both(&between))
+            .method(&wrapper(0x2000, POTENTIAL_OF_X19))
+            .method(&wrapper(0x2100, ALLOW_OF_X19))
+            .analyze()
+    };
+
+    assert_eq!(
+        contexts(&run(Program::new().reader(0x9700)), ALLOW),
+        [fresh(COUNTRY)]
+    );
+    assert_eq!(contexts(&run(Program::new()), ALLOW), [unreadable()]);
 }
 
 #[test]

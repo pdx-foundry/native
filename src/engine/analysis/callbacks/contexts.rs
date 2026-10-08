@@ -13,14 +13,18 @@
 //! reach it, or is linked from an escaped object. A call reads the argument registers that its
 //! signature uses, or all of them when the signature is not known; a virtual call on the object
 //! that a proven instance pointer holds has a known target ([`super::instances`]), so its
-//! signature is known. It reaches all memory outside the stack, and the stack from each stack
-//! address that it receives, or that is stored in what it reaches, up to the top of the frame
-//! that holds that address, except the register saves of each function's prologue
-//! ([`Machine::is_register_save`]). From that call on, every call that
-//! the pass does not follow makes the slots of every escaped object unknown. Until it escapes, a
-//! store to an unknown address leaves its slots known. The pass assumes that a callee that
-//! receives a pointer to another member of the object does not write its type or links, and that
-//! no stack array indexed by an unknown value reaches a scope object.
+//! signature is known. A call reads `x8`, the address of a returned object, only when its target
+//! may read `x8` before writing it; this relies on the ABI, as the signature rule does: compiled
+//! code never reads a caller-saved register after a call for its value before the call. A
+//! *reader*, such as a call that fires an on_action, receives a scope but changes no type or link
+//! and keeps no pointer, so it is not a call that makes a scope escape. A call reaches all memory
+//! outside the stack, and the stack from each stack address that it receives, or that is stored
+//! in what it reaches, up to the top of the frame that holds that address, except the register
+//! saves of each function's prologue ([`Machine::is_register_save`]). From that call on, every
+//! call that the pass does not follow makes the slots of every escaped object unknown. Until it
+//! escapes, a store to an unknown address leaves its slots known. The pass assumes that a callee
+//! that receives a pointer to another member of the object does not write its type or links, and
+//! that no stack array indexed by an unknown value reaches a scope object.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{CallbackLayout, Context, Slot};
@@ -42,9 +46,6 @@ const ESCAPED: u64 = 2;
 /// How deep the pass follows scope functions that call each other.
 const CALL_DEPTH: usize = 3;
 
-/// How many `from` or `prev` links the pass reads.
-const CHAIN_DEPTH: usize = 4;
-
 /// Scratch size of a list that a lookup returns.
 const LIST_SIZE: u64 = 16;
 
@@ -59,7 +60,8 @@ pub struct ScopeFunctions {
     pub copies: BTreeSet<u64>,
     /// Destructors: the object is no longer tracked.
     pub destructors: BTreeSet<u64>,
-    /// `const` members, which write nothing.
+    /// Functions that receive a scope but change no scope's type or links and keep no pointer
+    /// to one: `const` members, `AccessVariables` and the calls that fire an on_action.
     pub readers: BTreeSet<u64>,
 }
 
@@ -153,6 +155,8 @@ pub(super) struct Runner<'a> {
     /// How many argument registers a call through a pointer reads, by the call instruction, when
     /// the binding knows what the pointer holds.
     pub call_arguments: &'a BTreeMap<u64, usize>,
+    /// Functions that ignore the `x8` that they receive.
+    pub ignores_x8: &'a BTreeSet<u64>,
 }
 
 impl Runner<'_> {
@@ -444,14 +448,16 @@ impl Runner<'_> {
 
     /// The registers that the call at `call` to `target` can read its arguments from: the
     /// argument registers that its signature uses, and `x8`, which holds the address of a
-    /// returned object.
+    /// returned object, unless the target ignores it.
     fn passed(&self, target: Option<u64>, call: u64) -> impl Iterator<Item = usize> + use<> {
         let count = target
             .and_then(|target| self.arguments.get(&target))
             .or_else(|| self.call_arguments.get(&call))
             .copied()
             .unwrap_or(8);
-        (0..count.min(8)).chain([8])
+        let result_address = target.is_none_or(|target| !self.ignores_x8.contains(&target));
+
+        (0..count.min(8)).chain(result_address.then_some(8))
     }
 
     /// A call that the pass does not follow may change any object that has escaped, and it
@@ -590,8 +596,7 @@ impl Runner<'_> {
     }
 
     /// The slots along the chain of links at `link_offset` from `scope`. The chain ends after the
-    /// first slot that `continues` rejects, and after [`CHAIN_DEPTH`] links; a link back into the
-    /// chain is unresolved.
+    /// first slot that `continues` rejects; a link back into the chain is unresolved.
     fn chain(
         &self,
         machine: &Machine<'_>,
@@ -603,11 +608,6 @@ impl Runner<'_> {
         let mut visited = vec![scope];
         let mut holder = scope;
         loop {
-            if slots.len() == CHAIN_DEPTH {
-                slots.push(Slot::Unresolved);
-                break;
-            }
-
             let link = machine.read(holder + link_offset, 8);
             let slot = match link {
                 None => Slot::Unresolved,
