@@ -164,7 +164,7 @@ pub(super) enum Selected {
 
 /// What the read calls that one selected call reaches receive.
 #[derive(Debug, Clone, Default)]
-pub(super) struct Evaluations {
+pub(super) struct CallReads {
     /// Each read call that a path reached, with the literal that the path proves for its subject
     /// and the context of the scope that it received.
     pub reached: Vec<(u64, Option<u64>, Context)>,
@@ -175,7 +175,7 @@ pub(super) struct Evaluations {
     pub bounded: Vec<Unresolved>,
 }
 
-impl Evaluations {
+impl CallReads {
     fn record(&mut self, unresolved: Unresolved) {
         if unresolved.is_bound() {
             self.bounded.push(unresolved);
@@ -236,7 +236,7 @@ impl Runner<'_> {
     ///
     /// Before the site, read calls act only through their effects, so a read of a scope that the
     /// function received gives nothing.
-    pub fn evaluations(
+    pub fn read_calls(
         &self,
         code: &Code,
         entry: u64,
@@ -244,13 +244,13 @@ impl Runner<'_> {
         selected: Selected,
         calls: &EntryCalls<'_>,
         reads: &BTreeMap<u64, Read>,
-    ) -> Evaluations {
+    ) -> CallReads {
         let machine = Machine::new(code, self.data);
         let prefix = machine.run_paths_to(entry, site, &mut |target, machine| {
             Ok(self.entry_call(target, machine, calls))
         });
 
-        let mut result = Evaluations::default();
+        let mut result = CallReads::default();
         for path in prefix {
             match path.end {
                 Ok(Exit::Reached) => {}

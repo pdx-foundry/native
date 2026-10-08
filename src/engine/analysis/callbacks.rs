@@ -44,7 +44,7 @@ pub use contexts::ScopeFunctions;
 pub use names::StringFunctions;
 
 use climb::{CallSite, Decoded, Wrapper};
-use contexts::{EntryCalls, Evaluations, Read, Runner, SiteContexts, Subject};
+use contexts::{CallReads, EntryCalls, Read, Runner, SiteContexts, Subject};
 use names::{Fact, State};
 
 /// Name and revision of this static method.
@@ -551,7 +551,7 @@ fn climbed_contexts<'s>(
     };
     for entry in climb.entries {
         let run = match climb::entry_code(&decoded, &climb.wrappers, entry.function) {
-            Some(code) => runner.evaluations(
+            Some(code) => runner.read_calls(
                 &code,
                 entry.function,
                 entry.site,
@@ -559,9 +559,9 @@ fn climbed_contexts<'s>(
                 &calls,
                 &reads,
             ),
-            None => Evaluations {
+            None => CallReads {
                 unresolved: vec![Unresolved::new("caller-not-decoded")],
-                ..Evaluations::default()
+                ..CallReads::default()
             },
         };
 

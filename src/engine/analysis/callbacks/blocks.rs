@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::climb::{self, CallSite, Decoded, Entry, Wrapper};
 use super::contexts::{
-    EVALUATED_SCOPE, EntryCalls, Evaluations, Read, Runner, ScopeFunctions, Selected, Subject,
+    CallReads, EVALUATED_SCOPE, EntryCalls, Read, Runner, ScopeFunctions, Selected, Subject,
 };
 use super::instances;
 use super::names::{self, Fact, StringFunctions};
@@ -275,7 +275,7 @@ fn collect_contexts(
     for entry in entries {
         let run = match climb::entry_code(decoded, &entered, entry.function) {
             Some(code) => {
-                let found = runner.evaluations(
+                let found = runner.read_calls(
                     &code,
                     entry.function,
                     entry.site,
@@ -287,7 +287,7 @@ fn collect_contexts(
             }
             None => EntryRun {
                 unresolved: vec![Unresolved::new("site-not-decoded")],
-                ..entry_run(entry, Evaluations::default(), evaluations)
+                ..entry_run(entry, CallReads::default(), evaluations)
             },
         };
 
@@ -311,7 +311,7 @@ fn collect_contexts(
 /// that the name pass attributed, and why some path stopped.
 fn entry_run(
     entry: Entry<Block>,
-    found: Evaluations,
+    found: CallReads,
     evaluations: &BTreeMap<u64, Block>,
 ) -> EntryRun {
     let reached: BTreeSet<(u64, Block, Context)> = found

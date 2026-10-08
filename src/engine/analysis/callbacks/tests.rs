@@ -2255,10 +2255,6 @@ fn passes_on(base: u64, callee: &'static str) -> Vec<(u64, &'static str, &'stati
     ]
 }
 
-fn unresolved_reasons(result: &CallbacksResult, name: &str) -> Vec<&'static str> {
-    result.on_actions[name].unresolved.iter().copied().collect()
-}
-
 #[test]
 fn a_scope_that_a_caller_builds_reaches_a_function_that_fires_its_parameter() {
     let caller = passes_country("x0,sp,#0x100", "#0x2000");
@@ -2275,7 +2271,7 @@ fn a_scope_that_a_caller_builds_reaches_a_function_that_fires_its_parameter() {
         contexts(&result, "on_test"),
         [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
     );
-    assert!(unresolved_reasons(&result, "on_test").is_empty());
+    assert!(result.on_actions["on_test"].unresolved.is_empty());
 }
 
 #[test]
@@ -2309,7 +2305,10 @@ fn a_fired_parameter_with_no_caller_is_charged_no_caller() {
     );
 
     assert!(contexts(&result, "on_test").is_empty());
-    assert_eq!(unresolved_reasons(&result, "on_test"), ["no-caller"]);
+    assert_eq!(
+        result.on_actions["on_test"].unresolved,
+        BTreeSet::from(["no-caller"])
+    );
 }
 
 #[test]
@@ -2335,7 +2334,10 @@ fn a_scope_passed_on_three_callers_up_is_charged_caller_depth() {
     );
 
     assert!(contexts(&result, "on_test").is_empty());
-    assert_eq!(unresolved_reasons(&result, "on_test"), ["caller-depth"]);
+    assert_eq!(
+        result.on_actions["on_test"].unresolved,
+        BTreeSet::from(["caller-depth"])
+    );
 }
 
 #[test]
@@ -2469,17 +2471,13 @@ fn evaluates_scope_parameter(rules: &[&'static str], reader: bool) -> CallbacksR
     analyze(&program.input(), Family::GameRule).unwrap()
 }
 
-fn scripted_contexts(result: &CallbacksResult, name: &str) -> Vec<Context> {
-    scripted(result, name).contexts.iter().cloned().collect()
-}
-
 #[test]
 fn a_rule_wrapper_keeps_its_rule_name_and_takes_its_callers_scope() {
     let result = evaluates_scope_parameter(&["x0,x19,#0xc0"], true);
 
     assert_eq!(
-        scripted_contexts(&result, "can_b"),
-        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+        scripted(&result, "can_b").contexts,
+        BTreeSet::from([context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])])
     );
 }
 
@@ -2489,12 +2487,12 @@ fn two_rule_evaluations_in_one_wrapper_both_receive_the_scope_when_the_rule_is_a
     let read = evaluates_scope_parameter(&rules, true);
     let unfollowed = evaluates_scope_parameter(&rules, false);
 
-    let known = [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])];
-    assert_eq!(scripted_contexts(&read, "can_a"), known);
-    assert_eq!(scripted_contexts(&read, "can_b"), known);
+    let known = BTreeSet::from([context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]);
+    assert_eq!(scripted(&read, "can_a").contexts, known);
+    assert_eq!(scripted(&read, "can_b").contexts, known);
     assert_eq!(
-        scripted_contexts(&unfollowed, "can_b"),
-        [unresolved()],
+        scripted(&unfollowed, "can_b").contexts,
+        BTreeSet::from([unresolved()]),
         "an unfollowed first evaluation lets the scope escape"
     );
 }
