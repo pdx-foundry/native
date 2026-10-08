@@ -862,8 +862,8 @@ fn callers_with_different_scopes_give_two_contexts_and_equal_ones_merge() {
 }
 
 #[test]
-fn a_call_that_takes_no_arguments_does_not_receive_a_scope_left_in_a_register() {
-    let before = [(0x2008, "bl", "#0x9500")];
+fn a_call_does_not_receive_a_scope_left_in_a_register_that_its_signature_does_not_use() {
+    let before = [(0x2008, "bl", "#0x9500")]; // x1 still holds the scope
     let run = |program: Program| {
         program
             .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
@@ -873,6 +873,10 @@ fn a_call_that_takes_no_arguments_does_not_receive_a_scope_left_in_a_register() 
 
     assert_eq!(
         contexts(&run(Program::new().arguments(0x9500, 0)), POTENTIAL),
+        [fresh(COUNTRY)]
+    );
+    assert_eq!(
+        contexts(&run(Program::new().arguments(0x9500, 1)), POTENTIAL),
         [fresh(COUNTRY)]
     );
     assert_eq!(

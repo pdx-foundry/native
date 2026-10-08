@@ -414,11 +414,32 @@ fn decode_receivers(
     receivers
 }
 
-/// What the stack probe reads: it takes its size in `x15` and no argument register.
-const IMPORT_ARGUMENTS: &[(&str, usize)] = &[("___chkstk_darwin", 0)];
+/// How many argument registers the C library functions that the decoded code calls read, by
+/// their raw names, which have no parameter list. The C and POSIX standards fix these
+/// signatures. `_fmodf` takes its arguments in floating-point registers, and the stack probe
+/// takes its size in `x15`.
+const LIBRARY_ARGUMENTS: &[(&str, usize)] = &[
+    ("___chkstk_darwin", 0),
+    ("_bzero", 2),
+    ("_fmodf", 0),
+    ("_memcmp", 3),
+    ("_memcpy", 3),
+    ("_memmove", 3),
+    ("_memset", 3),
+    ("_strcmp", 2),
+    ("_strlen", 1),
+];
+
+/// How many argument registers the C library function `name` reads, from [`LIBRARY_ARGUMENTS`].
+fn library_arguments(name: &str) -> Option<usize> {
+    LIBRARY_ARGUMENTS
+        .iter()
+        .find(|(function, _)| *function == name)
+        .map(|(_, count)| *count)
+}
 
 /// How many argument registers each call through an import pointer reads, for the imports in
-/// [`IMPORT_ARGUMENTS`], by the call instruction. The call loads the pointer with `adrp` and
+/// [`LIBRARY_ARGUMENTS`], by the call instruction. The call loads the pointer with `adrp` and
 /// `ldr` into the register that it calls through.
 fn import_call_arguments(
     functions: &BTreeMap<u64, Vec<Instruction>>,
@@ -453,8 +474,8 @@ fn import_call_arguments(
             let Some(name) = imports.get(&(page_target + offset)) else {
                 continue;
             };
-            if let Some((_, count)) = IMPORT_ARGUMENTS.iter().find(|(import, _)| import == name) {
-                calls.insert(call.address, *count);
+            if let Some(count) = library_arguments(name) {
+                calls.insert(call.address, count);
             }
         }
     }
@@ -569,12 +590,15 @@ fn callees_ignoring_x8<'r>(
         .collect()
 }
 
-/// How many argument registers, from `x0`, each function whose signature the symbol states
-/// reads. A function whose count is not known is left out.
+/// How many argument registers, from `x0`, each function reads whose signature the symbol states
+/// or whose stub [`LIBRARY_ARGUMENTS`] lists. A function whose count is not known is left out.
 fn argument_registers(symbols: &[Symbol]) -> BTreeMap<u64, usize> {
     symbols
         .iter()
-        .filter_map(|symbol| Some((symbol.address, registers_read(&symbol.name)?)))
+        .filter_map(|symbol| {
+            let count = registers_read(&symbol.name).or_else(|| library_arguments(&symbol.name))?;
+            Some((symbol.address, count))
+        })
         .collect()
 }
 
@@ -832,8 +856,9 @@ fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{constructs_at_x8, import_call_arguments, registers_read};
+    use super::{argument_registers, constructs_at_x8, import_call_arguments, registers_read};
     use crate::engine::analysis::decode::Instruction;
+    use crate::engine::analysis::discovery::Symbol;
 
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
         Instruction {
@@ -858,7 +883,7 @@ mod tests {
         ];
         let imports = BTreeMap::from([
             (0x5dc8, "___chkstk_darwin".to_string()),
-            (0x5010, "_memcpy".to_string()),
+            (0x5010, "_PMurHash32".to_string()),
         ]);
 
         assert_eq!(
@@ -909,6 +934,24 @@ mod tests {
                 "(anonymous namespace)::ExecuteTradition(CTraditionType const&, CCountry&)"
             ),
             Some(3)
+        );
+    }
+
+    #[test]
+    fn a_c_library_stub_reads_the_registers_that_its_standard_signature_uses() {
+        let symbols = [
+            ("_strlen", 0x100),
+            ("_memmove", 0x10c),
+            ("_PMurHash32", 0x118),
+        ]
+        .map(|(name, address)| Symbol {
+            name: name.into(),
+            address,
+        });
+
+        assert_eq!(
+            argument_registers(&symbols),
+            BTreeMap::from([(0x100, 1), (0x10c, 3)])
         );
     }
 

@@ -355,7 +355,8 @@ hidden each site. `on_ruler_created` reaches a hidden site with its known contex
 now also reach the path limit. SDK-730, which follows copies and scope factories, gave a context
 with no unresolved scope to the four astral rift names, which had only unresolved contexts:
 `CAstralRift::Finish` and the other callers fire the scope that `MakeCountryEventScope` or
-`MakeAstralRiftEventScope` returns. These call sites were checked by hand in the disassembly:
+`MakeAstralRiftEventScope` returns. SDK-734, which gives C library stubs their argument
+registers, changed no on_action or rule. These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
