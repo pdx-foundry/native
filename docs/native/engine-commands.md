@@ -262,7 +262,13 @@ The engine has no documentation dump for either.
   country, from the astral rift, fromfrom a fleet) and `MakeAstralRiftEventScope(int, int)`
   (`0x100f39920`: the astral rift, from a fleet), checked by hand. The others are
   `CPsionicAura::InitModifierScope`, `CEventTarget::GetScope` and
-  `SEventPictureData::GetPortraitScope`.
+  `SEventPictureData::GetPortraitScope`. The binding selects a factory among the direct callees of
+  the decoded functions with a scan in address order that ignores branches
+  (`constructs_at_x8`): it follows the entry `x8` through `mov` to the `x0` of a call to a scope
+  constructor. The pass runs the selected code, so a false selection costs search paths and can
+  bring a site to a search bound, and a missed factory stays an unfollowed call. Replace the scan
+  with a branch-aware register flow when a factory is missed, or when a selected function that
+  builds no scope in `x8` costs an answer.
 - **Game rules.** A game rule is a member of the rule set: `CGameRules::CanColonizePlanet` builds
   a scope and calls `CScriptedRule::Evaluate(this + 20 * 0xc0, scope, …)`. Weighted rules start at
   `this + 0x9cc0`, `0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration
