@@ -2,8 +2,8 @@
 use std::collections::BTreeMap;
 
 use super::super::tests::{
-    COPY, COUNTRY, FRESH, LEADER, PASSES_ON, Rows, SET_COUNTRY, SET_LEADER, layout, rows,
-    scope_code,
+    COPY, COPY_CONSTRUCT, COPY_INTERNAL, COUNTRY, DESTROY, FACTORY, FACTORY_FROM, FRESH, LEADER,
+    PASSES_ON, Rows, SET_COUNTRY, SET_LEADER, layout, rows, scope_code,
 };
 use super::*;
 use crate::engine::analysis::callbacks::{Context, Slot};
@@ -35,6 +35,7 @@ struct Program {
     readers: BTreeSet<u64>,
     instances: BTreeMap<u64, u64>,
     words: BTreeMap<u64, u64>,
+    factories: BTreeMap<u64, Vec<Instruction>>,
 }
 
 impl Program {
@@ -48,6 +49,7 @@ impl Program {
             readers: BTreeSet::new(),
             instances: BTreeMap::new(),
             words: BTreeMap::new(),
+            factories: BTreeMap::new(),
         }
     }
 
@@ -80,6 +82,12 @@ impl Program {
     /// `function` reads `count` argument registers.
     fn arguments(mut self, function: u64, count: usize) -> Self {
         self.arguments.insert(function, count);
+        self
+    }
+
+    /// A function that builds a scope in the object that `x8` addresses.
+    fn factory(mut self, lines: Rows<'_>) -> Self {
+        self.factories.insert(lines[0].0, rows(lines));
         self
     }
 
@@ -127,12 +135,18 @@ impl Program {
             scope_users: BTreeSet::from([TOOLTIP]),
             functions: self.functions,
             callers,
-            scope_code: scope_code(),
+            scope_code: scope_code()
+                .into_iter()
+                .chain(self.factories.values().flatten().cloned())
+                .collect(),
             scope_functions: ScopeFunctions {
                 fresh_constructors: BTreeSet::from([FRESH]),
                 setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, PASSES_ON]),
+                copy_constructors: BTreeSet::from([COPY_CONSTRUCT]),
+                internal_copies: BTreeSet::from([COPY_INTERNAL]),
                 copies: BTreeSet::from([COPY]),
-                destructors: BTreeSet::new(),
+                factories: self.factories.into_keys().collect(),
+                destructors: BTreeSet::from([DESTROY]),
                 readers: self.readers,
             },
             strings: StringFunctions::default(),
@@ -249,6 +263,31 @@ fn a_scope_that_the_method_builds_reaches_its_block() {
 
     assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
     assert!(result.unattributed.is_empty());
+}
+
+#[test]
+fn a_scope_that_a_factory_returns_reaches_its_block() {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "mov", "x21,x0"),
+        (0x1008, "add", "x8,sp,#0x100"),
+        (0x100c, "bl", "#0x8d00"),
+        (0x1010, "add", "x0,x21,#0x40"),
+        (0x1014, "add", "x1,sp,#0x100"),
+        (0x1018, "bl", "#0x9400"),
+        (0x101c, "ret", ""),
+    ];
+    let followed = Program::new().factory(FACTORY).method(&lines).analyze();
+    let unfollowed = Program::new().method(&lines).analyze();
+
+    assert_eq!(
+        contexts(&followed, POTENTIAL),
+        [Context {
+            from: FACTORY_FROM.to_vec(),
+            ..fresh(COUNTRY)
+        }]
+    );
+    assert_eq!(contexts(&unfollowed, POTENTIAL), [unreadable()]);
 }
 
 #[test]

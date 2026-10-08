@@ -56,6 +56,8 @@ pub struct CallbackLayout {
     pub scope_root_offset: u64,
     pub scope_from_offset: u64,
     pub scope_prev_offset: u64,
+    /// Size of a scope object, as `CopyInternalScopes` allocates it.
+    pub scope_size: u64,
     /// Where each family's rule objects are in the rule set.
     pub scripted_rules: RuleArray,
     pub weighted_rules: RuleArray,
