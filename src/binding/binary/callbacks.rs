@@ -200,7 +200,11 @@ pub(in crate::binding) fn callbacks(
     }
 
     let call_arguments = import_call_arguments(&functions, imports);
-    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
+    let ignores_x8 = callees_ignoring_x8(
+        &text,
+        symbols,
+        functions.values().flatten().chain(&scope_code),
+    );
     let instances = instances(&text, image, bound_slots, &functions)?;
     Ok(CallbacksInput {
         functions,
@@ -343,7 +347,11 @@ pub(in crate::binding) fn block_evaluations(
     scope_functions.factories =
         scope_factories(&text, functions.values().flatten(), &scope_functions);
     let scope_code = scope_code(&text, &scope_functions);
-    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
+    let ignores_x8 = callees_ignoring_x8(
+        &text,
+        symbols,
+        functions.values().flatten().chain(&scope_code),
+    );
     let instances = instances(&text, image, bound_slots, &functions)?;
 
     Ok(BlockInput {
@@ -571,12 +579,19 @@ fn constructs_at_x8(rows: &[Instruction], constructors: &BTreeSet<u64>) -> bool 
 }
 
 /// The targets of the direct calls in `rows` that ignore the `x8` that they receive: no path
-/// reads it before writing it. A demangled name does not state whether a function returns an
-/// object in memory, so its code decides whether a call to it receives `x8`.
+/// reads it before writing it, or the target is the stub of a function in [`LIBRARY_ARGUMENTS`],
+/// which returns no object in memory. A demangled name does not state whether a function returns
+/// an object in memory, so its code decides whether a call to it receives `x8`.
 fn callees_ignoring_x8<'r>(
     text: &Text,
+    symbols: &[Symbol],
     rows: impl Iterator<Item = &'r Instruction>,
 ) -> BTreeSet<u64> {
+    let stubs: BTreeSet<u64> = symbols
+        .iter()
+        .filter(|symbol| library_arguments(&symbol.name).is_some())
+        .map(|symbol| symbol.address)
+        .collect();
     let targets: BTreeSet<u64> = rows
         .filter(|row| row.operation == "bl")
         .filter_map(|row| number(&row.operands))
@@ -585,7 +600,8 @@ fn callees_ignoring_x8<'r>(
     targets
         .into_iter()
         .filter(|&target| {
-            decoded(text, target).is_some_and(|callee| !reads_before_writing(&callee, 8))
+            stubs.contains(&target)
+                || decoded(text, target).is_some_and(|callee| !reads_before_writing(&callee, 8))
         })
         .collect()
 }

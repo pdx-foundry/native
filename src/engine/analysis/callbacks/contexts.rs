@@ -188,7 +188,7 @@ pub(super) struct Runner<'a> {
     /// listed may read `x0` to `x7`.
     pub arguments: &'a BTreeMap<u64, usize>,
     /// How many argument registers a call through a pointer reads, by the call instruction, when
-    /// the binding knows what the pointer holds.
+    /// the binding knows what the pointer holds. Such a call does not receive `x8`.
     pub call_arguments: &'a BTreeMap<u64, usize>,
     /// Functions that ignore the `x8` that they receive.
     pub ignores_x8: &'a BTreeSet<u64>,
@@ -583,12 +583,16 @@ impl Runner<'_> {
     /// argument registers that its signature uses, and `x8`, which holds the address of a
     /// returned object, unless the target ignores it.
     fn passed(&self, target: Option<u64>, call: u64) -> impl Iterator<Item = usize> + use<> {
+        let pointer_arguments = self.call_arguments.get(&call);
         let count = target
             .and_then(|target| self.arguments.get(&target))
-            .or_else(|| self.call_arguments.get(&call))
+            .or(pointer_arguments)
             .copied()
             .unwrap_or(8);
-        let result_address = target.is_none_or(|target| !self.ignores_x8.contains(&target));
+        let result_address = match target {
+            Some(target) => !self.ignores_x8.contains(&target),
+            None => pointer_arguments.is_none(),
+        };
 
         (0..count.min(8)).chain(result_address.then_some(8))
     }

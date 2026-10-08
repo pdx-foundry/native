@@ -296,8 +296,8 @@ scope, up to 6 calls deep, inline on the path with the caller's arguments and me
 selected call, evaluations act only through their effects. A call reads the argument registers that
 its demangled signature uses; a call to a C library function, direct to its stub or through an
 import pointer, reads those that the C or POSIX signature uses (`LIBRARY_ARGUMENTS`: `_strlen`
-one, `_memmove` three, the stack probe `___chkstk_darwin` none); a call to a function that never
-returns ends the path. A copy of a
+one, `_memmove` three, the stack probe `___chkstk_darwin` none) and not `x8`; a call to a
+function that never returns ends the path. A copy of a
 scope pointer in the stack reaches a call only in the frame of a stack address that the call
 receives, at or above that address, and not in a register save: a store of `x19` to `x30` to the
 stack in a function's prologue, before its first other instruction, that no later store has
@@ -359,8 +359,8 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 136 have contexts and no entry gap, 36 have contexts
-and a gap, 67 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
+effect blocks in 82 of the 164 registries: 136 have contexts and no entry gap, 37 have contexts
+and a gap, 66 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
 `from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
 context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
@@ -383,11 +383,14 @@ SDK-730, which follows copies and scope factories
 8 psionic aura blocks: each gains a galactic object context with a country from, from the scope
 that `CPsionicAura::InitAuraScope` returns. The config agrees on the stated keys
 (`this = galactic_object`) and omits the from. SDK-734, which gives C library stubs their argument
-registers, changed 3 blocks, and each loses an unreadable context and its gaps: psionic aura
-`on_gain_level` and `on_lose_level` (`CIntensityLevel::OnEnter`, which the lambda in
-`CPsionicAura::UpdateIntensityLevel` calls first) and casus belli `on_proxy_war_start`
-(`CCasusBelliType::OnProxyWarStart`, `0x100102d18`) each call `_strlen` on the script profiler's
-path while `x1` still holds the scope.
+registers, changed 4 blocks. Psionic aura `on_gain_level` and `on_lose_level`
+(`CIntensityLevel::OnEnter`, which the lambda in `CPsionicAura::UpdateIntensityLevel` calls first)
+and casus belli `on_proxy_war_start` (`CCasusBelliType::OnProxyWarStart`, `0x100102d18`) each call
+`_strlen` on the script profiler's path while `x1` still holds the scope; each loses an unreadable
+context and its gaps. Ai budget `potential` gains a country context with no from:
+`CCountryAI::UpdateUpkeepBudget` calls `_bzero` with a stack address in `x8` (`mov x8,sp`,
+`0x100e00c38`), which let the frame that holds the scope escape. It keeps the bound gaps of
+`UpdateExpenditureBudget`, which reaches no evaluation.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
 a trigger in an element of a component list, not `this` plus an offset. These call sites were
 checked by hand in the disassembly:

@@ -491,7 +491,9 @@ Each item below gave a wrong or missing answer once.
 - `x8` is the address of a returned object only for a callee that returns one in memory, and
   the compiler also uses `x8` as a scratch register (`add x8,sp,#N; str x8,[scope+0x38]`). A call
   passes `x8` only when the callee may read it before writing it: its code reads `x8`, calls, or
-  branches out first (`decode::reads_before_writing`). The pass relies on the ABI here, as it does
+  branches out first (`decode::reads_before_writing`). A C library function in
+`LIBRARY_ARGUMENTS` returns no object in memory, so a call to its stub or through its import
+pointer does not receive `x8`. The pass relies on the ABI here, as it does
   for a register that a signature excludes: compiled code never reads a caller-saved register
   after a call for its value before the call. Passing `x8` to every call escaped 17 on_actions.
 - Follow every function that takes `CGameText&`. The first run did not follow 26 calls to text

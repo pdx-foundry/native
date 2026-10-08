@@ -990,7 +990,7 @@ fn a_call_that_never_returns_ends_its_path() {
 
 #[test]
 fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
-    let before = [(0x2008, "blr", "x16")];
+    let before = [(0x2008, "mov", "x8,x20"), (0x200c, "blr", "x16")]; // x1 and x8 hold the scope
     let run = |program: Program| {
         program
             .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
@@ -999,7 +999,7 @@ fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
     };
 
     assert_eq!(
-        contexts(&run(Program::new().call_arguments(0x2008, 0)), POTENTIAL),
+        contexts(&run(Program::new().call_arguments(0x200c, 1)), POTENTIAL),
         [fresh(COUNTRY)]
     );
     assert_eq!(contexts(&run(Program::new()), POTENTIAL), [unreadable()]);
