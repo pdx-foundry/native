@@ -286,19 +286,50 @@ and the other `const` members of trigger and effect classes that take a scope, s
   child's prev to the received scope and sets the child's type. It only reads the received scope.
 - A scope-changing effect, `CEveryInListEffect::ExecuteActual` (`0x101d225cc`), does the same.
 
+**Firing an on_action leaves a scope as it found it.** A third assumption, used by both context
+passes: a call that fires an on_action (both `COnActionDatabase::PerformEvent` overloads and the
+deferred `COnActionCommand(CString const&, CEventScope const&, …)`) and
+`CEventScope::AccessVariables()` change no scope's type or links and keep no pointer to one, so
+they are scope readers (`ScopeFunctions::readers`). A scope that one firing call receives stays
+known for the next. Checked by hand on M452:
+
+- `PerformEvent(CString const&, …)` (`0x1009b050c`) finds the list and tail-branches to
+  `PerformEvent(COnActionList const*, …)` (`0x1009b05b4`) with the same scope, which passes it
+  only to `CEvent::IsValid`, `COnActionList::GetRandomValidEvent` and
+  `CEventManager::TriggerEvent`.
+- `CEventManager::TriggerEvent` (`0x1004d7c40`) stores nothing through the scope. It passes it to
+  `const` readers (`CheckScope`, `GetEventRecipient`), to the event's own evaluation
+  (`PerformImmediate`, covered by the rule above), to the random seed at `+0x68`, and to keepers
+  that copy it: `CAstralRift::SetCurrentEvent` calls the copy constructor and
+  `CopyInternalScopes` (`0x100f3acb0`), and `AddOpenPlayerEvent` and `AddSiteEvent` take a
+  `const` reference.
+- `AccessVariables` (`0x1004f3410`) walks the `from` links to their end and calls
+  `AccessOrCreateTargetContainer`, which writes only the container pointer at `+0x48`
+  (`0x1004e8b74`). The `COnActionCommand` constructor copies the scope with `CopyInternalScopes`
+  (`0x1001482f4`).
+
+The rule covers the type and links only. Like every call that the pass does not follow, a reader
+leaves other memory known (SDK-729).
+
 **Result on M452.** `tools/population/callbacks.py` gives these counts and the gap counts below
 from the parity files ([method authoring](method-authoring.md#run-over-the-whole-population)).
-The same as on M451-hotfix: 294 on_actions; 281 have at least one context and
-207 have at least one context with no unresolved scope. 13 names keep several contexts with no unresolved scope: for
-example, a fleet enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an
-astral rift as from. Three name a typed prev: `on_modification_complete`,
-`on_subspecies_integration_step` and `on_subspecies_integration_complete` link the colony as prev.
-223 game rules (209 scripted, 14 weighted); 220 have a context and 204 a context with no unresolved
-scope. The register-save and instance-pointer rules of the
-[block entry contexts](registry-fields.md#block-entry-contexts) change no answer here. These call
-sites were checked by hand in the disassembly:
+294 on_actions; 282 have at least one context and 252 have at least one context with no
+unresolved scope. 14 names keep several contexts with no unresolved scope: for example, a fleet
+enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
+Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
+`on_subspecies_integration_complete` link the colony as prev. 223 game rules (209 scripted, 14
+weighted); 220 have a context and 204 a context with no unresolved scope. SDK-712 changed 54
+on_actions and no rule: the firing-reader rule above, `x8` reaching only a callee that may read
+it (below), a `from` chain of any length, and the `ror` instruction (`on_colony_yearly_pulse`).
+Each change only removes an unresolved context or adds a context. These call sites were checked by
+hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
+- `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
+  `sp+0x208` and fires six cached lists with it; nothing else touches it between the fires.
+- `on_space_battle_lost`: `CFleetCombatManager::OnCombatEnded` links a country, a fleet and a fleet
+  behind the losing country. `x8` still holds the from scope (`sp+0x310`, `0x10105cb28`) at
+  `CFleet::GetControllerRef()`, which is `ldr w0,[x0,#0x438]; ret`.
 - `on_leader_level_up`: country, from leader.
 - `on_planet_returned`: planet, from country, fromfrom country.
 - `on_modification_complete`: country, from and fromfrom species, prev colony.
@@ -309,8 +340,10 @@ sites were checked by hand in the disassembly:
 
 **Comparison with independent sources.** Read through the self-link rule:
 
-- 184 of 294 on_actions agree with the vanilla scope comments in `common/on_actions`.
-- 181 of 223 game rules agree with the config's `replace_scopes`.
+- Before SDK-712 (M451-hotfix), 184 of 294 on_actions agreed with the vanilla scope comments in
+  `common/on_actions`. Of the 54 that SDK-712 changed on M452, 47 agree, 2 have no scope comment,
+  and 5 disagree: the four debris names and `on_rebels_take_colony_owner_switched` (below).
+- 181 of 223 game rules agree with the config's `replace_scopes`; SDK-712 changed no rule.
 
 Each disagreement was read by hand, and the engine agrees with Native in every case. Use these
 shapes when a source and the answer differ:
@@ -325,7 +358,11 @@ shapes when a source and the answer differ:
   `on_specialist_subject_conversion_aborted` passes the agreement's target country). A comment
   says fleet where the engine passes a ship (`on_system_survey`).
 - A comment describes the call site whose scope the method cannot follow (`on_ship_built`), or a
-  branch past the path limit (`on_ship_quantum_catapult`).
+  branch past the path limit (`on_ship_quantum_catapult`; the debris names, whose comment gives the
+  science ship as fromfromfrom: `CSpecialProjectInstance::OnSuccess` links it at `0x100b913f4`
+  only when `FindShipOfCountryForProject` finds one, and those paths pass the path limit).
+- `on_rebels_take_colony_owner_switched` gives the war as fromfrom, but
+  `CColony::DailyUpdateSerialHandleCombat` builds only the rebel country and the colony.
 
 The engine fires some names that the config lacks, such as `on_leaving_system_fleet`,
 `on_colony_transfer`, `on_fleet_went_mia`, `on_waystation_lost`, and the rules `can_jump_drive`
@@ -338,17 +375,40 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 13 on_actions have no context: 9 reach the path limit (including
-  `on_war_participant_leaves_early`), 2 are not reached from their function entry, 1 stops at an
-  instruction that the method cannot follow, and `on_press_begin`'s command builds its own scope.
-- 74 on_actions have only unresolved contexts. Most reuse one scope for several firing calls: the
-  first call receives the scope, and the method cannot show that the event system leaves its type
-  and links unchanged, so the later sites are unresolved (the pulse lists after
-  `on_yearly_pulse`, `on_leader_death`, `on_planet_surveyed`). Some fill the scope with a helper
-  whose type depends on a run-time value (`CDepositHolderRefCaster::FillEventScope`,
-  `CFleetOrbitalSlotHandle::SetupScopeObject`).
-- 3 declared rules have no call site that the method follows, 16 have only unresolved contexts, and
-  2 rule sites pass a rule object that is not a constant.
+- 12 on_actions have no context: 9 reach the path limit (including
+  `on_war_participant_leaves_early`), and `on_press_begin`'s command builds its own scope.
+  `on_new_heir` and `on_system_occupied` are not reached from their function entry because of a
+  limit of the pass: a call that it does not follow leaves the memory that it can reach known, so
+  `RandomizeNewHeir` (`CPdxArray::InsertAt` fills a zeroed array) and `CheckForFullOccupation`
+  (`ShouldDisplayOccupation` writes a zeroed `bool&`) branch on stale zeros (SDK-729).
+- 30 on_actions have only unresolved contexts:
+  - 9 fill or type the scope with a run-time value: `CDepositHolderRefCaster::FillEventScope` (the
+    survey names, including `on_planet_surveyed`, whose fires are arms of one switch, not a reused
+    scope), `CScopeObjectReference::SetColonyCarrierRef` (`on_arkship_encamped`,
+    `on_arkship_mobile`), `Set(EScopeType, …)` with a type that is not a constant
+    (`on_operation_finished`) and `Unset` (`on_modification_completion`).
+  - 6 fire a scope that the function receives: `anomaly_success`, `on_relic_activated`,
+    `on_terraforming_begun`, `on_operation_chapter_finished` (SDK-731), and the two storm names,
+    whose scope comes from an effect.
+  - 5 fire a copy or a returned scope: the four astral rift names
+    (`CAstralRift::MakeCountryEventScope`), and `on_country_created`, whose links are copied from
+    the parameter scope (SDK-730).
+  - 4 pass the scope to a helper that the pass enters or cannot see into:
+    `NPlanetBuildingUtil::AddSpentResourcesToScope` (`on_building_queued`, `on_building_unqueued`,
+    path limit), `CArchaeologicalSite::FireStageEvent`, `CDecision::BuildScope`.
+  - 4 pass the scope to an unknown virtual call (slot `+0x48`, an effect's `Execute`):
+    `on_edict_activated`, `on_resolution_passed`, `on_specialist_subject_conversion_finished`,
+    `on_storm_finished`.
+  - 2 leave a scope address in `x8` at a callee that calls or branches out before it writes `x8`:
+    `empire_init_capital_colony`, and `on_crossing_border` (`CCrudeRandom::GetInteger`
+    tail-branches to `CNoiseRandom::GetInteger`).
+- 3 declared rules have no call site that the method follows:
+  `CGalacticCommunity::CanBeMember` selects `can_be_part_of_galactic_community` (0x53) or
+  `can_be_part_of_galactic_empire` (0x54) with `cinc` (`0x10055f6bc`), so the forwarded site has no
+  one constant; no followed site passes `crisis_opinion_is_shown` (0x93). 16 rules have only
+  unresolved contexts: 4 use `SetColonyCarrierRef`, the five `can_build_*_around` rules pass a
+  from scope through `FillEventScope`, and 7 evaluate a scope that the function receives
+  (SDK-731). 2 rule sites pass a rule object that is not a constant.
 - On_actions that content defines are an `OutsideMethod` gap. Events and their `push_scope` are
   SDK-702; pre_trigger key sets are SDK-703.
 
@@ -392,9 +452,16 @@ Each item below gave a wrong or missing answer once.
 - An indirect call (`blr`) to an unknown destination is an unknown call. Follow one whose
   destination is known, such as a virtual call on the object of a proven instance pointer
   ([block entry contexts](registry-fields.md#block-entry-contexts)).
+- `x8` is the address of a returned object only for a callee that returns one in memory, and
+  the compiler also uses `x8` as a scratch register (`add x8,sp,#N; str x8,[scope+0x38]`). A call
+  passes `x8` only when the callee may read it before writing it: its code reads `x8`, calls, or
+  branches out first (`decode::reads_before_writing`). The pass relies on the ABI here, as it does
+  for a register that a signature excludes: compiled code never reads a caller-saved register
+  after a call for its value before the call. Passing `x8` to every call escaped 17 on_actions.
 - Follow every function that takes `CGameText&`. The first run did not follow 26 calls to text
   helpers.
-- Instructions that were missing once: `mul`, traps, `ubfx`, `bfi`, multiply-add, `dup`, `bic`.
+- Instructions that were missing once: `mul`, traps, `ubfx`, `bfi`, multiply-add, `dup`, `bic`,
+  `ror`, `ands`, `bics`.
   Every `b…` form must take its own destination.
 - Stack offsets are from the entry stack pointer. A dynamic stack allocation made every stack fact
   unknown until the evaluator allowed an unknown stack pointer.

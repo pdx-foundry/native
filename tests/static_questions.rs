@@ -1046,6 +1046,15 @@ fn on_actions_supply_the_scopes_that_hand_checked_call_sites_build() {
     assert_eq!(entries("on_game_start"), [fresh]);
     // CGameState::MonthlyUpdate fires the cached list at database offset 0x28.
     assert_eq!(entries("on_monthly_pulse"), [fresh]);
+    // CGameState::YearlyUpdate fires six cached lists with one new scope; an earlier fire leaves
+    // it as it found it for the later ones, such as the list at database offset 0x40.
+    assert_eq!(entries("on_five_year_pulse"), [fresh]);
+    // CFleetCombatManager::OnCombatEnded links a country, a fleet and a fleet behind the losing
+    // country; x8 still holds the from scope at CFleet::GetControllerRef, which ignores it.
+    assert_eq!(
+        entries("on_space_battle_lost"),
+        ["this=country root=SelfLink from=[country,fleet,fleet,SelfLink] prev=[SelfLink]"]
+    );
     // CLeader::LevelUp links the leader as from of a country scope.
     assert!(
         entries("on_leader_level_up")
@@ -1131,6 +1140,15 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
     assert_eq!(
         field("common/council_agendas", "init_effect"),
         (vec![country.to_string()], vec![])
+    );
+    // CArmyType::IsPotentialTrigger links a species scope as from of a colony scope and passes
+    // this + 0x4f8 to CAndTrigger::ActualEvaluate directly.
+    assert_eq!(
+        field("common/armies", "potential"),
+        (
+            vec!["this=colony root=SelfLink from=[species,SelfLink] prev=[SelfLink]".to_string()],
+            vec![]
+        )
     );
     // CTraditionType::IsPotential builds its own country scope and evaluates this + 0x108.
     assert_eq!(

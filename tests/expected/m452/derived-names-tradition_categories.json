@@ -7,7 +7,6 @@
   ],
   "gaps": [
     ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "6 of the registry's methods have paths that go on after text that the method could not follow; their later lookups establish no condition or miss behavior"],
-    ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "1 of the registry's methods have paths that could not be followed at instruction"],
     ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "2 of the registry's methods have paths that could not be followed at path-limit"],
     ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "1 of the registry's methods have paths that could not be followed at string-object"],
     ["UnresolvedPath", {"kind": "registry", "name": "common/tradition_categories"}, "2 lookup or check calls receive a name with a part that the method could not follow"],

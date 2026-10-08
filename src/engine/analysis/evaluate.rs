@@ -1464,7 +1464,8 @@ impl<'a> Machine<'a> {
     fn step_integer(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
         match (mnemonic, operands) {
             (
-                "add" | "sub" | "and" | "orr" | "eor" | "lsl" | "lsr" | "asr" | "mul",
+                "add" | "sub" | "and" | "bic" | "orr" | "eor" | "lsl" | "lsr" | "asr" | "ror"
+                | "mul",
                 [destination, left, right, rest @ ..],
             ) => {
                 let stack_offset = matches!(mnemonic, "add" | "sub")
@@ -1506,6 +1507,17 @@ impl<'a> Machine<'a> {
                     .zip(right)
                     .map(|(left, right)| binary(operation, left, right, wide));
                 self.assign(destination, value)?;
+            }
+            ("ands" | "bics", [destination, left, right, rest @ ..]) => {
+                let wide = destination.is_wide();
+                let left = self.operand(left)?;
+                let right = self.modified(right, rest)?;
+                let mask = right.map(|right| if mnemonic == "bics" { !right } else { right });
+                self.set_flags(
+                    left.zip(mask)
+                        .map(|(left, mask)| Flags::compare("tst", left, mask, wide)),
+                );
+                self.assign(destination, left.zip(mask).map(|(left, mask)| left & mask))?;
             }
             ("udiv" | "sdiv", [destination, left, right]) => {
                 let wide = destination.is_wide();
@@ -2466,12 +2478,15 @@ fn binary(mnemonic: &str, left: u64, right: u64, wide: bool) -> u64 {
         "add" => left.wrapping_add(right),
         "sub" => left.wrapping_sub(right),
         "and" => left & right,
+        "bic" => left & !right,
         "orr" => left | right,
         "eor" => left ^ right,
         "mul" => left.wrapping_mul(right),
         "lsl" => left.wrapping_shl((right % bits) as u32),
         "lsr" => truncate(left, wide) >> (right % bits),
         "asr" => Shift::Arithmetic.apply(left, right % bits, wide),
+        "ror" if wide => left.rotate_right(right as u32),
+        "ror" => u64::from((left as u32).rotate_right(right as u32)),
         other => unreachable!("{other} is not a two-operand integer instruction"),
     }
 }
@@ -3295,6 +3310,31 @@ mod tests {
         assert_eq!(returned(&code, &data, 0x10), Ok(Some(1)));
         assert_eq!(returned(&code, &data, 0x12), Ok(Some(0)));
         assert_eq!(returned(&code, &data, 0x10 + 37), Ok(Some(1)));
+    }
+
+    #[test]
+    fn rotate_right_wraps_within_the_register_width() {
+        let code = rows(&[(0x100, "ror", "w0,w0,#3"), (0x104, "ret", "")]);
+        let data = ReadOnlyData::default();
+        assert_eq!(returned(&code, &data, 0b1011), Ok(Some(0x6000_0001)));
+        assert_eq!(returned(&code, &data, 0x1_0000_0008), Ok(Some(1)));
+    }
+
+    #[test]
+    fn ands_and_bics_set_the_flags_of_their_result() {
+        let code = rows(&[
+            (0x100, "ands", "x8,x0,#0x80000"),
+            (0x104, "cset", "w9,eq"),
+            (0x108, "mov", "w10,#0x6"),
+            (0x10c, "bics", "wzr,w10,w0"),
+            (0x110, "cset", "w11,ne"),
+            (0x114, "add", "x0,x8,x9,lsl#1"),
+            (0x118, "add", "x0,x0,x11"),
+            (0x11c, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        assert_eq!(returned(&code, &data, 0x80006), Ok(Some(0x80000)));
+        assert_eq!(returned(&code, &data, 0x2), Ok(Some(0b11)));
     }
 
     #[test]

@@ -126,6 +126,8 @@ struct Program {
     forwarders: Vec<Forwarder>,
     rule_owners: BTreeSet<u64>,
     pulse: Option<Pulse>,
+    readers: BTreeSet<u64>,
+    ignores_x8: BTreeSet<u64>,
 }
 
 impl Program {
@@ -136,7 +138,21 @@ impl Program {
             forwarders: Vec::new(),
             rule_owners: BTreeSet::new(),
             pulse: None,
+            readers: BTreeSet::new(),
+            ignores_x8: BTreeSet::new(),
         }
+    }
+
+    /// A function that receives a scope and changes no type or link.
+    fn reader(mut self, function: u64) -> Self {
+        self.readers.insert(function);
+        self
+    }
+
+    /// A function that ignores the `x8` that it receives.
+    fn ignores_x8(mut self, function: u64) -> Self {
+        self.ignores_x8.insert(function);
+        self
     }
 
     fn function(mut self, lines: Rows<'_>) -> Self {
@@ -168,7 +184,7 @@ impl Program {
                 setters: BTreeSet::from([SET_COUNTRY, SET_LEADER, CLEAR, PASSES_ON]),
                 copies: BTreeSet::from([COPY]),
                 destructors: BTreeSet::new(),
-                readers: BTreeSet::new(),
+                readers: self.readers,
             },
             strings: StringFunctions {
                 from_literal: BTreeSet::from([STRING]),
@@ -193,6 +209,7 @@ impl Program {
             layout: layout(),
             arguments: BTreeMap::new(),
             call_arguments: BTreeMap::new(),
+            ignores_x8: self.ignores_x8,
             instances: BTreeMap::new(),
         }
     }
@@ -582,6 +599,158 @@ fn a_copied_scope_is_unresolved() {
     ]);
 
     assert_eq!(contexts(&result, "on_test"), [unresolved()]);
+}
+
+/// A function that builds a country scope at sp+0x100 and fires `on_test` and then `on_other`
+/// with it, at 0x1028 and 0x1044.
+fn fires_twice(firing: Program) -> CallbacksResult {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "bl", "#0x8100"),
+        (0x1014, "add", "x0,sp,#0x10"),
+        (0x1018, "adrp", "x1,#0x5000"),
+        (0x101c, "bl", "#0x9100"),
+        (0x1020, "add", "x1,sp,#0x10"),
+        (0x1024, "add", "x2,sp,#0x100"),
+        (0x1028, "bl", "#0x9000"),
+        (0x102c, "add", "x0,sp,#0x30"),
+        (0x1030, "adrp", "x1,#0x5000"),
+        (0x1034, "add", "x1,x1,#0x10"),
+        (0x1038, "bl", "#0x9100"),
+        (0x103c, "add", "x1,sp,#0x30"),
+        (0x1040, "add", "x2,sp,#0x100"),
+        (0x1044, "bl", "#0x9000"),
+        (0x1048, "ret", ""),
+    ];
+    on_actions(
+        &firing
+            .function(&lines)
+            .site(0x1000, 0x1028, FIRE)
+            .site(0x1000, 0x1044, FIRE)
+            .input(),
+    )
+}
+
+#[test]
+fn a_scope_that_an_earlier_firing_call_reads_stays_known_for_the_next() {
+    let read = fires_twice(Program::new().reader(0x9000));
+    let unfollowed = fires_twice(Program::new());
+    let country = context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink]);
+
+    assert_eq!(contexts(&read, "on_test"), std::slice::from_ref(&country));
+    assert_eq!(contexts(&read, "on_other"), std::slice::from_ref(&country));
+    assert_eq!(contexts(&unfollowed, "on_test"), [country]);
+    assert_eq!(contexts(&unfollowed, "on_other"), [unresolved()]);
+}
+
+#[test]
+fn a_reader_that_receives_the_scope_keeps_it_known() {
+    let middle = [(0x1020, "add", "x0,sp,#0x100"), (0x1024, "bl", "#0x9700")];
+    let run = |program: Program| {
+        let lines = fires_country(&middle);
+        on_actions(&program.function(&lines).site(0x1000, 0x1100, FIRE).input())
+    };
+
+    assert_eq!(
+        contexts(&run(Program::new().reader(0x9700)), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(contexts(&run(Program::new()), "on_test"), [unresolved()]);
+}
+
+#[test]
+fn a_scope_address_left_in_x8_reaches_only_a_call_that_reads_x8() {
+    let stale = [
+        (0x1020, "add", "x8,sp,#0x100"),
+        (0x1024, "str", "x8,[sp,#0x138]"),
+        (0x1028, "mov", "x0,x19"),
+        (0x102c, "bl", "#0x9800"),
+    ];
+    let passed_later = [
+        (0x1020, "add", "x8,sp,#0x100"),
+        (0x1024, "bl", "#0x9800"),
+        (0x1028, "add", "x0,sp,#0x100"),
+        (0x102c, "bl", "#0x9900"),
+    ];
+    let run = |middle: Rows<'_>, program: Program| {
+        let lines = fires_country(middle);
+        on_actions(&program.function(&lines).site(0x1000, 0x1100, FIRE).input())
+    };
+    assert_eq!(
+        contexts(&run(&stale, Program::new().ignores_x8(0x9800)), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&run(&stale, Program::new()), "on_test"),
+        [unresolved()]
+    );
+    assert_eq!(
+        contexts(
+            &run(&passed_later, Program::new().ignores_x8(0x9800)),
+            "on_test"
+        ),
+        [unresolved()]
+    );
+}
+
+#[test]
+fn a_from_chain_of_five_typed_scopes_is_read_to_its_end() {
+    let scopes = [0x150u64, 0x1a0, 0x1f0, 0x240, 0x290];
+    let leak = |text: String| -> &'static str { Box::leak(text.into_boxed_str()) };
+    let mut lines = vec![(0x1000, "sub", "sp,sp,#0x400")];
+    let mut holder = 0x100;
+    for (index, scope) in std::iter::once(&0x100).chain(&scopes).enumerate() {
+        let at = 0x1004 + index as u64 * 0x10;
+        lines.extend([
+            (at, "add", leak(format!("x0,sp,#{scope:#x}"))),
+            (at + 4, "bl", "#0x8000"),
+            (at + 8, "add", leak(format!("x0,sp,#{scope:#x}"))),
+            (
+                at + 12,
+                "bl",
+                if index == 0 { "#0x8100" } else { "#0x8200" },
+            ),
+        ]);
+    }
+    for (index, scope) in scopes.iter().enumerate() {
+        let at = 0x1064 + index as u64 * 8;
+        lines.extend([
+            (at, "add", leak(format!("x8,sp,#{scope:#x}"))),
+            (
+                at + 4,
+                "str",
+                leak(format!("x8,[sp,#{:#x}]", holder + 0x38)),
+            ),
+        ]);
+        holder = *scope;
+    }
+    lines.extend([
+        (0x108c, "add", "x0,sp,#0x10"),
+        (0x1090, "adrp", "x1,#0x5000"),
+        (0x1094, "bl", "#0x9100"),
+        (0x1098, "add", "x1,sp,#0x10"),
+        (0x109c, "add", "x2,sp,#0x100"),
+        (0x10a0, "bl", "#0x9000"),
+        (0x10a4, "ret", ""),
+    ]);
+    let result = on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x10a0, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(
+            COUNTRY,
+            Slot::SelfLink,
+            &[LEADER, LEADER, LEADER, LEADER, LEADER, Slot::SelfLink]
+        )]
+    );
 }
 
 #[test]
