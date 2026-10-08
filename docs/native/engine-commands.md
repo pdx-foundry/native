@@ -246,6 +246,29 @@ The engine has no documentation dump for either.
   prev links at `+0x30`, `+0x38` and `+0x40`. The fresh constructors write type 0 and point every
   link back to the scope itself. Typed setters, such as `CScopeObjectReference::SetCountry`, write
   one type constant. The answer keeps a self-link as `SelfLink`.
+- **Copies.** On M452, `CEventScope(CEventScope const&)` (`0x1004e7f38`, which branches to
+  `0x1004e7c9c`) builds a fresh scope and calls `CEventScope::Copy` (`0x1004e7db0`), which writes
+  the source's type and copies the raw root, from and prev words; `operator=(CEventScope const&)`
+  is `Copy` alone. So a plain copy links to its source where the source links to itself.
+  `CopyInternalScopes` (`0x1004e8c38`) first links the copy to itself three times; then, for each
+  link of the source that is not the source itself, it copies the linked scope to the heap,
+  copies that scope's own links the same way and links the heap copy. The moves use
+  `MoveInternalScopes` instead, and the context pass does not follow them.
+- **Scope factories.** A function can build a scope in the object that `x8` addresses and return
+  it: it builds local scopes, copy-constructs the result into `x8`, calls `CopyInternalScopes` and
+  destroys the locals. Of the 6 functions on M452 that pass their entry `x8` to a scope
+  constructor, the context pass reaches `CPsionicAura::InitAuraScope(bool)` (`0x100ab121c`: a
+  galactic object, from a country), `CAstralRift::MakeCountryEventScope()` (`0x100f3b474`: a
+  country, from the astral rift, fromfrom a fleet) and `MakeAstralRiftEventScope(int, int)`
+  (`0x100f39920`: the astral rift, from a fleet), checked by hand. The others are
+  `CPsionicAura::InitModifierScope`, `CEventTarget::GetScope` and
+  `SEventPictureData::GetPortraitScope`. The binding selects a factory among the direct callees of
+  the decoded functions with a scan in address order that ignores branches
+  (`constructs_at_x8`): it follows the entry `x8` through `mov` to the `x0` of a call to a scope
+  constructor. The pass runs the selected code, so a false selection costs search paths and can
+  bring a site to a search bound, and a missed factory stays an unfollowed call. Replace the scan
+  with a branch-aware register flow when a factory is missed, or when a selected function that
+  builds no scope in `x8` costs an answer.
 - **Game rules.** A game rule is a member of the rule set: `CGameRules::CanColonizePlanet` builds
   a scope and calls `CScriptedRule::Evaluate(this + 20 * 0xc0, scope, …)`. Weighted rules start at
   `this + 0x9cc0`, `0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration
@@ -314,7 +337,7 @@ as at every call that the pass does not follow, that memory becomes unknown at t
 
 **Result on M452.** `tools/population/callbacks.py` gives these counts and the gap counts below
 from the parity files ([method authoring](method-authoring.md#run-over-the-whole-population)).
-294 on_actions; 285 have at least one context and 255 have at least one context with no
+294 on_actions; 285 have at least one context and 259 have at least one context with no
 unresolved scope. 14 names keep several contexts with no unresolved scope: for example, a fleet
 enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
 Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
@@ -329,7 +352,10 @@ memory that an unfollowed call or a reader reaches, gave a context to 3 on_actio
 `on_war_participant_leaves_early`, whose other paths still reach the path limit. A stale zero had
 hidden each site. `on_ruler_created` reaches a hidden site with its known context, and
 `on_astral_rift_exploration_complete` and `on_relic_activated`, which had only unresolved contexts,
-now also reach the path limit. These call sites were checked by hand in the disassembly:
+now also reach the path limit. SDK-730, which follows copies and scope factories, gave a context
+with no unresolved scope to the four astral rift names, which had only unresolved contexts:
+`CAstralRift::Finish` and the other callers fire the scope that `MakeCountryEventScope` or
+`MakeAstralRiftEventScope` returns. These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
@@ -351,7 +377,10 @@ now also reach the path limit. These call sites were checked by hand in the disa
   `common/on_actions`. Of the 54 that SDK-712 changed on M452, 47 agree, 2 have no scope comment,
   and 5 disagree: the four debris names and `on_rebels_take_colony_owner_switched` (below). The 3
   that SDK-729 resolved agree: an heir leader; a system with the conqueror as from and the owner
-  as fromfrom; the main ally with the actor as from and the war as fromfrom.
+  as fromfrom; the main ally with the actor as from and the war as fromfrom. Of the 4 that SDK-730
+  resolved, the three exploration names agree (a country, from the astral rift, fromfrom the
+  fleet), and the comment on `on_astral_rift_spawned` gives only the astral rift, to which the
+  engine links a fleet as from.
 - 181 of 223 game rules agree with the config's `replace_scopes`; SDK-712 changed no rule.
 
 Each disagreement was read by hand, and the engine agrees with Native in every case. Use these
@@ -386,7 +415,7 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   (`_queued`). One list site fires a list that an object holds.
 - 9 on_actions have no context: 8 reach the path limit, and `on_press_begin`'s command builds its
   own scope.
-- 30 on_actions have only unresolved contexts:
+- 26 on_actions have only unresolved contexts:
   - 9 fill or type the scope with a run-time value: `CDepositHolderRefCaster::FillEventScope` (the
     survey names, including `on_planet_surveyed`, whose fires are arms of one switch, not a reused
     scope), `CScopeObjectReference::SetColonyCarrierRef` (`on_arkship_encamped`,
@@ -395,9 +424,10 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   - 6 fire a scope that the function receives: `anomaly_success`, `on_relic_activated`,
     `on_terraforming_begun`, `on_operation_chapter_finished` (SDK-731), and the two storm names,
     whose scope comes from an effect.
-  - 5 fire a copy or a returned scope: the four astral rift names
-    (`CAstralRift::MakeCountryEventScope`), and `on_country_created`, whose links are copied from
-    the parameter scope (SDK-730).
+  - 1 links a from that the function receives: `on_country_created`. `CCreateCountry` and
+    `CCreateRebelsEffect::ExecuteActual` build a fresh country scope and store the root of the
+    scope that the effect receives as its from (`ldr x8,[x19,#0x30]`, `0x101d5ad3c`), so only
+    from is unresolved; it is the root of the script that runs the effect.
   - 4 pass the scope to a helper that the pass enters or cannot see into:
     `NPlanetBuildingUtil::AddSpentResourcesToScope` (`on_building_queued`, `on_building_unqueued`,
     path limit), `CArchaeologicalSite::FireStageEvent`, `CDecision::BuildScope`.

@@ -16,6 +16,9 @@ pub(super) const SET_LEADER: u64 = 0x8200;
 pub(super) const CLEAR: u64 = 0x8300;
 pub(super) const COPY: u64 = 0x8400;
 pub(super) const PASSES_ON: u64 = 0x8500;
+pub(super) const COPY_CONSTRUCT: u64 = 0x8a00;
+pub(super) const COPY_INTERNAL: u64 = 0x8b00;
+pub(super) const DESTROY: u64 = 0x8c00;
 
 /// `on_test` is at 0x5000 and `on_other` at 0x5010.
 const ON_TEST: u64 = 0x5000;
@@ -74,6 +77,7 @@ pub(super) fn layout() -> CallbackLayout {
         scope_root_offset: 0x30,
         scope_from_offset: 0x38,
         scope_prev_offset: 0x40,
+        scope_size: 0x170,
         scripted_rules: RuleArray {
             base: 0,
             stride: 0xc0,
@@ -131,6 +135,7 @@ struct Program {
     arguments: BTreeMap<u64, usize>,
     constructors: BTreeMap<u64, Vec<Instruction>>,
     setters: BTreeMap<u64, Vec<Instruction>>,
+    factories: BTreeMap<u64, Vec<Instruction>>,
 }
 
 impl Program {
@@ -146,6 +151,7 @@ impl Program {
             arguments: BTreeMap::new(),
             constructors: BTreeMap::new(),
             setters: BTreeMap::new(),
+            factories: BTreeMap::new(),
         }
     }
 
@@ -179,6 +185,12 @@ impl Program {
         self
     }
 
+    /// A function that builds a scope in the object that `x8` addresses.
+    fn factory(mut self, lines: Rows<'_>) -> Self {
+        self.factories.insert(lines[0].0, rows(lines));
+        self
+    }
+
     fn function(mut self, lines: Rows<'_>) -> Self {
         self.functions.insert(lines[0].0, rows(lines));
         self
@@ -206,6 +218,7 @@ impl Program {
                 .into_iter()
                 .chain(self.constructors.values().flatten().cloned())
                 .chain(self.setters.values().flatten().cloned())
+                .chain(self.factories.values().flatten().cloned())
                 .collect(),
             scope_functions: ScopeFunctions {
                 fresh_constructors: BTreeSet::from([FRESH])
@@ -216,8 +229,11 @@ impl Program {
                     .into_iter()
                     .chain(self.setters.into_keys())
                     .collect(),
+                copy_constructors: BTreeSet::from([COPY_CONSTRUCT]),
+                internal_copies: BTreeSet::from([COPY_INTERNAL]),
                 copies: BTreeSet::from([COPY]),
-                destructors: BTreeSet::new(),
+                factories: self.factories.into_keys().collect(),
+                destructors: BTreeSet::from([DESTROY]),
                 readers: self.readers,
             },
             strings: StringFunctions {
@@ -625,14 +641,268 @@ fn a_store_through_an_unknown_pointer_keeps_a_private_scope() {
 }
 
 #[test]
-fn a_copied_scope_is_unresolved() {
+fn a_copy_of_an_unknown_scope_is_unresolved() {
+    for copy in ["#0x8400", "#0x8a00"] {
+        let result = fire_country(&[
+            (0x1020, "add", "x0,sp,#0x100"),
+            (0x1024, "mov", "x1,x19"),
+            (0x1028, "bl", copy),
+        ]);
+
+        assert_eq!(contexts(&result, "on_test"), [unresolved()]);
+    }
+}
+
+#[test]
+fn copying_the_internal_scopes_of_a_scope_into_itself_links_it_to_itself() {
     let result = fire_country(&[
-        (0x1020, "add", "x0,sp,#0x100"),
-        (0x1024, "mov", "x1,x19"),
-        (0x1028, "bl", "#0x8400"),
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x8,sp,#0x180"),
+        (0x1034, "str", "x8,[sp,#0x138]"), // A.from = the leader
+        (0x1038, "add", "x0,sp,#0x100"),
+        (0x103c, "add", "x1,sp,#0x100"),
+        (0x1040, "bl", "#0x8b00"),
     ]);
 
-    assert_eq!(contexts(&result, "on_test"), [unresolved()]);
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+/// Build a leader scope S at sp+0x100 whose from is a country scope T at sp+0x180, copy S into A
+/// at sp+0x40 with its internal scopes, keep A's from copy in `x20`, pass `exposed` to an unknown
+/// call, and fire `on_test` with the from copy.
+fn fires_the_from_copy(exposed: &'static str) -> CallbacksResult {
+    let lines = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "bl", "#0x8200"),
+        (0x1014, "add", "x0,sp,#0x180"),
+        (0x1018, "bl", "#0x8000"),
+        (0x101c, "add", "x0,sp,#0x180"),
+        (0x1020, "bl", "#0x8100"),
+        (0x1024, "add", "x8,sp,#0x180"),
+        (0x1028, "str", "x8,[sp,#0x138]"), // S.from = T
+        (0x102c, "add", "x0,sp,#0x40"),
+        (0x1030, "add", "x1,sp,#0x100"),
+        (0x1034, "bl", "#0x8a00"),
+        (0x1038, "add", "x0,sp,#0x40"),
+        (0x103c, "add", "x1,sp,#0x100"),
+        (0x1040, "bl", "#0x8b00"),
+        (0x1044, "ldr", "x20,[sp,#0x78]"), // A.from, the copy of T
+        (0x1048, "add", exposed),
+        (0x104c, "bl", "#0x9900"),
+        (0x1050, "add", "x0,sp,#0x10"),
+        (0x1054, "adrp", "x1,#0x5000"),
+        (0x1058, "bl", "#0x9100"),
+        (0x105c, "add", "x1,sp,#0x10"),
+        (0x1060, "mov", "x2,x20"),
+        (0x1064, "bl", "#0x9000"),
+        (0x1068, "ret", ""),
+    ];
+    on_actions(
+        &Program::new()
+            .function(&lines)
+            .site(0x1000, 0x1064, FIRE)
+            .input(),
+    )
+}
+
+#[test]
+fn a_copy_that_copying_the_internal_scopes_links_escapes_with_its_holder() {
+    assert_eq!(
+        contexts(&fires_the_from_copy("x0,x19,#0x0"), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&fires_the_from_copy("x0,sp,#0x40"), "on_test"),
+        [unresolved()]
+    );
+}
+
+/// Build a leader scope B at sp+0x180 whose from is a country scope D at sp+0x48, copy-construct
+/// scope A from B, run the three instructions `after`, then destroy B and D.
+fn copies_leader_with_country_from(after: Rows<'_>) -> CallbacksResult {
+    let mut middle = vec![
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x0,sp,#0x48"),
+        (0x1034, "bl", "#0x8000"),
+        (0x1038, "add", "x0,sp,#0x48"),
+        (0x103c, "bl", "#0x8100"),
+        (0x1040, "add", "x8,sp,#0x48"),
+        (0x1044, "str", "x8,[sp,#0x1b8]"), // B.from = D
+        (0x1048, "add", "x0,sp,#0x100"),
+        (0x104c, "add", "x1,sp,#0x180"),
+        (0x1050, "bl", "#0x8a00"),
+    ];
+    middle.extend_from_slice(after);
+    middle.extend([
+        (0x1060, "add", "x0,sp,#0x180"),
+        (0x1064, "bl", "#0x8c00"),
+        (0x1068, "add", "x0,sp,#0x48"),
+        (0x106c, "bl", "#0x8c00"),
+    ]);
+    fire_country(&middle)
+}
+
+#[test]
+fn a_copy_of_a_tracked_scope_takes_its_type_and_links_to_what_it_links() {
+    let copied = fire_country(&[
+        (0x1020, "add", "x0,sp,#0x180"),
+        (0x1024, "bl", "#0x8000"),
+        (0x1028, "add", "x0,sp,#0x180"),
+        (0x102c, "bl", "#0x8200"),
+        (0x1030, "add", "x0,sp,#0x100"),
+        (0x1034, "add", "x1,sp,#0x180"),
+        (0x1038, "bl", "#0x8a00"),
+    ]);
+    let the_source = vec![LEADER, Slot::SelfLink];
+
+    assert_eq!(
+        contexts(&copied, "on_test"),
+        [Context {
+            this: LEADER,
+            root: LEADER,
+            from: the_source.clone(),
+            prev: the_source,
+        }]
+    );
+}
+
+#[test]
+fn copying_the_internal_scopes_keeps_the_links_after_the_source_is_destroyed() {
+    let internal = copies_leader_with_country_from(&[
+        (0x1054, "add", "x0,sp,#0x100"),
+        (0x1058, "add", "x1,sp,#0x180"),
+        (0x105c, "bl", "#0x8b00"),
+    ]);
+    let raw = copies_leader_with_country_from(&[
+        (0x1054, "nop", ""),
+        (0x1058, "nop", ""),
+        (0x105c, "nop", ""),
+    ]);
+
+    assert_eq!(
+        contexts(&internal, "on_test"),
+        [context(LEADER, Slot::SelfLink, &[COUNTRY, Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&raw, "on_test"),
+        [Context {
+            this: LEADER,
+            ..unresolved()
+        }]
+    );
+}
+
+/// A factory at 0x8d00 that builds a country scope X, a leader scope L with L.from = X and a
+/// country scope C with C.from = L, copies C into the object that `x8` addresses with its
+/// internal scopes, and destroys C, L and X.
+pub(super) const FACTORY: Rows<'static> = &[
+    (0x8d00, "sub", "sp,sp,#0x180"),
+    (0x8d04, "mov", "x19,x8"),
+    (0x8d08, "add", "x0,sp,#0x100"),
+    (0x8d0c, "bl", "#0x8000"),
+    (0x8d10, "add", "x0,sp,#0x100"),
+    (0x8d14, "bl", "#0x8100"),
+    (0x8d18, "add", "x0,sp,#0x80"),
+    (0x8d1c, "bl", "#0x8000"),
+    (0x8d20, "add", "x0,sp,#0x80"),
+    (0x8d24, "bl", "#0x8200"),
+    (0x8d28, "add", "x8,sp,#0x100"),
+    (0x8d2c, "str", "x8,[sp,#0xb8]"), // L.from = X
+    (0x8d30, "add", "x0,sp,#0x0"),
+    (0x8d34, "bl", "#0x8000"),
+    (0x8d38, "add", "x0,sp,#0x0"),
+    (0x8d3c, "bl", "#0x8100"),
+    (0x8d40, "add", "x8,sp,#0x80"),
+    (0x8d44, "str", "x8,[sp,#0x38]"), // C.from = L
+    (0x8d48, "add", "x1,sp,#0x0"),
+    (0x8d4c, "mov", "x0,x19"),
+    (0x8d50, "bl", "#0x8a00"),
+    (0x8d54, "add", "x1,sp,#0x0"),
+    (0x8d58, "mov", "x0,x19"),
+    (0x8d5c, "bl", "#0x8b00"),
+    (0x8d60, "add", "x0,sp,#0x0"),
+    (0x8d64, "bl", "#0x8c00"),
+    (0x8d68, "add", "x0,sp,#0x80"),
+    (0x8d6c, "bl", "#0x8c00"),
+    (0x8d70, "add", "x0,sp,#0x100"),
+    (0x8d74, "bl", "#0x8c00"),
+    (0x8d78, "add", "sp,sp,#0x180"),
+    (0x8d7c, "ret", ""),
+];
+
+/// The from chain of the scope that [`FACTORY`] builds.
+pub(super) const FACTORY_FROM: &[Slot] = &[LEADER, COUNTRY, Slot::SelfLink];
+
+#[test]
+fn a_factory_builds_the_scope_that_its_caller_fires() {
+    let middle = [
+        (0x1020, "add", "x8,sp,#0x100"),
+        (0x1024, "bl", "#0x8d00"),
+        (0x1028, "mov", "x0,x20"),
+        (0x102c, "bl", "#0x9900"),
+    ];
+    let run = |program: Program| {
+        let lines = fires_country(&middle);
+        on_actions(&program.function(&lines).site(0x1000, 0x1100, FIRE).input())
+    };
+
+    assert_eq!(
+        contexts(&run(Program::new().factory(FACTORY)), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, FACTORY_FROM)]
+    );
+    assert_eq!(contexts(&run(Program::new()), "on_test"), [unresolved()]);
+}
+
+#[test]
+fn a_copy_into_an_unknown_object_lets_the_source_escape() {
+    let run = |destination: (&str, &str)| {
+        fire_country(&[
+            (0x1020, destination.0, destination.1),
+            (0x1024, "add", "x1,sp,#0x100"),
+            (0x1028, "bl", "#0x8a00"),
+        ])
+    };
+
+    assert_eq!(
+        contexts(&run(("add", "x0,sp,#0x180")), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(contexts(&run(("mov", "x0,x19")), "on_test"), [unresolved()]);
+}
+
+#[test]
+fn a_from_link_loaded_from_an_unknown_scope_is_unresolved() {
+    let run = |linked: (&str, &str)| {
+        fire_country(&[
+            (0x1020, "add", "x0,sp,#0x180"),
+            (0x1024, "bl", "#0x8000"),
+            (0x1028, "add", "x0,sp,#0x180"),
+            (0x102c, "bl", "#0x8200"),
+            (0x1030, linked.0, linked.1),
+            (0x1034, "str", "x8,[sp,#0x138]"), // A.from = x8
+        ])
+    };
+
+    assert_eq!(
+        contexts(&run(("add", "x8,sp,#0x180")), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[LEADER, Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&run(("ldr", "x8,[x19,#0x30]")), "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::Unresolved])]
+    );
 }
 
 /// A function that builds a country scope at sp+0x100 and fires `on_test` and then `on_other`

@@ -7,6 +7,13 @@
 //! type and link slots are kept when every path of the call agrees. A scope object that a fresh
 //! constructor built is *tracked*; only a tracked object's slots are read at the site.
 //!
+//! A copy constructor of a tracked scope builds a tracked scope with the source's type and link
+//! words, as `CEventScope::Copy` writes them, so a self-link of the source becomes a link to the
+//! source. `CopyInternalScopes` keeps a self-link and links every other scope that the source
+//! links to a new tracked copy of it outside the stack, which only its holder's link reaches, as
+//! the engine's heap copy is reached only through its holder. A *factory*, which builds a scope
+//! in the object that `x8` addresses, runs on the path.
+//!
 //! A callee cannot reach a fresh stack object until its address leaves the function's own
 //! registers and the link slots of tracked objects. So a tracked object *escapes* when its
 //! address is an argument of a call that the pass does not follow, is stored where the call can
@@ -74,8 +81,18 @@ pub struct ScopeFunctions {
     pub fresh_constructors: BTreeSet<u64>,
     /// Members that write the type or the links: typed setters, `Set`, `ClearRootFromPrev`.
     pub setters: BTreeSet<u64>,
-    /// Copy and move constructors and assignment: the destination's slots become unknown.
+    /// Copy constructors: a new scope with the source's type and link words, as `Copy` writes
+    /// them, so a self-link of the source becomes a link to the source.
+    pub copy_constructors: BTreeSet<u64>,
+    /// `CopyInternalScopes`: each link of the source that is not a self-link goes to a new copy
+    /// of the linked scope.
+    pub internal_copies: BTreeSet<u64>,
+    /// Other copies, moves and assignments, which the pass does not follow: the destination's
+    /// slots become unknown.
     pub copies: BTreeSet<u64>,
+    /// Functions that build a scope in the object that `x8` addresses: the pass runs their code
+    /// on the path.
+    pub factories: BTreeSet<u64>,
     /// Destructors: the object is no longer tracked.
     pub destructors: BTreeSet<u64>,
     /// Functions that receive a scope but change no scope's type or links and keep no pointer
@@ -195,8 +212,7 @@ impl Runner<'_> {
     ) -> SiteContexts {
         let machine = Machine::new(code, self.data);
         let paths = machine.run_paths_to(entry, site, &mut |target, machine| {
-            self.call(target, machine, 0);
-            Ok(Call::Return(self.returned(target, machine)))
+            Ok(self.path_call(target, machine))
         });
 
         let mut result = SiteContexts::default();
@@ -287,7 +303,7 @@ impl Runner<'_> {
 
     /// Apply one call on a path of a block run: a function that never returns ends the path, a
     /// wrapper or a scope receiver runs on the path, trigger and effect code reads the scope, and
-    /// every other call is applied as in [`Runner::contexts`].
+    /// every other call is applied by [`Runner::path_call`].
     fn block_call(
         &self,
         target: Option<u64>,
@@ -309,11 +325,21 @@ impl Runner<'_> {
                 self.forget_reached(machine, Some(target), BTreeSet::new());
                 Call::Return(None)
             }
-            _ => {
-                self.call(target, machine, 0);
-                Call::Return(self.returned(target, machine))
-            }
+            _ => self.path_call(target, machine),
         }
+    }
+
+    /// Apply one call on a path of the pass: a scope factory runs on the path while the path is
+    /// inside fewer than [`ENTER_LIMIT`] calls, and every other call is applied by
+    /// [`Runner::call`].
+    fn path_call(&self, target: Option<u64>, machine: &mut Machine<'_>) -> Call {
+        let factory = target.is_some_and(|target| self.scopes.factories.contains(&target));
+        if factory && machine.entered_calls().count() < ENTER_LIMIT {
+            return Call::Enter;
+        }
+
+        self.call(target, machine, 0);
+        Call::Return(self.returned(target, machine))
     }
 
     /// Run a rule forwarder from its entry with `base` as its receiver and `probe` in register
@@ -352,9 +378,23 @@ impl Runner<'_> {
 
         if scopes.fresh_constructors.contains(&target) || scopes.setters.contains(&target) {
             self.follow(target, machine, depth);
+        } else if scopes.copy_constructors.contains(&target) {
+            match object {
+                Some(object) => self.copy_construct(machine, object, machine.register(1)),
+                None => self.unfollowed(machine, Some(target)),
+            }
+        } else if scopes.internal_copies.contains(&target) {
+            match object {
+                Some(object) => {
+                    let source = machine.register(1);
+                    self.copy_internal_scopes(machine, object, source, &mut Vec::new());
+                }
+                None => self.unfollowed(machine, Some(target)),
+            }
         } else if scopes.copies.contains(&target) {
-            if let Some(object) = object {
-                self.forget_slots(machine, object);
+            match object {
+                Some(object) => self.forget_slots(machine, object),
+                None => self.unfollowed(machine, Some(target)),
             }
         } else if scopes.destructors.contains(&target) {
             if let Some(object) = object {
@@ -464,10 +504,78 @@ impl Runner<'_> {
         }
 
         if fresh {
-            machine.label(SCOPE | object, TRACKED);
-            for (offset, width) in self.slots() {
-                machine.protect(object + offset, width);
+            self.track(machine, object);
+        }
+    }
+
+    /// Build the scope at `object` as a copy of `source`. A copy of a readable source takes its
+    /// type and link words and is tracked; a copy of another source has unknown slots.
+    fn copy_construct(&self, machine: &mut Machine<'_>, object: u64, source: Option<u64>) {
+        let Some(source) = source.filter(|source| self.is_readable(machine, *source)) else {
+            self.forget_slots(machine, object);
+            return;
+        };
+
+        for (offset, width) in self.slots() {
+            match machine.read(source + offset, width) {
+                Some(value) => machine.write(object + offset, width, value),
+                None => machine.forget(object + offset, width),
             }
+        }
+        self.track(machine, object);
+    }
+
+    /// Give the scope at `object` the links that `CopyInternalScopes` writes from `source`: it
+    /// first links `object` to itself, then a self-link of `source` stays a self-link, and every
+    /// other link goes to a new copy of the linked scope, outside the stack, whose links are
+    /// copied in turn. A link that the pass
+    /// cannot read, or that leads back to a scope in `copying`, becomes unknown: the engine
+    /// would copy without end.
+    fn copy_internal_scopes(
+        &self,
+        machine: &mut Machine<'_>,
+        object: u64,
+        source: Option<u64>,
+        copying: &mut Vec<u64>,
+    ) {
+        let source = source.filter(|source| self.is_readable(machine, *source));
+        let Some(source) = source.filter(|_| self.is_readable(machine, object)) else {
+            for offset in self.link_offsets() {
+                machine.release(object + offset);
+                machine.forget(object + offset, 8);
+            }
+            return;
+        };
+
+        for offset in self.link_offsets() {
+            machine.write(object + offset, 8, object);
+        }
+
+        copying.push(source);
+        for offset in self.link_offsets() {
+            let link = match machine.read(source + offset, 8) {
+                Some(linked) if linked == source => Some(object),
+                Some(linked) if self.is_readable(machine, linked) && !copying.contains(&linked) => {
+                    let copy = machine.reserve(self.layout.scope_size);
+                    self.copy_construct(machine, copy, Some(linked));
+                    self.copy_internal_scopes(machine, copy, Some(linked), copying);
+                    Some(copy)
+                }
+                _ => None,
+            };
+            match link {
+                Some(link) => machine.write(object + offset, 8, link),
+                None => machine.forget(object + offset, 8),
+            }
+        }
+        copying.pop();
+    }
+
+    /// Track the scope at `object`: its slots stay known until it escapes.
+    fn track(&self, machine: &mut Machine<'_>, object: u64) {
+        machine.label(SCOPE | object, TRACKED);
+        for (offset, width) in self.slots() {
+            machine.protect(object + offset, width);
         }
     }
 

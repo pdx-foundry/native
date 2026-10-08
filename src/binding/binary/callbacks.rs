@@ -12,7 +12,9 @@ use crate::engine::analysis::{
         Site, SiteCall, SiteScope, StringFunctions,
         blocks::{BlockInput, CALLER_DEPTH, CallSite, EvaluationSite, RECEIVER_DEPTH},
     },
-    decode::{Instruction, decode_arm64, reads_before_writing},
+    decode::{
+        Instruction, decode_arm64, general_register, reads_before_writing, written_registers,
+    },
     discovery::Symbol,
 };
 
@@ -170,7 +172,9 @@ pub(in crate::binding) fn callbacks(
         }
     }
 
-    let scope_functions = scope_functions(symbols);
+    let mut scope_functions = scope_functions(symbols);
+    scope_functions.factories =
+        scope_factories(&text, functions.values().flatten(), &scope_functions);
     let scope_code = scope_code(&text, &scope_functions);
 
     let initializer = unique(symbols, "__GLOBAL__sub_I_game_rules.cpp")?;
@@ -321,19 +325,23 @@ pub(in crate::binding) fn block_evaluations(
         .into_iter()
         .filter_map(|start| Some((start, decoded(&text, start)?)))
         .collect();
-    let scope_functions = scope_functions(symbols);
+    let mut scope_functions = scope_functions(symbols);
     let scope_users = scope_users(symbols, &evaluators);
     let not_followed: BTreeSet<u64> = evaluators
         .iter()
         .chain(&scope_users)
         .chain(&scope_functions.fresh_constructors)
         .chain(&scope_functions.setters)
+        .chain(&scope_functions.copy_constructors)
+        .chain(&scope_functions.internal_copies)
         .chain(&scope_functions.copies)
         .chain(&scope_functions.destructors)
         .chain(&scope_functions.readers)
         .copied()
         .collect();
     let receivers = decode_receivers(&text, symbols, &not_followed, &mut functions);
+    scope_functions.factories =
+        scope_factories(&text, functions.values().flatten(), &scope_functions);
     let scope_code = scope_code(&text, &scope_functions);
     let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
     let instances = instances(&text, image, bound_slots, &functions)?;
@@ -478,9 +486,67 @@ fn scope_code(text: &Text, scope_functions: &ScopeFunctions) -> Vec<Instruction>
         .fresh_constructors
         .iter()
         .chain(&scope_functions.setters)
+        .chain(&scope_functions.factories)
         .filter_map(|&start| decoded(text, start))
         .flatten()
         .collect()
+}
+
+/// The targets of the direct calls in `rows` that build a scope in the object that `x8`
+/// addresses: they pass the `x8` that they receive to a scope constructor as its object.
+fn scope_factories<'r>(
+    text: &Text,
+    rows: impl Iterator<Item = &'r Instruction>,
+    scope_functions: &ScopeFunctions,
+) -> BTreeSet<u64> {
+    let constructors: BTreeSet<u64> = scope_functions
+        .fresh_constructors
+        .union(&scope_functions.copy_constructors)
+        .copied()
+        .collect();
+    let targets: BTreeSet<u64> = rows
+        .filter(|row| row.operation == "bl")
+        .filter_map(|row| number(&row.operands))
+        .collect();
+
+    targets
+        .into_iter()
+        .filter(|&target| {
+            decoded(text, target).is_some_and(|callee| constructs_at_x8(&callee, &constructors))
+        })
+        .collect()
+}
+
+/// Whether `rows`, one whole function, calls one of `constructors` with the `x8` that it
+/// received in `x0`. The scan follows the rows in address order, not the branches: a factory
+/// only selects code that the pass runs on the path, so a false match costs time and a missed
+/// one keeps the scope unfollowed.
+fn constructs_at_x8(rows: &[Instruction], constructors: &BTreeSet<u64>) -> bool {
+    let mut holders = BTreeSet::from([8]);
+    for row in rows {
+        let operation = row.operation.as_str();
+        let target = number(&row.operands);
+        if matches!(operation, "bl" | "b")
+            && target.is_some_and(|target| constructors.contains(&target))
+            && holders.contains(&0)
+        {
+            return true;
+        }
+
+        let mut copy_holder = None;
+        if operation == "mov"
+            && let Some((destination, source)) = row.operands.split_once(',')
+            && general_register(source).is_some_and(|source| holders.contains(&source))
+        {
+            copy_holder = general_register(destination);
+        }
+
+        for register in written_registers(operation, &row.operands) {
+            holders.remove(&register);
+        }
+        holders.extend(copy_holder);
+    }
+    false
 }
 
 /// The targets of the direct calls in `rows` that ignore the `x8` that they receive: no path
@@ -740,16 +806,17 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
             "CEventScope::CEventScope(CCrudeRandom const&)",
         ]),
         setters,
+        copy_constructors: named(&["CEventScope::CEventScope(CEventScope const&)"]),
+        internal_copies: named(&["CEventScope::CopyInternalScopes(CEventScope const&)"]),
         copies: named(&[
-            "CEventScope::CEventScope(CEventScope const&)",
             "CEventScope::CEventScope(CEventScope&&)",
             "CEventScope::operator=(CEventScope const&)",
             "CEventScope::operator=(CEventScope&&)",
             "CEventScope::Copy(CEventScope const&)",
-            "CEventScope::CopyInternalScopes(CEventScope const&)",
             "CScopeObjectReference::CScopeObjectReference(CScopeObjectReference const&)",
             "CScopeObjectReference::operator=(CScopeObjectReference const&)",
         ]),
+        factories: BTreeSet::new(),
         destructors: named(&["CEventScope::~CEventScope()"]),
         readers,
     }
@@ -763,9 +830,9 @@ fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{import_call_arguments, registers_read};
+    use super::{constructs_at_x8, import_call_arguments, registers_read};
     use crate::engine::analysis::decode::Instruction;
 
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
@@ -798,6 +865,25 @@ mod tests {
             import_call_arguments(&BTreeMap::from([(0x1000, rows)]), &imports),
             BTreeMap::from([(0x1008, 0)])
         );
+    }
+
+    #[test]
+    fn a_factory_passes_the_x8_that_it_received_to_a_scope_constructor() {
+        let constructors = BTreeSet::from([0x8000]);
+        let constructs = |copied_from: &str| {
+            let rows = vec![
+                row(0x1000, "mov", copied_from),
+                row(0x1004, "bl", "#0x9900"),
+                row(0x1008, "mov", "x0,x19"),
+                row(0x100c, "bl", "#0x8000"),
+                row(0x1010, "ret", ""),
+            ];
+            constructs_at_x8(&rows, &constructors)
+        };
+
+        assert!(constructs("x19,x8"));
+        assert!(!constructs("x19,x1"));
+        assert!(!constructs("x9,x8"));
     }
 
     #[test]

@@ -352,6 +352,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         scope_root_offset: 0x30,
         scope_from_offset: 0x38,
         scope_prev_offset: 0x40,
+        scope_size: 0x170,
         scripted_rules: RuleArray {
             base: 0,
             stride: 0xc0,

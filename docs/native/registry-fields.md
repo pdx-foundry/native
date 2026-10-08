@@ -303,7 +303,10 @@ overwritten. A virtual call on the object that a proven instance pointer holds c
 that object's vtable, so it reads the registers that the slot's signature uses. A call receives
 `x8` only when its target may read it ([engine commands](engine-commands.md#pitfalls)), and a
 call that fires an on_action is a scope reader
-([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)).
+([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)). A copy
+constructor of a scope that the pass can read, `CopyInternalScopes` and a function that builds a
+scope in the object that `x8` addresses are followed as the engine runs them (same page); a copy
+into an object that the pass does not know lets its source escape.
 
 **Instance pointers** (`callbacks/instances.rs`, `src/binding/binary/instances.rs`). A global word
 that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
@@ -354,8 +357,8 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 127 have contexts and no entry gap, 45 have contexts
-and a gap, 67 have none. 21 blocks keep several contexts with a known `this`, 53 name a typed
+effect blocks in 82 of the 164 registries: 133 have contexts and no entry gap, 39 have contexts
+and a gap, 67 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
 `from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
 context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
@@ -373,6 +376,15 @@ SDK-729 changed 3 blocks: ship size limit `show` gains a country context, which 
 context with a starbase `prev` now passes the path limit. The budget keeps its bound gaps; the
 megastructure keeps its other, readable context, so by the bounded-search assumption below its
 bound is not a gap.
+SDK-730, which follows copies and scope factories
+([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)), changed the
+8 psionic aura blocks: each gains a galactic object context with a country from, from the scope
+that `CPsionicAura::InitAuraScope` returns, and 6 lose their gaps. `on_gain_level` and
+`on_lose_level` keep an unreadable context and a path-limit gap: `CIntensityLevel::OnEnter`, which
+the lambda in `CPsionicAura::UpdateIntensityLevel` calls first, calls `_strlen` on its script
+profiler path while `x1` still holds the scope, and an import stub has no signature, so the call
+reads every argument register. The config agrees on the stated keys (`this = galactic_object`) and
+omits the from.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
 a trigger in an element of a component list, not `this` plus an offset. These call sites were
 checked by hand in the disassembly:
@@ -434,16 +446,17 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
   its mission type, or in the owner through a `csel` of two objects (tradition `on_enabled` and
   `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it from a getter, or
   run only as nested blocks (SDK-732). Weight blocks are outside the method (SDK-733).
-- 35 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
+- 29 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
   The main shapes: a setter or filler whose scope type is a run-time value
   (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
-  `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a scope that a factory
-  returns or that is copied (all psionic aura fields through `CPsionicAura::InitAuraScope`,
-  SDK-730); a `from` that is the caller's scope parameter (megastructure `potential`, `possible`,
-  `context_menu_potential`); a scope that is a member of a parameter or heap object (event chain
-  `abort_trigger`, casus belli `is_valid`); and a helper that the pass enters and that stops at the
-  path limit (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
-- Path, loop and step limits are gaps only where a contradiction appears (34 path, 14 loop); 8
+  `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a `from` that is the caller's
+  scope parameter (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is
+  a member of a parameter or heap object (event chain `abort_trigger`, casus belli `is_valid`, and
+  button effect `potential` and `allow` from `CExecuteButtonEffectCommand::IsValid`, which copies
+  the command's member at `this + 0x20`); a call to an import stub with no signature (psionic aura
+  `on_gain_level` and `on_lose_level`, above); and a helper that the pass enters and that stops at
+  the path limit (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
+- Path, loop and step limits are gaps only where a contradiction appears (33 path, 14 loop); 8
   stop at a branch on an unknown value and 4 at an instruction.
 - 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
   (`caller-depth`). Script values and modifier blocks are outside the method.
