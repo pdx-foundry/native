@@ -1,7 +1,7 @@
 //! Root trigger, effect and weight blocks by the entry contexts of their answer, with the gaps
 //! that entry contexts add. The counts are the ones that `docs/native/registry-fields.md` records.
 use pdx_native::internals::registry_field_stops::EntryContexts;
-use pdx_native::{Answer, BlockFamily, EntryContext, EntryScope, Field, GapSubject};
+use pdx_native::{Answer, EntryContext, EntryScope, Field, GapSubject};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -20,12 +20,7 @@ impl Tally {
         let blocks: Vec<&Field> = answer
             .value
             .iter()
-            .filter(|field| {
-                matches!(
-                    field.reader.family,
-                    BlockFamily::Trigger | BlockFamily::Effect | BlockFamily::Weight
-                )
-            })
+            .filter(|field| entries.block_offsets.contains_key(&field.name))
             .collect();
         if !blocks.is_empty() {
             self.registries += 1;
