@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v19`. The method is
+`WeightBlock`. Source stamp `registry-fields/v20`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -147,6 +147,76 @@ civics; `ai_location_weight` in leader classes; `weight` in `common/galactic_foc
 `ai_weight` in `common/war_goals` and `weight_modifier` in `common/personalities` run `ld1r`; they
 join since the shared evaluator runs it (SDK-547). The sweep lists them under
 `modifier_blocks.failed_persistent_fields`.
+
+## Entry contexts (M452)
+
+`Field.entry_contexts` of a weight field comes from the [block entry context
+method](registry-fields.md#block-entry-contexts), as for a trigger block (SDK-733). The weight
+evaluators are block evaluators there: `CMeanTimeToHappen::GetRawFactor(CEventScope&) const`,
+`GetRawFactorNoScopeCopy(CEventScope const&) const`, `GetChance(CEventScope&, int) const`,
+`GetDailyChance(CEventScope&) const` and `CAIMTTHChance::GetChance(CEventScope&) const`. Each takes
+the block in `x0` and the scope in `x1` by a direct `bl`, and each is a scope reader by the rule
+[evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes),
+with the three `ModifyNumber` implementations checked there. Before SDK-733, `GetRawFactor` was a
+scope receiver that the pass entered; its virtual `ModifyNumber` call made a scope that it
+received unknown for the next evaluation.
+
+**Shapes.** An owner method builds its own scope: `CTraditionType::CalcAIWeight(CCountry const*)`
+(`0x100ce3d6c`) builds a fresh scope, calls `SetCountry` and evaluates `this + 0x568`;
+`CStarbaseLevelType::CalcAIWeight(CCountry const*, CStarbase const*)` (`0x100c5143c`) builds a
+starbase scope, links a country scope as its from (`str x21,[sp,#0x1a8]`) and evaluates
+`this + 0x40`. Or an owner method is a wrapper that evaluates its scope parameter:
+`CAnomalyType::CalcSpawnChance(CCountry const*, CEventScope&)` is called by
+`CAnomalyTypeDatabase::CollectEligibleAnomalies`, which builds a planet scope with a ship from;
+`CArmyType::GetSpawnChance(CEventScope&)` is called by `CColony::CalcArmyTypeToSpawn`, which
+builds a pop group scope.
+
+**Result.** 73 weight blocks in 47 registries: 31 have contexts and no entry gap, 3 have contexts
+and a gap, 39 have none. 9 name a typed `from`, 4 keep several contexts with a known `this`, and 2
+keep an unreadable context (decision `ai_weight`, colony type `weight_modifier`). Of the 39
+without contexts, 37 have no direct evaluation in the owner's methods: another class evaluates
+them (`CTechnologyStatus::GetTechWeight` for technology weights, `CDepositTypesDatabase` and
+`CColonyCarrier::RandomizeDeposits` for deposit weights, `CAstralRiftManager` for astral rift
+`event_weight`), or a virtual call does. Megastructure `tooltip_system_score` keeps the path and
+loop bounds of `BuildBestSystemsText`, which reaches no evaluation, and pop faction `leader`
+(`CPopFactionType::GetLeaderWeight(CEventScope&)`) has no direct caller.
+
+**Council agenda `ai_weight` keeps the gap.** `NAIUtil::SelectByWeightedRandom<CCouncilAgenda>`
+(`0x100e911dc`) calls `GetRawFactor` with `x0` = an element of its agenda array plus `0x338`: not
+an owner method, and not `this` plus an offset. No Atlas `replace_scopes` claim needs these
+contexts, so the SDK-600 gate accepts this one gap (Jackson, 2026-10-08).
+
+**Unnamed evaluations.** Anomalies gain 2: `CAnomalyType::COutcomeEffect::HasValidOption` and
+`CAnomalyType::COutcomeOption::CalcMTTHRawFactor` evaluate a nested outcome option's weight. The
+binding takes a class name before the first `::` as the owner, so these nested-class methods count
+as owner methods. Civics gain 1: `CGovernmentCivicType::CalcRandomWeight(bool, CCountry const*)`
+selects `this + 0x3a0` or `this + 0x3d8` by its `bool` with `csel`, the shape of SDK-735.
+
+**Comparison with the config's `replace_scopes`.** Read through the self-link rule, with the
+rules of the [trigger and effect comparison](registry-fields.md#block-entry-contexts). 33 weight
+fields have a field-level `replace_scopes` that states `root` or `from` (29 of them are among the
+64 weight fields with a known read scope). 18 now have a readable context: 13 agree, 1 agrees on
+the stated keys where the engine also sets a from that the config omits (system type
+`weight_modifier`, country), and 4 disagree. 15 keep no context. Each disagreement was read by
+hand:
+
+- Bombardment stance `ai_weight`: `CBombardmentStanceDatabase::GetBestValidStance` links the planet
+  as the fleet scope's from only when the planet's virtual `+0x20` check holds. The path that links
+  it stops at the path limit, and the bounded-search assumption keeps the context without a from
+  with no gap. The config states the other context. A Native limit.
+- Bombardment stance `planet_damage`: `CPlanet::CalcBombardmentPlanetDamage` sets a colony scope
+  (`Set(1 << 40, …)` with the planet's colony id) and the `CalcOrbitalBombardment` lambda a planet
+  scope. The config gives a fleet with a planet from. A source error.
+- Building `planet_limit`: `CBuildingType::GetColonyLimit(CColony const&)` evaluates it on a colony;
+  the config gives a planet. A source error.
+- Megastructure `ai_weight`: `CMegaStructureType::CalcAIWeight(CCountry const*, CGalacticObject
+  const*)` links a country as the galactic object's from and sets no fromfrom; the config gives
+  `fromfrom = megastructure`. `this`, `root` and `from` agree. A source error.
+
+Two weight fields without a field-level claim also disagree with a type-level `replace_scopes`:
+army `spawn_chance` runs on a pop group (`CalcArmyTypeToSpawn`: `SetPopGroup`), not a planet with
+a species from; building `ai_weight` also runs on a country with a country from
+(`CAIInteriorMinister::HandleHoldings`) beside the colony that the config states.
 
 ## Gaps
 

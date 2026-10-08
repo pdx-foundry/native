@@ -2,10 +2,10 @@
 //! callers, the code that forms a string's address, and fixed-up slots such as a vtable's. On a
 //! catalogued build, `--registry-fields` runs the registry field method and shows where each
 //! token path stopped; `--entry-contexts` shows, for each call that builds the scope of one of the
-//! registry's trigger or effect blocks, the evaluations it reaches with their contexts and where
-//! its paths stopped; `--trigger-grammar` and `--effect-grammar` do the same for one command's
-//! child grammar, and name each child key whose initial owner storage the factory does not
-//! establish. With `--trace`, an obstruction at an unknown value also lists where that value may
+//! registry's trigger, effect or weight blocks, the evaluations it reaches with their contexts
+//! and where its paths stopped; `--trigger-grammar` and `--effect-grammar` do the same for one
+//! command's child grammar, and name each child key whose initial owner storage the factory does
+//! not establish. With `--trace`, an obstruction at an unknown value also lists where that value may
 //! have been lost. No game starts. Addresses in this output are for development only.
 //!
 //! The image is `--image PATH`, or `STELLARIS_PATH` when that is absent. A directory resolves to
@@ -225,11 +225,11 @@ fn print_registry_fields(
     }
 }
 
-/// Each trigger and effect field with its blocks and entry gaps, then each entry run that reaches
-/// one of its blocks.
+/// Each trigger, effect and weight field with its blocks and entry gaps, then each entry run that
+/// reaches one of its blocks.
 fn print_entry_contexts(image: &Image, registry: &str, entries: &EntryContexts, traced: bool) {
     println!(
-        "registry {registry}: owner {}; {} trigger and effect fields; {} entry runs; {} evaluation \
+        "registry {registry}: owner {}; {} trigger, effect and weight fields; {} entry runs; {} evaluation \
          calls whose block the method cannot name",
         entries.owner,
         entries.block_offsets.len(),

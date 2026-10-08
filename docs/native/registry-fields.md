@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v19`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v20`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -31,9 +31,11 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   repeat gaps listed there. `CPersistent` block classification of `modifier` does not
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter only as a country with self-linked root, from and prev
-  ([block entry contexts](#block-entry-contexts)).
+  ([block entry contexts](#block-entry-contexts)). `ai_weight` keeps an entry gap: a template
+  helper evaluates it on an array element ([weight blocks](weight-blocks.md#entry-contexts-m452)).
   The acceptance test `council_agenda_fields_are_complete_with_every_milestone_4_fact`
-  (`cargo parity council_agenda`) lists each missing fact and typed gap in one run.
+  (`cargo parity council_agenda`) lists each missing fact and typed gap in one run. It accepts
+  that one `ai_weight` gap and no other typed gap.
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
   from unresolved root paths, not from unclassified reader signatures (`CVariableValue::Read`,
   `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`).
@@ -271,7 +273,7 @@ persistent destinations are joined to constructor-installed virtual readers; a s
 
 ## Block entry contexts
 
-`Field.entry_contexts` gives, for each root trigger and effect block, the scopes that the engine's
+`Field.entry_contexts` gives, for each root trigger, effect and weight block, the scopes that the engine's
 direct evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
 (`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`,
 `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs`). The answer keeps
@@ -279,10 +281,11 @@ direct evaluation calls supply for `this`, `root`, the `from` chain and the `pre
 `this` is the scope at the call; the scope that the engine reads the block in is SDK-549's.
 
 **How the engine evaluates a stored block.** A registry item evaluates its own blocks in its
-methods: it passes `this` plus the block's storage offset to a trigger evaluator or an effect
-executor (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffect::Execute`, `ExecuteExtended`,
-`CRootEffect::Execute`, and, called directly, `CAndTrigger::ActualEvaluate`, `SafeExecuteEffect`
-and `SafeExecuteEffectExtended`), with a scope in `x1`. The method either builds the scope itself
+methods: it passes `this` plus the block's storage offset to a trigger evaluator, an effect
+executor or a weight evaluator (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffect::Execute`,
+`ExecuteExtended`, `CRootEffect::Execute`, and, called directly, `CAndTrigger::ActualEvaluate`,
+`SafeExecuteEffect` and `SafeExecuteEffectExtended`; the weight evaluators are on
+[weight blocks](weight-blocks.md#entry-contexts-m452)), with a scope in `x1`. The method either builds the scope itself
 (`CTraditionType::IsPotential(CCountry const*)`: a fresh scope, `SetCountry`, then `this + 0x108`)
 or takes it from its caller (`CCouncilAgenda::IsPotential(CEventScope&, CString*)` evaluates
 `this + 0x1c8` with its scope parameter; `CGovernment::UpdateCouncilAgenda` builds that scope).
@@ -339,7 +342,7 @@ rule.
 **Assumptions.** Beside the self-link rule:
 
 - [Evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes):
-  trigger and effect code that receives a scope is a scope reader.
+  trigger, effect and weight code that receives a scope is a scope reader.
 - A bounded search with no contradiction: when the paths of a call stop only at the path, loop or
   step limit, and every evaluation that the followed paths reach receives a scope that the method
   can read, the found contexts stand with no gap. A path that reaches an evaluation with an
@@ -359,12 +362,13 @@ rule.
   memory protection, and the destructor stores null in the pointer.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
-([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 135 have contexts and no entry gap, 38 have contexts
-and a gap, 66 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
-`from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
-name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
-context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
+([method authoring](method-authoring.md#run-over-the-whole-population)). 312 root trigger,
+effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 136
+have contexts and no entry gap, 38 have contexts and a gap, and 65 have none; 21 keep several
+contexts with a known `this`, 61 name a typed `from` and 1 a typed `prev`. The 73 weight blocks
+are on [weight blocks](weight-blocks.md#entry-contexts-m452). 7 registries have 9 evaluation calls
+whose block the method cannot name. SDK-726's two rules changed 10 blocks in 6 registries, each
+only removing an unresolved context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
 colony type, observation mission and system type `potential`, and diplomatic action `potential`,
 `possible` and `proposable`; the instance pointer those of council agenda `potential` and
 `allow`. SDK-712 changed 15 blocks in 9 registries, and each change only adds a context, removes
@@ -400,8 +404,15 @@ loses an unreadable context and its gap: a run that carries another block read i
 with a scope that the run's entry did not build. Artifact action and astral action `potential` gain a
 `path-limit` gap: `IsAllowed` passes its scope on to `IsPotential`, and the runs from its callers
 that carry `potential` reach no `potential` evaluation before the path limit; the `allow`
-evaluation that those runs reach had hidden the bound. These call sites were
-checked by hand in the disassembly:
+evaluation that those runs reach had hidden the bound. SDK-733, which makes the weight
+evaluators block evaluators, changed one trigger block: planet modifier `potential` gains a planet
+context and loses its path-limit gap. Its run starts at
+`CPlanetModifierDatabase::GetRandomModifier`, which builds the planet scope and calls
+`CPlanetModifier::GetSpawnChance(CEventScope&)`, which calls `IsPotential`. Before, the run entered
+`GetRawFactor` as a scope receiver, and its modifier loop used up the path limit before a path
+reached the evaluation in `IsPotential`. Anomalies and civics gain unnamed weight evaluations
+([weight blocks](weight-blocks.md#entry-contexts-m452)). These call sites were checked by hand in
+the disassembly:
 
 - armies `potential`: `CArmyType::IsPotentialTrigger` builds a colony scope at `sp+0x170`, sets a
   second scope's type to species (`Set(0x800, …)`), links it as from (`str x21,[sp,#0x1a8]`) and
@@ -455,24 +466,27 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
 
 **Gaps.**
 
-- 56 blocks have no direct evaluation in the owner's methods. Most run through the block object's
-  own virtual `Execute` or `Evaluate` slot in another class's method, such as `CMission::Start` on
-  its mission type, or in the owner through a `csel` of two objects (tradition `on_enabled` and
-  `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it from a getter, or
-  run only as nested blocks (SDK-732). Weight blocks are outside the method (SDK-733).
-- 26 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
-  The main shapes: a setter or filler whose scope type is a run-time value
+- 56 trigger and effect blocks have no direct evaluation in the owner's methods. Most run through
+  the block object's own virtual `Execute` or `Evaluate` slot in another class's method, such as
+  `CMission::Start` on its mission type, or in the owner through a `csel` of two objects (tradition
+  `on_enabled` and `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it
+  from a getter, or run only as nested blocks (SDK-732). The 37 weight blocks with this gap are on
+  [weight blocks](weight-blocks.md#entry-contexts-m452).
+- 25 trigger and effect blocks keep an unreadable context: a call that the method cannot see into
+  receives the scope. The main shapes: a setter or filler whose scope type is a run-time value
   (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
   `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a `from` that is the caller's
   scope parameter (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is
-  a member of a parameter or heap object (event chain `abort_trigger`, casus belli `is_valid`, and
-  button effect `potential` and `allow` from `CExecuteButtonEffectCommand::IsValid`, which copies
-  the command's member at `this + 0x20`); and a helper that the pass enters and that stops at
-  the path limit (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
-- Path, loop and step limits are gaps only where a contradiction appears (30 path, 14 loop); 8
-  stop at a branch on an unknown value and 4 at an instruction.
-- 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
-  (`caller-depth`). Script values and modifier blocks are outside the method.
+  a member of a parameter or heap object (event chain `abort_trigger` and button effect `potential`
+  and `allow` from `CExecuteButtonEffectCommand::IsValid`, which copies the command's member at
+  `this + 0x20`); and a helper that the pass enters and that stops at the path limit
+  (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
+- Path, loop and step limits are gaps only where a contradiction appears (31 trigger and effect
+  blocks at the path limit, 14 at the loop limit); 8 stop at a branch on an unknown value and 4 at
+  an instruction. The weight blocks' bounds are on
+  [weight blocks](weight-blocks.md#entry-contexts-m452).
+- 7 trigger and effect wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2
+  callers (`caller-depth`). Script values and modifier blocks are outside the method.
 
 Pitfalls:
 

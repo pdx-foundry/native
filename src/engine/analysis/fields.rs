@@ -89,7 +89,7 @@ pub(crate) fn literal_token_names(
 }
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v19";
+pub const METHOD: &str = "registry-fields/v20";
 
 /// Find the root fields of the selected candidate. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {

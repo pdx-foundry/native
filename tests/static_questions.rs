@@ -1813,10 +1813,57 @@ fn council_presence_initialization_does_not_restrict_field_reads() {
     }
 }
 
+/// The entry context gap of council agenda `ai_weight`, the one typed gap that the Milestone 4
+/// council agenda test accepts. The engine evaluates that block on an array element in a
+/// template helper, not in an owner method, and no Atlas `replace_scopes` claim needs its
+/// contexts. Jackson, 2026-10-08: the gate is for Atlas's sake; it should not go red for
+/// something Atlas does not need.
+fn is_accepted_ai_weight_gap(gap: &pdx_native::Gap) -> bool {
+    gap.kind == GapKind::UnresolvedPath
+        && gap.subject
+            == Some(GapSubject::Field {
+                name: "ai_weight".into(),
+            })
+        && gap.detail == "no direct call in the owner's methods evaluates this block"
+}
+
+#[test]
+fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
+    use pdx_native::Gap;
+    const ENTRY_GAP: &str = "no direct call in the owner's methods evaluates this block";
+    let gap = |kind, field: &str, detail: &str| Gap {
+        kind,
+        subject: Some(GapSubject::Field { name: field.into() }),
+        detail: detail.into(),
+    };
+
+    assert!(is_accepted_ai_weight_gap(&gap(
+        GapKind::UnresolvedPath,
+        "ai_weight",
+        ENTRY_GAP
+    )));
+    assert!(!is_accepted_ai_weight_gap(&gap(
+        GapKind::NumericConversion,
+        "agenda_cost",
+        "Scoped literal conversion boundaries and overflow are incomplete."
+    )));
+    assert!(!is_accepted_ai_weight_gap(&gap(
+        GapKind::UnresolvedPath,
+        "ai_weight",
+        "the block's storage is not established, so no evaluation joins it"
+    )));
+    assert!(!is_accepted_ai_weight_gap(&gap(
+        GapKind::UnresolvedPath,
+        "potential",
+        ENTRY_GAP
+    )));
+}
+
 /// The Milestone 4 council agenda acceptance test (SDK-600; `docs/roadmap.md`, "Milestone 4
 /// acceptance"). Every required fact is checked on the answer's value, so a missing field, an
-/// unresolved context or an `OutsideMethod` exclusion cannot satisfy it; the answer must also be
-/// `Complete`, so a typed gap fails it. The test reports every missing fact at once.
+/// unresolved context or an `OutsideMethod` exclusion cannot satisfy it; the answer must also
+/// have no typed gap other than [`is_accepted_ai_weight_gap`]. The test reports every missing
+/// fact at once.
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
@@ -1868,13 +1915,13 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
     let typed_gaps: Vec<_> = answer
         .gaps
         .iter()
-        .filter(|gap| gap.kind != GapKind::OutsideMethod)
+        .filter(|gap| gap.kind != GapKind::OutsideMethod && !is_accepted_ai_weight_gap(gap))
         .map(|gap| format!("  {:?} {:?}: {}", gap.kind, gap.subject, gap.detail))
         .collect();
     require(
-        answer.completeness == Completeness::Complete,
+        typed_gaps.is_empty(),
         format!(
-            "the answer is complete; typed gaps:\n{}",
+            "the answer is complete apart from the ai_weight entry gap; typed gaps:\n{}",
             typed_gaps.join("\n")
         ),
     );

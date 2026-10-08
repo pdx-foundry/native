@@ -9,15 +9,18 @@ use super::*;
 use crate::engine::analysis::callbacks::{Context, Slot};
 use crate::engine::analysis::declarations::number;
 
-// Rows call the evaluator at 0x9400, a tooltip builder at 0x9410, a function that never returns
-// at 0x9420 and an unknown function at 0x9900. Owner methods evaluate
-// `potential` at `this + 0x40` and `allow` at `this + 0x48`.
+// Rows call the evaluator at 0x9400, the weight evaluator at 0x9408, a tooltip builder at
+// 0x9410, a function that never returns at 0x9420 and an unknown function at 0x9900. Owner
+// methods evaluate `potential` at `this + 0x40`, `allow` at `this + 0x48` and `ai_weight` at
+// `this + 0x50`.
 const EVALUATE: u64 = 0x9400;
+const WEIGHT: u64 = 0x9408;
 const TOOLTIP: u64 = 0x9410;
 const NEVER_RETURNS: u64 = 0x9420;
 const OWNER: &str = "COwner";
 const POTENTIAL: i64 = 0x40;
 const ALLOW: i64 = 0x48;
+const AI_WEIGHT: i64 = 0x50;
 
 const COUNTRY_TYPE: (&str, &str) = ("bl", "#0x8100");
 const LEADER_TYPE: (&str, &str) = ("bl", "#0x8200");
@@ -114,7 +117,7 @@ impl Program {
         let mut callers: BTreeMap<u64, Vec<CallSite>> = BTreeMap::new();
         for (&function, rows) in &self.functions {
             for (address, target) in direct_calls(rows) {
-                if target == EVALUATE && self.methods.contains(&function) {
+                if [EVALUATE, WEIGHT].contains(&target) && self.methods.contains(&function) {
                     sites.push(EvaluationSite {
                         address,
                         function,
@@ -132,7 +135,7 @@ impl Program {
 
         analyze_blocks(&BlockInput {
             sites,
-            evaluators: BTreeSet::from([EVALUATE]),
+            evaluators: BTreeSet::from([EVALUATE, WEIGHT]),
             scope_users: BTreeSet::from([TOOLTIP]),
             functions: self.functions,
             callers,
@@ -264,6 +267,43 @@ fn a_scope_that_the_method_builds_reaches_its_block() {
 
     assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
     assert!(result.unattributed.is_empty());
+}
+
+#[test]
+fn a_weight_evaluation_reaches_its_block_and_keeps_the_scope_known_for_the_next() {
+    let mut lines = builds_a(0x1000, COUNTRY_TYPE);
+    lines.extend([
+        (0x1018, "add", "x0,x21,#0x50"),
+        (0x101c, "add", "x1,sp,#0x100"),
+        (0x1020, "bl", "#0x9408"),
+        (0x1024, "add", "x0,x21,#0x40"),
+        (0x1028, "add", "x1,sp,#0x100"),
+        (0x102c, "bl", "#0x9400"),
+        (0x1030, "ret", ""),
+    ]);
+    let result = Program::new().method(&lines).analyze();
+
+    assert_eq!(contexts(&result, AI_WEIGHT), [fresh(COUNTRY)]);
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+}
+
+#[test]
+fn a_weight_wrapper_takes_the_scope_that_its_caller_built() {
+    let wrapper = [
+        (0x2000, "mov", "x19,x0"),
+        (0x2004, "mov", "x20,x1"),
+        (0x2008, "add", "x0,x19,#0x50"),
+        (0x200c, "mov", "x1,x20"),
+        (0x2010, "bl", "#0x9408"),
+        (0x2014, "ret", ""),
+    ];
+    let result = Program::new()
+        .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
+        .method(&wrapper)
+        .analyze();
+
+    assert_eq!(contexts(&result, AI_WEIGHT), [fresh(COUNTRY)]);
+    assert!(unresolved(&result, AI_WEIGHT).is_empty());
 }
 
 #[test]

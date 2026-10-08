@@ -1,10 +1,10 @@
-//! Registry field blocks: the scope that each direct evaluation of a stored trigger or effect
-//! block receives, for `this`, `root`, the `from` chain and the `prev` chain.
+//! Registry field blocks: the scope that each direct evaluation of a stored trigger, effect or
+//! weight block receives, for `this`, `root`, the `from` chain and the `prev` chain.
 //!
 //! A registry item evaluates its own blocks in its methods: the method passes `this` plus the
-//! block's storage offset and a scope object to a trigger evaluator or an effect executor. The
-//! binding lists every direct call to an evaluator in a method of a registry owner. The method
-//! then works in two steps.
+//! block's storage offset and a scope object to a trigger evaluator, an effect executor or a
+//! weight evaluator. The binding lists every direct call to an evaluator in a method of a
+//! registry owner. The method then works in two steps.
 //!
 //! - The **name pass** names the block: the call is attributed to `(owner, offset)` only when
 //!   `x0` holds `this` plus one offset on every path. It also finds where the scope comes from.
@@ -18,8 +18,8 @@
 //! Evaluators forward through virtual calls that the pass cannot follow. The pass assumes that an
 //! evaluation, and other trigger and effect code that receives a scope, changes no scope object's
 //! type or links and keeps no pointer to one; this lets a scope that one evaluation received stay
-//! known for the next. Virtual calls to an evaluator,
-//! evaluations outside the owner's methods and nested blocks are outside the method.
+//! known for the next. Virtual calls to an evaluator, evaluations outside the owner's methods and
+//! nested blocks are outside the method.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::climb::{self, CallSite, Decoded, Entry, Wrapper};
@@ -45,8 +45,8 @@ const EVALUATED_BLOCK: usize = 0;
 pub struct BlockInput {
     /// Direct calls to an evaluator in a method of a registry owner.
     pub sites: Vec<EvaluationSite>,
-    /// Trigger evaluators and effect executors. Each takes its block in `x0` and its scope in
-    /// `x1`.
+    /// Trigger evaluators, effect executors and weight evaluators. Each takes its block in `x0`
+    /// and its scope in `x1`.
     pub evaluators: BTreeSet<u64>,
     /// Other trigger and effect code that receives a scope, such as a tooltip builder.
     pub scope_users: BTreeSet<u64>,
