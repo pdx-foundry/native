@@ -355,7 +355,8 @@ hidden each site. `on_ruler_created` reaches a hidden site with its known contex
 now also reach the path limit. SDK-730, which follows copies and scope factories, gave a context
 with no unresolved scope to the four astral rift names, which had only unresolved contexts:
 `CAstralRift::Finish` and the other callers fire the scope that `MakeCountryEventScope` or
-`MakeAstralRiftEventScope` returns. These call sites were checked by hand in the disassembly:
+`MakeAstralRiftEventScope` returns. SDK-734, which gives C library stubs their argument
+registers, changed no on_action or rule. These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
@@ -490,7 +491,9 @@ Each item below gave a wrong or missing answer once.
 - `x8` is the address of a returned object only for a callee that returns one in memory, and
   the compiler also uses `x8` as a scratch register (`add x8,sp,#N; str x8,[scope+0x38]`). A call
   passes `x8` only when the callee may read it before writing it: its code reads `x8`, calls, or
-  branches out first (`decode::reads_before_writing`). The pass relies on the ABI here, as it does
+  branches out first (`decode::reads_before_writing`). A C library function in
+`LIBRARY_ARGUMENTS` returns no object in memory, so a call to its stub or through its import
+pointer does not receive `x8`. The pass relies on the ABI here, as it does
   for a register that a signature excludes: compiled code never reads a caller-saved register
   after a call for its value before the call. Passing `x8` to every call escaped 17 on_actions.
 - Follow every function that takes `CGameText&`. The first run did not follow 26 calls to text

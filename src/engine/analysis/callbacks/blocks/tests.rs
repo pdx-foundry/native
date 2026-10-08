@@ -862,8 +862,8 @@ fn callers_with_different_scopes_give_two_contexts_and_equal_ones_merge() {
 }
 
 #[test]
-fn a_call_that_takes_no_arguments_does_not_receive_a_scope_left_in_a_register() {
-    let before = [(0x2008, "bl", "#0x9500")];
+fn a_call_does_not_receive_a_scope_left_in_a_register_that_its_signature_does_not_use() {
+    let before = [(0x2008, "bl", "#0x9500")]; // x1 still holds the scope
     let run = |program: Program| {
         program
             .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
@@ -873,6 +873,10 @@ fn a_call_that_takes_no_arguments_does_not_receive_a_scope_left_in_a_register() 
 
     assert_eq!(
         contexts(&run(Program::new().arguments(0x9500, 0)), POTENTIAL),
+        [fresh(COUNTRY)]
+    );
+    assert_eq!(
+        contexts(&run(Program::new().arguments(0x9500, 1)), POTENTIAL),
         [fresh(COUNTRY)]
     );
     assert_eq!(
@@ -986,7 +990,7 @@ fn a_call_that_never_returns_ends_its_path() {
 
 #[test]
 fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
-    let before = [(0x2008, "blr", "x16")];
+    let before = [(0x2008, "mov", "x8,x20"), (0x200c, "blr", "x16")]; // x1 and x8 hold the scope
     let run = |program: Program| {
         program
             .function(&caller(0x1000, COUNTRY_TYPE, "#0x2000"))
@@ -995,7 +999,7 @@ fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
     };
 
     assert_eq!(
-        contexts(&run(Program::new().call_arguments(0x2008, 0)), POTENTIAL),
+        contexts(&run(Program::new().call_arguments(0x200c, 1)), POTENTIAL),
         [fresh(COUNTRY)]
     );
     assert_eq!(contexts(&run(Program::new()), POTENTIAL), [unreadable()]);

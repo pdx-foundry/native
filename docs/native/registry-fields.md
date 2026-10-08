@@ -294,8 +294,10 @@ goes up its direct callers, at most 2, to the call that builds the scope. From t
 the caller to the call and through it, and runs every wrapper and every function that receives a
 scope, up to 6 calls deep, inline on the path with the caller's arguments and memory. Before the
 selected call, evaluations act only through their effects. A call reads the argument registers that
-its demangled signature uses; a call through an import pointer to the stack probe
-(`___chkstk_darwin`) reads none; a call to a function that never returns ends the path. A copy of a
+its demangled signature uses; a call to a C library function, direct to its stub or through an
+import pointer, reads those that the C or POSIX signature uses (`LIBRARY_ARGUMENTS`: `_strlen`
+one, `_memmove` three, the stack probe `___chkstk_darwin` none) and not `x8`; a call to a
+function that never returns ends the path. A copy of a
 scope pointer in the stack reaches a call only in the frame of a stack address that the call
 receives, at or above that address, and not in a register save: a store of `x19` to `x30` to the
 stack in a function's prologue, before its first other instruction, that no later store has
@@ -357,8 +359,8 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 133 have contexts and no entry gap, 39 have contexts
-and a gap, 67 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
+effect blocks in 82 of the 164 registries: 136 have contexts and no entry gap, 37 have contexts
+and a gap, 66 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
 `from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
 context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
@@ -379,12 +381,16 @@ bound is not a gap.
 SDK-730, which follows copies and scope factories
 ([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)), changed the
 8 psionic aura blocks: each gains a galactic object context with a country from, from the scope
-that `CPsionicAura::InitAuraScope` returns, and 6 lose their gaps. `on_gain_level` and
-`on_lose_level` keep an unreadable context and a path-limit gap: `CIntensityLevel::OnEnter`, which
-the lambda in `CPsionicAura::UpdateIntensityLevel` calls first, calls `_strlen` on its script
-profiler path while `x1` still holds the scope, and an import stub has no signature, so the call
-reads every argument register. The config agrees on the stated keys (`this = galactic_object`) and
-omits the from.
+that `CPsionicAura::InitAuraScope` returns. The config agrees on the stated keys
+(`this = galactic_object`) and omits the from. SDK-734, which gives C library stubs their argument
+registers, changed 4 blocks. Psionic aura `on_gain_level` and `on_lose_level`
+(`CIntensityLevel::OnEnter`, which the lambda in `CPsionicAura::UpdateIntensityLevel` calls first)
+and casus belli `on_proxy_war_start` (`CCasusBelliType::OnProxyWarStart`, `0x100102d18`) each call
+`_strlen` on the script profiler's path while `x1` still holds the scope; each loses an unreadable
+context and its gaps. Ai budget `potential` gains a country context with no from:
+`CCountryAI::UpdateUpkeepBudget` calls `_bzero` with a stack address in `x8` (`mov x8,sp`,
+`0x100e00c38`), which let the frame that holds the scope escape. It keeps the bound gaps of
+`UpdateExpenditureBudget`, which reaches no evaluation.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
 a trigger in an element of a component list, not `this` plus an offset. These call sites were
 checked by hand in the disassembly:
@@ -446,17 +452,16 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
   its mission type, or in the owner through a `csel` of two objects (tradition `on_enabled` and
   `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it from a getter, or
   run only as nested blocks (SDK-732). Weight blocks are outside the method (SDK-733).
-- 29 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
+- 26 blocks keep an unreadable context: a call that the method cannot see into receives the scope.
   The main shapes: a setter or filler whose scope type is a run-time value
   (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
   `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a `from` that is the caller's
   scope parameter (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is
   a member of a parameter or heap object (event chain `abort_trigger`, casus belli `is_valid`, and
   button effect `potential` and `allow` from `CExecuteButtonEffectCommand::IsValid`, which copies
-  the command's member at `this + 0x20`); a call to an import stub with no signature (psionic aura
-  `on_gain_level` and `on_lose_level`, above); and a helper that the pass enters and that stops at
+  the command's member at `this + 0x20`); and a helper that the pass enters and that stops at
   the path limit (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
-- Path, loop and step limits are gaps only where a contradiction appears (33 path, 14 loop); 8
+- Path, loop and step limits are gaps only where a contradiction appears (30 path, 14 loop); 8
   stop at a branch on an unknown value and 4 at an instruction.
 - 7 wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2 callers
   (`caller-depth`). Script values and modifier blocks are outside the method.
@@ -465,7 +470,9 @@ Pitfalls:
 
 - A scope pointer left in an argument register is not an argument when the callee's signature does
   not take it; an unknown virtual call cannot be checked this way, but a call on a proven instance
-  pointer's object can.
+  pointer's object can. A C library stub keeps its raw name (`_strlen`), so only
+  `LIBRARY_ARGUMENTS` gives its count; it lists the stubs that the decoded code calls on M452, and a
+  stub that it lacks reads every argument register. Add a stub when a gap names a call to it.
 - Only a prologue's save is a register save. A save after the function's first other instruction,
   and a spill of the same pointer in the body, are stack memory like any other; telling them from
   an object field needs object extents, which the method does not have.

@@ -200,7 +200,11 @@ pub(in crate::binding) fn callbacks(
     }
 
     let call_arguments = import_call_arguments(&functions, imports);
-    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
+    let ignores_x8 = callees_ignoring_x8(
+        &text,
+        symbols,
+        functions.values().flatten().chain(&scope_code),
+    );
     let instances = instances(&text, image, bound_slots, &functions)?;
     Ok(CallbacksInput {
         functions,
@@ -343,7 +347,11 @@ pub(in crate::binding) fn block_evaluations(
     scope_functions.factories =
         scope_factories(&text, functions.values().flatten(), &scope_functions);
     let scope_code = scope_code(&text, &scope_functions);
-    let ignores_x8 = callees_ignoring_x8(&text, functions.values().flatten().chain(&scope_code));
+    let ignores_x8 = callees_ignoring_x8(
+        &text,
+        symbols,
+        functions.values().flatten().chain(&scope_code),
+    );
     let instances = instances(&text, image, bound_slots, &functions)?;
 
     Ok(BlockInput {
@@ -414,11 +422,32 @@ fn decode_receivers(
     receivers
 }
 
-/// What the stack probe reads: it takes its size in `x15` and no argument register.
-const IMPORT_ARGUMENTS: &[(&str, usize)] = &[("___chkstk_darwin", 0)];
+/// How many argument registers the C library functions that the decoded code calls read, by
+/// their raw names, which have no parameter list. The C and POSIX standards fix these
+/// signatures. `_fmodf` takes its arguments in floating-point registers, and the stack probe
+/// takes its size in `x15`.
+const LIBRARY_ARGUMENTS: &[(&str, usize)] = &[
+    ("___chkstk_darwin", 0),
+    ("_bzero", 2),
+    ("_fmodf", 0),
+    ("_memcmp", 3),
+    ("_memcpy", 3),
+    ("_memmove", 3),
+    ("_memset", 3),
+    ("_strcmp", 2),
+    ("_strlen", 1),
+];
+
+/// How many argument registers the C library function `name` reads, from [`LIBRARY_ARGUMENTS`].
+fn library_arguments(name: &str) -> Option<usize> {
+    LIBRARY_ARGUMENTS
+        .iter()
+        .find(|(function, _)| *function == name)
+        .map(|(_, count)| *count)
+}
 
 /// How many argument registers each call through an import pointer reads, for the imports in
-/// [`IMPORT_ARGUMENTS`], by the call instruction. The call loads the pointer with `adrp` and
+/// [`LIBRARY_ARGUMENTS`], by the call instruction. The call loads the pointer with `adrp` and
 /// `ldr` into the register that it calls through.
 fn import_call_arguments(
     functions: &BTreeMap<u64, Vec<Instruction>>,
@@ -453,8 +482,8 @@ fn import_call_arguments(
             let Some(name) = imports.get(&(page_target + offset)) else {
                 continue;
             };
-            if let Some((_, count)) = IMPORT_ARGUMENTS.iter().find(|(import, _)| import == name) {
-                calls.insert(call.address, *count);
+            if let Some(count) = library_arguments(name) {
+                calls.insert(call.address, count);
             }
         }
     }
@@ -550,12 +579,19 @@ fn constructs_at_x8(rows: &[Instruction], constructors: &BTreeSet<u64>) -> bool 
 }
 
 /// The targets of the direct calls in `rows` that ignore the `x8` that they receive: no path
-/// reads it before writing it. A demangled name does not state whether a function returns an
-/// object in memory, so its code decides whether a call to it receives `x8`.
+/// reads it before writing it, or the target is the stub of a function in [`LIBRARY_ARGUMENTS`],
+/// which returns no object in memory. A demangled name does not state whether a function returns
+/// an object in memory, so its code decides whether a call to it receives `x8`.
 fn callees_ignoring_x8<'r>(
     text: &Text,
+    symbols: &[Symbol],
     rows: impl Iterator<Item = &'r Instruction>,
 ) -> BTreeSet<u64> {
+    let stubs: BTreeSet<u64> = symbols
+        .iter()
+        .filter(|symbol| library_arguments(&symbol.name).is_some())
+        .map(|symbol| symbol.address)
+        .collect();
     let targets: BTreeSet<u64> = rows
         .filter(|row| row.operation == "bl")
         .filter_map(|row| number(&row.operands))
@@ -564,17 +600,21 @@ fn callees_ignoring_x8<'r>(
     targets
         .into_iter()
         .filter(|&target| {
-            decoded(text, target).is_some_and(|callee| !reads_before_writing(&callee, 8))
+            stubs.contains(&target)
+                || decoded(text, target).is_some_and(|callee| !reads_before_writing(&callee, 8))
         })
         .collect()
 }
 
-/// How many argument registers, from `x0`, each function whose signature the symbol states
-/// reads. A function whose count is not known is left out.
+/// How many argument registers, from `x0`, each function reads whose signature the symbol states
+/// or whose stub [`LIBRARY_ARGUMENTS`] lists. A function whose count is not known is left out.
 fn argument_registers(symbols: &[Symbol]) -> BTreeMap<u64, usize> {
     symbols
         .iter()
-        .filter_map(|symbol| Some((symbol.address, registers_read(&symbol.name)?)))
+        .filter_map(|symbol| {
+            let count = registers_read(&symbol.name).or_else(|| library_arguments(&symbol.name))?;
+            Some((symbol.address, count))
+        })
         .collect()
 }
 
@@ -832,8 +872,9 @@ fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{constructs_at_x8, import_call_arguments, registers_read};
+    use super::{argument_registers, constructs_at_x8, import_call_arguments, registers_read};
     use crate::engine::analysis::decode::Instruction;
+    use crate::engine::analysis::discovery::Symbol;
 
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
         Instruction {
@@ -858,7 +899,7 @@ mod tests {
         ];
         let imports = BTreeMap::from([
             (0x5dc8, "___chkstk_darwin".to_string()),
-            (0x5010, "_memcpy".to_string()),
+            (0x5010, "_PMurHash32".to_string()),
         ]);
 
         assert_eq!(
@@ -909,6 +950,24 @@ mod tests {
                 "(anonymous namespace)::ExecuteTradition(CTraditionType const&, CCountry&)"
             ),
             Some(3)
+        );
+    }
+
+    #[test]
+    fn a_c_library_stub_reads_the_registers_that_its_standard_signature_uses() {
+        let symbols = [
+            ("_strlen", 0x100),
+            ("_memmove", 0x10c),
+            ("_PMurHash32", 0x118),
+        ]
+        .map(|(name, address)| Symbol {
+            name: name.into(),
+            address,
+        });
+
+        assert_eq!(
+            argument_registers(&symbols),
+            BTreeMap::from([(0x100, 1), (0x10c, 3)])
         );
     }
 
