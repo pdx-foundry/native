@@ -1334,7 +1334,7 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         std::collections::BTreeMap::from([(0x58, Trigger)])
     );
     // CSpecialistSubjectType::GetOnProgressCompleteEffect() const: add x0, x0, #0xa0; ret.
-    assert_eq!(input.getters.get(&0x100ba5d44), Some(&0xa0));
+    assert_eq!(input.offset_getters.get(&0x100ba5d44), Some(&0xa0));
 
     let pointers = |function: u64| input.type_pointers.get(&function).cloned();
     let member = |register: usize, offset: i64, owner: &str| TypePointers {

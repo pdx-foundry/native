@@ -41,7 +41,7 @@ struct Program {
     instances: BTreeMap<u64, u64>,
     words: BTreeMap<u64, u64>,
     factories: BTreeMap<u64, Vec<Instruction>>,
-    getters: BTreeMap<u64, i64>,
+    offset_getters: BTreeMap<u64, i64>,
 }
 
 impl Program {
@@ -56,7 +56,7 @@ impl Program {
             instances: BTreeMap::new(),
             words: BTreeMap::new(),
             factories: BTreeMap::new(),
-            getters: BTreeMap::new(),
+            offset_getters: BTreeMap::new(),
         }
     }
 
@@ -94,7 +94,7 @@ impl Program {
 
     /// The function at `function` is an offset getter that returns its receiver plus `offset`.
     fn getter(mut self, function: u64, offset: i64) -> Self {
-        self.getters.insert(function, offset);
+        self.offset_getters.insert(function, offset);
         self
     }
 
@@ -181,7 +181,7 @@ impl Program {
             ]),
             tooltip_builders: BTreeMap::from([(TOOLTIP, BlockFamily::Trigger)]),
             tooltip_slots: BTreeMap::from([(0x58, BlockFamily::Trigger)]),
-            getters: self.getters,
+            offset_getters: self.offset_getters,
             type_pointers: self.type_pointers,
             scope_users: BTreeSet::from([TOOLTIP]),
             functions: self.functions,
@@ -1664,7 +1664,8 @@ fn a_call_to_an_offset_getter_names_the_block_at_its_offset() {
 }
 
 /// A helper at 0x2000 that keeps the block in its parameter `x1`, builds its own scope, typed as
-/// a country when `x2` is not zero and as a leader otherwise, and runs the block's effect.
+/// a country when `x2` is not zero and as a leader otherwise, and runs the block's effect. Its
+/// receiver leads to the owner through the member at `+0x18`, as `CMission`'s does.
 const HELPER: Rows<'static> = &[
     (0x2000, "sub", "sp,sp,#0x200"),
     (0x2004, "mov", "x19,x1"),
@@ -1695,16 +1696,10 @@ fn passes_to_helper(base: u64, block: &'static str, flag: &'static str) -> Vec<L
     ]
 }
 
-/// The helper's receiver leads to the owner through a member, as `CMission`'s does; its block is
-/// a parameter that leads to no owner.
-fn helper_pointers() -> TypePointers {
-    leading(0, Some(0x18))
-}
-
 #[test]
 fn a_helper_gives_each_caller_s_block_only_the_context_of_that_caller_s_run() {
     let result = Program::new()
-        .pointing(helper_pointers(), HELPER)
+        .pointing(leading(0, Some(0x18)), HELPER)
         .method(&passes_to_helper(0x1000, "x1,x0,#0x40", "w2,#1"))
         .method(&passes_to_helper(0x1100, "x1,x0,#0x48", "w2,#0"))
         .analyze();
@@ -1716,13 +1711,15 @@ fn a_helper_gives_each_caller_s_block_only_the_context_of_that_caller_s_run() {
 
 #[test]
 fn a_helper_with_no_caller_or_with_callers_that_name_no_block_gives_no_context() {
-    let alone = Program::new().pointing(helper_pointers(), HELPER).analyze();
+    let alone = Program::new()
+        .pointing(leading(0, Some(0x18)), HELPER)
+        .analyze();
     let passes_on = Program::new()
-        .pointing(helper_pointers(), HELPER)
+        .pointing(leading(0, Some(0x18)), HELPER)
         .function(&[(0x1000, "mov", "w2,#1"), (0x1004, "bl", "#0x2000")])
         .analyze();
     let unnamed = Program::new()
-        .pointing(helper_pointers(), HELPER)
+        .pointing(leading(0, Some(0x18)), HELPER)
         .method(&passes_to_helper(0x1000, "x1,x3,#0x40", "w2,#1"))
         .analyze();
 
@@ -1755,7 +1752,7 @@ fn a_helper_whose_scope_is_a_parameter_too_charges_the_callers_block() {
         &[("mov", "x2,x1"), ("add", "x1,x21,#0x40"), ("bl", "#0x2000")],
     );
     let result = Program::new()
-        .pointing(helper_pointers(), &helper)
+        .pointing(leading(0, Some(0x18)), &helper)
         .method(&caller)
         .analyze();
 

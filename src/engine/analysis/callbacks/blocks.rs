@@ -76,7 +76,7 @@ pub struct BlockInput {
     /// The block family of each vtable slot that builds a block's tooltip, by its displacement.
     pub tooltip_slots: BTreeMap<i64, BlockFamily>,
     /// The offset `k` of each function whose whole body is `add x0, x0, #k; ret`, by its address.
-    pub getters: BTreeMap<u64, i64>,
+    pub offset_getters: BTreeMap<u64, i64>,
     /// The registry owners that the registers of each function that holds a site, and of each
     /// decoded caller, lead to.
     pub type_pointers: BTreeMap<u64, TypePointers>,
@@ -217,7 +217,7 @@ pub fn analyze_blocks(input: &BlockInput) -> BlockEntries {
         callers: &input.callers,
         scope_code: &input.scope_code,
         strings: &input.strings,
-        getters: &input.getters,
+        offset_getters: &input.offset_getters,
     };
     let mut result = BlockEntries::default();
     let Attribution {
@@ -268,29 +268,31 @@ struct PassedBlock {
     scope_is_parameter: bool,
 }
 
-/// The functions whose sites the name pass names a block at.
+/// The functions whose sites the name pass names a block at, or evaluate a block parameter at.
 #[derive(Debug, Clone, Default)]
 pub struct NamedFunctions {
-    /// The functions that hold an evaluation of a named block or a helper's evaluation. The
-    /// binding gives these functions' callers and the functions that they pass a scope to.
+    /// The functions that hold an evaluation of a named block, and the helpers, whose evaluation's
+    /// block a caller names. The binding gives these functions' callers and the functions that
+    /// they pass a scope to.
     pub evaluating: BTreeSet<u64>,
     /// The functions that hold a tooltip call on a named block.
     pub tooltips: BTreeSet<u64>,
 }
 
-/// The functions that hold a site that the name pass names a block at.
+/// The functions that hold a site that the name pass names a block at, or that evaluates the
+/// block that a helper receives.
 pub fn named_functions(
     sites: &[EvaluationSite],
     functions: &BTreeMap<u64, Vec<Instruction>>,
     type_pointers: &BTreeMap<u64, TypePointers>,
     evaluation: &Evaluation<'_>,
     strings: &StringFunctions,
-    getters: &BTreeMap<u64, i64>,
+    offset_getters: &BTreeMap<u64, i64>,
 ) -> NamedFunctions {
     let states = climb::states_at(
         functions,
         strings,
-        getters,
+        offset_getters,
         sites.iter().map(|site| (site.function, site.address)),
     );
     let mut named = NamedFunctions::default();
@@ -425,7 +427,7 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
     let states = climb::states_at(
         &input.functions,
         &input.strings,
-        &input.getters,
+        &input.offset_getters,
         input.sites.iter().map(|site| (site.function, site.address)),
     );
     let evaluation = Evaluation {
@@ -533,7 +535,7 @@ fn helper_calls(
     let states = climb::states_at(
         decoded.functions,
         decoded.strings,
-        decoded.getters,
+        decoded.offset_getters,
         helpers
             .keys()
             .flat_map(callers)

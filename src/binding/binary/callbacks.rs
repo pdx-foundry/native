@@ -344,7 +344,7 @@ pub(in crate::binding) fn block_evaluations(
     } = *image;
     let text = Text::read(bytes, symbols)?;
     let names = Names::new(symbols);
-    let evaluators = evaluators(symbols)?;
+    let evaluators = with_families(symbols, evaluator_names())?;
     let constants = super::language::constant_data(bytes, pointers, bound_slots)?;
     let evaluation_slots = holding_slots(symbols, &constants, &names, &evaluators);
     let tooltip_builders = tooltip_builders(symbols);
@@ -427,7 +427,7 @@ pub(in crate::binding) fn block_evaluations(
         evaluation_slots,
         tooltip_builders,
         tooltip_slots,
-        getters: offset_getters(&text, &functions),
+        offset_getters: offset_getters(&text, &functions),
         type_pointers,
         scope_users,
         receivers,
@@ -445,12 +445,6 @@ pub(in crate::binding) fn block_evaluations(
         ignores_x8,
         instances: instances.vtables,
     })
-}
-
-/// The block family of each evaluator of [`evaluator_names`]. An evaluator that the build lacks is
-/// an error.
-fn evaluators(symbols: &[Symbol]) -> Result<BTreeMap<u64, BlockFamily>, AnalysisError> {
-    with_families(symbols, evaluator_names())
 }
 
 /// The member that builds the tooltip of a trigger block. It evaluates nothing.

@@ -12,11 +12,12 @@
 //! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate or a register
 //! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant, a
 //! loaded global or an address that an argument leads to, with or without pre-index writeback
-//! from a general register, and 64-bit stores and loads of stack slots. Any other instruction makes the registers that it may write unknown. A call makes
-//! `x0`–`x18` unknown and `x0` the result of that call; the result of a call to an offset getter,
-//! whose whole body is `add x0, x0, #k; ret`, is `x0` plus `k`. Stack offsets are relative to the
-//! stack pointer at entry; the state also knows where the stack pointer is now, until it moves by
-//! an amount that is not known.
+//! from a general register, and 64-bit stores and loads of stack slots. Any other instruction
+//! makes the registers that it may write unknown. A call makes `x0`–`x18` unknown and `x0` the
+//! result of that call; the result of a call to an offset getter, whose whole body is
+//! `add x0, x0, #k; ret`, is `x0` plus `k`. Stack offsets are relative to the stack pointer at
+//! entry; the state also knows where the stack pointer is now, until it moves by an amount that is
+//! not known.
 //!
 //! A stack slot keeps the 64-bit value last stored to it on every path. A callee writes only
 //! inside the objects that it receives, and an object never starts above its address, so a call
@@ -281,7 +282,7 @@ fn stored_address(state: &State, memory: &str) -> Option<i64> {
 }
 
 /// Run the pass over one function and give `visit` the state before each instruction, once the
-/// states are stable. `getters` holds the offset `k` of each offset getter by its address.
+/// states are stable. `offset_getters` holds each offset getter's `k` by its address.
 ///
 /// A block that no direct branch reaches is a target of a branch through a register, such as a
 /// jump table, when the function has one: it starts from the joined states at those branches.
@@ -290,7 +291,7 @@ fn stored_address(state: &State, memory: &str) -> Option<i64> {
 pub(super) fn each_state(
     rows: &[Instruction],
     strings: &StringFunctions,
-    getters: &BTreeMap<u64, i64>,
+    offset_getters: &BTreeMap<u64, i64>,
     mut visit: impl FnMut(&Instruction, &State),
 ) {
     if rows.is_empty() {
@@ -307,7 +308,7 @@ pub(super) fn each_state(
         while let Some(block) = pending.pop_first() {
             let mut state = entry[&block].clone();
             for row in &rows[blocks.range(block)] {
-                step(row, strings, getters, &mut state);
+                step(row, strings, offset_getters, &mut state);
             }
             for successor in blocks.successors(block) {
                 match entry.get_mut(&successor) {
@@ -327,7 +328,7 @@ pub(super) fn each_state(
             if blocks.jumps_through_register(rows, block) {
                 let mut state = start.clone();
                 for row in &rows[blocks.range(block)] {
-                    step(row, strings, getters, &mut state);
+                    step(row, strings, offset_getters, &mut state);
                 }
                 match &mut indirect {
                     Some(joined) => {
@@ -366,7 +367,7 @@ pub(super) fn each_state(
         let mut state = start.clone();
         for row in &rows[blocks.range(block)] {
             visit(row, &state);
-            step(row, strings, getters, &mut state);
+            step(row, strings, offset_getters, &mut state);
         }
     }
 }
@@ -456,7 +457,7 @@ fn successors(
 fn step(
     row: &Instruction,
     strings: &StringFunctions,
-    getters: &BTreeMap<u64, i64>,
+    offset_getters: &BTreeMap<u64, i64>,
     state: &mut State,
 ) {
     let operands: Vec<&str> = split(&row.operands);
@@ -559,9 +560,9 @@ fn step(
         }
         ("bl", [target]) => {
             let target = immediate(target).map(|target| target as u64);
-            call(row.address, target, strings, getters, state);
+            call(row.address, target, strings, offset_getters, state);
         }
-        ("blr", _) => call(row.address, None, strings, getters, state),
+        ("blr", _) => call(row.address, None, strings, offset_getters, state),
         _ => clear_written(operation, &operands, strings, state),
     }
 }
@@ -572,11 +573,11 @@ fn call(
     address: u64,
     target: Option<u64>,
     strings: &StringFunctions,
-    getters: &BTreeMap<u64, i64>,
+    offset_getters: &BTreeMap<u64, i64>,
     state: &mut State,
 ) {
     let object = state.stack_offset(0);
-    let result = match target.and_then(|target| getters.get(&target)) {
+    let result = match target.and_then(|target| offset_getters.get(&target)) {
         Some(&getter_offset) => offset(state, "x0", getter_offset),
         None => single(Fact::Result(address)),
     };
