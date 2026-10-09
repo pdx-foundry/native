@@ -726,7 +726,7 @@
           "kind": "field",
           "name": "ai_weight"
         },
-        "no direct call in the owner's methods evaluates this block"
+        "no evaluation that the method attributes evaluates this block"
       ]
     ],
     "read_scope": {

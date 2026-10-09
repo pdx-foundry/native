@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v20`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v21`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -273,11 +273,11 @@ persistent destinations are joined to constructor-installed virtual readers; a s
 
 ## Block entry contexts
 
-`Field.entry_contexts` gives, for each root trigger, effect and weight block, the scopes that the engine's
-direct evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
+`Field.entry_contexts` gives, for each root trigger, effect and weight block, the scopes that the
+engine's evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
 (`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`,
-`src/binding/binary/callbacks.rs`, `src/session/field_entries.rs`). The answer keeps
-`EntryScope::SelfLink`; read it by the [self-link rule](engine-commands.md#on_actions-game-rules-and-their-entry-scopes).
+`src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`,
+`src/session/field_entries.rs`). The answer keeps `EntryScope::SelfLink`; read it by the [self-link rule](engine-commands.md#on_actions-game-rules-and-their-entry-scopes).
 `this` is the scope at the call; the scope that the engine reads the block in is SDK-549's.
 
 **How the engine evaluates a stored block.** A registry item evaluates its own blocks in its
@@ -289,15 +289,43 @@ executor or a weight evaluator (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffe
 (`CTraditionType::IsPotential(CCountry const*)`: a fresh scope, `SetCountry`, then `this + 0x108`)
 or takes it from its caller (`CCouncilAgenda::IsPotential(CEventScope&, CString*)` evaluates
 `this + 0x1c8` with its scope parameter; `CGovernment::UpdateCouncilAgenda` builds that scope).
-The field method's storage offset is the offset from the method's `this`.
+The field method's storage offset is the offset from the method's `this`. Another class's method
+can evaluate the block through the block object's own vtable, on a pointer to the item that it
+received or keeps: `CCountry::AddEdict(CEdict const*)` runs `[[x1 + 0x2e0]] + 0x48` (`Execute`)
+on `x1 + 0x2e0`, and `CMission::Start` loads its mission type from `this + 0x18` and runs slot
+`+0x48` of the effect at `+0x190`. Some direct evaluator calls are in another class too
+(`CTechnologyStatus::GetTechWeight(CTechnology const*)` evaluates `x1` plus an offset).
 
-**The method.** The name pass attributes a call to `(owner, offset)` only when `x0` holds `this`
-plus one offset on every path. A method whose scope is its own parameter is a *wrapper*; the method
+**The method.** A *type pointer* is a register that points at an owner's item at entry: the
+receiver of a member of the owner, by the function's exact qualifier (a member of
+`CAnomalyType::COutcomeEffect` is not a member of `CAnomalyType`); a parameter of type `O const*`,
+`O*`, `O const&` or `O&`; or the word at offset `k` of an object of class `C`, when some
+constructor of `C` stores there a parameter of one of those types, no constructor stores a
+parameter of another type there, and every constructor of `C` decodes (`CMission` `+0x18`,
+`CResolution` `+0x18`). A parameter's register is known up to the first parameter that one
+general register may not pass (pointers, references, integers, `bool` and `TPdxRef<…>` take one);
+an enumeration, which a demangled name does not tell from a class, ends them, and a function whose
+qualifier is not a known class has none. The candidate calls are the direct calls to an evaluator
+and every `blr`, in the functions that have a type pointer. The name pass names a load from an
+argument by its chain of loads, three loads deep (`Member`, `Deref`, `DerefAt`), and attributes a call to
+`(owner, offset, family)` only when `x0` holds one type pointer plus one offset other than zero on
+every path. A `blr` must also call a slot of the vtable at that same address whose displacement is
+an evaluation slot. The binding derives the slots from the vtables: each slot of an evaluator
+class's primary vtable that holds the evaluator, by its displacement (M452: trigger `+0x10` and
+`+0x18` `Evaluate`, `+0x20` `ActualEvaluate`; effect `+0x48` `Execute`). The family is the
+evaluator's or the slot's; a field joins only a block of its reader family, so a trigger field
+does not join a call through effect slot `+0x48`, and an effect's `Read` at `+0x10` joins no
+effect field. Every owner has a vtable, so the word at offset zero of its item is the item's
+vtable pointer and holds no block. Callers and receivers are decoded only for the functions with
+an attributed call. A function whose scope is its own parameter is a *wrapper*; the method
 goes up its direct callers, at most 2, to the call that builds the scope. From that call it runs
 the caller to the call and through it, and runs every wrapper and every function that receives a
 scope, up to 6 calls deep, inline on the path with the caller's arguments and memory. Before the
-selected call, evaluations act only through their effects. A call reads the argument registers that
-its demangled signature uses; a call to a C library function, direct to its stub or through an
+selected call, evaluations act only through their effects. A call through a vtable slot is read on
+arrival and then applied as a call that the pass does not follow: the pass does not know the
+block's family there, and the same slot of another family's block is not an evaluation. A scope
+that one virtual evaluation receives is therefore unknown to the later ones on the path. A call
+reads the argument registers that its demangled signature uses; a call to a C library function, direct to its stub or through an
 import pointer, reads those that the C or POSIX signature uses (`LIBRARY_ARGUMENTS`: `_strlen`
 one, `_memmove` three, the stack probe `___chkstk_darwin` none) and not `x8`; a call to a
 function that never returns ends the path. A copy of a
@@ -341,6 +369,18 @@ rule.
 
 **Assumptions.** Beside the self-link rule:
 
+- Every function that writes a member word that leads to an owner keeps the owner's layout: it
+  stores an item of that owner, its null object, or null. Checked by hand on M452 for `CMission`
+  (its constructors, and `ReadMember`, which stores a lookup result or
+  `TPdxNullObject<CMissionType>::_pInstance` at `+0x18`), `CResolution` (the constructor from a
+  `CResolutionType const&` stores it at `+0x18`; the default constructor stores
+  `TPdxNullObject<CResolutionType>::_pInstance`; `ReadMember` stores the result of
+  `ReadKeyReference<CResolutionTypeDatabase>`) and `CCosmicStorm` (`+0x328`: the constructor
+  from a `CCosmicStormType const*`, the default constructor, which passes it the null object, and
+  `ReadMember`, which stores a lookup result or `TPdxNullObject<CCosmicStormType>::_pInstance`).
+  Remove the assumption with a writer check that covers every function that stores the word.
+- A demangled name does not say whether a member function is static; a function of a class is
+  read as taking its receiver in `x0`, as the owner test did before SDK-732.
 - [Evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes):
   trigger, effect and weight code that receives a scope is a scope reader.
 - A bounded search with no contradiction: when the paths of a call stop only at the path, loop or
@@ -363,12 +403,13 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 312 root trigger,
-effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 136
-have contexts and no entry gap, 38 have contexts and a gap, and 65 have none; 21 keep several
-contexts with a known `this`, 61 name a typed `from` and 1 a typed `prev`. The 73 weight blocks
-are on [weight blocks](weight-blocks.md#entry-contexts-m452). 7 registries have 9 evaluation calls
-whose block the method cannot name. SDK-726's two rules changed 10 blocks in 6 registries, each
-only removing an unresolved context and its gaps: the register saves those of astral action `potential` and `is_exhausted`,
+effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 153
+have contexts and no entry gap, 46 have contexts and a gap, and 40 have none; 26 keep several
+contexts with a known `this`, 66 name a typed `from` and 4 a typed `prev`. The 73 weight blocks
+are on [weight blocks](weight-blocks.md#entry-contexts-m452). 6 registries have 7 direct
+evaluation calls in the owner's methods whose block the method cannot name. SDK-726's two rules
+changed 10 blocks in 6 registries, each only removing an unresolved context and its gaps: the
+register saves those of astral action `potential` and `is_exhausted`,
 colony type, observation mission and system type `potential`, and diplomatic action `potential`,
 `possible` and `proposable`; the instance pointer those of council agenda `potential` and
 `allow`. SDK-712 changed 15 blocks in 9 registries, and each change only adds a context, removes
@@ -411,8 +452,22 @@ context and loses its path-limit gap. Its run starts at
 `CPlanetModifier::GetSpawnChance(CEventScope&)`, which calls `IsPotential`. Before, the run entered
 `GetRawFactor` as a scope receiver, and its modifier loop used up the path limit before a path
 reached the evaluation in `IsPotential`. Anomalies and civics gain unnamed weight evaluations
-([weight blocks](weight-blocks.md#entry-contexts-m452)). These call sites were checked by hand in
-the disassembly:
+([weight blocks](weight-blocks.md#entry-contexts-m452)).
+SDK-732 part 1, which attributes evaluations through the block's own vtable and direct evaluator
+calls in any function with a type pointer, changed 28 blocks in 13 registries; no block lost a
+context. 25 trigger and effect blocks and 2 weight blocks (technology `ai_weight` and
+`weight_modifier`) gain contexts where they had none: archaeological site `on_create`,
+`on_roll_failed` and `on_visible`, armies `allow`, artifact action and astral action `effect`, dust
+cloud `condition`, `on_system_added` and `on_system_removed`, edict `effect` and `on_disabled`,
+espionage operation `on_create` and `on_roll_failed`, mission `on_daily`, `on_monthly`, `on_start`
+and `on_stop`, relic `possible` and `active_effect`, resolution `effect` and `fail_effects`, and
+storm `on_start`, `on_monthly`, `on_moved` and `on_finished`. Seven of them have only an unreadable
+`from` or context (missions, through `CSpatialObjectRefCaster::FillEventScope`'s jump table;
+espionage operations; archaeological site `on_visible`). Buildings `potential` gains a second,
+unreadable context: `CColony::CanAddBuildingType(CEventScope const&, CBuildingType const&, CString*)`
+evaluates `x2 + 0x108` through slot `+0x18` with its scope parameter, and both of its callers stop
+at the path limit. Anomalies lose their 2 unnamed evaluations (the exact receiver rule). These
+call sites were checked by hand in the disassembly:
 
 - armies `potential`: `CArmyType::IsPotentialTrigger` builds a colony scope at `sp+0x170`, sets a
   second scope's type to species (`Set(0x800, …)`), links it as from (`str x21,[sp,#0x1a8]`) and
@@ -429,8 +484,23 @@ the disassembly:
 - tradition `potential`: `CTraditionType::IsPotential` builds its own country scope.
 - diplomatic action `on_accept`: `CDiplomaticActionType::OnAccept` builds two country scopes, links
   the second as the first's from and runs `this + 0x2f8` with the first.
-- tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`,
-  a virtual call, so the block has a gap.
+- tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`
+  of a `csel` of the two objects, which names no one block, so the block has a gap (SDK-735).
+- edict `effect`: `CCountry::AddEdict(CEdict const*)` (`0x10028d49c`) keeps the edict in `x21`,
+  builds a scope at `x19 + 0x60` (`CEventScope(int)`, `SetCountry` of `this`) and calls
+  `[[x21 + 0x2e0]] + 0x48` with `x0 = x21 + 0x2e0`: a country with self-links. `RemoveEdict` runs
+  `on_disabled` at `+0x388` the same way.
+- resolution `effect`: `CGalacticCommunity::PassResolution(CResolution&, bool, bool)`
+  (`0x10055ce08`) keeps the resolution type `[x1 + 0x18]` in `x23` across its calls and calls
+  `[[x23 + 0x3a8]] + 0x48` with `x1 = sp + 0x358`. When bit 0 of the type's byte `+0x168` is set
+  (a targeted resolution), that scope is the target country (`GetTarget`) with the resolution's
+  country at `sp + 0x78` as its from (`str x8,[sp,#0x390]`); otherwise it is the resolution's
+  country with no from. `FailResolution` runs `fail_effects` at `+0x450` the same way.
+- mission `on_start`: `CMission::Start` (`0x1009531d4`) builds four scopes, fills them with
+  `BuildEffectScopeForOperator`, and calls `[[[this + 0x18] + 0x190]] + 0x48` with
+  `x1 = sp + 0x450`. The country `this` is read; the from goes through
+  `CSpatialObjectRefCaster::FillEventScope`, a jump table on a run-time type, so it stays
+  unresolved, and a path on which the operator sets no country gives `this` no type.
 
 **Comparison with the config's `replace_scopes`** (M451-hotfix; the SDK-726 changes above remove
 only unresolved contexts, and of the SDK-712 changes only armies `potential` disagrees). Read through the self-link rule, comparing the
@@ -464,25 +534,48 @@ stance `trigger` (from planet on one path), casus belli `potential` (from countr
 faction) and system type `potential` (from country). Per-name conclusions go to the Atlas ledger
 (SDK-704).
 
+The 27 blocks that SDK-732 part 1 gives contexts (M452, same rules): 9 agree (archaeological site
+`on_create` and `on_roll_failed`, artifact action `effect`, edict `effect` and `on_disabled`, relic
+`possible` and `active_effect`, technology `ai_weight` and `weight_modifier`), 3 disagree, 8 have no
+`replace_scopes` (astral action `effect`, the three dust cloud blocks, the four storm blocks), and 7
+have no readable context. The disagreements, read by hand:
+
+- Resolution `effect` and `fail_effects`: the config states the targeted resolution's context
+  (`from = country`); an untargeted resolution has no from. The config states one of several
+  contexts.
+- Armies `allow`: `CCountry::CalcIsArmyTypeAllowedOnAnyColony(CArmyType const&)` sets each colony
+  (`Set(1 << 40, …)`) on a fresh scope and calls slot `+0x20` of `x1 + 0x440`: a colony with no
+  from. The config gives a planet with a species from, as for armies `potential`. A source error,
+  unless another evaluation that the method does not find supplies the config's context.
+
 **Gaps.**
 
-- 56 trigger and effect blocks have no direct evaluation in the owner's methods. Most run through
-  the block object's own virtual `Execute` or `Evaluate` slot in another class's method, such as
-  `CMission::Start` on its mission type, or in the owner through a `csel` of two objects (tradition
-  `on_enabled` and `on_disabled`); others pass the block to a helper (`CMission::Stop`), return it
-  from a getter, or run only as nested blocks (SDK-732). The 37 weight blocks with this gap are on
+- 31 trigger and effect blocks have no attributed evaluation (56 before SDK-732 part 1). Their
+  evaluations pass the block to a helper (`CMission::Stop` for mission `on_cancel`, `on_fail` and
+  `on_success`), return it from an offset getter (agreement term value and specialist subject perk
+  `activate_effect` and `deactivate_effect`), select it with a `csel` of two objects (tradition and
+  ascension perk `on_enabled` and `on_disabled`, SDK-735), or reach the item through an array, a
+  lookup or a member that no type pointer leads to: tradable actions in `TradeActions` and
+  `EndActions` (an array, in an anonymous namespace), first contact stages at `CFirstContact`
+  `+0x38` (`HandleRollFailed`), which the member rule does not establish, pop faction `on_create`
+  and `valid` through the type that `CPopFaction::Initialize` (not a constructor) stores at
+  `+0x18`, crisis level `on_unlock` through a spill of its parameter (`stur x1,[x29,#-0x60]`) that
+  the name pass forgets at a call that receives a lower stack address. Others are only tooltip
+  calls or nested blocks (SDK-732 part 2). The 35 weight blocks with this gap are on
   [weight blocks](weight-blocks.md#entry-contexts-m452).
-- 25 trigger and effect blocks keep an unreadable context: a call that the method cannot see into
+- 33 trigger and effect blocks keep an unreadable context: a call that the method cannot see into
   receives the scope. The main shapes: a setter or filler whose scope type is a run-time value
   (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
-  `SetupScopeObject` and `CSelectable::DetermineScope` jump tables); a `from` that is the caller's
-  scope parameter (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is
-  a member of a parameter or heap object (event chain `abort_trigger` and button effect `potential`
-  and `allow` from `CExecuteButtonEffectCommand::IsValid`, which copies the command's member at
-  `this + 0x20`); and a helper that the pass enters and that stops at the path limit
-  (`AddSpentResourcesToScope` under buildings `on_queued` and `on_unqueued`).
-- Path, loop and step limits are gaps only where a contradiction appears (31 trigger and effect
-  blocks at the path limit, 14 at the loop limit); 8 stop at a branch on an unknown value and 4 at
+  `SetupScopeObject` and `CSelectable::DetermineScope` jump tables, which also hide the mission
+  and espionage operation from); a `from` that is the caller's scope parameter (megastructure
+  `potential`, `possible`, `context_menu_potential`); a scope that is a member of a parameter or
+  heap object (event chain `abort_trigger` and button effect `potential` and `allow` from
+  `CExecuteButtonEffectCommand::IsValid`, which copies the command's member at `this + 0x20`); and
+  a function that the pass enters and that stops at the path limit (`AddSpentResourcesToScope`
+  under buildings `on_queued` and `on_unqueued`; the callers of `CColony::CanAddBuildingType` for
+  buildings `potential`).
+- Path, loop and step limits are gaps only where a contradiction appears (34 trigger and effect
+  blocks at the path limit, 15 at the loop limit); 12 stop at a branch on an unknown value and 4 at
   an instruction. The weight blocks' bounds are on
   [weight blocks](weight-blocks.md#entry-contexts-m452).
 - 7 trigger and effect wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2
@@ -490,6 +583,14 @@ faction) and system type `potential` (from country). Per-name conclusions go to 
 
 Pitfalls:
 
+- A call with the item itself in `x0` through slot `+0x10` is the item's own virtual call: before
+  the offset-zero rule, such calls on owners made 840 of 1,372 entry runs and doubled the block
+  method's time. Destructors and `ReadMember` functions still make runs on other members (an
+  effect's `Read` is slot `+0x10`, a trigger slot); they join no field of another family.
+- The member rule reads constructors only. A class that fills the word in an initializer, such as
+  `CPopFaction::Initialize`, leads to no owner.
+- A type pointer spilled to the stack is forgotten at a call that receives a lower stack address,
+  such as the scope object, by the name pass's stack rule (crisis level `on_unlock`).
 - A scope pointer left in an argument register is not an argument when the callee's signature does
   not take it; an unknown virtual call cannot be checked this way, but a call on a proven instance
   pointer's object can. A C library stub keeps its raw name (`_strlen`), so only

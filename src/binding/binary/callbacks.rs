@@ -2,16 +2,21 @@
 //! a game rule, the functions that hold those calls, and the scope functions that the method
 //! runs, with the callers of each function whose site fires or evaluates a scope parameter. Read
 //! the input of the block method the same way: every direct call to a trigger evaluator, an
-//! effect executor or a weight evaluator in a method of a registry owner, with the callers of
-//! those methods.
+//! effect executor or a weight evaluator and every call through a register, in a function whose
+//! registers lead to a registry owner ([`super::type_pointers`]), with the vtable slots that
+//! evaluate a block and the callers of each function whose call the block method attributes.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
+use crate::BlockFamily;
 use crate::engine::analysis::{
     callbacks::{
         CallbacksInput, Forwarder, ForwarderKind, Pulse, RuleFamily, RuleTables, ScopeFunctions,
         Site, SiteCall, SiteScope, StringFunctions,
-        blocks::{BlockInput, EvaluationSite, RECEIVER_DEPTH},
+        blocks::{
+            BlockInput, Evaluation, EvaluationCall, EvaluationSite, RECEIVER_DEPTH, TypePointers,
+            attributed_functions,
+        },
         climb::{CALLER_DEPTH, CallSite},
         climbing_functions,
     },
@@ -19,13 +24,15 @@ use crate::engine::analysis::{
         Instruction, decode_arm64, general_register, reads_before_writing, written_registers,
     },
     discovery::Symbol,
+    evaluate::ReadOnlyData,
 };
 
 use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, read_only_data, unique};
-use super::families::never_return;
+use super::families::{Names, never_return, vtable_group};
 use super::instances::instances;
 use super::references::Image;
+use super::type_pointers::TypeOwners;
 use crate::engine::analysis::declarations::number;
 
 const EXTRA: &str = "CPdxUnorderedMap<EEffectUserDataKey, unsigned long long, SPdxHash<EEffectUserDataKey, void>, std::__1::equal_to<EEffectUserDataKey>, false>";
@@ -257,26 +264,66 @@ pub(in crate::binding) fn callbacks(
     })
 }
 
-/// The functions that evaluate a stored trigger or weight block or run a stored effect block. Each
-/// takes the block in `x0` and the scope in `x1`.
-fn evaluator_names() -> Vec<String> {
+/// The functions that evaluate a stored trigger or weight block or run a stored effect block,
+/// with the family of the block. Each takes the block in `x0` and the scope in `x1`.
+fn evaluator_names() -> Vec<(String, BlockFamily)> {
+    use BlockFamily::{Effect, Trigger, Weight};
     vec![
-        "CTrigger::Evaluate(CEventScope&) const".into(),
-        "CTrigger::Evaluate(CEventScope const&) const".into(),
-        format!("CTrigger::EvaluateExtended(CEventScope&, {EXTRA} const&) const"),
-        format!("CTrigger::EvaluateExtended(CEventScope const&, {EXTRA} const&) const"),
-        "CEffect::Execute(CEventScope&) const".into(),
-        format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA} const&) const"),
-        format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA}&&) const"),
-        "CRootEffect::Execute(CEventScope&) const".into(),
-        "CAndTrigger::ActualEvaluate(CEventScope&) const".into(),
-        "SafeExecuteEffect(CEffect const&, CEventScope&)".into(),
-        format!("SafeExecuteEffectExtended(CEffect const&, CEventScope&, {EXTRA}&&)"),
-        "CMeanTimeToHappen::GetRawFactor(CEventScope&) const".into(),
-        "CMeanTimeToHappen::GetRawFactorNoScopeCopy(CEventScope const&) const".into(),
-        "CMeanTimeToHappen::GetChance(CEventScope&, int) const".into(),
-        "CMeanTimeToHappen::GetDailyChance(CEventScope&) const".into(),
-        "CAIMTTHChance::GetChance(CEventScope&) const".into(),
+        ("CTrigger::Evaluate(CEventScope&) const".into(), Trigger),
+        (
+            "CTrigger::Evaluate(CEventScope const&) const".into(),
+            Trigger,
+        ),
+        (
+            format!("CTrigger::EvaluateExtended(CEventScope&, {EXTRA} const&) const"),
+            Trigger,
+        ),
+        (
+            format!("CTrigger::EvaluateExtended(CEventScope const&, {EXTRA} const&) const"),
+            Trigger,
+        ),
+        ("CEffect::Execute(CEventScope&) const".into(), Effect),
+        (
+            format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA} const&) const"),
+            Effect,
+        ),
+        (
+            format!("CEffect::ExecuteExtended(CEventScope&, {EXTRA}&&) const"),
+            Effect,
+        ),
+        ("CRootEffect::Execute(CEventScope&) const".into(), Effect),
+        (
+            "CAndTrigger::ActualEvaluate(CEventScope&) const".into(),
+            Trigger,
+        ),
+        (
+            "SafeExecuteEffect(CEffect const&, CEventScope&)".into(),
+            Effect,
+        ),
+        (
+            format!("SafeExecuteEffectExtended(CEffect const&, CEventScope&, {EXTRA}&&)"),
+            Effect,
+        ),
+        (
+            "CMeanTimeToHappen::GetRawFactor(CEventScope&) const".into(),
+            Weight,
+        ),
+        (
+            "CMeanTimeToHappen::GetRawFactorNoScopeCopy(CEventScope const&) const".into(),
+            Weight,
+        ),
+        (
+            "CMeanTimeToHappen::GetChance(CEventScope&, int) const".into(),
+            Weight,
+        ),
+        (
+            "CMeanTimeToHappen::GetDailyChance(CEventScope&) const".into(),
+            Weight,
+        ),
+        (
+            "CAIMTTHChance::GetChance(CEventScope&) const".into(),
+            Weight,
+        ),
     ]
 }
 
@@ -292,56 +339,47 @@ pub(in crate::binding) fn block_evaluations(
         symbols,
         strings,
         imports,
-        ..
+        pointers,
     } = *image;
     let text = Text::read(bytes, symbols)?;
-    let function_of = |address: u64| text.starts.range(..=address).next_back().copied();
-
-    let mut evaluators = BTreeSet::new();
-    for name in evaluator_names() {
-        let found = addresses(symbols, &name);
-        if found.is_empty() {
-            return Err(AnalysisError::InvalidRange);
-        }
-        evaluators.extend(found);
-    }
-
-    let owner_of: BTreeMap<u64, &str> = symbols
+    let names = Names::new(symbols);
+    let evaluators = evaluators(symbols)?;
+    let constants = super::language::constant_data(bytes, pointers, bound_slots)?;
+    let evaluation_slots = evaluation_slots(symbols, &constants, &names, &evaluators);
+    let polymorphic: BTreeSet<&str> = owners
         .iter()
-        .filter(|symbol| !symbol.name.contains(".cold."))
-        .filter_map(|symbol| {
-            let (class, _) = symbol.name.split_once("::")?;
-            owners.get(class).map(|owner| (symbol.address, *owner))
-        })
+        .copied()
+        .filter(|owner| unique(symbols, &format!("vtable for {owner}")).is_ok())
         .collect();
-    let sites: Vec<EvaluationSite> = text
-        .calls_into(&evaluators)
-        .into_iter()
-        .filter_map(|(address, _)| {
-            let function = function_of(address)?;
-            let owner = owner_of.get(&function)?;
-            Some(EvaluationSite {
-                address,
-                function,
-                owner: (*owner).to_string(),
-            })
-        })
-        .collect();
+    let type_owners = TypeOwners::read(&text, symbols, &polymorphic);
+    let string_functions = string_functions(symbols, recipe);
+    let evaluation = Evaluation {
+        evaluators: &evaluators,
+        slots: &evaluation_slots,
+    };
+    let Candidates {
+        sites,
+        type_pointers,
+        mut functions,
+        attributed,
+    } = candidates(&text, &names, &type_owners, &evaluation, &string_functions);
 
-    let site_functions: BTreeSet<u64> = sites.iter().map(|site| site.function).collect();
-    let callers = direct_callers(&text, site_functions.clone());
-    let held: BTreeSet<u64> = site_functions
+    let callers = direct_callers(&text, attributed.clone());
+    let held: BTreeSet<u64> = attributed
         .into_iter()
         .chain(callers.values().flatten().map(|call| call.function))
         .collect();
-
-    let mut functions: BTreeMap<u64, Vec<Instruction>> = held
-        .into_iter()
-        .filter_map(|start| Some((start, decoded(&text, start)?)))
-        .collect();
+    for &start in &held {
+        if let std::collections::btree_map::Entry::Vacant(entry) = functions.entry(start)
+            && let Some(rows) = decoded(&text, start)
+        {
+            entry.insert(rows);
+        }
+    }
+    let evaluator_addresses: BTreeSet<u64> = evaluators.keys().copied().collect();
     let mut scope_functions = scope_functions(symbols);
-    let scope_users = scope_users(symbols, &evaluators);
-    let not_followed: BTreeSet<u64> = evaluators
+    let scope_users = scope_users(symbols, &evaluator_addresses);
+    let not_followed: BTreeSet<u64> = evaluator_addresses
         .iter()
         .chain(&scope_users)
         .chain(&scope_functions.fresh_constructors)
@@ -353,7 +391,7 @@ pub(in crate::binding) fn block_evaluations(
         .chain(&scope_functions.readers)
         .copied()
         .collect();
-    let receivers = decode_receivers(&text, symbols, &not_followed, &mut functions);
+    let receivers = decode_receivers(&text, symbols, &not_followed, &held, &mut functions);
     scope_functions.factories =
         scope_factories(&text, functions.values().flatten(), &scope_functions);
     let scope_code = scope_code(&text, &scope_functions);
@@ -366,16 +404,18 @@ pub(in crate::binding) fn block_evaluations(
 
     Ok(BlockInput {
         sites,
+        evaluators,
+        evaluation_slots,
+        type_pointers,
         scope_users,
         receivers,
         never_return: never_return(symbols),
         call_arguments: import_call_arguments(&functions, imports),
-        evaluators,
         functions,
         callers,
         scope_code,
         scope_functions,
-        strings: string_functions(symbols, recipe),
+        strings: string_functions,
         data: read_only_data(bytes)?.with_words(&instances.words),
         layout: recipe.callbacks,
         scope_names: text.scope_names(symbols, strings).map(|table| table.names),
@@ -383,6 +423,138 @@ pub(in crate::binding) fn block_evaluations(
         ignores_x8,
         instances: instances.vtables,
     })
+}
+
+/// The block family of each evaluator of [`evaluator_names`]. An evaluator that the build lacks is
+/// an error.
+fn evaluators(symbols: &[Symbol]) -> Result<BTreeMap<u64, BlockFamily>, AnalysisError> {
+    let mut evaluators = BTreeMap::new();
+    for (name, family) in evaluator_names() {
+        let found = addresses(symbols, &name);
+        if found.is_empty() {
+            return Err(AnalysisError::InvalidRange);
+        }
+        evaluators.extend(found.into_iter().map(|address| (address, family)));
+    }
+    Ok(evaluators)
+}
+
+/// The block family of each vtable slot that evaluates a block: each slot of an evaluator's
+/// class's primary vtable that holds an evaluator, by its displacement from the address point.
+/// A displacement that evaluators of two families hold is left out.
+fn evaluation_slots(
+    symbols: &[Symbol],
+    data: &ReadOnlyData,
+    names: &Names<'_>,
+    evaluators: &BTreeMap<u64, BlockFamily>,
+) -> BTreeMap<i64, BlockFamily> {
+    let classes: BTreeSet<&str> = evaluators
+        .keys()
+        .flat_map(|&evaluator| names.of(evaluator))
+        .filter_map(|name| Some(name.split_once("::")?.0))
+        .collect();
+    let mut families: BTreeMap<i64, BTreeSet<BlockFamily>> = BTreeMap::new();
+    for class in classes {
+        let Some(group) = vtable_group(symbols, data, class) else {
+            continue;
+        };
+        for (&displacement, slot) in &group.primary {
+            if let Some(&family) = evaluators.get(slot) {
+                families
+                    .entry(displacement as i64)
+                    .or_default()
+                    .insert(family);
+            }
+        }
+    }
+
+    families
+        .into_iter()
+        .filter_map(
+            |(displacement, families)| match families.into_iter().collect::<Vec<_>>()[..] {
+                [family] => Some((displacement, family)),
+                _ => None,
+            },
+        )
+        .collect()
+}
+
+/// The sites that the block method reads, with the functions that hold them.
+struct Candidates {
+    /// The direct evaluator calls and calls through a register in the kept functions.
+    sites: Vec<EvaluationSite>,
+    /// The type pointers of each kept function.
+    type_pointers: BTreeMap<u64, TypePointers>,
+    /// Each kept function, decoded.
+    functions: BTreeMap<u64, Vec<Instruction>>,
+    /// The kept functions that hold a call that the block method attributes.
+    attributed: BTreeSet<u64>,
+}
+
+/// The direct evaluator calls and calls through a register in the functions whose registers lead
+/// to an owner. Of those functions, keep each that holds an attributed call, and each owner's
+/// method with a direct evaluator call, which the block method counts when it names no block.
+fn candidates(
+    text: &Text,
+    names: &Names<'_>,
+    type_owners: &TypeOwners<'_>,
+    evaluation: &Evaluation<'_>,
+    strings: &StringFunctions,
+) -> Candidates {
+    let evaluator_addresses: BTreeSet<u64> = evaluation.evaluators.keys().copied().collect();
+    let calls = text
+        .calls_into(&evaluator_addresses)
+        .into_iter()
+        .map(|(address, target)| (address, EvaluationCall::Evaluator(target)))
+        .chain(
+            text.register_calls()
+                .into_iter()
+                .map(|(address, register)| (address, EvaluationCall::Register(register))),
+        );
+    let mut found: BTreeMap<u64, Option<TypePointers>> = BTreeMap::new();
+    let mut sites = Vec::new();
+    for (address, call) in calls {
+        let Some(&function) = text.starts.range(..=address).next_back() else {
+            continue;
+        };
+        let pointers = found
+            .entry(function)
+            .or_insert_with(|| type_owners.of(names.of(function)));
+        if pointers.is_some() {
+            sites.push(EvaluationSite {
+                address,
+                function,
+                call,
+            });
+        }
+    }
+    let mut type_pointers: BTreeMap<u64, TypePointers> = found
+        .into_iter()
+        .filter_map(|(function, pointers)| Some((function, pointers?)))
+        .collect();
+
+    let mut functions: BTreeMap<u64, Vec<Instruction>> = type_pointers
+        .keys()
+        .filter_map(|&start| Some((start, decoded(text, start)?)))
+        .collect();
+    let attributed = attributed_functions(&sites, &functions, &type_pointers, evaluation, strings);
+    let counted: BTreeSet<u64> = sites
+        .iter()
+        .filter(|site| matches!(site.call, EvaluationCall::Evaluator(_)))
+        .filter(|site| type_pointers[&site.function].method_of.is_some())
+        .map(|site| site.function)
+        .collect();
+    let kept = |function: &u64| attributed.contains(function) || counted.contains(function);
+    sites.retain(|site| kept(&site.function));
+    functions.retain(|function, _| kept(function));
+    type_pointers.retain(|function, _| kept(function));
+
+    Candidates {
+        sites,
+        type_pointers,
+        functions,
+        attributed,
+    }
 }
 
 /// The direct calls to each of `functions` and to its callers short of [`CALLER_DEPTH`], other
@@ -409,11 +581,12 @@ fn direct_callers(text: &Text, functions: BTreeSet<u64>) -> BTreeMap<u64, Vec<Ca
 }
 
 /// Decode, into `functions`, the functions outside `not_followed` that receive a scope and that
-/// the decoded functions call directly, up to [`RECEIVER_DEPTH`] calls away, and give them.
+/// the functions of `from` call directly, up to [`RECEIVER_DEPTH`] calls away, and give them.
 fn decode_receivers(
     text: &Text,
     symbols: &[Symbol],
     not_followed: &BTreeSet<u64>,
+    from: &BTreeSet<u64>,
     functions: &mut BTreeMap<u64, Vec<Instruction>>,
 ) -> BTreeSet<u64> {
     let receives_scope: BTreeSet<u64> = symbols
@@ -430,7 +603,7 @@ fn decode_receivers(
         .collect();
 
     let mut receivers = BTreeSet::new();
-    let mut level: Vec<u64> = functions.keys().copied().collect();
+    let mut level: Vec<u64> = from.iter().copied().collect();
     for _ in 0..RECEIVER_DEPTH {
         let called: BTreeSet<u64> = level
             .iter()
@@ -656,6 +829,23 @@ fn argument_registers(symbols: &[Symbol]) -> BTreeMap<u64, usize> {
 /// value that is not a plain number may take two registers. `None` for a name with no
 /// parameter list, or one that takes a variable number of arguments.
 fn registers_read(name: &str) -> Option<usize> {
+    let (qualified, parameters) = signature(name)?;
+    let receiver = usize::from(top_level(qualified).any(|part| part.contains("::")));
+    let mut count = receiver;
+    for parameter in top_level(parameters).map(str::trim) {
+        count += match parameter {
+            "" | "void" => 0,
+            "..." => return None,
+            parameter if is_passed_in_one_register(parameter) => 1,
+            _ => 2,
+        };
+    }
+    Some(count)
+}
+
+/// The qualified name and the parameter list of the demangled function name `name`:
+/// `C::F(A, B) const` gives `C::F` and `A, B`. `None` for a name with no parameter list.
+pub(super) fn signature(name: &str) -> Option<(&str, &str)> {
     let name = name.split(" [clone").next()?;
     let mut end = name.trim_end();
     for qualifier in [" const", " volatile", " &&", " &"] {
@@ -677,23 +867,11 @@ fn registers_read(name: &str) -> Option<usize> {
         }
     }
     let open = open?;
-    let (qualified, parameters) = (&close[..open], &close[open + 1..]);
-
-    let receiver = usize::from(top_level(qualified).any(|part| part.contains("::")));
-    let mut count = receiver;
-    for parameter in top_level(parameters).map(str::trim) {
-        count += match parameter {
-            "" | "void" => 0,
-            "..." => return None,
-            parameter if is_passed_in_one_register(parameter) => 1,
-            _ => 2,
-        };
-    }
-    Some(count)
+    Some((&close[..open], &close[open + 1..]))
 }
 
 /// The parts of `text` between its top-level commas.
-fn top_level(text: &str) -> impl Iterator<Item = &str> {
+pub(super) fn top_level(text: &str) -> impl Iterator<Item = &str> {
     let mut depth = 0usize;
     let mut start = 0;
     let mut parts = Vec::new();
@@ -712,30 +890,31 @@ fn top_level(text: &str) -> impl Iterator<Item = &str> {
     parts.into_iter()
 }
 
+/// The integer types, with `bool`, that one general register passes.
+pub(super) const INTEGERS: &[&str] = &[
+    "bool",
+    "char",
+    "signed char",
+    "unsigned char",
+    "wchar_t",
+    "short",
+    "unsigned short",
+    "int",
+    "unsigned int",
+    "long",
+    "unsigned long",
+    "long long",
+    "unsigned long long",
+];
+
 /// A pointer, a reference or a plain number, which one register passes.
 fn is_passed_in_one_register(parameter: &str) -> bool {
-    const NUMBERS: &[&str] = &[
-        "bool",
-        "char",
-        "signed char",
-        "unsigned char",
-        "wchar_t",
-        "short",
-        "unsigned short",
-        "int",
-        "unsigned int",
-        "long",
-        "unsigned long",
-        "long long",
-        "unsigned long long",
-        "float",
-        "double",
-    ];
     parameter.ends_with('*')
         || parameter.ends_with('&')
         || parameter.ends_with("* const")
         || parameter.contains("(*)")
-        || NUMBERS.contains(&parameter)
+        || INTEGERS.contains(&parameter)
+        || matches!(parameter, "float" | "double")
 }
 
 /// The string functions that the name pass follows.
@@ -898,7 +1077,7 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
 }
 
 /// Decode one whole function; `None` when a part of it does not decode.
-fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
+pub(super) fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
     let (address, code) = text.function(start).ok()?;
     decode_arm64(code, address).ok()
 }

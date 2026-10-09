@@ -57,6 +57,20 @@ same for `cpp_demangle`) and prebuild before measuring.
   that the caller cached. Live answers, pauses, fixture state and `Complete` witnesses are never
   cached across sessions.
 
+## Block entry contexts
+
+The block entry context method (`BoundAnalysis::block_facts`) runs once per `Native`. On
+M452-release it takes about 7.6 s: 4.0 s to read its input and 3.6 s to run, timed around
+`block_input` and `analyze_blocks` under `inspect --entry-contexts`. SDK-732 part 1 added about
+1.5 s to the input and 0.3 s to the run (from 2.5 s and 3.3 s). The binding now decodes the 2,561
+functions with a type pointer that hold a direct evaluator call or a `blr` (554,000 instructions)
+and runs the name pass over them to keep the 340 with an attributed call; the kept functions bring
+more callers and receivers (1,992 decoded functions, 1,674 before), and the run has 534 entries
+(414 before). Accepted because the result is computed once per `Native`. Narrow the candidates
+before the name pass, for example to the calls whose register a load at an evaluation slot's
+displacement fills, if the block input grows past about 5 s or a query that runs per registry
+needs it.
+
 ## Live costs
 
 A live case spends 16–21 s loading the game to the registry pause, 2–5 s in supervisor setup and

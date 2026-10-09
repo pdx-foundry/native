@@ -5,7 +5,7 @@ node it gives the source nodes, the engine types that construct it, and the cate
 keeps. Atlas maps owners to scopes with its own stated mapping and reviews the differences from
 the `supported_scopes` lists of `modifier_categories.cwt`. The parse-time masks of modifier
 containers are in [container masks](#container-masks): `Field.accepted_categories`
-(`registry-fields/v20`) and `Native::modifier_category_keys()` (`modifier-category-keys/v1`).
+(`registry-fields/v21`) and `Native::modifier_category_keys()` (`modifier-category-keys/v1`).
 
 The method is `src/engine/analysis/modifier_nodes.rs`; its module comment states the runs and the
 limits of the search. `src/binding/binary/modifier_nodes.rs` parses the node type symbols and finds
@@ -188,7 +188,7 @@ The SDK-709 investigation found the facts; `.local/sdk-709/` has its scripts and
   the owner's own word at member+0xac, so each starbase clause reuses the mask of the member with
   the same scope.
 
-### Method (`registry-fields/v20`)
+### Method (`registry-fields/v21`)
 
 `Field.accepted_categories` gives the single categories that a modifier container field accepts.
 The engine part is `src/engine/analysis/fields/containers.rs` (the rule), `persistent.rs`

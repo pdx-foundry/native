@@ -939,7 +939,7 @@ mod tests {
         let entries = registry_field_stops::EntryContexts {
             owner: "COwner".into(),
             gaps: serde_json::from_value(json!([entry_gap])).unwrap(),
-            block_offsets: ["potential", "allow", "effect", "ai_weight"]
+            field_blocks: ["potential", "allow", "effect", "ai_weight"]
                 .into_iter()
                 .map(|name| (name.to_owned(), BTreeSet::new()))
                 .collect(),
