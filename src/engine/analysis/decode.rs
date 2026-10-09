@@ -159,7 +159,7 @@ pub fn sub_immediate(word: u32) -> Option<(usize, usize, u64)> {
 /// The general registers that an instruction may write. A branch writes none and a call writes
 /// the caller-saved registers and the link register. Any other instruction writes its
 /// destination operands and the base of a pre- or post-index access; a store or a comparison
-/// has no destination operand.
+/// has no destination operand, and an atomic operation's destination follows its source.
 pub fn written_registers(operation: &str, operands: &str) -> Vec<usize> {
     if operation == "bl" || operation.starts_with("blr") {
         return (0..=18).chain([30]).collect();
@@ -170,6 +170,7 @@ pub fn written_registers(operation: &str, operands: &str) -> Vec<usize> {
 
     let mut written: Vec<usize> = operands
         .split(',')
+        .skip(usize::from(is_atomic(operation)))
         .take(destination_count(operation))
         .filter_map(general_register)
         .collect();
@@ -272,15 +273,15 @@ fn destination_count(operation: &str) -> usize {
 
     if writes_nothing {
         0
-    } else if pair || is_atomic(operation) {
+    } else if pair {
         2
     } else {
         1
     }
 }
 
-/// An atomic load-and-operate, which reads its first operand and writes the loaded value to its
-/// second, so the destination count includes the operand that is only read.
+/// An atomic load-and-operate or swap, which reads its first operand and writes the loaded value
+/// to its second. Its store-only form (`stadd`) writes nothing.
 fn is_atomic(operation: &str) -> bool {
     [
         "ldadd", "ldclr", "ldeor", "ldset", "ldsmax", "ldsmin", "ldumax", "ldumin", "swp",
@@ -434,7 +435,21 @@ mod tests {
         assert_eq!(written_registers("bic", "x19,x19,x8"), [19]);
         assert_eq!(written_registers("ldp", "x8,x9,[x0]"), [8, 9]);
         assert_eq!(written_registers("stlxr", "w9,x8,[x0]"), [9]);
-        assert!(written_registers("ldaddal", "x8,x9,[x0]").contains(&9));
+    }
+
+    #[test]
+    fn an_atomic_writes_only_the_register_that_receives_the_old_value() {
+        assert_eq!(
+            decoded(0xf8a8_0009, 0),
+            ("ldadda".into(), "x8,x9,[x0]".into())
+        );
+        assert_eq!(written_registers("ldadda", "x8,x9,[x0]"), [9]);
+        assert_eq!(written_registers("swpal", "x8,x9,[x0]"), [9]);
+        assert_eq!(written_registers("cas", "x8,x9,[x0]"), [8]);
+        assert!(written_registers("stadd", "w8,[x0]").is_empty());
+
+        let adds_its_value = function(&[("ldaddal", "x8,x9,[x0]"), ("ret", "")]);
+        assert!(reads_before_writing(&adds_its_value, 8));
     }
 
     #[test]
