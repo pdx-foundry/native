@@ -2,6 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
+use crate::engine::analysis::declarations::number;
 
 // Rows call the engine functions by these addresses: the firing function 0x9000, the list
 // firing 0x9010, the lookup 0x9020, the scripted rule 0x9030, and an unknown function 0x9900.
@@ -212,7 +213,25 @@ impl Program {
     }
 
     fn input(self) -> CallbacksInput {
+        let mut callers: BTreeMap<u64, Vec<CallSite>> = BTreeMap::new();
+        for (&function, rows) in &self.functions {
+            let calls = rows
+                .iter()
+                .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
+                .filter_map(|row| Some((row.address, number(&row.operands)?)));
+            for (address, target) in calls {
+                if self.functions.contains_key(&target) && target != function {
+                    callers
+                        .entry(target)
+                        .or_default()
+                        .push(CallSite { address, function });
+                }
+            }
+        }
+
         CallbacksInput {
+            callers,
+            never_return: BTreeSet::new(),
             functions: self.functions,
             scope_code: scope_code()
                 .into_iter()
@@ -2191,4 +2210,353 @@ fn a_setter_that_passes_the_scope_to_an_unfollowed_call_leaves_it_unresolved() {
     let result = fire_country(&[(0x1020, "add", "x0,sp,#0x100"), (0x1024, "bl", "#0x8500")]);
 
     assert_eq!(contexts(&result, "on_test")[0].this, Slot::Unresolved);
+}
+
+/// A function at `base` that builds the name `on_test` and fires the scope that it receives in
+/// `x0`. Its site is at `base + 0x1c`.
+fn fires_parameter(base: u64) -> Vec<(u64, &'static str, &'static str)> {
+    vec![
+        (base, "sub", "sp,sp,#0x200"),
+        (base + 0x4, "mov", "x20,x0"),
+        (base + 0x8, "add", "x0,sp,#0x10"),
+        (base + 0xc, "adrp", "x1,#0x5000"),
+        (base + 0x10, "bl", "#0x9100"),
+        (base + 0x14, "add", "x1,sp,#0x10"),
+        (base + 0x18, "mov", "x2,x20"),
+        (base + 0x1c, "bl", "#0x9000"),
+        (base + 0x20, "ret", ""),
+    ]
+}
+
+/// A function at 0x1000 that builds a country scope at sp+0x100, puts its address in a register
+/// with the `add` operands `address`, and calls `callee`.
+fn passes_country(
+    address: &'static str,
+    callee: &'static str,
+) -> Vec<(u64, &'static str, &'static str)> {
+    vec![
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "add", "x0,sp,#0x100"),
+        (0x1008, "bl", "#0x8000"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "bl", "#0x8100"),
+        (0x1014, "add", address),
+        (0x1018, "bl", callee),
+        (0x101c, "ret", ""),
+    ]
+}
+
+/// A function at `base` that passes the scope that it receives in `x1` on to `callee` in `x0`.
+fn passes_on(base: u64, callee: &'static str) -> Vec<(u64, &'static str, &'static str)> {
+    vec![
+        (base, "mov", "x0,x1"),
+        (base + 0x4, "bl", callee),
+        (base + 0x8, "ret", ""),
+    ]
+}
+
+#[test]
+fn a_scope_that_a_caller_builds_reaches_a_function_that_fires_its_parameter() {
+    let caller = passes_country("x0,sp,#0x100", "#0x2000");
+    let wrapper = fires_parameter(0x2000);
+    let result = on_actions(
+        &Program::new()
+            .function(&caller)
+            .function(&wrapper)
+            .site(0x2000, 0x201c, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert!(result.on_actions["on_test"].unresolved.is_empty());
+}
+
+#[test]
+fn a_scope_passed_through_a_register_remap_is_read_two_callers_up() {
+    let caller = passes_country("x1,sp,#0x100", "#0x2400");
+    let middle = passes_on(0x2400, "#0x2000");
+    let wrapper = fires_parameter(0x2000);
+    let result = on_actions(
+        &Program::new()
+            .function(&caller)
+            .function(&middle)
+            .function(&wrapper)
+            .site(0x2000, 0x201c, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_fired_parameter_with_no_caller_is_charged_no_caller() {
+    let wrapper = fires_parameter(0x2000);
+    let result = on_actions(
+        &Program::new()
+            .function(&wrapper)
+            .site(0x2000, 0x201c, FIRE)
+            .input(),
+    );
+
+    assert!(contexts(&result, "on_test").is_empty());
+    assert_eq!(
+        result.on_actions["on_test"].unresolved,
+        BTreeSet::from(["no-caller"])
+    );
+}
+
+#[test]
+fn a_scope_passed_on_three_callers_up_is_charged_caller_depth() {
+    let caller = passes_country("x1,sp,#0x100", "#0x2800");
+    let outer = passes_on(0x2800, "#0x2c00");
+    let outer_remap = [
+        (0x2c00, "mov", "x1,x0"),
+        (0x2c04, "bl", "#0x2400"),
+        (0x2c08, "ret", ""),
+    ];
+    let middle = passes_on(0x2400, "#0x2000");
+    let wrapper = fires_parameter(0x2000);
+    let result = on_actions(
+        &Program::new()
+            .function(&caller)
+            .function(&outer)
+            .function(&outer_remap)
+            .function(&middle)
+            .function(&wrapper)
+            .site(0x2000, 0x201c, FIRE)
+            .input(),
+    );
+
+    assert!(contexts(&result, "on_test").is_empty());
+    assert_eq!(
+        result.on_actions["on_test"].unresolved,
+        BTreeSet::from(["caller-depth"])
+    );
+}
+
+#[test]
+fn a_site_that_fires_a_local_scope_does_not_climb_to_its_caller() {
+    let fires = fires_country(&[]);
+    let caller = [
+        (0x3000, "sub", "sp,sp,#0x200"),
+        (0x3004, "add", "x0,sp,#0x100"),
+        (0x3008, "bl", "#0x8000"),
+        (0x300c, "add", "x0,sp,#0x100"),
+        (0x3010, "bl", "#0x8200"),
+        (0x3014, "add", "x2,sp,#0x100"),
+        (0x3018, "bl", "#0x1000"),
+        (0x301c, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&fires)
+            .function(&caller)
+            .site(0x1000, 0x1100, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_caller_path_label_does_not_rename_a_climbed_site() {
+    // As in `a_path_name_that_the_name_pass_did_not_prove_is_not_public`, the store through x19
+    // leaves the context pass with the stale `on_test` label of a string rebuilt as `on_other`.
+    let caller = passes_country("x0,sp,#0x100", "#0x2000");
+    let wrapper = [
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x20,x0"),
+        (0x2008, "add", "x0,sp,#0x10"),
+        (0x200c, "adrp", "x1,#0x5000"),
+        (0x2010, "bl", "#0x9100"),
+        (0x2014, "add", "x8,sp,#0x10"),
+        (0x2018, "str", "x8,[sp,#0x30]"),
+        (0x201c, "str", "xzr,[x19]"),
+        (0x2020, "ldr", "x0,[sp,#0x30]"),
+        (0x2024, "adrp", "x1,#0x5000"),
+        (0x2028, "add", "x1,x1,#0x10"),
+        (0x202c, "bl", "#0x9100"),
+        (0x2030, "add", "x1,sp,#0x10"),
+        (0x2034, "mov", "x2,x20"),
+        (0x2038, "bl", "#0x9000"),
+        (0x203c, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&caller)
+            .function(&wrapper)
+            .site(0x2000, 0x2038, FIRE)
+            .input(),
+    );
+
+    assert!(!result.on_actions.contains_key("on_test"), "{result:?}");
+    assert_eq!(
+        contexts(&result, "on_other"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+}
+
+#[test]
+fn a_climbed_site_without_a_literal_name_takes_no_name_from_its_caller() {
+    let caller = forwarder_caller();
+    let wrapper = [
+        (0x2000, "mov", "x2,x1"),
+        (0x2004, "mov", "x1,x0"),
+        (0x2008, "b", "#0x9000"),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&caller)
+            .function(&wrapper)
+            .site(0x2000, 0x2008, FIRE)
+            .input(),
+    );
+
+    assert!(result.on_actions.is_empty(), "{result:?}");
+    assert_eq!(
+        result.unnamed,
+        [Unnamed {
+            family: Family::OnAction,
+            reason: "name-not-a-literal"
+        }]
+    );
+}
+
+/// A rule-set function at 0x3000 that evaluates the rule at each of `rules`, an `add` of its
+/// receiver, on the scope that it receives in `x1`, and a caller at 0x3800 that builds a country
+/// scope and passes it. With `reader`, the rule evaluator is a scope reader.
+fn evaluates_scope_parameter(rules: &[&'static str], reader: bool) -> CallbacksResult {
+    let mut wrapper = vec![(0x3000, "mov", "x19,x0"), (0x3004, "mov", "x20,x1")];
+    let sites: Vec<u64> = (0..rules.len() as u64)
+        .map(|index| 0x3010 + 0xc * index)
+        .collect();
+    for (&site, &rule) in sites.iter().zip(rules) {
+        wrapper.extend([
+            (site - 8, "add", rule),
+            (site - 4, "mov", "x1,x20"),
+            (site, "bl", "#0x9030"),
+        ]);
+    }
+    wrapper.push((sites.last().map_or(0x3008, |site| site + 4), "ret", ""));
+    let caller = [
+        (0x3800, "sub", "sp,sp,#0x200"),
+        (0x3804, "mov", "x19,x0"),
+        (0x3808, "add", "x0,sp,#0x100"),
+        (0x380c, "bl", "#0x8000"),
+        (0x3810, "add", "x0,sp,#0x100"),
+        (0x3814, "bl", "#0x8100"),
+        (0x3818, "mov", "x0,x19"),
+        (0x381c, "add", "x1,sp,#0x100"),
+        (0x3820, "bl", "#0x3000"),
+        (0x3824, "ret", ""),
+    ];
+
+    let mut program = Program::new().function(&wrapper).function(&caller);
+    for site in sites {
+        program = program.site(0x3000, site, SCRIPTED_RULE);
+    }
+    if reader {
+        program = program.reader(0x9030);
+    }
+    program.rule_owners.insert(0x3000);
+    analyze(&program.input(), Family::GameRule).unwrap()
+}
+
+#[test]
+fn a_rule_wrapper_keeps_its_rule_name_and_takes_its_callers_scope() {
+    let result = evaluates_scope_parameter(&["x0,x19,#0xc0"], true);
+
+    assert_eq!(
+        scripted(&result, "can_b").contexts,
+        BTreeSet::from([context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])])
+    );
+}
+
+#[test]
+fn two_rule_evaluations_in_one_wrapper_both_receive_the_scope_when_the_rule_is_a_reader() {
+    let rules = ["x0,x19,#0x0", "x0,x19,#0xc0"];
+    let read = evaluates_scope_parameter(&rules, true);
+    let unfollowed = evaluates_scope_parameter(&rules, false);
+
+    let known = BTreeSet::from([context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]);
+    assert_eq!(scripted(&read, "can_a").contexts, known);
+    assert_eq!(scripted(&read, "can_b").contexts, known);
+    assert_eq!(
+        scripted(&unfollowed, "can_b").contexts,
+        BTreeSet::from([unresolved()]),
+        "an unfollowed first evaluation lets the scope escape"
+    );
+}
+
+#[test]
+fn a_caller_that_builds_one_scope_and_forwards_another_adds_nothing_to_the_forwarded_site() {
+    let wrapper = [
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x20,x0"),
+        (0x2008, "mov", "x21,x1"),
+        (0x200c, "add", "x0,sp,#0x10"),
+        (0x2010, "adrp", "x1,#0x5000"),
+        (0x2014, "bl", "#0x9100"),
+        (0x2018, "add", "x1,sp,#0x10"),
+        (0x201c, "mov", "x2,x20"),
+        (0x2020, "bl", "#0x9000"),
+        (0x2024, "add", "x0,sp,#0x40"),
+        (0x2028, "adrp", "x1,#0x5000"),
+        (0x202c, "add", "x1,x1,#0x10"),
+        (0x2030, "bl", "#0x9100"),
+        (0x2034, "add", "x1,sp,#0x40"),
+        (0x2038, "mov", "x2,x21"),
+        (0x203c, "bl", "#0x9000"),
+        (0x2040, "ret", ""),
+    ];
+    let builds_on_test_forwards_on_other = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "mov", "x19,x1"),
+        (0x1008, "add", "x0,sp,#0x100"),
+        (0x100c, "bl", "#0x8000"),
+        (0x1010, "add", "x0,sp,#0x100"),
+        (0x1014, "bl", "#0x8100"),
+        (0x1018, "add", "x0,sp,#0x100"),
+        (0x101c, "mov", "x1,x19"),
+        (0x1020, "bl", "#0x2000"),
+        (0x1024, "ret", ""),
+    ];
+    let builds_on_other = [
+        (0x3000, "sub", "sp,sp,#0x200"),
+        (0x3004, "add", "x0,sp,#0x100"),
+        (0x3008, "bl", "#0x8000"),
+        (0x300c, "add", "x0,sp,#0x100"),
+        (0x3010, "bl", "#0x8200"),
+        (0x3014, "add", "x1,sp,#0x100"),
+        (0x3018, "bl", "#0x1000"),
+        (0x301c, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&wrapper)
+            .function(&builds_on_test_forwards_on_other)
+            .function(&builds_on_other)
+            .site(0x2000, 0x2020, FIRE)
+            .site(0x2000, 0x203c, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&result, "on_other"),
+        [context(LEADER, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert!(result.on_actions["on_other"].unresolved.is_empty());
 }

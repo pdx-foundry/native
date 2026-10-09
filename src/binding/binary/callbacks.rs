@@ -1,8 +1,8 @@
 //! Read the input of the callback method: every direct call that fires an on_action or evaluates
 //! a game rule, the functions that hold those calls, and the scope functions that the method
-//! runs. Read the input of the block method the same way: every direct call to a trigger
-//! evaluator or an effect executor in a method of a registry owner, with the callers of those
-//! methods.
+//! runs, with the callers of each function whose site fires or evaluates a scope parameter. Read
+//! the input of the block method the same way: every direct call to a trigger evaluator or an
+//! effect executor in a method of a registry owner, with the callers of those methods.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -10,7 +10,9 @@ use crate::engine::analysis::{
     callbacks::{
         CallbacksInput, Forwarder, ForwarderKind, Pulse, RuleFamily, RuleTables, ScopeFunctions,
         Site, SiteCall, SiteScope, StringFunctions,
-        blocks::{BlockInput, CALLER_DEPTH, CallSite, EvaluationSite, RECEIVER_DEPTH},
+        blocks::{BlockInput, EvaluationSite, RECEIVER_DEPTH},
+        climb::{CALLER_DEPTH, CallSite},
+        climbing_functions,
     },
     decode::{
         Instruction, decode_arm64, general_register, reads_before_writing, written_registers,
@@ -171,6 +173,18 @@ pub(in crate::binding) fn callbacks(
             functions.insert(function, rows);
         }
     }
+    let string_functions = string_functions(symbols, recipe);
+    let callers = direct_callers(
+        &text,
+        climbing_functions(&sites, &forwarders, &functions, &string_functions),
+    );
+    for call in callers.values().flatten() {
+        if let std::collections::btree_map::Entry::Vacant(entry) = functions.entry(call.function)
+            && let Some(rows) = decoded(&text, call.function)
+        {
+            entry.insert(rows);
+        }
+    }
 
     let mut scope_functions = scope_functions(symbols);
     scope_functions.factories =
@@ -208,9 +222,11 @@ pub(in crate::binding) fn callbacks(
     let instances = instances(&text, image, bound_slots, &functions)?;
     Ok(CallbacksInput {
         functions,
+        callers,
+        never_return: never_return(symbols),
         scope_code,
         scope_functions,
-        strings: string_functions(symbols, recipe),
+        strings: string_functions,
         lookups: addresses(
             symbols,
             "COnActionDatabase::GetOnActionList(CString const&) const",
@@ -306,24 +322,12 @@ pub(in crate::binding) fn block_evaluations(
         })
         .collect();
 
-    let mut level: BTreeSet<u64> = sites.iter().map(|site| site.function).collect();
-    let mut held = level.clone();
-    let mut callers: BTreeMap<u64, Vec<CallSite>> = BTreeMap::new();
-    for _ in 0..CALLER_DEPTH {
-        let mut next = BTreeSet::new();
-        for (address, target) in text.calls_into(&level) {
-            let Some(function) = function_of(address).filter(|function| *function != target) else {
-                continue;
-            };
-            callers
-                .entry(target)
-                .or_default()
-                .push(CallSite { address, function });
-            next.insert(function);
-        }
-        held.extend(&next);
-        level = next;
-    }
+    let site_functions: BTreeSet<u64> = sites.iter().map(|site| site.function).collect();
+    let callers = direct_callers(&text, site_functions.clone());
+    let held: BTreeSet<u64> = site_functions
+        .into_iter()
+        .chain(callers.values().flatten().map(|call| call.function))
+        .collect();
 
     let mut functions: BTreeMap<u64, Vec<Instruction>> = held
         .into_iter()
@@ -373,6 +377,29 @@ pub(in crate::binding) fn block_evaluations(
         ignores_x8,
         instances: instances.vtables,
     })
+}
+
+/// The direct calls to each of `functions` and to its callers short of [`CALLER_DEPTH`], other
+/// than a function's calls to itself.
+fn direct_callers(text: &Text, functions: BTreeSet<u64>) -> BTreeMap<u64, Vec<CallSite>> {
+    let function_of = |address: u64| text.starts.range(..=address).next_back().copied();
+    let mut level = functions;
+    let mut callers: BTreeMap<u64, Vec<CallSite>> = BTreeMap::new();
+    for _ in 0..CALLER_DEPTH {
+        let mut next = BTreeSet::new();
+        for (address, target) in text.calls_into(&level) {
+            let Some(function) = function_of(address).filter(|function| *function != target) else {
+                continue;
+            };
+            callers
+                .entry(target)
+                .or_default()
+                .push(CallSite { address, function });
+            next.insert(function);
+        }
+        level = next;
+    }
+    callers
 }
 
 /// Decode, into `functions`, the functions outside `not_followed` that receive a scope and that
@@ -820,9 +847,10 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
     let mut setters = matching(&|name| name.starts_with("CScopeObjectReference::Set"));
     setters.extend(named(&["CEventScope::ClearRootFromPrev()"]));
 
-    // Firing an on_action runs its event in place and keeps only copies of the scope, and
-    // `AccessVariables` writes only the variables container: none changes a type or a link.
-    let firing: Vec<String> = anchors()
+    // Firing an on_action runs its event in place and keeps only copies of the scope, a game
+    // rule only evaluates its trigger or weight, and `AccessVariables` writes only the variables
+    // container: none changes a type or a link.
+    let reading: Vec<String> = anchors()
         .into_iter()
         .filter(|(_, call)| {
             matches!(
@@ -831,13 +859,14 @@ fn scope_functions(symbols: &[Symbol]) -> ScopeFunctions {
                     scope: SiteScope::Register(_),
                     ..
                 } | SiteCall::FireList { .. }
+                    | SiteCall::Rule { .. }
             )
         })
         .map(|(name, _)| name)
         .collect();
     let mut readers = matching(&|name| is_scope_member(name) && name.ends_with(" const"));
     readers.extend(named(&["CEventScope::AccessVariables()"]));
-    readers.extend(firing.iter().flat_map(|name| addresses(symbols, name)));
+    readers.extend(reading.iter().flat_map(|name| addresses(symbols, name)));
 
     ScopeFunctions {
         fresh_constructors: named(&[

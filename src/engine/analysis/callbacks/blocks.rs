@@ -9,8 +9,8 @@
 //! - The **name pass** names the block: the call is attributed to `(owner, offset)` only when
 //!   `x0` holds `this` plus one offset on every path. It also finds where the scope comes from.
 //!   When the scope is the method's own parameter, the method is a *wrapper*, and the same test
-//!   runs at each direct call to it, up to [`CALLER_DEPTH`] callers. A call whose scope is not a
-//!   parameter is an *entry*.
+//!   runs at each direct call to it, up to [`climb::CALLER_DEPTH`] callers. A call whose scope is
+//!   not a parameter is an *entry*.
 //! - The **context pass** runs each entry's function to the entry call, then through it. Every
 //!   wrapper on the way runs inline, with its caller's arguments and memory, so the context of
 //!   each evaluation that the entry reaches is read from the scope that its caller built.
@@ -22,17 +22,16 @@
 //! evaluations outside the owner's methods and nested blocks are outside the method.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::contexts::{BlockCalls, EVALUATED_SCOPE, Evaluations, Runner, ScopeFunctions, Selected};
+use super::climb::{self, CallSite, Decoded, Entry, Wrapper};
+use super::contexts::{
+    CallReads, EVALUATED_SCOPE, EntryCalls, Read, Runner, ScopeFunctions, Selected, Subject,
+};
 use super::instances;
-use super::names::{self, Fact, State, StringFunctions};
+use super::names::{self, Fact, StringFunctions};
 use super::{CallbackLayout, Context, Findings};
-use crate::engine::analysis::declarations::number;
 use crate::engine::analysis::decode::Instruction;
-use crate::engine::analysis::evaluate::{Code, ReadOnlyData};
+use crate::engine::analysis::evaluate::ReadOnlyData;
 use crate::engine::analysis::stop::Unresolved;
-
-/// How many callers up the method follows a scope that wrappers pass on.
-pub const CALLER_DEPTH: usize = 2;
 
 /// How many calls away from the decoded functions the binding decodes functions that receive a
 /// scope.
@@ -52,10 +51,10 @@ pub struct BlockInput {
     /// Other trigger and effect code that receives a scope, such as a tooltip builder.
     pub scope_users: BTreeSet<u64>,
     /// Decoded functions: each function that holds a site, and its direct callers up to
-    /// [`CALLER_DEPTH`] calls away.
+    /// [`climb::CALLER_DEPTH`] calls away.
     pub functions: BTreeMap<u64, Vec<Instruction>>,
     /// The direct calls to each function that holds a site, and to its callers short of
-    /// [`CALLER_DEPTH`].
+    /// [`climb::CALLER_DEPTH`].
     pub callers: BTreeMap<u64, Vec<CallSite>>,
     pub scope_code: Vec<Instruction>,
     pub scope_functions: ScopeFunctions,
@@ -90,15 +89,6 @@ pub struct EvaluationSite {
     pub function: u64,
     /// The owner type of the registry whose method holds it.
     pub owner: String,
-}
-
-/// A direct call to a function.
-#[derive(Debug, Clone, Copy)]
-pub struct CallSite {
-    /// The call instruction.
-    pub address: u64,
-    /// The start of the function that holds it.
-    pub function: u64,
 }
 
 /// A stored block: the owner type and the offset of the block in the owner object.
@@ -145,32 +135,33 @@ pub struct EntryRun {
     pub contradicted: bool,
 }
 
-/// A call from which the context pass reads the evaluations that it reaches.
-struct Entry {
-    function: u64,
-    site: u64,
-    selected: Selected,
-    /// The blocks that the entry reaches, which an unresolved run is charged to.
-    blocks: BTreeSet<Block>,
-}
-
-/// A function that passes its scope parameter `parameter` on to an evaluation.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct Wrapper {
-    function: u64,
-    parameter: usize,
-}
-
 /// Run the method over every site.
 pub fn analyze_blocks(input: &BlockInput) -> BlockEntries {
+    let decoded = Decoded {
+        functions: &input.functions,
+        callers: &input.callers,
+        scope_code: &input.scope_code,
+        strings: &input.strings,
+    };
     let mut result = BlockEntries::default();
     let Attribution {
         evaluations,
         mut entries,
         wrappers,
     } = attribute_sites(input, &mut result);
-    let wrappers = climb_wrappers(input, wrappers, &mut entries, &mut result);
-    collect_contexts(input, &evaluations, entries, &wrappers, &mut result);
+    let climb = climb::climb(&decoded, wrappers);
+    for (block, reason) in climb.charges {
+        charge(&mut result, &BTreeSet::from([block]), reason);
+    }
+    entries.extend(climb.entries);
+    collect_contexts(
+        input,
+        &decoded,
+        &evaluations,
+        entries,
+        &climb.wrappers,
+        &mut result,
+    );
     result
 }
 
@@ -179,7 +170,7 @@ struct Attribution {
     /// The block that each attributed site evaluates, by the site's address.
     evaluations: BTreeMap<u64, Block>,
     /// The sites whose scope is not a parameter.
-    entries: Vec<Entry>,
+    entries: Vec<Entry<Block>>,
     /// The functions whose sites take their scope from a parameter, with the blocks they reach.
     wrappers: BTreeMap<Wrapper, BTreeSet<Block>>,
 }
@@ -187,8 +178,9 @@ struct Attribution {
 /// Attribute each site to the block that it evaluates, and sort the attributed sites into entries
 /// and wrappers. A site whose block is not `this` plus one offset is counted as unattributed.
 fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution {
-    let states = states_at(
-        input,
+    let states = climb::states_at(
+        &input.functions,
+        &input.strings,
         input.sites.iter().map(|site| (site.function, site.address)),
     );
     let mut attribution = Attribution {
@@ -215,7 +207,7 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
         };
         result.blocks.entry(block.clone()).or_default();
         attribution.evaluations.insert(site.address, block.clone());
-        match parameter(state, EVALUATED_SCOPE) {
+        match climb::parameter(state, EVALUATED_SCOPE) {
             Some(parameter) => {
                 let wrapper = Wrapper {
                     function: site.function,
@@ -231,79 +223,11 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
                 function: site.function,
                 site: site.address,
                 selected: Selected::Evaluator,
-                blocks: BTreeSet::from([block]),
+                reaches: BTreeSet::from([block]),
             }),
         }
     }
     attribution
-}
-
-/// Follow each wrapper's scope parameter up its direct callers, to [`CALLER_DEPTH`] callers, and
-/// add each call that does not pass a parameter on to `entries`. Give every wrapper found.
-fn climb_wrappers(
-    input: &BlockInput,
-    wrappers: BTreeMap<Wrapper, BTreeSet<Block>>,
-    entries: &mut Vec<Entry>,
-    result: &mut BlockEntries,
-) -> BTreeSet<u64> {
-    let mut found = BTreeSet::new();
-    let mut level = wrappers;
-    for depth in 1..=CALLER_DEPTH + 1 {
-        found.extend(level.keys().map(|wrapper| wrapper.function));
-        if depth > CALLER_DEPTH {
-            for blocks in level.values() {
-                charge(result, blocks, "caller-depth");
-            }
-            break;
-        }
-
-        let callers =
-            |wrapper: &Wrapper| input.callers.get(&wrapper.function).into_iter().flatten();
-        for (wrapper, blocks) in &level {
-            if callers(wrapper).next().is_none() {
-                charge(result, blocks, "no-caller");
-            }
-        }
-        let calls: Vec<(&Wrapper, &BTreeSet<Block>, CallSite)> = level
-            .iter()
-            .flat_map(|(wrapper, blocks)| {
-                callers(wrapper).map(move |call| (wrapper, blocks, *call))
-            })
-            .collect();
-        let states = states_at(
-            input,
-            calls
-                .iter()
-                .map(|(_, _, call)| (call.function, call.address)),
-        );
-
-        let mut next: BTreeMap<Wrapper, BTreeSet<Block>> = BTreeMap::new();
-        for (wrapper, blocks, call) in calls {
-            let Some(state) = states.get(&call.address) else {
-                charge(result, blocks, "caller-not-decoded");
-                continue;
-            };
-            match parameter(state, wrapper.parameter) {
-                Some(parameter) => {
-                    let caller = Wrapper {
-                        function: call.function,
-                        parameter,
-                    };
-                    next.entry(caller)
-                        .or_default()
-                        .extend(blocks.iter().cloned());
-                }
-                None => entries.push(Entry {
-                    function: call.function,
-                    site: call.address,
-                    selected: Selected::Wrapper(wrapper.function),
-                    blocks: blocks.clone(),
-                }),
-            }
-        }
-        level = next;
-    }
-    found
 }
 
 /// Run the context pass from each entry, and record the contexts that the attributed evaluations
@@ -311,8 +235,9 @@ fn climb_wrappers(
 /// unreadable context, or no evaluation reached at all.
 fn collect_contexts(
     input: &BlockInput,
+    decoded: &Decoded<'_>,
     evaluations: &BTreeMap<u64, Block>,
-    entries: Vec<Entry>,
+    entries: Vec<Entry<Block>>,
     wrappers: &BTreeSet<u64>,
     result: &mut BlockEntries,
 ) {
@@ -328,7 +253,7 @@ fn collect_contexts(
         call_arguments: &input.call_arguments,
         ignores_x8: &input.ignores_x8,
     };
-    let calls = BlockCalls {
+    let calls = EntryCalls {
         evaluators: &input.evaluators,
         scope_users: &input.scope_users,
         wrappers,
@@ -336,17 +261,33 @@ fn collect_contexts(
         never_return: &input.never_return,
     };
     let entered: BTreeSet<u64> = wrappers.union(&input.receivers).copied().collect();
+    let reads: BTreeMap<u64, (Block, Read)> = evaluations
+        .iter()
+        .map(|(&site, block)| {
+            let read = Read {
+                scope: EVALUATED_SCOPE,
+                subject: Subject::None,
+            };
+            (site, (block.clone(), read))
+        })
+        .collect();
 
     for entry in entries {
-        let run = match entry_code(input, &entered, entry.function) {
+        let run = match climb::entry_code(decoded, &entered, entry.function) {
             Some(code) => {
-                let found =
-                    runner.evaluations(&code, entry.function, entry.site, entry.selected, &calls);
+                let found = runner.read_calls(
+                    &code,
+                    entry.function,
+                    entry.site,
+                    entry.selected,
+                    &calls,
+                    &entry.reads(&reads),
+                );
                 entry_run(entry, found, evaluations)
             }
             None => EntryRun {
                 unresolved: vec![Unresolved::new("site-not-decoded")],
-                ..entry_run(entry, Evaluations::default(), evaluations)
+                ..entry_run(entry, CallReads::default(), evaluations)
             },
         };
 
@@ -368,11 +309,15 @@ fn collect_contexts(
 
 /// The run of `entry`, from what the context pass `found`: the evaluations that it reached and
 /// that the name pass attributed, and why some path stopped.
-fn entry_run(entry: Entry, found: Evaluations, evaluations: &BTreeMap<u64, Block>) -> EntryRun {
+fn entry_run(
+    entry: Entry<Block>,
+    found: CallReads,
+    evaluations: &BTreeMap<u64, Block>,
+) -> EntryRun {
     let reached: BTreeSet<(u64, Block, Context)> = found
         .reached
         .into_iter()
-        .filter_map(|(address, context)| {
+        .filter_map(|(address, _, context)| {
             Some((address, evaluations.get(&address)?.clone(), context))
         })
         .collect();
@@ -387,74 +332,12 @@ fn entry_run(entry: Entry, found: Evaluations, evaluations: &BTreeMap<u64, Block
             Selected::Evaluator => None,
             Selected::Wrapper(wrapper) => Some(wrapper),
         },
-        blocks: entry.blocks,
+        blocks: entry.reaches,
         reached,
         unresolved: found.unresolved,
         bounded: found.bounded,
         contradicted,
     }
-}
-
-/// The name-pass state before each `(function, address)`, for the functions that are decoded.
-fn states_at(input: &BlockInput, sites: impl Iterator<Item = (u64, u64)>) -> BTreeMap<u64, State> {
-    let mut by_function: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
-    for (function, address) in sites {
-        by_function.entry(function).or_default().insert(address);
-    }
-
-    let mut states = BTreeMap::new();
-    for (function, addresses) in by_function {
-        let Some(rows) = input.functions.get(&function) else {
-            continue;
-        };
-        names::each_state(rows, &input.strings, |row, state| {
-            if addresses.contains(&row.address) {
-                states.insert(row.address, state.clone());
-            }
-        });
-    }
-    states
-}
-
-/// The parameter that register `register` holds on every path, unchanged.
-fn parameter(state: &State, register: usize) -> Option<usize> {
-    match names::sole_fact(state.register(register)) {
-        Some(Fact::Argument(parameter, 0)) => Some(parameter),
-        _ => None,
-    }
-}
-
-/// The code of `function`, with every function in `entered` that it reaches by direct calls and
-/// the scope functions, or `None` when `function` is not decoded.
-fn entry_code(input: &BlockInput, entered: &BTreeSet<u64>, function: u64) -> Option<Code> {
-    let mut included = BTreeSet::from([function]);
-    let mut pending = vec![function];
-    while let Some(next) = pending.pop() {
-        let Some(rows) = input.functions.get(&next) else {
-            if next == function {
-                return None;
-            }
-            continue;
-        };
-        let called = rows
-            .iter()
-            .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
-            .filter_map(|row| number(&row.operands))
-            .filter(|target| entered.contains(target));
-        for callee in called {
-            if included.insert(callee) {
-                pending.push(callee);
-            }
-        }
-    }
-
-    let rows = included
-        .iter()
-        .filter_map(|function| input.functions.get(function))
-        .flatten()
-        .chain(&input.scope_code)
-        .cloned();
-    Some(Code::from_rows(rows))
 }
 
 /// Record that the contexts of `blocks` are incomplete, for `reason`.

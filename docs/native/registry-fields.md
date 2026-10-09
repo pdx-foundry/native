@@ -273,7 +273,7 @@ persistent destinations are joined to constructor-installed virtual readers; a s
 
 `Field.entry_contexts` gives, for each root trigger and effect block, the scopes that the engine's
 direct evaluation calls supply for `this`, `root`, the `from` chain and the `prev` chain
-(`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/contexts.rs`,
+(`registry-fields/v13`; `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`,
 `src/binding/binary/callbacks.rs`, `src/session/field_entries.rs`). The answer keeps
 `EntryScope::SelfLink`; read it by the [self-link rule](engine-commands.md#on_actions-game-rules-and-their-entry-scopes).
 `this` is the scope at the call; the scope that the engine reads the block in is SDK-549's.
@@ -304,8 +304,9 @@ stack in a function's prologue, before its first other instruction, that no late
 overwritten. A virtual call on the object that a proven instance pointer holds calls the slot of
 that object's vtable, so it reads the registers that the slot's signature uses. A call receives
 `x8` only when its target may read it ([engine commands](engine-commands.md#pitfalls)), and a
-call that fires an on_action is a scope reader
-([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)). A copy
+call that fires an on_action or evaluates a game rule is a scope reader
+([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes)), whose
+method shares this caller climb (`callbacks/climb.rs`). A copy
 constructor of a scope that the pass can read, `CopyInternalScopes` and a function that builds a
 scope in the object that `x8` addresses are followed as the engine runs them (same page); a copy
 into an object that the pass does not know lets its source escape.
@@ -359,7 +360,7 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 136 have contexts and no entry gap, 37 have contexts
+effect blocks in 82 of the 164 registries: 135 have contexts and no entry gap, 38 have contexts
 and a gap, 66 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
 `from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
@@ -392,7 +393,14 @@ context and its gaps. Ai budget `potential` gains a country context with no from
 `0x100e00c38`), which let the frame that holds the scope escape. It keeps the bound gaps of
 `UpdateExpenditureBudget`, which reaches no evaluation.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
-a trigger in an element of a component list, not `this` plus an offset. These call sites were
+a trigger in an element of a component list, not `this` plus an offset.
+SDK-731, which shares the caller climb with on_actions and game rules, makes each run read only
+the evaluations of the blocks that its entry carries, and changed 3 blocks. Casus belli `is_valid`
+loses an unreadable context and its gap: a run that carries another block read its evaluation
+with a scope that the run's entry did not build. Artifact action and astral action `potential` gain a
+`path-limit` gap: `IsAllowed` passes its scope on to `IsPotential`, and the runs from its callers
+that carry `potential` reach no `potential` evaluation before the path limit; the `allow`
+evaluation that those runs reach had hidden the bound. These call sites were
 checked by hand in the disassembly:
 
 - armies `potential`: `CArmyType::IsPotentialTrigger` builds a colony scope at `sp+0x170`, sets a

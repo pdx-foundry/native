@@ -171,7 +171,7 @@
     "on_new_country_selected": ["this=country root=SelfLink from=[SelfLink] prev=[SelfLink]"],
     "on_new_heir": ["this=leader root=SelfLink from=[SelfLink] prev=[SelfLink]"],
     "on_operation_cancelled": ["this=espionage_operation root=SelfLink from=[SelfLink] prev=[SelfLink]"],
-    "on_operation_chapter_finished": ["this=Unresolved root=Unresolved from=[Unresolved] prev=[Unresolved]"],
+    "on_operation_chapter_finished": ["this=espionage_operation root=SelfLink from=[Unresolved] prev=[SelfLink]"],
     "on_operation_finished": ["this=Unresolved root=Unresolved from=[Unresolved] prev=[Unresolved]"],
     "on_orbital_defense_planet_ownerless": ["this=starbase root=SelfLink from=[planet,country,SelfLink] prev=[SelfLink]"],
     "on_patron_contact_completed": ["this=country root=SelfLink from=[SelfLink] prev=[SelfLink]"],

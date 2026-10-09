@@ -274,6 +274,23 @@ The engine has no documentation dump for either.
   `this + 0x9cc0`, `0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration
   tables, and `FindRuleDeclarationByEnum` returns the row, with its token, for a rule's
   enumeration.
+- **A scope parameter.** Some sites fire or evaluate the scope that their function receives:
+  `CGameRules::CanFillDroneJob(CEventScope&, CString*)` evaluates its rule with its own `x1`. A site
+  outside the pinned forwarders whose scope register holds a parameter on every path takes its
+  contexts from the callers that build the scope, through the block method's caller climb
+  (`callbacks/climb.rs`, at most 2 callers up): each such caller runs to its call and through the
+  function, which reads the site on arrival. The site's name comes only from the name pass at the
+  site; a string label that a caller's path carries never names it, so a site whose name is not a
+  literal stays an unnamed site. A function with no caller gives `no-caller`, a third caller level
+  `caller-depth`, and every reason that a run from a caller stopped, a search bound or not, is a
+  reason of the site. A site that does not climb keeps only the reason of its last stopped path,
+  as before SDK-731; recording all of them adds a reason, mostly `loop-limit`, to 78 on_actions
+  whose answers do not otherwise change. Record all reasons when a gap detail is read for one name.
+- **Pinned forwarders stay.** The five forwarders that the binding pins each take the name or the
+  rule enumeration from their caller (`NScriptUtil::FireFleetOnAction` takes both the name and the
+  scope), and the climb carries only the scope: the name pass at the inner site cannot prove a
+  name that a caller passes. Remove a pin only when the climb carries a name-pass proof from the
+  caller.
 
 **How script reads a link.** `CEventTarget::GetScope(CEventScope&, char const*)` (`0x1004f9860` on
 M451-hotfix) resolves the `root`, `from` and `prev` tokens (`0x2c92`, `0x2c78`, `0x2c93`). The
@@ -309,6 +326,20 @@ and the other `const` members of trigger and effect classes that take a scope, s
   child's prev to the received scope and sets the child's type. It only reads the received scope.
 - A scope-changing effect, `CEveryInListEffect::ExecuteActual` (`0x101d225cc`), does the same.
 
+The game rule evaluators are covered by the same rule, so they are scope readers too
+(`ScopeFunctions::readers`), and a wrapper that evaluates several rules on one scope keeps it known
+for each. Checked by hand on M452 (SDK-731):
+
+- `CScriptedRule::Evaluate(CEventScope&, CString*, …) const` (`0x1006c7920`) passes the scope only
+  to `CTrigger::Evaluate` and `CAndTrigger::BuildToolTip`; it stores nothing through it.
+- `CWeightedRule::Evaluate(CEventScope&, CString*) const` (`0x1006c7c88`) passes it only to
+  `CMeanTimeToHappen::GetDescriptor(CEventScope const&, …)` and `GetRawFactor` (`0x10092e2bc`),
+  which passes it to each modifier's `ModifyNumber` at vtable `+0x18`. `CTriggerMTTHModifier`
+  evaluates its trigger and reads a value through a `const` reference; `CComplexTriggerMTTHModifier`
+  evaluates its trigger and resolves targets with `CEventTarget::GetScope` into a local scope;
+  `CScaledMTTHModifier` resolves its target into a local scope and stores only into the number that
+  it modifies.
+
 **Firing an on_action leaves a scope as it found it.** A third assumption, used by both context
 passes: a call that fires an on_action (both `COnActionDatabase::PerformEvent` overloads and the
 deferred `COnActionCommand(CString const&, CEventScope const&, …)`) and
@@ -342,7 +373,7 @@ unresolved scope. 14 names keep several contexts with no unresolved scope: for e
 enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
 Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
 `on_subspecies_integration_complete` link the colony as prev. 223 game rules (209 scripted, 14
-weighted); 220 have a context and 204 a context with no unresolved scope. SDK-712 changed 54
+weighted); 220 have a context and 210 a context with no unresolved scope. SDK-712 changed 54
 on_actions and no rule: the firing-reader rule above, `x8` reaching only a callee that may read
 it (below), a `from` chain of any length, and the `ror` instruction (`on_colony_yearly_pulse`).
 Each change only removes an unresolved context or adds a context. SDK-729, which makes unknown the
@@ -356,7 +387,24 @@ now also reach the path limit. SDK-730, which follows copies and scope factories
 with no unresolved scope to the four astral rift names, which had only unresolved contexts:
 `CAstralRift::Finish` and the other callers fire the scope that `MakeCountryEventScope` or
 `MakeAstralRiftEventScope` returns. SDK-734, which gives C library stubs their argument
-registers, changed no on_action or rule. These call sites were checked by hand in the disassembly:
+registers, changed no on_action or rule. SDK-731, which climbs from a scope parameter, changed one
+on_action and seven rules. Each change replaces an unresolved context with a context, or narrows a
+gap to the reasons that the runs from the callers state:
+
+- `can_fill_drone_job`, `can_fill_worker_job`, `can_fill_specialist_job`, `can_fill_ruler_job`
+  and `can_fill_precursor_job`: a pop group (`CGameRules::CanFill*Job`; the two-caller climb
+  through `NPlanetJobs::CalculatePopJobPossiblePreCalc`, from
+  `CalculatePopGroupPossiblePreCalcFlags` and `NPopUtil::GetPopGroupToolTip`). The other callers
+  stop: `CJobType::CheckPossiblePreCalc` at a branch on an unknown value, and the parallel-for
+  lambda at `ldaddal` (an atomic add that the machine does not run).
+- `system_blocks_sensors`: a galactic object with a country root (`IsSystemBlockingSensors`
+  builds both); the three sites in `ApplySensorRanges::$_5` reach the loop and path limits.
+- `on_operation_chapter_finished`: an espionage operation whose from has a type that the caller
+  sets at run time (`CEspionageOperationManager::HandleStageFinished`; its callers link a scope
+  built with `Set(EScopeType, …)` from the operation's target, as for `on_operation_finished`).
+- `can_orbitable_repair_ships` keeps only unresolved contexts, now with the callers' reasons:
+  `CFleet::CalcCanRepairFromOrbit` passes a scope that `SetupScopeObject` fills, and the
+  parallel-for lambdas stop at `ldaddal`. These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
@@ -382,7 +430,11 @@ registers, changed no on_action or rule. These call sites were checked by hand i
   resolved, the three exploration names agree (a country, from the astral rift, fromfrom the
   fleet), and the comment on `on_astral_rift_spawned` gives only the astral rift, to which the
   engine links a fleet as from.
-- 181 of 223 game rules agree with the config's `replace_scopes`; SDK-712 changed no rule.
+- 181 of 223 game rules agree with the config's `replace_scopes`; SDK-712 changed no rule. The 6
+  rules that SDK-731 resolved agree: a pop group with a self-linked root for the five
+  `can_fill_*_job` rules, and a system with a country root for `system_blocks_sensors`. Of the
+  on_actions, `on_operation_chapter_finished` agrees with its comment: the espionage operation,
+  from the operation's target, whose type the engine sets at run time.
 
 Each disagreement was read by hand, and the engine agrees with Native in every case. Use these
 shapes when a source and the answer differ:
@@ -422,9 +474,14 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
     scope), `CScopeObjectReference::SetColonyCarrierRef` (`on_arkship_encamped`,
     `on_arkship_mobile`), `Set(EScopeType, …)` with a type that is not a constant
     (`on_operation_finished`) and `Unset` (`on_modification_completion`).
-  - 6 fire a scope that the function receives: `anomaly_success`, `on_relic_activated`,
-    `on_terraforming_begun`, `on_operation_chapter_finished` (SDK-731), and the two storm names,
-    whose scope comes from an effect.
+  - 5 fire a scope that the function receives, which the climb follows to a caller that builds
+    it, but which escapes before the site: `anomaly_success` (`CAnomalyType::OnSuccess` stores the
+    scope's address in a delegate that it passes to `ExecuteRandomList`), `on_relic_activated`
+    (`InternalActivateRelicWithScope` passes it to the relic effect's `Execute`, a virtual call at
+    `+0x48`), and `on_terraforming_begun` (an unknown virtual call at `0x1011470f4`, vtable `+0x40`
+    of the colony, receives `x2` and `x3` before the function types them). The two storm names
+    fire a copy of a scope that an effect receives.
+  - 1 links a from whose type the caller sets at run time: `on_operation_chapter_finished` (above).
   - 1 links a from that the function receives: `on_country_created`. `CCreateCountry` and
     `CCreateRebelsEffect::ExecuteActual` build a fresh country scope and store the root of the
     scope that the effect receives as its from (`ldr x8,[x19,#0x30]`, `0x101d5ad3c`), so only
@@ -441,10 +498,11 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
 - 3 declared rules have no call site that the method follows:
   `CGalacticCommunity::CanBeMember` selects `can_be_part_of_galactic_community` (0x53) or
   `can_be_part_of_galactic_empire` (0x54) with `cinc` (`0x10055f6bc`), so the forwarded site has no
-  one constant; no followed site passes `crisis_opinion_is_shown` (0x93). 16 rules have only
+  one constant; no followed site passes `crisis_opinion_is_shown` (0x93). 10 rules have only
   unresolved contexts: 4 use `SetColonyCarrierRef`, the five `can_build_*_around` rules pass a
-  from scope through `FillEventScope`, and 7 evaluate a scope that the function receives
-  (SDK-731). 2 rule sites pass a rule object that is not a constant.
+  from scope through `FillEventScope`, and `can_orbitable_repair_ships` evaluates a scope that its
+  callers fill with `SetupScopeObject` or reach only past `ldaddal` (above). 2 rule sites pass a
+  rule object that is not a constant.
 - On_actions that content defines are an `OutsideMethod` gap. Events and their `push_scope` are
   SDK-702; pre_trigger key sets are SDK-703.
 
