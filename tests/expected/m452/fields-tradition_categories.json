@@ -105,7 +105,23 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   }
+  ],
   "members": {
    "WeightBlock": "f08cb83d92484a89"
   },

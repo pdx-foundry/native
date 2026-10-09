@@ -1,7 +1,7 @@
-//! Root trigger and effect blocks by the entry contexts of their answer, with the gaps that entry
-//! contexts add. The counts are the ones that `docs/native/registry-fields.md` records.
+//! Root trigger, effect and weight blocks by the entry contexts of their answer, with the gaps
+//! that entry contexts add. The counts are the ones that `docs/native/registry-fields.md` records.
 use pdx_native::internals::registry_field_stops::EntryContexts;
-use pdx_native::{Answer, BlockFamily, EntryContext, EntryScope, Field, GapSubject};
+use pdx_native::{Answer, EntryContext, EntryScope, Field, GapSubject};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -10,6 +10,7 @@ pub struct Tally {
     blocks: usize,
     registries: usize,
     counts: BTreeMap<&'static str, usize>,
+    statuses_by_family: BTreeMap<String, BTreeMap<&'static str, usize>>,
     gaps: BTreeMap<String, usize>,
     unnamed_evaluations: BTreeMap<String, usize>,
 }
@@ -19,12 +20,7 @@ impl Tally {
         let blocks: Vec<&Field> = answer
             .value
             .iter()
-            .filter(|field| {
-                matches!(
-                    field.reader.family,
-                    BlockFamily::Trigger | BlockFamily::Effect
-                )
-            })
+            .filter(|field| entries.block_offsets.contains_key(&field.name))
             .collect();
         if !blocks.is_empty() {
             self.registries += 1;
@@ -52,6 +48,12 @@ impl Tally {
                 (false, false) => "contexts_with_gap",
             };
             self.count(status, true);
+            *self
+                .statuses_by_family
+                .entry(format!("{:?}", field.reader.family))
+                .or_default()
+                .entry(status)
+                .or_default() += 1;
             let known_this = contexts
                 .iter()
                 .filter(|context| context.this != EntryScope::Unresolved)
@@ -81,6 +83,7 @@ impl Tally {
             "blocks": self.blocks,
             "registries_with_blocks": self.registries,
             "counts": self.counts,
+            "statuses_by_family": self.statuses_by_family,
             "gaps": self.gaps,
             "unnamed_evaluations": self.unnamed_evaluations,
         })

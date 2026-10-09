@@ -719,6 +719,14 @@
           "name": "ai_weight"
         },
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+      ],
+      [
+        "UnresolvedPath",
+        {
+          "kind": "field",
+          "name": "ai_weight"
+        },
+        "no direct call in the owner's methods evaluates this block"
       ]
     ],
     "read_scope": {

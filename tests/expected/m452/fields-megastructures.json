@@ -1372,7 +1372,29 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   }
+  ],
   "members": {
    "WeightBlock": "f08cb83d92484a89"
   },

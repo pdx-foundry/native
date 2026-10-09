@@ -401,7 +401,7 @@ impl SweepReport {
                 "failure_shapes": "Grouped by public gap detail.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
-                "entry_contexts": "Root fields whose reader family is trigger or effect. A block's gaps are the gaps that entry contexts add with its field as subject. several_known_this: more than one context whose this is established; typed_from and typed_prev: a context whose chain holds a scope type; with_unresolved_slot: a context with an unresolved scope. unnamed_evaluations: by registry, the evaluator calls in the owner's methods whose block the method cannot name.",
+                "entry_contexts": "Root fields whose reader family is trigger, effect or weight. statuses_by_family: the three context statuses by reader family. A block's gaps are the gaps that entry contexts add with its field as subject. several_known_this: more than one context whose this is established; typed_from and typed_prev: a context whose chain holds a scope type; with_unresolved_slot: a context with an unresolved scope. unnamed_evaluations: by registry, the evaluator calls in the owner's methods whose block the method cannot name.",
                 "weight_blocks": "Root fields whose constructor-proven reader is a weight reader, grouped by reader identity. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
                 "triggered_modifiers": "Fields whose collected object has a triggered modifier clause reader, grouped by reader identity. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
                 "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
@@ -921,6 +921,7 @@ mod tests {
             field("potential", "Trigger", json!([known, unresolved])),
             field("allow", "Trigger", json!([known])),
             field("effect", "Effect", json!([])),
+            field("ai_weight", "Weight", json!([known])),
             field("cost", "Unknown", json!([])),
         ]);
         let gap = |name: &str, detail: &str| json!({ "kind": "UnresolvedPath", "subject": { "kind": "field", "name": name }, "detail": detail });
@@ -938,7 +939,10 @@ mod tests {
         let entries = registry_field_stops::EntryContexts {
             owner: "COwner".into(),
             gaps: serde_json::from_value(json!([entry_gap])).unwrap(),
-            block_offsets: BTreeMap::new(),
+            block_offsets: ["potential", "allow", "effect", "ai_weight"]
+                .into_iter()
+                .map(|name| (name.to_owned(), BTreeSet::new()))
+                .collect(),
             runs: Vec::new(),
             unnamed_evaluations: 2,
             scope_names: None,
@@ -950,16 +954,21 @@ mod tests {
         assert_eq!(
             tally.report(),
             json!({
-                "blocks": 3,
+                "blocks": 4,
                 "registries_with_blocks": 1,
                 "counts": {
                     "contexts_with_gap": 1,
-                    "contexts_without_gap": 1,
+                    "contexts_without_gap": 2,
                     "without_contexts": 1,
                     "several_known_this": 0,
-                    "typed_from": 2,
+                    "typed_from": 3,
                     "typed_prev": 0,
                     "with_unresolved_slot": 1,
+                },
+                "statuses_by_family": {
+                    "Trigger": { "contexts_with_gap": 1, "contexts_without_gap": 1 },
+                    "Effect": { "without_contexts": 1 },
+                    "Weight": { "contexts_without_gap": 1 },
                 },
                 "gaps": { "UnresolvedPath: some entry scopes of a call site could not be established": 1 },
                 "unnamed_evaluations": { "common/a": 2 },

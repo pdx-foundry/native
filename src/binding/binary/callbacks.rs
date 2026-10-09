@@ -1,8 +1,9 @@
 //! Read the input of the callback method: every direct call that fires an on_action or evaluates
 //! a game rule, the functions that hold those calls, and the scope functions that the method
 //! runs, with the callers of each function whose site fires or evaluates a scope parameter. Read
-//! the input of the block method the same way: every direct call to a trigger evaluator or an
-//! effect executor in a method of a registry owner, with the callers of those methods.
+//! the input of the block method the same way: every direct call to a trigger evaluator, an
+//! effect executor or a weight evaluator in a method of a registry owner, with the callers of
+//! those methods.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -256,8 +257,8 @@ pub(in crate::binding) fn callbacks(
     })
 }
 
-/// The functions that evaluate a stored trigger block or run a stored effect block. Each takes
-/// the block in `x0` and the scope in `x1`.
+/// The functions that evaluate a stored trigger or weight block or run a stored effect block. Each
+/// takes the block in `x0` and the scope in `x1`.
 fn evaluator_names() -> Vec<String> {
     vec![
         "CTrigger::Evaluate(CEventScope&) const".into(),
@@ -271,6 +272,11 @@ fn evaluator_names() -> Vec<String> {
         "CAndTrigger::ActualEvaluate(CEventScope&) const".into(),
         "SafeExecuteEffect(CEffect const&, CEventScope&)".into(),
         format!("SafeExecuteEffectExtended(CEffect const&, CEventScope&, {EXTRA}&&)"),
+        "CMeanTimeToHappen::GetRawFactor(CEventScope&) const".into(),
+        "CMeanTimeToHappen::GetRawFactorNoScopeCopy(CEventScope const&) const".into(),
+        "CMeanTimeToHappen::GetChance(CEventScope&, int) const".into(),
+        "CMeanTimeToHappen::GetDailyChance(CEventScope&) const".into(),
+        "CAIMTTHChance::GetChance(CEventScope&) const".into(),
     ]
 }
 

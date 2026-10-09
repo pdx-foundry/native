@@ -1,5 +1,5 @@
 //! The entry contexts of registry field blocks: the scopes that the owner's direct evaluation
-//! calls supply to each stored trigger or effect block.
+//! calls supply to each stored trigger, effect or weight block.
 use std::collections::BTreeSet;
 
 use super::callbacks::{Scopes, entries};
@@ -12,12 +12,20 @@ use crate::engine::analysis::fields::{RegistryFieldResult, RootField};
 use crate::engine::analysis::readers;
 
 /// What the search for entry contexts leaves out.
-const LIMIT: &str = "Entry contexts cover the root trigger and effect blocks that the owner's \
-    own methods evaluate by direct call. Virtual calls, evaluations outside the owner's methods, \
-    nested blocks, weights, script values and modifier blocks are outside this method.";
+const LIMIT: &str = "Entry contexts cover the root trigger, effect and weight blocks that the \
+    owner's own methods evaluate by direct call. Virtual calls, evaluations outside the owner's \
+    methods, nested blocks, script values and modifier blocks are outside this method.";
 
-/// Give each root trigger or effect block of `owner`'s registry its entry contexts, and record a
-/// gap for each block whose contexts are missing or incomplete.
+/// Whether the method gives entry contexts to a root block whose reader accepts `family`.
+pub(super) fn takes_entry_contexts(family: BlockFamily) -> bool {
+    matches!(
+        family,
+        BlockFamily::Trigger | BlockFamily::Effect | BlockFamily::Weight
+    )
+}
+
+/// Give each root trigger, effect or weight block of `owner`'s registry its entry contexts, and
+/// record a gap for each block whose contexts are missing or incomplete.
 pub(super) fn attach(
     fields: &mut [Field],
     result: &RegistryFieldResult,
@@ -28,10 +36,7 @@ pub(super) fn attach(
 ) {
     let scopes = Scopes::new(&facts.scope_names, gaps);
     for (field, root) in fields.iter_mut().zip(&result.fields) {
-        if !matches!(
-            field.reader.family,
-            BlockFamily::Trigger | BlockFamily::Effect
-        ) {
+        if !takes_entry_contexts(field.reader.family) {
             continue;
         }
 
@@ -288,6 +293,35 @@ mod tests {
         let details = field_gaps(&gaps, "potential");
         assert!(details.iter().any(|detail| detail.ends_with("(no-caller)")));
         assert!(details.contains(&"some entry scopes of a call site could not be established"));
+    }
+
+    #[test]
+    fn a_weight_block_takes_the_contexts_that_its_evaluations_receive() {
+        let mut fields = [field("ai_weight", "Weight")];
+        let gaps = attached(
+            &mut fields,
+            vec![root("ai_weight", Some(0x40))],
+            &facts(&[(0x40, found(&[country()]))], 0),
+        );
+
+        assert_eq!(fields[0].entry_contexts.len(), 1);
+        assert!(field_gaps(&gaps, "ai_weight").is_empty());
+    }
+
+    #[test]
+    fn a_weight_block_that_no_call_evaluates_has_a_gap() {
+        let mut fields = [field("ai_weight", "Weight")];
+        let gaps = attached(
+            &mut fields,
+            vec![root("ai_weight", Some(0x40))],
+            &facts(&[(0x48, found(&[country()]))], 0),
+        );
+
+        assert!(fields[0].entry_contexts.is_empty());
+        assert_eq!(
+            field_gaps(&gaps, "ai_weight"),
+            ["no direct call in the owner's methods evaluates this block"]
+        );
     }
 
     #[test]

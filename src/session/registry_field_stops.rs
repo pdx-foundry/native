@@ -20,7 +20,7 @@ use super::Native;
 use super::field_entries;
 use super::questions::RegistryFieldRun;
 use crate::binding::BlockFacts;
-use crate::{Answer, BlockFamily, Error, Field, Gap, Operation};
+use crate::{Answer, Error, Field, Gap, Operation};
 
 pub use crate::engine::analysis::callbacks::blocks::{Block, EntryRun};
 pub use crate::engine::analysis::callbacks::{Context, Slot};
@@ -40,8 +40,8 @@ pub struct Run {
     pub answer: Answer<Vec<Field>>,
     /// The method's own result, from which `answer` is derived.
     pub result: RegistryFieldResult,
-    /// What the block entry context method found for the registry's root trigger and effect
-    /// blocks.
+    /// What the block entry context method found for the registry's root trigger, effect and
+    /// weight blocks.
     pub entry_contexts: EntryContexts,
 }
 
@@ -52,8 +52,8 @@ pub struct EntryContexts {
     pub owner: String,
     /// The gaps that entry contexts add to the answer.
     pub gaps: Vec<Gap>,
-    /// The storage offsets of each root trigger and effect field's blocks, by field name. A
-    /// field whose storage is not established has none.
+    /// The storage offsets of each root trigger, effect and weight field's blocks, by field
+    /// name. A field whose storage is not established has none.
     pub block_offsets: BTreeMap<String, BTreeSet<i64>>,
     /// The context pass from each entry call that reaches one of the owner's blocks.
     pub runs: Vec<EntryRun>,
@@ -85,12 +85,7 @@ fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
         .value
         .iter()
         .zip(&run.result.fields)
-        .filter(|(field, _)| {
-            matches!(
-                field.reader.family,
-                BlockFamily::Trigger | BlockFamily::Effect
-            )
-        })
+        .filter(|(field, _)| field_entries::takes_entry_contexts(field.reader.family))
         .map(|(field, root)| (field.name.clone(), field_entries::destinations(root)))
         .collect();
     let runs = facts

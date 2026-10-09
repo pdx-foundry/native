@@ -340,6 +340,27 @@ for each. Checked by hand on M452 (SDK-731):
   `CScaledMTTHModifier` resolves its target into a local scope and stores only into the number that
   it modifies.
 
+The weight evaluators are covered by the same rule, so the block method treats them as trigger
+evaluators: `CMeanTimeToHappen::GetRawFactor(CEventScope&) const`, `GetRawFactorNoScopeCopy(CEventScope
+const&) const`, `GetChance(CEventScope&, int) const`, `GetDailyChance(CEventScope&) const` and
+`CAIMTTHChance::GetChance(CEventScope&) const`. Checked by hand on M452 (SDK-733):
+
+- Each of the five (`0x10092e2bc`, `0x10092e250`, `0x10092df84`, `0x10092e0f4`, `0x10092eeb8`)
+  takes the block in `x0`, loads its base at `+0x10` and its modifier array at `+0x20` (count
+  `+0x2c`), and passes the scope in `x1` only as `x2` of each modifier's `ModifyNumber` at vtable
+  `+0x18`. None stores through the scope.
+- `CTriggerMTTHModifier::ModifyNumber` (`0x10092c4d0`) passes the scope to its trigger's virtual
+  `Evaluate` (`+0x10`) and to `CFixedPointVariableValue::GetValue(CEventScope const&)`.
+- `CComplexTriggerMTTHModifier::ModifyNumber` (`0x10092dac4`) passes it to `CTrigger::Evaluate`
+  and to `CEventTarget::GetScope`, and otherwise only reads its type word (`+0x8`) for a log line.
+- `CScaledMTTHModifier::ModifyNumber` (`0x10093023c`) passes it only to `CEventTarget::GetScope`,
+  then works on the local scope that `GetScope` returns.
+- `CEventTarget::GetScope(CEventScope&, char const*) const` (`0x1004f9804`) copy-constructs the
+  received scope into the returned object, calls `Unset` on the copy and retargets the copy. It
+  passes the received scope only to `const` getters (`CScopeObjectReference::GetCountry`,
+  `GetPlanet` and the others), `CEventScope::GetSavedEventTarget`, `GetDynamicFlag` and itself, and
+  stores nothing through it.
+
 **Firing an on_action leaves a scope as it found it.** A third assumption, used by both context
 passes: a call that fires an on_action (both `COnActionDatabase::PerformEvent` overloads and the
 deferred `COnActionCommand(CString const&, CEventScope const&, …)`) and
