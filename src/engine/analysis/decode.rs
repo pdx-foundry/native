@@ -448,8 +448,8 @@ mod tests {
         assert_eq!(written_registers("cas", "x8,x9,[x0]"), [8]);
         assert!(written_registers("stadd", "w8,[x0]").is_empty());
 
-        let adds_through_it = function(&[("ldaddal", "x8,x9,[x0]"), ("ret", "")]);
-        assert!(reads_before_writing(&adds_through_it, 8));
+        let adds_its_value = function(&[("ldaddal", "x8,x9,[x0]"), ("ret", "")]);
+        assert!(reads_before_writing(&adds_its_value, 8));
     }
 
     #[test]
