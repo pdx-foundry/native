@@ -56,6 +56,9 @@ const PROBE: u64 = 7;
 /// Consecutive missing enumerations after which the rule table ends.
 const TABLE_MISSES: u64 = 64;
 
+/// The callback method's name pass follows no offset getter; the block method's does.
+const NO_GETTERS: &BTreeMap<u64, i64> = &BTreeMap::new();
+
 /// Layout facts of one exact build.
 #[derive(Debug, Clone, Copy)]
 pub struct CallbackLayout {
@@ -356,6 +359,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
     let states = climb::states_at(
         &input.functions,
         &input.strings,
+        NO_GETTERS,
         input.sites.iter().map(|site| (site.function, site.address)),
     );
     let rule_names = match family {
@@ -471,6 +475,7 @@ pub fn climbing_functions(
     let states = climb::states_at(
         functions,
         strings,
+        NO_GETTERS,
         sites.iter().map(|site| (site.function, site.address)),
     );
     climbing_sites(sites.iter(), forwarders, &states)
@@ -530,6 +535,7 @@ fn climbed_contexts<'s>(
         callers: &input.callers,
         scope_code: &input.scope_code,
         strings: &input.strings,
+        getters: NO_GETTERS,
     };
     let climb = climb::climb(&decoded, wrappers);
 
@@ -1150,7 +1156,7 @@ fn pulse_names(input: &CallbacksInput) -> BTreeMap<i64, u64> {
         .enumerate()
         .map(|(position, row)| (row.address, position))
         .collect();
-    names::each_state(rows, &input.strings, |row, state| {
+    names::each_state(rows, &input.strings, NO_GETTERS, |row, state| {
         let at = position[&row.address];
         if row.operation == "bl"
             && names::immediate(&row.operands)

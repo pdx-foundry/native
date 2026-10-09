@@ -21,6 +21,10 @@ const LIMIT: &str = "Entry contexts cover the root trigger, effect and weight bl
 /// The gap of a block that no attributed evaluation reaches.
 const NOT_EVALUATED: &str = "no evaluation that the method attributes evaluates this block";
 
+/// The gap of a block that a tooltip call names and no attributed evaluation does.
+const ONLY_TOOLTIPS: &str =
+    "only tooltip calls name this block; the method established no evaluation of it";
+
 /// Whether the method gives entry contexts to a root block whose reader accepts `family`.
 pub(super) fn takes_entry_contexts(family: BlockFamily) -> bool {
     matches!(
@@ -56,12 +60,18 @@ pub(super) fn attach(
             continue;
         }
 
-        let findings = merged(facts, owner, field.reader.family, &destinations);
+        let blocks = field_blocks(owner, field.reader.family, &destinations);
+        let findings = merged(facts, &blocks);
         if findings.contexts.is_empty() && findings.unresolved.is_empty() {
+            let detail = if only_tooltips(facts, &blocks) {
+                ONLY_TOOLTIPS
+            } else {
+                NOT_EVALUATED
+            };
             gaps.push(gap_for_subject(
                 GapKind::UnresolvedPath,
                 Some(subject),
-                NOT_EVALUATED,
+                detail,
             ));
             continue;
         }
@@ -89,26 +99,42 @@ pub(super) fn destinations(root: &RootField) -> BTreeSet<i64> {
         .collect()
 }
 
-/// The findings of every block of `family` that `owner` stores at one of `destinations`.
-fn merged(
-    facts: &BlockFacts,
+/// The blocks of `family` that `owner` stores at `destinations`.
+pub(super) fn field_blocks(
     owner: &str,
     family: BlockFamily,
     destinations: &BTreeSet<i64>,
-) -> Findings {
-    let mut findings = Findings::default();
-    for &offset in destinations {
-        let block = Block {
+) -> BTreeSet<Block> {
+    destinations
+        .iter()
+        .map(|&offset| Block {
             owner: owner.into(),
             offset,
             family,
-        };
-        if let Some(found) = facts.entries.blocks.get(&block) {
-            findings.contexts.extend(found.contexts.iter().cloned());
-            findings.unresolved.extend(&found.unresolved);
-        }
+        })
+        .collect()
+}
+
+/// The findings of every block of `blocks`.
+fn merged(facts: &BlockFacts, blocks: &BTreeSet<Block>) -> Findings {
+    let mut findings = Findings::default();
+    for found in blocks
+        .iter()
+        .filter_map(|block| facts.entries.blocks.get(block))
+    {
+        findings.contexts.extend(found.contexts.iter().cloned());
+        findings.unresolved.extend(&found.unresolved);
     }
     findings
+}
+
+/// Whether a tooltip call names one of `blocks` and no attributed evaluation names any.
+fn only_tooltips(facts: &BlockFacts, blocks: &BTreeSet<Block>) -> bool {
+    let entries = &facts.entries;
+    blocks.iter().any(|block| entries.tooltips.contains(block))
+        && !blocks
+            .iter()
+            .any(|block| entries.blocks.contains_key(block))
 }
 
 #[cfg(test)]
@@ -198,7 +224,7 @@ mod tests {
                     .then(|| (OWNER.to_string(), unattributed))
                     .into_iter()
                     .collect(),
-                runs: Vec::new(),
+                ..BlockEntries::default()
             },
             scope_names: Some(vec!["none".into(), "planet".into(), "country".into()]),
         }
@@ -369,5 +395,33 @@ mod tests {
         assert!(gaps.iter().any(|gap| gap.kind == GapKind::UnresolvedPath
             && gap.subject == Some(GapSubject::registry("common/owners"))
             && gap.detail.starts_with("2 direct evaluation calls")));
+    }
+
+    #[test]
+    fn a_block_that_only_tooltip_calls_name_has_the_narrower_gap() {
+        let tooltip = |offset| Block {
+            owner: OWNER.into(),
+            offset,
+            family: BlockFamily::Trigger,
+        };
+        let mut facts = facts(&[(0x48, BlockFamily::Trigger, found(&[country()]))], 1);
+        facts.entries.tooltips = BTreeSet::from([tooltip(0x40), tooltip(0x48)]);
+        let mut fields = [
+            field("custom_tooltip", "Trigger"),
+            field("potential", "Trigger"),
+        ];
+        let gaps = attached(
+            &mut fields,
+            vec![
+                root("custom_tooltip", Some(0x40)),
+                root("potential", Some(0x48)),
+            ],
+            &facts,
+        );
+
+        assert!(fields[0].entry_contexts.is_empty());
+        assert_eq!(field_gaps(&gaps, "custom_tooltip"), [ONLY_TOOLTIPS]);
+        assert_eq!(fields[1].entry_contexts.len(), 1);
+        assert!(field_gaps(&gaps, "potential").is_empty());
     }
 }

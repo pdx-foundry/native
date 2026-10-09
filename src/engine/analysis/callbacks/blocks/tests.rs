@@ -41,6 +41,7 @@ struct Program {
     instances: BTreeMap<u64, u64>,
     words: BTreeMap<u64, u64>,
     factories: BTreeMap<u64, Vec<Instruction>>,
+    getters: BTreeMap<u64, i64>,
 }
 
 impl Program {
@@ -55,6 +56,7 @@ impl Program {
             instances: BTreeMap::new(),
             words: BTreeMap::new(),
             factories: BTreeMap::new(),
+            getters: BTreeMap::new(),
         }
     }
 
@@ -87,6 +89,12 @@ impl Program {
     /// `function` reads `count` argument registers.
     fn arguments(mut self, function: u64, count: usize) -> Self {
         self.arguments.insert(function, count);
+        self
+    }
+
+    /// The function at `function` is an offset getter that returns its receiver plus `offset`.
+    fn getter(mut self, function: u64, offset: i64) -> Self {
+        self.getters.insert(function, offset);
         self
     }
 
@@ -145,11 +153,12 @@ impl Program {
                 }
             }
             for (address, target) in direct_calls(rows) {
-                if evaluators.contains_key(&target) && self.type_pointers.contains_key(&function) {
+                let direct = evaluators.contains_key(&target) || target == TOOLTIP;
+                if direct && self.type_pointers.contains_key(&function) {
                     sites.push(EvaluationSite {
                         address,
                         function,
-                        call: EvaluationCall::Evaluator(target),
+                        call: EvaluationCall::Direct(target),
                     });
                 }
                 if self.functions.contains_key(&target) {
@@ -170,6 +179,9 @@ impl Program {
                 (0x20, BlockFamily::Trigger),
                 (0x48, BlockFamily::Effect),
             ]),
+            tooltip_builders: BTreeMap::from([(TOOLTIP, BlockFamily::Trigger)]),
+            tooltip_slots: BTreeMap::from([(0x58, BlockFamily::Trigger)]),
+            getters: self.getters,
             type_pointers: self.type_pointers,
             scope_users: BTreeSet::from([TOOLTIP]),
             functions: self.functions,
@@ -1622,4 +1634,180 @@ fn a_constructor_stores_its_parameters_in_its_object() {
             (0x38, BTreeSet::from([3])),
         ])
     );
+}
+
+#[test]
+fn a_call_to_an_offset_getter_names_the_block_at_its_offset() {
+    let lines = with_country_scope(
+        &[("mov", "x21,x1")],
+        &[
+            ("mov", "x0,x21"),
+            ("bl", "#0x7000"),
+            ("ldr", "x8,[x0]"),
+            ("ldr", "x8,[x8,#0x48]"),
+            ("add", "x1,sp,#0x100"),
+            ("blr", "x8"),
+        ],
+    );
+    let run = |program: Program| {
+        program
+            .arguments(0x7000, 1)
+            .pointing(leading(1, None), &lines)
+            .analyze()
+    };
+
+    let getter = run(Program::new().getter(0x7000, 0xa0));
+    let other_call = run(Program::new());
+
+    assert_eq!(block_contexts(&getter, &effect(0xa0)), [fresh(COUNTRY)]);
+    assert!(other_call.blocks.is_empty());
+}
+
+/// A helper at 0x2000 that keeps the block in its parameter `x1`, builds its own scope, typed as
+/// a country when `x2` is not zero and as a leader otherwise, and runs the block's effect.
+const HELPER: Rows<'static> = &[
+    (0x2000, "sub", "sp,sp,#0x200"),
+    (0x2004, "mov", "x19,x1"),
+    (0x2008, "mov", "x20,x2"),
+    (0x200c, "add", "x0,sp,#0x100"),
+    (0x2010, "bl", "#0x8000"),
+    (0x2014, "add", "x0,sp,#0x100"),
+    (0x2018, "cbz", "x20,#0x2024"),
+    (0x201c, "bl", "#0x8100"),
+    (0x2020, "b", "#0x2028"),
+    (0x2024, "bl", "#0x8200"),
+    (0x2028, "ldr", "x8,[x19]"),
+    (0x202c, "ldr", "x8,[x8,#0x48]"),
+    (0x2030, "mov", "x0,x19"),
+    (0x2034, "add", "x1,sp,#0x100"),
+    (0x2038, "blr", "x8"),
+    (0x203c, "ret", ""),
+];
+
+/// A method of the owner at `base` that passes its block at `block` (`x1,x0,#offset`) and the
+/// type flag `flag` (`w2,#flag`) to the helper.
+fn passes_to_helper(base: u64, block: &'static str, flag: &'static str) -> Vec<Line> {
+    vec![
+        (base, "add", block),
+        (base + 4, "mov", flag),
+        (base + 8, "bl", "#0x2000"),
+        (base + 12, "ret", ""),
+    ]
+}
+
+/// The helper's receiver leads to the owner through a member, as `CMission`'s does; its block is
+/// a parameter that leads to no owner.
+fn helper_pointers() -> TypePointers {
+    leading(0, Some(0x18))
+}
+
+#[test]
+fn a_helper_gives_each_caller_s_block_only_the_context_of_that_caller_s_run() {
+    let result = Program::new()
+        .pointing(helper_pointers(), HELPER)
+        .method(&passes_to_helper(0x1000, "x1,x0,#0x40", "w2,#1"))
+        .method(&passes_to_helper(0x1100, "x1,x0,#0x48", "w2,#0"))
+        .analyze();
+
+    assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
+    assert_eq!(block_contexts(&result, &effect(0x48)), [fresh(LEADER)]);
+    assert!(result.helpers[&0x2000].is_empty());
+}
+
+#[test]
+fn a_helper_with_no_caller_or_with_callers_that_name_no_block_gives_no_context() {
+    let alone = Program::new().pointing(helper_pointers(), HELPER).analyze();
+    let passes_on = Program::new()
+        .pointing(helper_pointers(), HELPER)
+        .function(&[(0x1000, "mov", "w2,#1"), (0x1004, "bl", "#0x2000")])
+        .analyze();
+    let unnamed = Program::new()
+        .pointing(helper_pointers(), HELPER)
+        .method(&passes_to_helper(0x1000, "x1,x3,#0x40", "w2,#1"))
+        .analyze();
+
+    for result in [&alone, &passes_on, &unnamed] {
+        assert!(result.blocks.is_empty());
+    }
+    assert_eq!(alone.helpers[&0x2000], BTreeMap::from([("no-caller", 1)]));
+    assert_eq!(
+        passes_on.helpers[&0x2000],
+        BTreeMap::from([("block-caller-depth", 1)])
+    );
+    assert_eq!(
+        unnamed.helpers[&0x2000],
+        BTreeMap::from([("unattributed", 1)])
+    );
+}
+
+#[test]
+fn a_helper_whose_scope_is_a_parameter_too_charges_the_callers_block() {
+    let helper = [
+        (0x2000, "ldr", "x8,[x1]"),
+        (0x2004, "ldr", "x8,[x8,#0x48]"),
+        (0x2008, "mov", "x0,x1"),
+        (0x200c, "mov", "x1,x2"),
+        (0x2010, "blr", "x8"),
+        (0x2014, "ret", ""),
+    ];
+    let caller = with_country_scope(
+        &[("mov", "x21,x0")],
+        &[("mov", "x2,x1"), ("add", "x1,x21,#0x40"), ("bl", "#0x2000")],
+    );
+    let result = Program::new()
+        .pointing(helper_pointers(), &helper)
+        .method(&caller)
+        .analyze();
+
+    assert!(block_contexts(&result, &effect(0x40)).is_empty());
+    assert_eq!(
+        result.blocks[&effect(0x40)].unresolved,
+        BTreeSet::from(["block-and-scope-from-caller"])
+    );
+}
+
+#[test]
+fn a_tooltip_call_names_its_block_without_an_evaluation() {
+    let lines = with_country_scope(
+        &[("mov", "x21,x0")],
+        &[
+            ("add", "x0,x21,#0x40"),
+            ("ldr", "x8,[x21,#0x40]"),
+            ("ldr", "x8,[x8,#0x58]"),
+            ("blr", "x8"),
+            ("add", "x0,x21,#0x48"),
+            ("add", "x1,sp,#0x100"),
+            ("bl", "#0x9410"),
+            ("ldr", "x0,[x21,#0x50]"),
+            ("add", "x1,sp,#0x100"),
+            ("bl", "#0x9400"),
+        ],
+    );
+    let result = Program::new().method(&lines).analyze();
+
+    assert_eq!(
+        result.tooltips,
+        BTreeSet::from([block(POTENTIAL), block(ALLOW)])
+    );
+    assert!(result.blocks.is_empty());
+    assert_eq!(result.unattributed[OWNER], 1);
+}
+
+#[test]
+fn a_pre_index_load_of_the_vtable_names_the_block_at_its_offset() {
+    let lines = with_country_scope(
+        &[("mov", "x19,x2")],
+        &[
+            ("ldr", "x0,[x19,#0x18]"),
+            ("ldr", "x8,[x0,#0x40]!"),
+            ("ldr", "x8,[x8,#0x48]"),
+            ("add", "x1,sp,#0x100"),
+            ("blr", "x8"),
+        ],
+    );
+    let result = Program::new()
+        .pointing(leading(2, Some(0x18)), &lines)
+        .analyze();
+
+    assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
 }
