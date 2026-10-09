@@ -16,9 +16,9 @@
 //! after the receiver of a member function. A by-value class, a floating-point number or an
 //! enumeration, which a demangled name does not tell from a class, ends the known registers. A
 //! function whose qualifier is not a known class or namespace has no known registers: a class has
-//! a vtable, a type info, a constructor or a destructor symbol, and a `const` function is a
-//! member. A demangled name does not say whether a member function is static; a function of a
-//! class is read as taking its receiver in `x0`.
+//! a vtable, a type info, a constructor, a destructor or a `const` member function symbol. A
+//! demangled name does not say whether a member function is static; a function of a class is read
+//! as taking its receiver in `x0`.
 //!
 //! Stated assumption: every function that writes a member word that leads to `O` keeps the
 //! registry owner's layout: it stores an `O`, a null object of `O`, or null. Checked by hand on
@@ -62,6 +62,7 @@ impl<'a> TypeOwners<'a> {
                     .or_else(|| name.strip_prefix("typeinfo for "))
             })
             .collect();
+        classes.extend(functions().filter_map(|symbol| const_member_class(&symbol.name)));
         let mut constructors: BTreeMap<&str, Vec<(u64, &str)>> = BTreeMap::new();
         for symbol in functions() {
             let Some((class, destructor)) = constructed_class(&symbol.name) else {
@@ -110,10 +111,7 @@ impl<'a> TypeOwners<'a> {
         }
         let (qualified, parameters) = signature(name)?;
         let class = qualifier(qualified);
-        let member = match class {
-            None => false,
-            Some(class) => self.classes.contains(class) || is_const(name),
-        };
+        let member = class.is_some_and(|class| self.classes.contains(class));
         if class.is_some() && !member {
             return None;
         }
@@ -205,6 +203,12 @@ fn constructor_owners<'a>(name: &str, owners: &BTreeSet<&'a str>) -> BTreeMap<us
         .into_iter()
         .filter_map(|(register, parameter)| Some((register, *owners.get(pointee(parameter)?)?)))
         .collect()
+}
+
+/// The class of the `const` member function `name`: only a class has `const` members.
+fn const_member_class(name: &str) -> Option<&str> {
+    let (qualified, _) = signature(name)?;
+    is_const(name).then(|| qualifier(qualified)).flatten()
 }
 
 /// The class of the constructor or destructor `name`, and whether it is the destructor.
@@ -332,6 +336,22 @@ mod tests {
         assert_eq!(pointee("CEdict**"), None);
         assert_eq!(pointee("CEventScope&&"), None);
         assert_eq!(pointee("int"), None);
+    }
+
+    #[test]
+    fn only_a_class_has_a_const_member_function() {
+        assert_eq!(
+            const_member_class("CSubjectSpecialization::IsActive() const"),
+            Some("CSubjectSpecialization")
+        );
+        assert_eq!(
+            const_member_class("CSubjectSpecialization::DailyUpdate(CAgreement const&)"),
+            None
+        );
+        assert_eq!(
+            const_member_class("PerformEvent(CString const&, CCountry*)"),
+            None
+        );
     }
 
     #[test]

@@ -1329,6 +1329,12 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
             (0x48, Effect)
         ])
     );
+    assert_eq!(
+        input.tooltip_slots,
+        std::collections::BTreeMap::from([(0x58, Trigger)])
+    );
+    // CSpecialistSubjectType::GetOnProgressCompleteEffect() const: add x0, x0, #0xa0; ret.
+    assert_eq!(input.offset_getters.get(&0x100ba5d44), Some(&0xa0));
 
     let pointers = |function: u64| input.type_pointers.get(&function).cloned();
     let member = |register: usize, offset: i64, owner: &str| TypePointers {
@@ -1348,5 +1354,11 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     assert_eq!(
         pointers(0x10055ce08).map(|pointers| pointers.members),
         Some([((1, 0x18), "CResolutionType".into())].into())
+    );
+    // CSubjectSpecialization::FinishConversion(CSpecialistSubjectType const&, CAgreement const&):
+    // the class has no vtable, type info, constructor or destructor, but a `const` member.
+    assert_eq!(
+        pointers(0x100c6f8a0).map(|pointers| pointers.registers),
+        Some([(1, "CSpecialistSubjectType".into())].into())
     );
 }

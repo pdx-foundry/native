@@ -88,14 +88,9 @@ fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
         .zip(&run.result.fields)
         .filter(|(field, _)| field_entries::takes_entry_contexts(field.reader.family))
         .map(|(field, root)| {
-            let blocks = field_entries::destinations(root)
-                .into_iter()
-                .map(|offset| Block {
-                    owner: run.owner.clone(),
-                    offset,
-                    family: field.reader.family,
-                })
-                .collect();
+            let destinations = field_entries::destinations(root);
+            let blocks =
+                field_entries::field_blocks(&run.owner, field.reader.family, &destinations);
             (field.name.clone(), blocks)
         })
         .collect();

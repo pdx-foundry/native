@@ -2,9 +2,10 @@
 //! a game rule, the functions that hold those calls, and the scope functions that the method
 //! runs, with the callers of each function whose site fires or evaluates a scope parameter. Read
 //! the input of the block method the same way: every direct call to a trigger evaluator, an
-//! effect executor or a weight evaluator and every call through a register, in a function whose
-//! registers lead to a registry owner ([`super::type_pointers`]), with the vtable slots that
-//! evaluate a block and the callers of each function whose call the block method attributes.
+//! effect executor, a weight evaluator or a tooltip builder and every call through a register, in
+//! a function whose registers lead to a registry owner ([`super::type_pointers`]), with the vtable
+//! slots that evaluate a block or build its tooltip, the offset getters that the decoded functions
+//! call, and the callers of each function whose call the block method attributes.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -14,8 +15,8 @@ use crate::engine::analysis::{
         CallbacksInput, Forwarder, ForwarderKind, Pulse, RuleFamily, RuleTables, ScopeFunctions,
         Site, SiteCall, SiteScope, StringFunctions,
         blocks::{
-            BlockInput, Evaluation, EvaluationCall, EvaluationSite, RECEIVER_DEPTH, TypePointers,
-            attributed_functions,
+            BlockInput, Evaluation, EvaluationCall, EvaluationSite, NamedFunctions, RECEIVER_DEPTH,
+            TypePointers, named_functions,
         },
         climb::{CALLER_DEPTH, CallSite},
         climbing_functions,
@@ -343,9 +344,16 @@ pub(in crate::binding) fn block_evaluations(
     } = *image;
     let text = Text::read(bytes, symbols)?;
     let names = Names::new(symbols);
-    let evaluators = evaluators(symbols)?;
+    let evaluators = with_families(symbols, evaluator_names())?;
     let constants = super::language::constant_data(bytes, pointers, bound_slots)?;
-    let evaluation_slots = evaluation_slots(symbols, &constants, &names, &evaluators);
+    let evaluation_slots = holding_slots(symbols, &constants, &names, &evaluators);
+    let tooltip_builders = tooltip_builders(symbols);
+    let tooltip_slots = holding_slots(
+        symbols,
+        &constants,
+        &names,
+        &base_tooltip_builders(symbols)?,
+    );
     let polymorphic: BTreeSet<&str> = owners
         .iter()
         .copied()
@@ -356,19 +364,30 @@ pub(in crate::binding) fn block_evaluations(
     let evaluation = Evaluation {
         evaluators: &evaluators,
         slots: &evaluation_slots,
+        tooltip_builders: &tooltip_builders,
+        tooltip_slots: &tooltip_slots,
     };
     let Candidates {
         sites,
-        type_pointers,
+        mut type_pointers,
         mut functions,
-        attributed,
+        evaluating,
     } = candidates(&text, &names, &type_owners, &evaluation, &string_functions);
 
-    let callers = direct_callers(&text, attributed.clone());
-    let held: BTreeSet<u64> = attributed
-        .into_iter()
-        .chain(callers.values().flatten().map(|call| call.function))
+    let callers = direct_callers(&text, evaluating.clone());
+    let calling: BTreeSet<u64> = callers
+        .values()
+        .flatten()
+        .map(|call| call.function)
         .collect();
+    for &caller in &calling {
+        if let std::collections::btree_map::Entry::Vacant(entry) = type_pointers.entry(caller)
+            && let Some(pointers) = type_owners.of(names.of(caller))
+        {
+            entry.insert(pointers);
+        }
+    }
+    let held: BTreeSet<u64> = evaluating.into_iter().chain(calling).collect();
     for &start in &held {
         if let std::collections::btree_map::Entry::Vacant(entry) = functions.entry(start)
             && let Some(rows) = decoded(&text, start)
@@ -406,6 +425,9 @@ pub(in crate::binding) fn block_evaluations(
         sites,
         evaluators,
         evaluation_slots,
+        tooltip_builders,
+        tooltip_slots,
+        offset_getters: offset_getters(&text, &functions),
         type_pointers,
         scope_users,
         receivers,
@@ -425,32 +447,56 @@ pub(in crate::binding) fn block_evaluations(
     })
 }
 
-/// The block family of each evaluator of [`evaluator_names`]. An evaluator that the build lacks is
-/// an error.
-fn evaluators(symbols: &[Symbol]) -> Result<BTreeMap<u64, BlockFamily>, AnalysisError> {
-    let mut evaluators = BTreeMap::new();
-    for (name, family) in evaluator_names() {
+/// The member that builds the tooltip of a trigger block. It evaluates nothing.
+const BUILD_TOOLTIP: &str = "BuildToolTip(CEventScope&, bool, int, CSimpleBitMask<NTriggerTooltip::EOptions, NTriggerTooltip::EOptions>) const";
+
+/// Every class's [`BUILD_TOOLTIP`], with the trigger family.
+fn tooltip_builders(symbols: &[Symbol]) -> BTreeMap<u64, BlockFamily> {
+    let member = format!("::{BUILD_TOOLTIP}");
+    symbols
+        .iter()
+        .filter(|symbol| symbol.name.ends_with(&member))
+        .map(|symbol| (symbol.address, BlockFamily::Trigger))
+        .collect()
+}
+
+/// The [`BUILD_TOOLTIP`] of the trigger base classes, whose vtables give the tooltip slot. A
+/// builder that the build lacks is an error.
+fn base_tooltip_builders(symbols: &[Symbol]) -> Result<BTreeMap<u64, BlockFamily>, AnalysisError> {
+    let names = ["CTrigger", "CAndTrigger"]
+        .map(|class| (format!("{class}::{BUILD_TOOLTIP}"), BlockFamily::Trigger));
+    with_families(symbols, names.into())
+}
+
+/// The address of each function of `named`, with its block family. A function that the build
+/// lacks is an error.
+fn with_families(
+    symbols: &[Symbol],
+    named: Vec<(String, BlockFamily)>,
+) -> Result<BTreeMap<u64, BlockFamily>, AnalysisError> {
+    let mut functions = BTreeMap::new();
+    for (name, family) in named {
         let found = addresses(symbols, &name);
         if found.is_empty() {
             return Err(AnalysisError::InvalidRange);
         }
-        evaluators.extend(found.into_iter().map(|address| (address, family)));
+        functions.extend(found.into_iter().map(|address| (address, family)));
     }
-    Ok(evaluators)
+    Ok(functions)
 }
 
-/// The block family of each vtable slot that evaluates a block: each slot of an evaluator's
-/// class's primary vtable that holds an evaluator, by its displacement from the address point.
-/// A displacement that evaluators of two families hold is left out.
-fn evaluation_slots(
+/// The block family of each vtable slot that holds one of `functions`: each slot of a function's
+/// class's primary vtable that holds one, by its displacement from the address point. A
+/// displacement that functions of two families hold is left out.
+fn holding_slots(
     symbols: &[Symbol],
     data: &ReadOnlyData,
     names: &Names<'_>,
-    evaluators: &BTreeMap<u64, BlockFamily>,
+    functions: &BTreeMap<u64, BlockFamily>,
 ) -> BTreeMap<i64, BlockFamily> {
-    let classes: BTreeSet<&str> = evaluators
+    let classes: BTreeSet<&str> = functions
         .keys()
-        .flat_map(|&evaluator| names.of(evaluator))
+        .flat_map(|&function| names.of(function))
         .filter_map(|name| Some(name.split_once("::")?.0))
         .collect();
     let mut families: BTreeMap<i64, BTreeSet<BlockFamily>> = BTreeMap::new();
@@ -459,7 +505,7 @@ fn evaluation_slots(
             continue;
         };
         for (&displacement, slot) in &group.primary {
-            if let Some(&family) = evaluators.get(slot) {
+            if let Some(&family) = functions.get(slot) {
                 families
                     .entry(displacement as i64)
                     .or_default()
@@ -487,13 +533,15 @@ struct Candidates {
     type_pointers: BTreeMap<u64, TypePointers>,
     /// Each kept function, decoded.
     functions: BTreeMap<u64, Vec<Instruction>>,
-    /// The kept functions that hold a call that the block method attributes.
-    attributed: BTreeSet<u64>,
+    /// The kept functions that hold an evaluation that the block method attributes or a helper's
+    /// evaluation.
+    evaluating: BTreeSet<u64>,
 }
 
 /// The direct evaluator calls and calls through a register in the functions whose registers lead
-/// to an owner. Of those functions, keep each that holds an attributed call, and each owner's
-/// method with a direct evaluator call, which the block method counts when it names no block.
+/// to an owner. Of those functions, keep each that holds a call that the block method names a
+/// block at, and each owner's method with a direct evaluator call, which the block method counts
+/// when it names no block.
 fn candidates(
     text: &Text,
     names: &Names<'_>,
@@ -501,11 +549,16 @@ fn candidates(
     evaluation: &Evaluation<'_>,
     strings: &StringFunctions,
 ) -> Candidates {
-    let evaluator_addresses: BTreeSet<u64> = evaluation.evaluators.keys().copied().collect();
+    let direct: BTreeSet<u64> = evaluation
+        .evaluators
+        .keys()
+        .chain(evaluation.tooltip_builders.keys())
+        .copied()
+        .collect();
     let calls = text
-        .calls_into(&evaluator_addresses)
+        .calls_into(&direct)
         .into_iter()
-        .map(|(address, target)| (address, EvaluationCall::Evaluator(target)))
+        .map(|(address, target)| (address, EvaluationCall::Direct(target)))
         .chain(
             text.register_calls()
                 .into_iter()
@@ -537,14 +590,27 @@ fn candidates(
         .keys()
         .filter_map(|&start| Some((start, decoded(text, start)?)))
         .collect();
-    let attributed = attributed_functions(&sites, &functions, &type_pointers, evaluation, strings);
+    let getters = offset_getters(text, &functions);
+    let NamedFunctions {
+        evaluating,
+        tooltips,
+    } = named_functions(
+        &sites,
+        &functions,
+        &type_pointers,
+        evaluation,
+        strings,
+        &getters,
+    );
     let counted: BTreeSet<u64> = sites
         .iter()
-        .filter(|site| matches!(site.call, EvaluationCall::Evaluator(_)))
+        .filter(|site| site.calls_evaluator(evaluation.evaluators))
         .filter(|site| type_pointers[&site.function].method_of.is_some())
         .map(|site| site.function)
         .collect();
-    let kept = |function: &u64| attributed.contains(function) || counted.contains(function);
+    let kept = |function: &u64| {
+        evaluating.contains(function) || tooltips.contains(function) || counted.contains(function)
+    };
     sites.retain(|site| kept(&site.function));
     functions.retain(|function, _| kept(function));
     type_pointers.retain(|function, _| kept(function));
@@ -553,8 +619,39 @@ fn candidates(
         sites,
         type_pointers,
         functions,
-        attributed,
+        evaluating,
     }
+}
+
+/// The offset getters that `functions` call directly: each function whose whole body is
+/// `add x0, x0, #k; ret`, with its `k`.
+fn offset_getters(text: &Text, functions: &BTreeMap<u64, Vec<Instruction>>) -> BTreeMap<u64, i64> {
+    let called: BTreeSet<u64> = functions
+        .values()
+        .flatten()
+        .filter(|row| row.operation == "bl")
+        .filter_map(|row| number(&row.operands))
+        .collect();
+    called
+        .into_iter()
+        .filter_map(|target| {
+            let code = text.bytes(target, 8).ok()?;
+            let rows = decode_arm64(code, target).ok()?;
+            Some((target, getter_offset(&rows)?))
+        })
+        .collect()
+}
+
+/// The `k` of a function whose first two instructions, `rows`, are `add x0, x0, #k; ret`.
+fn getter_offset(rows: &[Instruction]) -> Option<i64> {
+    let [add, ret, ..] = rows else {
+        return None;
+    };
+    if add.operation != "add" || ret.operation != "ret" || !ret.operands.is_empty() {
+        return None;
+    }
+    let offset = add.operands.strip_prefix("x0,x0,")?;
+    number(offset).map(|offset| offset as i64)
 }
 
 /// The direct calls to each of `functions` and to its callers short of [`CALLER_DEPTH`], other
@@ -1086,8 +1183,11 @@ pub(super) fn decoded(text: &Text, start: u64) -> Option<Vec<Instruction>> {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::{argument_registers, constructs_at_x8, import_call_arguments, registers_read};
-    use crate::engine::analysis::decode::Instruction;
+    use super::{
+        argument_registers, constructs_at_x8, getter_offset, import_call_arguments, registers_read,
+    };
+    use crate::engine::analysis::assembler::arm64;
+    use crate::engine::analysis::decode::{Instruction, decode_arm64};
     use crate::engine::analysis::discovery::Symbol;
 
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
@@ -1192,5 +1292,21 @@ mod tests {
             registers_read("CRandomLog::Log(char const*, unsigned int, char const*, ...)"),
             None
         );
+    }
+
+    #[test]
+    fn only_a_function_whose_whole_body_is_add_x0_and_ret_is_an_offset_getter() {
+        let offset = |code: Vec<u8>| getter_offset(&decode_arm64(&code, 0x1000).unwrap());
+
+        assert_eq!(offset(arm64!(at 0x1000; add x0, x0, #160; ret)), Some(0xa0));
+        assert_eq!(
+            offset(arm64!(at 0x1000; add x0, x0, #160; ldr x0, [x0]; ret)),
+            None
+        );
+        assert_eq!(
+            offset(arm64!(at 0x1000; mov x8, x1; add x0, x0, #160; ret)),
+            None
+        );
+        assert_eq!(offset(arm64!(at 0x1000; add x0, x1, #160; ret)), None);
     }
 }

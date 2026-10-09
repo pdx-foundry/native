@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v21`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v22`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -305,9 +305,13 @@ parameter of another type there, and every constructor of `C` decodes (`CMission
 `CResolution` `+0x18`). A parameter's register is known up to the first parameter that one
 general register may not pass (pointers, references, integers, `bool` and `TPdxRef<…>` take one);
 an enumeration, which a demangled name does not tell from a class, ends them, and a function whose
-qualifier is not a known class has none. The candidate calls are the direct calls to an evaluator
-and every `blr`, in the functions that have a type pointer. The name pass names a load from an
-argument by its chain of loads, three loads deep (`Member`, `Deref`, `DerefAt`), and attributes a call to
+qualifier is not a known class has none. A class is a qualifier with a vtable, a type info, a
+constructor, a destructor or a `const` member function: `CSubjectSpecialization` has only `const`
+members. The candidate calls are the direct calls to an evaluator or a tooltip builder and every
+`blr`, in the functions that have a type pointer. The name pass names a load from an argument by
+its chain of loads, three loads deep (`Member`, `Deref`, `DerefAt`), with or without pre-index
+writeback (`ldr x8,[x0,#0x40]!` loads the vtable of the object at `x0 + 0x40` and leaves that
+address in `x0`), and attributes a call to
 `(owner, offset, family)` only when `x0` holds one type pointer plus one offset other than zero on
 every path. A `blr` must also call a slot of the vtable at that same address whose displacement is
 an evaluation slot. The binding derives the slots from the vtables: each slot of an evaluator
@@ -341,6 +345,38 @@ method shares this caller climb (`callbacks/climb.rs`). A copy
 constructor of a scope that the pass can read, `CopyInternalScopes` and a function that builds a
 scope in the object that `x8` addresses are followed as the engine runs them (same page); a copy
 into an object that the pass does not know lets its source escape.
+
+**Offset getters, helpers and tooltip calls** (SDK-732 part 2). An *offset getter* is a function
+whose whole body is `add x0, x0, #k; ret`, such as
+`CSpecialistSubjectType::GetOnProgressCompleteEffect` (`k = 0xa0`). The binding lists the getters
+that the decoded functions call; the name pass gives a call to one the result `x0 + k`, so the
+evaluation that follows names one block. A *helper* is a
+function whose evaluation's block is its own parameter: `x0` is `Argument(n, 0)` for a parameter
+`n` that leads to no owner, such as `CMission::Stop(CRootEffect const&, EMissionStatus)`, which
+runs slot `+0x48` of `x1` on a scope that it builds. At each direct caller the name pass names the
+block in register `n` as at a site, and that call becomes an entry that runs through the helper.
+Only the contexts that the run reads at the helper's own evaluation go to that caller's block; the
+run reads no other evaluation, and other runs do not enter the helper. The method goes one caller
+up: a caller that passes its own parameter on (`block-caller-depth`), a caller whose register names
+no block (`unattributed`) and a helper with no caller (`no-caller`) give no block a context and are
+counted for the helper in `BlockEntries::helpers`, for Native's developers; a helper whose scope
+is a parameter too charges the caller's block `block-and-scope-from-caller`. A helper must have a
+type pointer, as every function with a site must, because the candidates are the functions with
+one; give helpers a candidate rule of their own if an Atlas-needed block is passed to a helper
+outside that set. A *tooltip call* is a direct call to a `BuildToolTip(CEventScope&, bool, int,
+CSimpleBitMask<…>) const` of any class, or a call through the tooltip slot, which the binding
+derives from the `CTrigger` and `CAndTrigger` vtables as it derives the evaluation slots (M452:
+`+0x58`). It names a block of the trigger family but evaluates nothing. A block that a tooltip call
+names and no attributed evaluation does gets the gap "only tooltip calls name this block; the
+method established no evaluation of it".
+
+On M452 the binding finds 27 offset getters that the decoded functions call. 49 functions are
+helpers; 17 calls to them name a block: 12 calls to `CMission::Stop` and 5 to
+`CScriptedActionInfo::IsClickable` and `TestScopeDependentTrigger` (whose blocks join no root
+field). The others count 446 `unattributed` caller evaluations, 64 `block-caller-depth` and 8
+`no-caller`: most are virtual calls at an evaluation slot's displacement on a parameter that is
+not a block (`CPdxArray<…>::InsertAt`, `CCountryEthos::ShiftTowardsEthic`), whose callers pass no
+owner item plus an offset.
 
 **Instance pointers** (`callbacks/instances.rs`, `src/binding/binary/instances.rs`). A global word
 that holds one object's address, such as `TPdxNullObject<CTraditionSwap>::_pInstance`, is set at
@@ -403,8 +439,9 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 312 root trigger,
-effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 153
-have contexts and no entry gap, 46 have contexts and a gap, and 40 have none; 26 keep several
+effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 154
+have contexts and no entry gap, 50 have contexts and a gap, and 35 have none (SDK-732 part 2;
+153, 46 and 40 before); 26 keep several
 contexts with a known `this`, 66 name a typed `from` and 4 a typed `prev`. The 73 weight blocks
 are on [weight blocks](weight-blocks.md#entry-contexts-m452). 6 registries have 7 direct
 evaluation calls in the owner's methods whose block the method cannot name. SDK-726's two rules
@@ -502,6 +539,31 @@ call sites were checked by hand in the disassembly:
   `CSpatialObjectRefCaster::FillEventScope`, a jump table on a run-time type, so it stays
   unresolved, and a path on which the operator sets no country gives `this` no type.
 
+SDK-732 part 2 (offset getters, helpers, tooltip calls, pre-index loads and the `const` member class
+rule) changed 6 blocks in 3 registries; no block lost a context and no other answer changed. Read
+by hand:
+
+- specialist subject type `on_progress_complete` gains an agreement with self-links:
+  `CSubjectSpecialization::FinishConversion(CSpecialistSubjectType const&, CAgreement const&)`
+  (`0x100c6f8a0`) builds a scope at `sp + 0x30` (`CEventScope(int)`, `SetAgreement(x20)`), calls the
+  getter `GetOnProgressCompleteEffect` (`add x0,x0,#0xa0; ret`) on `x1`, and calls slot `+0x48` of
+  the result with `x1 = sp + 0x30`. Its class has no vtable or constructor symbol; the `const`
+  member rule makes `x1` a type pointer.
+- mission `on_success`, `on_fail` and `on_cancel` gain one unreadable context each (`this` of no
+  type, an unresolved from) with path-limit and branch-value gaps: `CMission::Succeed`, `Fail`,
+  `Abort`, `TimeOut`, `ForceStop`, `AbortIfNeeded` and the two daily updates pass
+  `[this + 0x18] + 0x388` (`on_success`) or `+ 0x430` (`on_fail`, `on_cancel`) in `x1` to the
+  helper `CMission::Stop`, which builds its scope with `BuildEffectScopeForOperator` and calls slot
+  `+0x48` of `x1` at `Stop+0x150`. From the callers, the paths that set a country stop at the path
+  limit, and the from goes through `FillEventScope`'s jump table.
+- mission `on_issue` gains a country with an unresolved from:
+  `CContractManager::IssueContract(CCountry&, CMission&)` builds a country scope from `x1`, loads
+  the mission type `[x2 + 0x18]` and calls slot `+0x48` of it plus `0x40` through
+  `ldr x8,[x0,#0x40]!`; the from goes through `FillEventScope`.
+- decision `custom_tooltip` has the tooltip gap: `CDecision::GetToolTip(CToolTip&,
+  CColonyCarrier const&, bool) const` calls `CCustomTooltipTrigger::BuildToolTip` on
+  `this + 0x198`, and no evaluation names the block.
+
 **Comparison with the config's `replace_scopes`** (M451-hotfix; the SDK-726 changes above remove
 only unresolved contexts, and of the SDK-712 changes only armies `potential` disagrees). Read through the self-link rule, comparing the
 keys that the config states (`system` is the engine's `galactic_object`; `any` matches any scope):
@@ -548,38 +610,88 @@ have no readable context. The disagreements, read by hand:
   from. The config gives a planet with a species from, as for armies `potential`. A source error,
   unless another evaluation that the method does not find supplies the config's context.
 
+Of the SDK-732 part 2 changes (M452, same rules), 1 block has a readable context and it disagrees;
+the 4 mission blocks have no readable context. Specialist subject type `on_progress_complete`: the
+config gives `this = country`, but `FinishConversion` runs it on the agreement (above). The vanilla
+blocks are empty, so no script shows the intended scope; read it as a source error.
+
 **Gaps.**
 
-- 31 trigger and effect blocks have no attributed evaluation (56 before SDK-732 part 1). Their
-  evaluations pass the block to a helper (`CMission::Stop` for mission `on_cancel`, `on_fail` and
-  `on_success`), return it from an offset getter (agreement term value and specialist subject perk
-  `activate_effect` and `deactivate_effect`), select it with a `csel` of two objects (tradition and
-  ascension perk `on_enabled` and `on_disabled`, SDK-735), or reach the item through an array, a
-  lookup or a member that no type pointer leads to: tradable actions in `TradeActions` and
-  `EndActions` (an array, in an anonymous namespace), first contact stages at `CFirstContact`
-  `+0x38` (`HandleRollFailed`), which the member rule does not establish, pop faction `on_create`
-  and `valid` through the type that `CPopFaction::Initialize` (not a constructor) stores at
-  `+0x18`, crisis level `on_unlock` through a spill of its parameter (`stur x1,[x29,#-0x60]`) that
-  the name pass forgets at a call that receives a lower stack address. Others are only tooltip
-  calls or nested blocks (SDK-732 part 2). The 35 weight blocks with this gap are on
-  [weight blocks](weight-blocks.md#entry-contexts-m452).
-- 33 trigger and effect blocks keep an unreadable context: a call that the method cannot see into
+- 26 trigger and effect blocks have no attributed evaluation and 1 is named only by tooltip calls
+  (31 before SDK-732 part 2, 56 before part 1). The 35 weight blocks with this gap are on
+  [weight blocks](weight-blocks.md#entry-contexts-m452). By group, read by hand on M452:
+  - *Offset getters.* Specialist subject type `on_progress_complete` resolves (above). Agreement
+    term value `activate_effect` and `deactivate_effect` keep the gap:
+    `CAgreementManager::CreateAgreement` calls `GetActivateEffect` on each element of the term
+    data's term arrays (`ldr x0,[x22]`), and `CAgreement::SetTermData` and `DestroyAgreement` call
+    the getters on `[x23, #8]`, array elements that no type pointer leads to. Specialist subject
+    perk `activate_effect` and `deactivate_effect` have no getter:
+    `CSpecialistSubjectLevel::OnLevelUp` and `DeactivatePerks` call slot `+0x48` of each perk of the
+    level's perk array through `ldr x8,[x0,#0x40]!` and `#0xe8]!` on an agreement scope.
+  - *Helper.* Mission `on_success`, `on_fail` and `on_cancel` gain an unreadable context (above).
+  - *Conditional selection* (SDK-735). Tradition and ascension perk `on_enabled` and `on_disabled`
+    keep the gap: `OnEnabled` runs a `csel` of the swap's and its own effect.
+  - *Members that no type pointer leads to.* First contact `on_roll_failed`:
+    `CFirstContact::HandleRollFailed(int)` calls slot `+0x48` of `[this + 0x38] + 0x1d0`, and no
+    `CFirstContact` constructor fills `+0x38` with a stage parameter. Pop faction `on_create`:
+    `CPopFaction::Initialize(CCountry const&, CPopFactionType const&)` calls slot `+0x48` of the
+    type that it stored at `this + 0x18`, plus `0x6c0`; `valid`: `CPopFaction::IsAlive() const`
+    calls slot `+0x10` of `[this + 0x18] + 0x608`. `Initialize` is not a constructor, so the member
+    rule does not establish `+0x18`. Crisis level `on_unlock`:
+    `CCrisisProgression::UnlockLevel(CCrisisLevelType const*, CCountry*)` spills its parameter
+    (`stur x1,[x29,#-0x60]`), and the name pass forgets the spill at a call that receives a lower
+    stack address.
+  - *Arrays and lookups.* Menace perk `on_unlock`: `UnlockLevel` calls slot `+0x48` of
+    `x28 + 0x190`, where `x28 = [x26]` is an element of the level's perk list. Tradable action
+    `on_traded_effect`, `on_deal_ended_sender_effect` and `on_deal_ended_recipient_effect`:
+    `TradeActions` and `EndActions` (anonymous namespace) call slot `+0x48` of an element of a
+    `CPdxArray<CTradableAction const*>` parameter plus `0x268`, `0x310` or `0x3b8`. Mission
+    `on_accept`: `CContractManager::PickupContract(TPdxRef<CCountry>, TPdxRef<CMission>)` calls
+    slot `+0x48` through `ldr x8,[x0,#0xe8]!` on a mission that it looks up from a `TPdxRef`.
+    Portrait sprite configuration `trigger`:
+    `CPortraitSpriteType::EvaluateConfigurationIndex(CEventScope&) const` calls slot `+0x10` of an
+    element of the type's configuration array at `this + 0x240`, plus `0x40`, with its scope
+    parameter.
+  - *Tooltip calls.* Decision `custom_tooltip` has the narrower gap (above). System tooltip
+    `custom_tooltip` keeps the wider one: `CGalacticObject::GetToolTip` calls the tooltip slot
+    `+0x58` of `x21 + 0x40`, where `x21` is a database element, which no type pointer leads to.
+  - *No evaluation found.* A scan of every function for an `add`, or a pre-index `ldr`, of the
+    block's offset followed by a call finds only constructors, destructors, `ReadMember`, database
+    loading and interface text for espionage asset `possible` and `potential`, lawsuit `effect`,
+    galactic focus `effect` (only `CGalacticCommunityView::BuildGalacticFocusTooltip`, a
+    description call), and first contact `on_create` and `on_abort`.
+- 37 trigger and effect blocks keep an unreadable context: a call that the method cannot see into
   receives the scope. The main shapes: a setter or filler whose scope type is a run-time value
   (`SetColonyCarrierRef` for decisions and deposit `on_cleared`; `FillEventScope`,
   `SetupScopeObject` and `CSelectable::DetermineScope` jump tables, which also hide the mission
-  and espionage operation from); a `from` that is the caller's scope parameter (megastructure
-  `potential`, `possible`, `context_menu_potential`); a scope that is a member of a parameter or
+  and espionage operation from, and give mission `on_success`, `on_fail` and `on_cancel` a `this`
+  of no type through the helper `CMission::Stop`); a `from` that is the caller's scope parameter
+  (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is a member of a
+  parameter or
   heap object (event chain `abort_trigger` and button effect `potential` and `allow` from
   `CExecuteButtonEffectCommand::IsValid`, which copies the command's member at `this + 0x20`); and
   a function that the pass enters and that stops at the path limit (`AddSpentResourcesToScope`
   under buildings `on_queued` and `on_unqueued`; the callers of `CColony::CanAddBuildingType` for
   buildings `potential`).
-- Path, loop and step limits are gaps only where a contradiction appears (34 trigger and effect
-  blocks at the path limit, 15 at the loop limit); 12 stop at a branch on an unknown value and 4 at
+- Path, loop and step limits are gaps only where a contradiction appears (37 trigger and effect
+  blocks at the path limit, 15 at the loop limit); 16 stop at a branch on an unknown value and 4 at
   an instruction. The weight blocks' bounds are on
   [weight blocks](weight-blocks.md#entry-contexts-m452).
-- 7 trigger and effect wrappers have no direct caller (`no-caller`) and 4 pass the scope on past 2
-  callers (`caller-depth`). Script values and modifier blocks are outside the method.
+- 7 trigger and effect blocks and 1 weight block keep `no-caller`, and 4 trigger blocks keep
+  `caller-depth`. These gaps are already narrow; the wrapper that each one ends at:
+  - `no-caller`: casus belli `destroy_if` (`CCasusBelli::ShouldDestroyScripted`), colony
+    automation `available` (`CColonyAutomationDatabase::GetNextDistrictToBuildPrio`), decision
+    `potential` (`CSelectPlanetDecisionEffect::ExecuteActual`), dynamic text `available`
+    (`CDynamicTextDatabaseEntry::IsAvailable`), greeting overlay sound `possible`
+    (`CGreetingOverlaySound::IsPossible`), pop faction `is_potential`
+    (`CEnableFactionTypeEffect::ExecuteActual`), `on_set_leader` (`CPopFactionType::OnSetLeader`)
+    and the weight `leader` (`CPopFactionType::GetLeaderWeight`). An effect's `ExecuteActual` is
+    reached only through its vtable, and the others through a call that the method does not find.
+  - `caller-depth`: astral action `potential` and `is_exhausted` (`CAstralAction::GetTooltip`),
+    casus belli `is_valid` (`CCasusBelli::ShouldDestroy`) and pop job `possible`
+    (`CPopJob::IsPossible`).
+
+  Script values and modifier blocks are outside the method.
 
 Pitfalls:
 
@@ -591,6 +703,13 @@ Pitfalls:
   `CPopFaction::Initialize`, leads to no owner.
 - A type pointer spilled to the stack is forgotten at a call that receives a lower stack address,
   such as the scope object, by the name pass's stack rule (crisis level `on_unlock`).
+- Most helpers are not block helpers: a virtual call on any parameter at an evaluation slot's
+  displacement (`+0x10`, `+0x48`) makes a function a helper. A call to one names a block only when
+  the caller passes an owner's item plus an offset, and a field joins only its own storage offset,
+  so these helpers add no answer; they add runs only where a caller passes an item plus an offset.
+- A pre-index load (`ldr x8,[x0,#k]!`) both loads the block's vtable and moves `x0` to the block:
+  without it the name pass loses the vtable word (mission `on_issue`, the specialist subject
+  perks).
 - A scope pointer left in an argument register is not an argument when the callee's signature does
   not take it; an unknown virtual call cannot be checked this way, but a call on a proven instance
   pointer's object can. A C library stub keeps its raw name (`_strlen`), so only

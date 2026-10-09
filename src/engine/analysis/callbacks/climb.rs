@@ -40,6 +40,8 @@ pub(super) struct Decoded<'a> {
     /// The scope functions that the context pass runs.
     pub scope_code: &'a [Instruction],
     pub strings: &'a StringFunctions,
+    /// The offset `k` of each function whose whole body is `add x0, x0, #k; ret`, by its address.
+    pub offset_getters: &'a BTreeMap<u64, i64>,
 }
 
 /// A function that passes its scope parameter `parameter` on to a read call.
@@ -131,6 +133,7 @@ pub(super) fn climb<T: Ord + Clone>(
         let states = states_at(
             decoded.functions,
             decoded.strings,
+            decoded.offset_getters,
             calls
                 .iter()
                 .map(|(_, _, call)| (call.function, call.address)),
@@ -169,6 +172,7 @@ pub(super) fn climb<T: Ord + Clone>(
 pub(super) fn states_at(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     strings: &StringFunctions,
+    offset_getters: &BTreeMap<u64, i64>,
     sites: impl Iterator<Item = (u64, u64)>,
 ) -> BTreeMap<u64, State> {
     let mut by_function: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
@@ -181,7 +185,7 @@ pub(super) fn states_at(
         let Some(rows) = functions.get(&function) else {
             continue;
         };
-        names::each_state(rows, strings, |row, state| {
+        names::each_state(rows, strings, offset_getters, |row, state| {
             if addresses.contains(&row.address) {
                 states.insert(row.address, state.clone());
             }

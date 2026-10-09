@@ -1188,6 +1188,42 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
         entries
             .contains(&"this=country root=SelfLink from=[Unresolved] prev=[SelfLink]".to_string())
     );
+    // CMission::Succeed tail-calls the helper CMission::Stop(CRootEffect const&, EMissionStatus)
+    // with x1 = [this + 0x18] + 0x388; Stop builds its own scope and runs slot +0x48 of x1.
+    let (entries, _) = field("common/missions/missions", "on_success");
+    assert!(
+        entries
+            .contains(&"this=NotSet root=SelfLink from=[Unresolved] prev=[SelfLink]".to_string())
+    );
+    // CContractManager::IssueContract(CCountry&, CMission&) builds a country scope and runs slot
+    // +0x48 of [x2 + 0x18] + 0x40, which a pre-index load (`ldr x8,[x0,#0x40]!`) forms.
+    let (entries, _) = field("common/missions/missions", "on_issue");
+    assert!(
+        entries
+            .contains(&"this=country root=SelfLink from=[Unresolved] prev=[SelfLink]".to_string())
+    );
+    // CSubjectSpecialization::FinishConversion(CSpecialistSubjectType const&, CAgreement const&)
+    // builds an agreement scope and runs the effect that the offset getter
+    // GetOnProgressCompleteEffect returns at x1 + 0xa0.
+    assert_eq!(
+        field("common/specialist_subject_types", "on_progress_complete"),
+        (
+            vec!["this=agreement root=SelfLink from=[SelfLink] prev=[SelfLink]".to_string()],
+            vec![]
+        )
+    );
+    // CDecision::GetToolTip calls CCustomTooltipTrigger::BuildToolTip on this + 0x198, and no
+    // evaluation names the block.
+    assert_eq!(
+        field("common/decisions", "custom_tooltip"),
+        (
+            vec![],
+            vec![
+                "only tooltip calls name this block; the method established no evaluation of it"
+                    .to_string()
+            ]
+        )
+    );
     // CTraditionType::OnEnabled runs the swap's or its own effect through a virtual call on a
     // `csel` of the two, which names no one block.
     let (entries, gaps) = field("common/traditions", "on_enabled");
