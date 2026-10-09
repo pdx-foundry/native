@@ -2496,3 +2496,67 @@ fn two_rule_evaluations_in_one_wrapper_both_receive_the_scope_when_the_rule_is_a
         "an unfollowed first evaluation lets the scope escape"
     );
 }
+
+#[test]
+fn a_caller_that_builds_one_scope_and_forwards_another_adds_nothing_to_the_forwarded_site() {
+    let wrapper = [
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x20,x0"),
+        (0x2008, "mov", "x21,x1"),
+        (0x200c, "add", "x0,sp,#0x10"),
+        (0x2010, "adrp", "x1,#0x5000"),
+        (0x2014, "bl", "#0x9100"),
+        (0x2018, "add", "x1,sp,#0x10"),
+        (0x201c, "mov", "x2,x20"),
+        (0x2020, "bl", "#0x9000"),
+        (0x2024, "add", "x0,sp,#0x40"),
+        (0x2028, "adrp", "x1,#0x5000"),
+        (0x202c, "add", "x1,x1,#0x10"),
+        (0x2030, "bl", "#0x9100"),
+        (0x2034, "add", "x1,sp,#0x40"),
+        (0x2038, "mov", "x2,x21"),
+        (0x203c, "bl", "#0x9000"),
+        (0x2040, "ret", ""),
+    ];
+    let builds_on_test_forwards_on_other = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "mov", "x19,x1"),
+        (0x1008, "add", "x0,sp,#0x100"),
+        (0x100c, "bl", "#0x8000"),
+        (0x1010, "add", "x0,sp,#0x100"),
+        (0x1014, "bl", "#0x8100"),
+        (0x1018, "add", "x0,sp,#0x100"),
+        (0x101c, "mov", "x1,x19"),
+        (0x1020, "bl", "#0x2000"),
+        (0x1024, "ret", ""),
+    ];
+    let builds_on_other = [
+        (0x3000, "sub", "sp,sp,#0x200"),
+        (0x3004, "add", "x0,sp,#0x100"),
+        (0x3008, "bl", "#0x8000"),
+        (0x300c, "add", "x0,sp,#0x100"),
+        (0x3010, "bl", "#0x8200"),
+        (0x3014, "add", "x1,sp,#0x100"),
+        (0x3018, "bl", "#0x1000"),
+        (0x301c, "ret", ""),
+    ];
+    let result = on_actions(
+        &Program::new()
+            .function(&wrapper)
+            .function(&builds_on_test_forwards_on_other)
+            .function(&builds_on_other)
+            .site(0x2000, 0x2020, FIRE)
+            .site(0x2000, 0x203c, FIRE)
+            .input(),
+    );
+
+    assert_eq!(
+        contexts(&result, "on_test"),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        contexts(&result, "on_other"),
+        [context(LEADER, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert!(result.on_actions["on_other"].unresolved.is_empty());
+}

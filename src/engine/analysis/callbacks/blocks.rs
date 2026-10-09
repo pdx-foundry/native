@@ -261,14 +261,14 @@ fn collect_contexts(
         never_return: &input.never_return,
     };
     let entered: BTreeSet<u64> = wrappers.union(&input.receivers).copied().collect();
-    let reads: BTreeMap<u64, Read> = evaluations
-        .keys()
-        .map(|&site| {
+    let reads: BTreeMap<u64, (Block, Read)> = evaluations
+        .iter()
+        .map(|(&site, block)| {
             let read = Read {
                 scope: EVALUATED_SCOPE,
                 subject: Subject::None,
             };
-            (site, read)
+            (site, (block.clone(), read))
         })
         .collect();
 
@@ -281,7 +281,7 @@ fn collect_contexts(
                     entry.site,
                     entry.selected,
                     &calls,
-                    &reads,
+                    &entry.reads(&reads),
                 );
                 entry_run(entry, found, evaluations)
             }

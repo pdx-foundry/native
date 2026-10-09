@@ -521,9 +521,9 @@ fn climbed_contexts<'s>(
 ) -> BTreeMap<u64, SiteContexts> {
     let wrappers = climbing_sites(sites.clone(), &input.forwarders, states);
     let climbing: BTreeSet<u64> = wrappers.values().flatten().copied().collect();
-    let reads: BTreeMap<u64, Read> = sites
+    let reads: BTreeMap<u64, (u64, Read)> = sites
         .filter(|site| climbing.contains(&site.address))
-        .filter_map(|site| Some((site.address, site.call.read()?)))
+        .filter_map(|site| Some((site.address, (site.address, site.call.read()?))))
         .collect();
     let decoded = Decoded {
         functions: &input.functions,
@@ -557,7 +557,7 @@ fn climbed_contexts<'s>(
                 entry.site,
                 entry.selected,
                 &calls,
-                &reads,
+                &entry.reads(&reads),
             ),
             None => CallReads {
                 unresolved: vec![Unresolved::new("caller-not-decoded")],

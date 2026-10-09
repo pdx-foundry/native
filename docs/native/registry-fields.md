@@ -360,7 +360,7 @@ rule.
 
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 239 root trigger and
-effect blocks in 82 of the 164 registries: 136 have contexts and no entry gap, 37 have contexts
+effect blocks in 82 of the 164 registries: 135 have contexts and no entry gap, 38 have contexts
 and a gap, 66 have none. 21 blocks keep several contexts with a known `this`, 61 name a typed
 `from` and 1 a typed `prev`. 5 registries have 6 evaluation calls whose block the method cannot
 name. SDK-726's two rules changed 10 blocks in 6 registries, each only removing an unresolved
@@ -393,7 +393,14 @@ context and its gaps. Ai budget `potential` gains a country context with no from
 `0x100e00c38`), which let the frame that holds the scope escape. It keeps the bound gaps of
 `UpdateExpenditureBudget`, which reaches no evaluation.
 Starbase buildings and modules each gain one unnamed evaluation: `GetEquippedComponents` evaluates
-a trigger in an element of a component list, not `this` plus an offset. These call sites were
+a trigger in an element of a component list, not `this` plus an offset.
+SDK-731, which shares the caller climb with on_actions and game rules, makes each run read only
+the evaluations of the blocks that its entry carries, and changed 3 blocks. Casus belli `is_valid`
+loses an unreadable context and its gap: a run that carries another block read its evaluation
+with a scope that the run's entry did not build. Artifact action and astral action `potential` gain a
+`path-limit` gap: `IsAllowed` passes its scope on to `IsPotential`, and the runs from its callers
+that carry `potential` reach no `potential` evaluation before the path limit; the `allow`
+evaluation that those runs reach had hidden the bound. These call sites were
 checked by hand in the disassembly:
 
 - armies `potential`: `CArmyType::IsPotentialTrigger` builds a colony scope at `sp+0x170`, sets a

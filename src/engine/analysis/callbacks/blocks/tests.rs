@@ -1269,3 +1269,49 @@ fn a_virtual_call_on_a_proven_instance_reads_the_registers_of_its_target() {
         [unreadable()]
     );
 }
+
+#[test]
+fn a_caller_that_builds_one_scope_and_forwards_another_adds_nothing_to_the_forwarded_block() {
+    let wrapper = [
+        (0x2000, "mov", "x19,x0"),
+        (0x2004, "mov", "x20,x1"),
+        (0x2008, "mov", "x21,x2"),
+        (0x200c, "add", "x0,x19,#0x40"),
+        (0x2010, "mov", "x1,x20"),
+        (0x2014, "bl", "#0x9400"),
+        (0x2018, "add", "x0,x19,#0x48"),
+        (0x201c, "mov", "x1,x21"),
+        (0x2020, "bl", "#0x9400"),
+        (0x2024, "ret", ""),
+    ];
+    let builds_potential_forwards_allow = [
+        (0x1000, "sub", "sp,sp,#0x200"),
+        (0x1004, "mov", "x21,x0"),
+        (0x1008, "mov", "x22,x2"),
+        (0x100c, "add", "x0,sp,#0x100"),
+        (0x1010, "bl", "#0x8000"),
+        (0x1014, "add", "x0,sp,#0x100"),
+        (0x1018, "bl", "#0x8100"),
+        (0x101c, "mov", "x0,x21"),
+        (0x1020, "add", "x1,sp,#0x100"),
+        (0x1024, "mov", "x2,x22"),
+        (0x1028, "bl", "#0x2000"),
+        (0x102c, "ret", ""),
+    ];
+    let mut builds_allow = builds_a(0x3000, LEADER_TYPE);
+    builds_allow.extend([
+        (0x3018, "mov", "x0,x21"),
+        (0x301c, "add", "x2,sp,#0x100"),
+        (0x3020, "bl", "#0x1000"),
+        (0x3024, "ret", ""),
+    ]);
+    let result = Program::new()
+        .function(&builds_allow)
+        .function(&builds_potential_forwards_allow)
+        .method(&wrapper)
+        .analyze();
+
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+    assert_eq!(contexts(&result, ALLOW), [fresh(LEADER)]);
+    assert!(unresolved(&result, ALLOW).is_empty());
+}

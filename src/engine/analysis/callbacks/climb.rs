@@ -11,7 +11,7 @@
 //! wrappers that it calls, and the climb charges each payload whose callers it could not follow.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::contexts::Selected;
+use super::contexts::{Read, Selected};
 use super::names::{self, Fact, State, StringFunctions};
 use crate::engine::analysis::declarations::number;
 use crate::engine::analysis::decode::Instruction;
@@ -58,6 +58,19 @@ pub(super) struct Entry<T> {
     pub selected: Selected,
     /// The payload that the entry reaches, which an unresolved run is charged to.
     pub reaches: BTreeSet<T>,
+}
+
+impl<T: Ord> Entry<T> {
+    /// The calls of `calls` that read a part of the payload that this entry reaches, with their
+    /// reads. A run from the entry reads only these, so a call that the run passes on its way adds
+    /// nothing to a payload that another entry carries.
+    pub fn reads(&self, calls: &BTreeMap<u64, (T, Read)>) -> BTreeMap<u64, Read> {
+        calls
+            .iter()
+            .filter(|(_, (reached, _))| self.reaches.contains(reached))
+            .map(|(&address, (_, read))| (address, *read))
+            .collect()
+    }
 }
 
 /// What the climb found.
