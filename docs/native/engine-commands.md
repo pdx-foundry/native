@@ -394,7 +394,8 @@ unresolved scope. 14 names keep several contexts with no unresolved scope: for e
 enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
 Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
 `on_subspecies_integration_complete` link the colony as prev. 223 game rules (209 scripted, 14
-weighted); 220 have a context and 210 a context with no unresolved scope. SDK-712 changed 54
+weighted); 220 have a context and 211 a context with no unresolved scope;
+`can_orbitable_repair_ships` keeps two (below). SDK-712 changed 54
 on_actions and no rule: the firing-reader rule above, `x8` reaching only a callee that may read
 it (below), a `from` chain of any length, and the `ror` instruction (`on_colony_yearly_pulse`).
 Each change only removes an unresolved context or adds a context. SDK-729, which makes unknown the
@@ -417,15 +418,27 @@ gap to the reasons that the runs from the callers state:
   through `NPlanetJobs::CalculatePopJobPossiblePreCalc`, from
   `CalculatePopGroupPossiblePreCalcFlags` and `NPopUtil::GetPopGroupToolTip`). The other callers
   stop: `CJobType::CheckPossiblePreCalc` at a branch on an unknown value, and the parallel-for
-  lambda at `ldaddal` (an atomic add that the machine does not run).
+  lambda at the loop limit.
 - `system_blocks_sensors`: a galactic object with a country root (`IsSystemBlockingSensors`
   builds both); the three sites in `ApplySensorRanges::$_5` reach the loop and path limits.
 - `on_operation_chapter_finished`: an espionage operation whose from has a type that the caller
   sets at run time (`CEspionageOperationManager::HandleStageFinished`; its callers link a scope
   built with `Set(EScopeType, …)` from the operation's target, as for `on_operation_finished`).
-- `can_orbitable_repair_ships` keeps only unresolved contexts, now with the callers' reasons:
-  `CFleet::CalcCanRepairFromOrbit` passes a scope that `SetupScopeObject` fills, and the
-  parallel-for lambdas stop at `ldaddal`. These call sites were checked by hand in the disassembly:
+
+SDK-736, which runs the atomic read-modify-write instructions (`ldadd`, `swp`, `cas` and the
+other forms, with any ordering and size) as a load, an operation and a store, changed one rule and
+no on_action. Before it, 5 runs stopped at an atomic, each at `ldaddal` at entry + `0x2c` in a
+parallel-for lambda. No run stops at an exclusive load or store (`ldxr`, `stxr`), so the machine
+still does not run those. The field sweep and the command population did not change.
+
+- `can_orbitable_repair_ships`: a starbase and a megastructure, each self-linked, from the two
+  `SValidRepair` lambdas, which build the scope. `CFleet::CalcCanRepairFromOrbit` passes a scope
+  that `SetupScopeObject` fills, so one unresolved context stays. The config's comment gives
+  "starbase, megastructure or planet".
+- The five `can_fill_*_job` rules keep their contexts; their lambda caller now reaches the loop
+  limit (above).
+
+These call sites were checked by hand in the disassembly:
 
 - `on_game_start` and `on_monthly_pulse`: a new scope with no type.
 - `on_five_year_pulse`: `CGameState::YearlyUpdate` builds one scope with `CEventScope(int)` at
@@ -519,11 +532,9 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
 - 3 declared rules have no call site that the method follows:
   `CGalacticCommunity::CanBeMember` selects `can_be_part_of_galactic_community` (0x53) or
   `can_be_part_of_galactic_empire` (0x54) with `cinc` (`0x10055f6bc`), so the forwarded site has no
-  one constant; no followed site passes `crisis_opinion_is_shown` (0x93). 10 rules have only
-  unresolved contexts: 4 use `SetColonyCarrierRef`, the five `can_build_*_around` rules pass a
-  from scope through `FillEventScope`, and `can_orbitable_repair_ships` evaluates a scope that its
-  callers fill with `SetupScopeObject` or reach only past `ldaddal` (above). 2 rule sites pass a
-  rule object that is not a constant.
+  one constant; no followed site passes `crisis_opinion_is_shown` (0x93). 9 rules have only
+  unresolved contexts: 4 use `SetColonyCarrierRef`, and the five `can_build_*_around` rules pass
+  a from scope through `FillEventScope`. 2 rule sites pass a rule object that is not a constant.
 - On_actions that content defines are an `OutsideMethod` gap. Events and their `push_scope` are
   SDK-702; pre_trigger key sets are SDK-703.
 

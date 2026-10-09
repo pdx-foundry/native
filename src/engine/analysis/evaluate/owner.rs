@@ -644,6 +644,18 @@ mod tests {
     }
 
     #[test]
+    fn an_atomic_through_a_preexisting_pointer_keeps_the_owner() {
+        let bytes = arm64!(at 0x100;
+            mov w8, #7;
+            str w8, [x0, #8];
+            ldr x3, [x9];
+            ldaddal x0, x4, [x3]; // adds the owner's address through an underived pointer
+            ret
+        );
+        assert_eq!(owner_words_after(&bytes, &[8]), [Some(7)]);
+    }
+
+    #[test]
     fn a_store_at_an_unknown_offset_writes_the_owner_from_its_base() {
         let known_base = arm64!(at 0x100;
             mov w8, #7;

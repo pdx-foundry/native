@@ -1401,6 +1401,7 @@ impl<'a> Machine<'a> {
             || self.step_integer(mnemonic, operands)?
             || self.step_condition(mnemonic, operands)?
             || self.step_vector(mnemonic, operands)?
+            || self.step_atomic(mnemonic, operands)?
             || self.step_memory(mnemonic, operands)?
         {
             if !matches!(mnemonic, "str" | "stur" | "stp" | "ldr" | "ldur" | "ldp") {
@@ -2095,6 +2096,87 @@ impl<'a> Machine<'a> {
         Ok(true)
     }
 
+    /// Run an atomic read-modify-write as a load, an operation and a store. `false` when the
+    /// instruction is not one.
+    ///
+    /// The stored value takes its inputs only from what it is computed from: a swap from the
+    /// source, a compare-and-swap that matches from the replacement. The register receives the
+    /// loaded value. A store to an unknown address keeps the address's inputs, which tell whether
+    /// it can reach the owner.
+    fn step_atomic(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
+        let Some((atomic, width)) = Atomic::parse(mnemonic) else {
+            return Ok(false);
+        };
+        let (first, second, memory) = match operands {
+            [first, second, Operand::Memory(memory)] => (first, Some(second), memory),
+            [first, Operand::Memory(memory)] if atomic.has_store_only_form() => {
+                (first, None, memory)
+            }
+            _ => return Err(Halt::unsupported("operand")),
+        };
+        let width = width.unwrap_or(if first.is_wide() { 8 } else { 4 });
+
+        let address = self.address(memory, &[])?;
+        let address_inputs = self.take_inputs();
+        let old = address.and_then(|address| self.load(address, width));
+        let loaded = self.loaded_inputs(address_inputs.clone(), address, width);
+
+        let stored = match (atomic, second) {
+            (Atomic::Swap, _) => {
+                self.clear_inputs();
+                Some(self.operand(first)?)
+            }
+            (Atomic::CompareAndSwap, Some(replacement)) => {
+                self.restore_inputs(loaded.clone());
+                let expected = self.operand(first)?;
+                let matched = old
+                    .zip(expected)
+                    .map(|(old, expected)| old == (expected & low_bits(width * 8)));
+                match matched {
+                    Some(false) => None,
+                    Some(true) => {
+                        self.clear_inputs();
+                        Some(self.operand(replacement)?)
+                    }
+                    None => {
+                        self.operand(replacement)?;
+                        Some(None)
+                    }
+                }
+            }
+            _ => {
+                self.restore_inputs(loaded.clone());
+                let source = self.operand(first)?;
+                Some(
+                    old.zip(source)
+                        .map(|(old, source)| atomic.combine(old, source, width)),
+                )
+            }
+        };
+
+        if let Some(value) = stored {
+            match address {
+                Some(address) => self.store(address, width, value),
+                None => {
+                    self.restore_inputs(address_inputs);
+                    self.store_to_unknown(&[value], memory);
+                }
+            }
+        }
+
+        let destination = if atomic == Atomic::CompareAndSwap {
+            Some(first)
+        } else {
+            second
+        };
+        if let Some(destination) = destination {
+            self.restore_inputs(loaded);
+            self.assign(destination, old)?;
+        }
+
+        Ok(true)
+    }
+
     /// Run a branch, call, return or trap, or a `nop`. Every other instruction is unsupported.
     fn step_control(
         &mut self,
@@ -2560,6 +2642,87 @@ fn ordered_access(mnemonic: &str) -> &str {
         "stlrb" => "strb",
         "stlrh" => "strh",
         other => other,
+    }
+}
+
+/// An atomic read-modify-write of the large system extensions. Its acquire and release ordering
+/// does not change the values that one path reads or writes, as for [`ordered_access`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Atomic {
+    Add,
+    Clear,
+    ExclusiveOr,
+    Set,
+    SignedMax,
+    SignedMin,
+    UnsignedMax,
+    UnsignedMin,
+    Swap,
+    CompareAndSwap,
+}
+
+impl Atomic {
+    /// The operations that `ld<operation>` loads and `st<operation>` only stores.
+    const OPERATIONS: [(&str, Self); 8] = [
+        ("add", Self::Add),
+        ("clr", Self::Clear),
+        ("eor", Self::ExclusiveOr),
+        ("set", Self::Set),
+        ("smax", Self::SignedMax),
+        ("smin", Self::SignedMin),
+        ("umax", Self::UnsignedMax),
+        ("umin", Self::UnsignedMin),
+    ];
+
+    /// The atomic that `mnemonic` names with any ordering suffix, and its width in bytes when a
+    /// `b` or `h` suffix sets it. `None` for other instructions, such as `casp`.
+    fn parse(mnemonic: &str) -> Option<(Self, Option<u64>)> {
+        let (atomic, suffix) = if let Some(suffix) = mnemonic.strip_prefix("swp") {
+            (Self::Swap, suffix)
+        } else if let Some(suffix) = mnemonic.strip_prefix("cas") {
+            (Self::CompareAndSwap, suffix)
+        } else {
+            let operation = mnemonic
+                .strip_prefix("ld")
+                .or_else(|| mnemonic.strip_prefix("st"))?;
+            Self::OPERATIONS.iter().find_map(|(name, atomic)| {
+                operation.strip_prefix(name).map(|suffix| (*atomic, suffix))
+            })?
+        };
+        let (ordering, width) = match suffix.strip_suffix('b') {
+            Some(ordering) => (ordering, Some(1)),
+            None => match suffix.strip_suffix('h') {
+                Some(ordering) => (ordering, Some(2)),
+                None => (suffix, None),
+            },
+        };
+
+        matches!(ordering, "" | "a" | "l" | "al").then_some((atomic, width))
+    }
+
+    /// Whether the atomic combines the loaded value with its source, so it also has a
+    /// store-only form.
+    fn has_store_only_form(self) -> bool {
+        !matches!(self, Self::Swap | Self::CompareAndSwap)
+    }
+
+    /// The value that an operation stores from the loaded value `old` and the `source` register,
+    /// compared at `width` bytes.
+    fn combine(self, old: u64, source: u64, width: u64) -> u64 {
+        let signed = |value| sign_extend(value, width, true) as i64;
+        let unsigned = |value| value & low_bits(width * 8);
+        let old_if = |keep_old: bool| if keep_old { old } else { source };
+        match self {
+            Self::Add => old.wrapping_add(source),
+            Self::Clear => old & !source,
+            Self::ExclusiveOr => old ^ source,
+            Self::Set => old | source,
+            Self::SignedMax => old_if(signed(old) >= signed(source)),
+            Self::SignedMin => old_if(signed(old) <= signed(source)),
+            Self::UnsignedMax => old_if(unsigned(old) >= unsigned(source)),
+            Self::UnsignedMin => old_if(unsigned(old) <= unsigned(source)),
+            Self::Swap | Self::CompareAndSwap => unreachable!("{self:?} does not combine"),
+        }
     }
 }
 
@@ -3497,6 +3660,164 @@ mod tests {
         assert_eq!(machine.read(object + 8, 8), Some(u64::MAX));
         assert_eq!(machine.read(object + 16, 8), Some(0));
         assert_eq!(machine.read(object + 24, 8), Some(0));
+    }
+
+    #[test]
+    fn atomics_return_the_old_value_and_store_the_result() {
+        let bytes = arm64!(at 0x100;
+            ldaddal x8, x9, [x0];
+            ldaddal w10, w11, [x1]; // carries out of 32 bits
+            ldaddh w12, w13, [x2]; // carries out of 16 bits
+            ldaddal x14, x14, [x3];
+            stadd w15, [x4];
+            swpal x16, x17, [x5];
+            ret
+        );
+        let code = Code::decode(&[(0x100, &bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let objects: Vec<_> = (0..6).map(|_| machine.allocate(16)).collect();
+        for (index, &object) in objects.iter().enumerate() {
+            machine.set_register(index, object);
+            machine.write(object, 8, 5);
+            machine.write(object + 8, 8, 7);
+        }
+        machine.write(objects[1], 4, 0xffff_fffe);
+        machine.write(objects[2], 2, 0xfffe);
+        for register in [8, 10, 12, 14, 15] {
+            machine.set_register(register, 3);
+        }
+        machine.set_register(16, 9);
+
+        assert_eq!(
+            machine.run(0x100, &mut |_, _| Ok(Call::Return(None))),
+            Ok(Exit::Returned)
+        );
+        assert!(matches!(
+            code.rows.get(&0x110),
+            Some(Operation::Parsed { mnemonic, .. }) if mnemonic == "stadd"
+        ));
+        assert_eq!(
+            (machine.register(9), machine.read(objects[0], 8)),
+            (Some(5), Some(8))
+        );
+        assert_eq!(machine.register(11), Some(0xffff_fffe));
+        assert_eq!(machine.read(objects[1], 8), Some(1));
+        assert_eq!(machine.register(13), Some(0xfffe));
+        assert_eq!(machine.read(objects[2], 8), Some(1));
+        assert_eq!(
+            (machine.register(14), machine.read(objects[3], 8)),
+            (Some(5), Some(8))
+        );
+        assert_eq!(machine.read(objects[4], 8), Some(8));
+        assert_eq!(
+            (machine.register(17), machine.read(objects[5], 8)),
+            (Some(5), Some(9))
+        );
+        assert!(
+            objects
+                .iter()
+                .all(|object| machine.read(object + 8, 8) == Some(7))
+        );
+    }
+
+    #[test]
+    fn a_compare_and_swap_stores_only_when_memory_matches() {
+        let bytes = arm64!(at 0x100;
+            casal x8, x9, [x0];
+            cas w10, w11, [x1];
+            ret
+        );
+        let code = Code::decode(&[(0x100, &bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let matching = machine.allocate(8);
+        let differing = machine.allocate(8);
+        machine.write(matching, 8, 5);
+        machine.write(differing, 8, 5);
+        machine.set_register(0, matching);
+        machine.set_register(1, differing);
+        machine.set_register(8, 5);
+        machine.set_register(9, 7);
+        machine.set_register(10, 6);
+        machine.set_register(11, 7);
+
+        assert_eq!(
+            machine.run(0x100, &mut |_, _| Ok(Call::Return(None))),
+            Ok(Exit::Returned)
+        );
+        assert_eq!(
+            (machine.register(8), machine.read(matching, 8)),
+            (Some(5), Some(7))
+        );
+        assert_eq!(
+            (machine.register(10), machine.read(differing, 8)),
+            (Some(5), Some(5))
+        );
+    }
+
+    #[test]
+    fn an_atomic_at_an_unknown_address_loads_an_unknown_value() {
+        let bytes = arm64!(at 0x100; ldaddal x8, x9, [x0]; ret);
+        let code = Code::decode(&[(0x100, &bytes)]).unwrap();
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(8, 3);
+        machine.set_register(9, 1);
+
+        assert_eq!(
+            machine.run(0x100, &mut |_, _| Ok(Call::Return(None))),
+            Ok(Exit::Returned)
+        );
+        assert_eq!(machine.register(9), None);
+    }
+
+    #[test]
+    fn atomic_mnemonics_name_their_operation_and_width() {
+        let cases = [
+            ("ldaddal", Some((Atomic::Add, None))),
+            ("ldclrab", Some((Atomic::Clear, Some(1)))),
+            ("ldsminlh", Some((Atomic::SignedMin, Some(2)))),
+            ("stumaxl", Some((Atomic::UnsignedMax, None))),
+            ("steorh", Some((Atomic::ExclusiveOr, Some(2)))),
+            ("swpab", Some((Atomic::Swap, Some(1)))),
+            ("casal", Some((Atomic::CompareAndSwap, None))),
+            ("caslh", Some((Atomic::CompareAndSwap, Some(2)))),
+            ("casp", None),
+            ("caspal", None),
+            ("ldclrp", None),
+            ("ldaddx", None),
+            ("ldapr", None),
+            ("stlr", None),
+            ("str", None),
+        ];
+        for (mnemonic, expected) in cases {
+            assert_eq!(Atomic::parse(mnemonic), expected, "{mnemonic}");
+        }
+    }
+
+    #[test]
+    fn atomic_operations_compare_at_their_width_and_sign() {
+        let cases = [
+            (Atomic::Add, 5, 3, 8, 8),
+            (Atomic::Clear, 0b1111, 0b0101, 8, 0b1010),
+            (Atomic::ExclusiveOr, 0b1100, 0b1010, 8, 0b0110),
+            (Atomic::Set, 0b1100, 0b0011, 8, 0b1111),
+            (Atomic::SignedMax, 0x80, 1, 1, 1),
+            (Atomic::UnsignedMax, 0x80, 1, 1, 0x80),
+            (Atomic::SignedMin, 0x80, 1, 1, 0x80),
+            (Atomic::UnsignedMin, 0x80, 1, 1, 1),
+            (Atomic::SignedMax, 0xffff_ffff, 0, 4, 0),
+            (Atomic::UnsignedMax, 0xffff_ffff, 0, 4, 0xffff_ffff),
+            (Atomic::SignedMin, 0xffff_ffff, 0, 8, 0),
+        ];
+        for (atomic, old, source, width, expected) in cases {
+            assert_eq!(
+                atomic.combine(old, source, width),
+                expected,
+                "{atomic:?} {old:#x} {source:#x} at {width}"
+            );
+        }
     }
 
     #[test]
