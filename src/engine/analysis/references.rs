@@ -180,7 +180,8 @@ pub struct ReferenceFacts {
     pub readers: BTreeMap<String, ReaderLookup>,
     /// Keyed by the initializer's demangled name.
     pub initializers: BTreeMap<String, Initialization>,
-    /// The lookup of [`readers::TRIGGER_LOOKUP`], which makes the trigger that a token names.
+    /// The lookup of `CTriggerDatabase::CreateTriggerOrScriptedPlaceholder`, which makes the
+    /// trigger that a token names.
     pub trigger_lookup: Result<Lookup, Unresolved>,
 }
 
@@ -202,8 +203,8 @@ pub struct ReferenceInput {
     /// Every owner initializer (`{Owner}::PostInit()`) to analyze.
     pub initializers: BTreeSet<String>,
     /// Complete decoded bodies by demangled name: the readers, their resolver lambdas, the
-    /// initializers, the trigger lookup ([`readers::TRIGGER_LOOKUP`]), and the functions that
-    /// those call.
+    /// initializers, the trigger lookup (`CTriggerDatabase::CreateTriggerOrScriptedPlaceholder`),
+    /// and the functions that those call.
     pub functions: BTreeMap<String, Vec<Instruction>>,
     /// Demangled names at symbol addresses and pointer slots.
     pub names: BTreeMap<u64, String>,
