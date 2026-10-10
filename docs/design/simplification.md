@@ -95,9 +95,10 @@ Linear.
   observations](../native/ready-world.md) complete, so that the world pause can be restored if the
   rule fails.
 - **Decision 5, repeat behavior, not occurrence counts.** The engine fact is `RepeatBehavior`
-  (`Replace`, `Accumulate`, `Unknown`), not a maximum count. A compiler warns on a repeat of a
-  `Replace` field and allows an `Accumulate` field. Atlas credits a config maximum of 1 on `Replace`
-  and an unbounded maximum on `Accumulate`; it publishes no engine limit. A field is required only
+  (`Replace`, `Accumulate`, `Merges`, `Unknown`), not a maximum count. A compiler warns on a repeat
+  of a `Replace` field and allows an `Accumulate` or `Merges` field. Atlas credits a config maximum
+  of 1 on `Replace` and an unbounded maximum on `Accumulate` and `Merges` (SDK-724); it publishes no
+  engine limit. A field is required only
   where validation reports its absence.
 - **Decision 9, one game per host.** Keep the host-wide lock and its one-time setup. A per-account
   lock loses only the case of two accounts that launch in the same instant. Revisit only if a second

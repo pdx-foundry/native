@@ -1173,33 +1173,76 @@ async fn fixture_numeric(
 }
 
 async fn fixture_block_parsing(native: &Native) -> Outcome {
-    use pdx_native::{FixtureFieldQuestion, FixtureParsing, FixtureRequest, FixtureStorage};
+    use pdx_native::{
+        DiagnosticJoin, FixtureFieldQuestion, FixtureParsing, FixtureRequest, FixtureStorage,
+    };
+    const FILE: &str = "common/traditions/native_blocks.txt";
+    let text = r#"native_blocks = {
+ potential = {
+  and = { always = yes }
+ }
+ potential = { always = no }
+ ai_weight = { base = 2 }
+ ai_weight = {
+  modifier = { factor = 2 always = yes }
+ }
+}
+"#;
 
     let request = FixtureRequest::field_outcomes(
-        "common/traditions/native_blocks.txt",
-        "native_blocks = {\n potential = {\n  and = { always = yes }\n }\n potential = { always = no }\n}\n",
-        [FixtureFieldQuestion::new(TRADITIONS, "native_blocks", "potential").with_parsing()],
+        FILE,
+        text,
+        [
+            FixtureFieldQuestion::new(TRADITIONS, "native_blocks", "potential").with_parsing(),
+            FixtureFieldQuestion::new(TRADITIONS, "native_blocks", "ai_weight").with_parsing(),
+        ],
     );
     let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
-        let [outcome] = answer.value.field_outcomes.as_slice() else {
-            return Err(format!("block outcomes: {answer:?}").into());
+        let parsed_at = |field: &str, lines: [u64; 2]| {
+            let Some(outcome) = answer
+                .value
+                .field_outcomes
+                .iter()
+                .find(|outcome| outcome.question.field == field)
+            else {
+                return false;
+            };
+            let FixtureParsing::Observed {
+                occurrences,
+                completeness: Completeness::Complete,
+            } = &outcome.parsing
+            else {
+                return false;
+            };
+            let returned_at = |index: usize| {
+                occurrences[index].line == lines[index] && occurrences[index].return_line.is_some()
+            };
+
+            outcome.owner.is_some()
+                && matches!(outcome.storage, FixtureStorage::Unavailable(_))
+                && occurrences.len() == 2
+                && returned_at(0)
+                && returned_at(1)
         };
-        let FixtureParsing::Observed {
-            occurrences,
-            completeness: Completeness::Complete,
-        } = &outcome.parsing
-        else {
-            return Err(format!("block parser observation: {answer:?}").into());
+        let line = |join: &DiagnosticJoin| match join {
+            DiagnosticJoin::Source { file, line, .. } if file == FILE => Some(*line),
+            _ => None,
         };
-        if occurrences.len() != 2
-            || occurrences[0].line != 2
-            || occurrences[0].return_line.is_none()
-            || occurrences[1].line != 5
-            || occurrences[1].return_line.is_none()
-            || outcome.owner.is_none()
-            || !matches!(outcome.storage, FixtureStorage::Unavailable(_))
+        // A repeated trigger block clears the stored block and reads it again; only that branch
+        // logs, so the message shows that the second `potential` replaced the first.
+        let duplicate = answer.value.diagnostics.iter().any(|diagnostic| {
+            diagnostic.text.contains("Duplicate trigger") && line(&diagnostic.join) == Some(5)
+        });
+        let weight_diagnostic =
+            answer.value.diagnostics.iter().any(|diagnostic| {
+                line(&diagnostic.join).is_some_and(|line| (6..=9).contains(&line))
+            });
+        if !parsed_at("potential", [2, 5])
+            || !parsed_at("ai_weight", [6, 7])
+            || !duplicate
+            || weight_diagnostic
             || answer
                 .gaps
                 .iter()

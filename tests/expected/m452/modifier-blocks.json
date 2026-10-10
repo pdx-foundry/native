@@ -25,11 +25,6 @@
     },
     "gaps": [
       [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
-      [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["modifier", "key"]},
         "The modifier block analysis stopped at reader-routing."
@@ -107,11 +102,6 @@
     },
     "gaps": [
       [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
-      [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["modifier", "name"]},
         "The modifier block analysis stopped at modifier-name-reader."
@@ -161,11 +151,6 @@
       ]
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "country_modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["country_modifier", "key"]},
@@ -217,11 +202,6 @@
       ]
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["modifier", "name"]},

@@ -6,17 +6,12 @@
         ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
-        ["modifier", "Block", "Modifier", "Unknown", {"ModifierBlock": "ba5f8cddeba0d833"}]
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
+        ["modifier", "Block", "Modifier", "Merges", {"ModifierBlock": "ba5f8cddeba0d833"}]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "triggered_country_modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "key"]},
@@ -130,17 +125,12 @@
         ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
         ["modifier", "Block", "Unknown", "Unknown", "Unresolved"]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "triggered_planet_modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "UnresolvedStorage",
         {"kind": "key_path", "path": ["triggered_planet_modifier", "multiplier"]},
@@ -190,17 +180,12 @@
         ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Unknown", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Unknown", null],
-        ["modifier", "Block", "Modifier", "Unknown", {"ModifierBlock": "1c2988588f7e8eaa"}]
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
+        ["modifier", "Block", "Modifier", "Merges", {"ModifierBlock": "1c2988588f7e8eaa"}]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {"kind": "field", "name": "triggered_modifier"},
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "UnresolvedReader",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "key"]},

@@ -101,34 +101,74 @@ fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>
     joined
 }
 
-fn shape(join: &ReaderJoin) -> FieldShape {
-    let classification = readers::classify(std::slice::from_ref(join));
-    let value = match classification.kind {
+fn shape(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> FieldShape {
+    let value = match reader.kind {
         ReaderKind::Unknown => ValueShape::Unknown,
         ReaderKind::Block => ValueShape::Block,
         _ => ValueShape::Scalar,
     };
-    // These primitive readers assign one destination. A block or deferred reference can
-    // retain earlier state; a call with an unexamined continuation proves no final storage.
-    let replaces = matches!(join, ReaderJoin::Joined { tail: true, .. })
-        && matches!(
-            classification.kind,
-            ReaderKind::Boolean
-                | ReaderKind::Integer
-                | ReaderKind::FixedPoint
-                | ReaderKind::Float
-                | ReaderKind::String
-        );
+
     FieldShape {
         value,
-        repeat: if let ReaderJoin::Stored { repeat, .. } = join {
-            *repeat
-        } else if replaces {
-            RepeatBehavior::Replace
-        } else {
-            RepeatBehavior::Unknown
-        },
+        repeat: repeat(join, reader, references),
     }
+}
+
+/// How a second occurrence read by `join` affects storage. Each rule is a stated fact about one
+/// shared reader on M452; the method reads no reader body for it. A call with an unexamined
+/// continuation proves no final storage, so only a tail call earns a rule.
+fn repeat(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> RepeatBehavior {
+    let callee = match join {
+        ReaderJoin::Stored { repeat, .. } => return *repeat,
+        ReaderJoin::Joined {
+            callee, tail: true, ..
+        } => callee,
+        _ => return RepeatBehavior::Unknown,
+    };
+
+    match reader.kind {
+        ReaderKind::Boolean
+        | ReaderKind::Integer
+        | ReaderKind::FixedPoint
+        | ReaderKind::Float
+        | ReaderKind::String => RepeatBehavior::Replace,
+        ReaderKind::Block if readers::clears_before_reading(callee) => RepeatBehavior::Replace,
+        ReaderKind::Reference if stores_last_deferred_key(callee, references) => {
+            RepeatBehavior::Replace
+        }
+        // A literal replaces the literal slot; variable, trigger and script-value slots stay.
+        ReaderKind::ScopedNumeric if callee == "CVariableValue::Read(CReader&, EScopeType)" => {
+            RepeatBehavior::Merges
+        }
+        // The persistent read of a weight or modifier block keeps the object: a weight block
+        // keeps its entries and a modifier block its fixed keys.
+        ReaderKind::Block
+            if matches!(reader.family, BlockFamily::Weight | BlockFamily::Modifier) =>
+        {
+            RepeatBehavior::Merges
+        }
+        _ => RepeatBehavior::Unknown,
+    }
+}
+
+/// Whether `callee` registers one deferred key whose resolver lambda writes the destination on
+/// a hit and on a miss. The resolver runs registrations in order, so the last occurrence's item
+/// is the one stored.
+fn stores_last_deferred_key(callee: &str, references: &ReferenceFacts) -> bool {
+    let deferred = references::reader(callee)
+        .is_some_and(|reader| reader.form == references::ReaderForm::Deferred);
+    let writes_every_resolution = references.readers.get(callee).is_some_and(|fact| {
+        matches!(
+            &fact.lookup,
+            Ok(Lookup {
+                stage: references::Stage::Deferred,
+                missing_yields_null: Some(true),
+                ..
+            })
+        )
+    });
+
+    deferred && writes_every_resolution
 }
 
 pub(super) fn field(
@@ -270,10 +310,13 @@ fn ordinary_field(
             let outcome = match outcome {
                 PathOutcome::Reader(
                     join @ (ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }),
-                ) => FieldReadOutcome::Read {
-                    reader: field_reader(std::slice::from_ref(join), persistent),
-                    shape: shape(join),
-                },
+                ) => {
+                    let reader = field_reader(std::slice::from_ref(join), persistent);
+                    FieldReadOutcome::Read {
+                        shape: shape(join, &reader, references),
+                        reader,
+                    }
+                }
                 PathOutcome::Rejected => FieldReadOutcome::Rejected,
                 PathOutcome::Reader(ReaderJoin::Missing(_)) | PathOutcome::Gap(_) => {
                     FieldReadOutcome::Unresolved
@@ -849,19 +892,122 @@ mod tests {
         );
     }
     #[test]
-    fn block_and_unexamined_continuations_do_not_claim_replacement() {
-        let join = ReaderJoin::Joined {
-            callee: "CReader::Read(CPersistent&)".into(),
-            arguments: Default::default(),
-            tail: true,
+    fn each_reader_rule_states_repeat_only_for_its_own_tail_read() {
+        use crate::engine::analysis::references::{Lookup, ReaderLookup, Stage};
+        use crate::engine::analysis::stop::Unresolved;
+        const TRIGGER: &str =
+            "void NParserUtil::ReadTrigger<CRootTrigger>(CReader&, CRootTrigger&, EScopeType)";
+        const MODIFIER: &str = "void NParserUtil::ReadKeyReferenceDeferred<CStaticModifierDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CStaticModifierDatabase::ValueType const**)";
+        const SHIP: &str = "void NParserUtil::ReadKeyReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+        let references = ReferenceFacts {
+            readers: BTreeMap::from([
+                (
+                    MODIFIER.to_owned(),
+                    ReaderLookup {
+                        database: "CStaticModifierDatabase".into(),
+                        directory: None,
+                        lookup: Ok(Lookup {
+                            stage: Stage::Deferred,
+                            key_match: None,
+                            empty_key_looked_up: Some(true),
+                            missing_yields_null: Some(true),
+                        }),
+                    },
+                ),
+                (
+                    SHIP.to_owned(),
+                    ReaderLookup {
+                        database: "CShipDatabase".into(),
+                        directory: None,
+                        lookup: Err(Unresolved::new("reference-lambda-shape")),
+                    },
+                ),
+            ]),
+            ..Default::default()
         };
-        assert_eq!(shape(&join).repeat, RepeatBehavior::Unknown);
-        let join = ReaderJoin::Joined {
-            callee: "CReader::Read(int&)".into(),
-            arguments: Default::default(),
-            tail: false,
+        let repeat_of = |callee: &str, tail: bool, family: BlockFamily| {
+            let join = ReaderJoin::Joined {
+                callee: callee.into(),
+                arguments: Default::default(),
+                tail,
+            };
+            let mut reader = reader(std::slice::from_ref(&join));
+            reader.family = family;
+
+            shape(&join, &reader, &references).repeat
         };
-        assert_eq!(shape(&join).repeat, RepeatBehavior::Unknown);
+        let persistent = "CReader::Read(CPersistent&)";
+        let scoped = "CVariableValue::Read(CReader&, EScopeType)";
+        let cases = [
+            (
+                "CReader::Read(int&)",
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Replace,
+            ),
+            (
+                "CReader::Read(int&)",
+                false,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Unknown,
+            ),
+            (TRIGGER, true, BlockFamily::Trigger, RepeatBehavior::Replace),
+            (
+                TRIGGER,
+                false,
+                BlockFamily::Trigger,
+                RepeatBehavior::Unknown,
+            ),
+            (
+                "CTrigger::Read(CReader&, EScopeType)",
+                true,
+                BlockFamily::Trigger,
+                RepeatBehavior::Unknown,
+            ),
+            (
+                scoped,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Merges,
+            ),
+            (
+                MODIFIER,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Replace,
+            ),
+            (
+                SHIP,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Unknown,
+            ),
+            (
+                persistent,
+                true,
+                BlockFamily::Weight,
+                RepeatBehavior::Merges,
+            ),
+            (
+                persistent,
+                true,
+                BlockFamily::Modifier,
+                RepeatBehavior::Merges,
+            ),
+            (
+                persistent,
+                true,
+                BlockFamily::Unknown,
+                RepeatBehavior::Unknown,
+            ),
+        ];
+        for (callee, tail, family, expected) in cases {
+            assert_eq!(
+                repeat_of(callee, tail, family),
+                expected,
+                "{callee} tail={tail} {family:?}"
+            );
+        }
     }
 
     #[test]

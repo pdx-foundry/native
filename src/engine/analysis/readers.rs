@@ -176,6 +176,14 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     }
 }
 
+/// Whether the reader empties its stored trigger or effect block before it reads into it again.
+/// `ReadTrigger<T>` and `ReadEffect<T>` log `Duplicate trigger` or `Duplicate effect` for a
+/// nonempty block, delete its children and read into the same object; `CTrigger::Read` and
+/// `CEffect::Read` do not.
+pub(crate) fn clears_before_reading(callee: &str) -> bool {
+    matching_template(callee, "ReadTrigger") || matching_template(callee, "ReadEffect")
+}
+
 fn matching_template(callee: &str, method: &str) -> bool {
     let prefix = format!("void NParserUtil::{method}<");
     let Some(rest) = callee.strip_prefix(&prefix) else {

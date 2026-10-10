@@ -73,7 +73,6 @@ aliased stores; writes beside the slot do not invalidate it. The list loop for
 | `reader-routing` on `divide_over_pop_groups` | Modifier method: temporary stack Boolean followed by bit storage |
 | `reader-routing` / `instruction` on `description_parameters` | Shared walker: parameter-list loop and nested serializer |
 | Numeric conversion | Shared numeric method: incomplete lexical and overflow properties |
-| Unresolved storage | Registry fields: repeated-block behavior remains unknown |
 
 Missing default flow or reference anchors retain typed gaps. An ambiguous token name produces no
 named field. Equal public reader identities must have equal blocks; both the population report
@@ -82,9 +81,10 @@ a changed reference kind and conflicting blocks under one identity.
 
 Root fields without persistent joins, nested `tradition_swap.modifier` and command fixed-key grammar
 are unchanged. Triggered modifier clauses embed these blocks; their join is on the [triggered
-modifiers](triggered-modifiers.md) page. This answer does not establish repeat or
-duplicate behavior, icon post-read validation, deferred completion, localisation-key existence,
-authored-entry storage, or runtime effects (see [modifier masks](modifier-masks.md#gaps)).
+modifiers](triggered-modifiers.md) page. A repeated block `Merges` ([repeat
+behavior](registry-fields.md#repeat-behavior)). This answer does not establish icon post-read
+validation, deferred completion, localisation-key existence, authored-entry storage, or runtime
+effects (see [modifier masks](modifier-masks.md#gaps)).
 
 Findings of the SDK-498 prototype that the method does not report:
 
@@ -95,7 +95,9 @@ Findings of the SDK-498 prototype that the method does not report:
 - **Repeated blocks.** A blanket "last block wins" rule is wrong. In a council agenda probe on
   M45-observe, a repeated graphical block reset its numeric entries, but omitted tooltip and flag
   metadata persisted. The evidence is `prototype/council-agenda-reconstruction/review.md` and run
-  `20260917-023136` in the `atlas-discovery` bundle. It was not repeated on a release build.
+  `20260917-023136` in the `atlas-discovery` bundle. On M452, `CPdxModifier<…>::Read`
+  (`0x100071fcc`), the `Read` of all four variants, clears the entries before it reads, and the
+  member readers write a fixed key only when it is present; the method now reports `Merges`.
 
 ## Reproduce
 

@@ -77,7 +77,7 @@
         "Partial": [
           ["desc", "String", "Replace", {"Known": []}, null],
           ["trigger", "Reference", "Replace", {"Known": []}, null],
-          ["potential", "Block", "Unknown", "Unresolved", "Unresolved"],
+          ["potential", "Block", "Replace", "Unresolved", "Unresolved"],
           ["multiplier", "FixedPoint", "Replace", {"Known": []}, null],
           ["min_value", "FixedPoint", "Replace", {"Known": []}, null],
           ["max_value", "FixedPoint", "Replace", {"Known": []}, null],
@@ -144,14 +144,6 @@
       }
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {
-          "kind": "field",
-          "name": "ai_weight"
-        },
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "NumericConversion",
         {
@@ -784,14 +776,6 @@
       }
     },
     "gaps": [
-      [
-        "UnresolvedStorage",
-        {
-          "kind": "field",
-          "name": "weight"
-        },
-        "Repeat behavior or nested fields remain unresolved."
-      ],
       [
         "NumericConversion",
         {

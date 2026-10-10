@@ -453,6 +453,7 @@ impl Native {
             &mut entry_gaps,
         );
         gaps.extend(entry_gaps.iter().cloned());
+        storage_gaps(&value, None, &mut gaps);
         let answer = Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
@@ -746,15 +747,6 @@ fn normalized_gaps(
         });
     }
     for field in normalized_fields(result, references) {
-        if field.shape.repeat == crate::RepeatBehavior::Unknown
-            || matches!(field.members, crate::FieldMembers::Unresolved)
-        {
-            gaps.push(Gap {
-                kind: GapKind::UnresolvedStorage,
-                subject: Some(GapSubject::field(&field.name)),
-                detail: "Repeat behavior or nested fields remain unresolved.".into(),
-            });
-        }
         if field
             .read
             .iter()
@@ -794,6 +786,39 @@ fn normalized_gaps(
         gaps.push(Gap { kind: GapKind::UnresolvedCondition, subject: Some(GapSubject::field(selection.field.join("."))), detail: "The local use-time flag test is established; the enclosing selection context is unresolved.".into() });
     }
     gaps
+}
+
+/// A storage gap for each assembled field, at any `FieldMembers::Fields` depth, whose repeat
+/// behavior is unknown or whose members no block family or attached grammar answers. A trigger or
+/// effect family is the members answer; a grammar family whose grammar did not attach already has
+/// the attach step's gap.
+fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
+    for field in fields {
+        let name = match parent {
+            Some(parent) => format!("{parent}.{}", field.name),
+            None => field.name.clone(),
+        };
+        let repeat_unresolved = field.shape.repeat == crate::RepeatBehavior::Unknown;
+        let members_unresolved = matches!(field.members, crate::FieldMembers::Unresolved)
+            && field.reader.family == crate::BlockFamily::Unknown;
+        let detail = match (repeat_unresolved, members_unresolved) {
+            (true, true) => Some("Repeat behavior and nested fields remain unresolved."),
+            (true, false) => Some("Repeat behavior remains unresolved."),
+            (false, true) => Some("Nested fields remain unresolved."),
+            (false, false) => None,
+        };
+        if let Some(detail) = detail {
+            gaps.push(Gap {
+                kind: GapKind::UnresolvedStorage,
+                subject: Some(GapSubject::field(&name)),
+                detail: detail.into(),
+            });
+        }
+
+        if let crate::FieldMembers::Fields(children) = &field.members {
+            storage_gaps(children, Some(&name), gaps);
+        }
+    }
 }
 
 fn unresolved_condition(condition: &crate::FieldCondition) -> bool {
@@ -1036,6 +1061,89 @@ mod field_gap_tests {
         let field = &normalized_fields(&agreeing, &ReferenceFacts::default())[0];
         assert!(field.reader.id.is_some());
         assert!(!reader_gap(&agreeing));
+    }
+
+    #[test]
+    fn storage_gaps_follow_the_assembled_family_grammar_and_repeat() {
+        use crate::{
+            BlockFamily, FieldDomain, FieldMembers, FieldReference, FieldShape, GrammarProperty,
+            ModifierBlock, Reader, RepeatBehavior, ValueShape,
+        };
+        let field = |name: &str, family, members, repeat| Field {
+            name: name.into(),
+            reader: Reader {
+                numeric: GrammarProperty::Unresolved,
+                scoped_operand: GrammarProperty::Unresolved,
+                id: None,
+                kind: ReaderKind::Block,
+                family,
+            },
+            shape: FieldShape {
+                value: ValueShape::Block,
+                repeat,
+            },
+            read: Vec::new(),
+            members,
+            domain: FieldDomain::Unknown,
+            uses: Vec::new(),
+            entry_contexts: Vec::new(),
+            read_scope: GrammarProperty::Unresolved,
+            accepted_categories: crate::AcceptedCategories::NotApplicable,
+            reference: FieldReference::NotEstablished,
+        };
+        let grammar = FieldMembers::ModifierBlock(ModifierBlock {
+            fixed_keys: GrammarProperty::Unresolved,
+            entries: GrammarProperty::Unresolved,
+        });
+        let unknown_child = field(
+            "child",
+            BlockFamily::Trigger,
+            FieldMembers::Unresolved,
+            RepeatBehavior::Unknown,
+        );
+        let fields = [
+            field(
+                "trigger",
+                BlockFamily::Trigger,
+                FieldMembers::Unresolved,
+                RepeatBehavior::Replace,
+            ),
+            field(
+                "grammar",
+                BlockFamily::Modifier,
+                grammar,
+                RepeatBehavior::Merges,
+            ),
+            field(
+                "unclassified",
+                BlockFamily::Unknown,
+                FieldMembers::Unresolved,
+                RepeatBehavior::Replace,
+            ),
+            field(
+                "parent",
+                BlockFamily::Unknown,
+                FieldMembers::Fields(vec![unknown_child]),
+                RepeatBehavior::Accumulate,
+            ),
+        ];
+        let mut gaps = Vec::new();
+        storage_gaps(&fields, None, &mut gaps);
+        let found: Vec<_> = gaps
+            .iter()
+            .map(|gap| (gap.subject.as_ref().unwrap().name(), gap.detail.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("unclassified", "Nested fields remain unresolved."),
+                ("parent.child", "Repeat behavior remains unresolved."),
+            ]
+        );
+        assert!(
+            gaps.iter()
+                .all(|gap| gap.kind == GapKind::UnresolvedStorage)
+        );
     }
 
     #[test]

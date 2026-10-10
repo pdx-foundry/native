@@ -4,7 +4,7 @@
 alternatives, nested object fields and local stored-value selections; `Native::registries()`
 gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
-ever established; Git `d8f9d8a`); SDK-627 owns enum domains, repeat behavior and required fields.
+ever established; Git `d8f9d8a`); SDK-627 owns enum domains and required fields.
 
 ## What complete means
 
@@ -18,8 +18,8 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v23`) holds
-the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v24`) holds
+the baseline: **164 registries, 9 complete, 155 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -27,8 +27,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
   uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
   ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, but it
-  stays partial for the conversion, zero-mask, keyword-domain, `trigger` lookup, `parameters` and
-  repeat gaps listed there. `CPersistent` block classification of `modifier` does not
+  stays partial for the conversion, zero-mask, keyword-domain, `trigger` lookup and `parameters`
+  gaps listed there. `CPersistent` block classification of `modifier` does not
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter only as a country with self-linked root, from and prev
   ([block entry contexts](#block-entry-contexts)). `ai_weight` keeps an entry gap: a template
@@ -50,8 +50,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   by a `PdxMakeScopedPtr` factory and moved into a scoped-pointer array join the same way; when the
   object's reader has a block family, as the 50 triggered modifier clauses do, the field carries that
   reader and its grammar instead of loader fields ([triggered modifiers](triggered-modifiers.md)).
-- **Repeat behavior.** A fixture agrees with `unlocks_agenda` replacing storage: omission leaves an
-  empty string and two occurrences keep the second. This sets no occurrence limit or default rule.
+- **Repeat behavior.** The [repeat rules](#repeat-behavior) give the eight block, operand and
+  reference fields of council agendas their repeat; none keeps an `UnresolvedStorage` gap.
 
 Pitfalls:
 
@@ -60,6 +60,49 @@ Pitfalls:
 - `b.hi` stops in `CEspionageOperationType` and `CStarClass` compare a value loaded from the object,
   not the token, so they correctly stay unknown flags.
 - Unresolved concrete readers do not remove established field names or broad `Block` kinds.
+
+## Repeat behavior
+
+`FieldShape.repeat` comes from one rule for each shared reader, in `session/fields.rs::repeat`.
+Each read alternative gets its own value, and the field keeps it when all alternatives agree. A
+rule applies only to a tail call: a call with an unexamined continuation proves no final storage.
+
+| Reader | Repeat | Engine fact (M452) |
+| --- | --- | --- |
+| Primitive readers (Boolean, integer, fixed-point, float, string) | `Replace` | The reader assigns one destination. A fixture repeats `unlocks_agenda`: two occurrences keep the second. |
+| `NParserUtil::ReadTrigger<T>`, `ReadEffect<T>` | `Replace` | `ReadTrigger<CRootTrigger>` (`0x100047bd8`) logs `Duplicate trigger at '%s'` when the count at `+0x7c` is nonzero, calls `CTriggerCollectionBase::DeleteAll()` and reads into the same object. `ReadEffect<CEffect>` (`0x10020cc30`) logs `Duplicate effect`, deletes each child, clears the count at `+0x1c` and reads again. All five instantiations share the shape. |
+| `CVariableValue::Read(CReader&, EScopeType)` | `Merges` | A literal replaces the literal slot; variable, trigger and script-value slots stay ([scoped numeric](scoped-numeric.md), live `repeat_*` cases). |
+| `CReader::Read(CPersistent&)` of a weight block | `Merges` | The persistent read (`0x1025b820c`) tail-calls the virtual `Read` at slot `+0x20`. `CMeanTimeToHappen::Read(CReader&)` (`0x10092e3f4`) reads a bare value into `base` or calls `CPersistent::Read`, so `base` is replaced and earlier entries stay. |
+| `CReader::Read(CPersistent&)` of a modifier block | `Merges` | All four variants reach `CPdxModifier<…>::Read` (`0x100071fcc`). It deletes the child array and clears the entry counts at `+0x1c`, `+0x44` and `+0x9c`, then calls `CPersistent::Read`. Fixed keys are written only when present, so an omitted icon, tooltip or flag stays; `description_parameters` appends. |
+| `ReadKeyReferenceDeferred<D>` with an established lookup | `Replace` | Each occurrence registers its key and a lambda that writes the destination on a hit and on a miss. The resolver runs registrations in order ([references](references.md#reference-readers)), so the last occurrence's item is stored. |
+
+Every other reader keeps `Unknown`, including `CTrigger::Read`, `CEffect::Read`, a persistent
+block without a constructor-proven weight or modifier reader, and an immediate reference reader,
+whose caller stores the result after the call returns.
+
+**A recorded manual exception.** The rules are stated per reader, not derived: the method reads no
+reader or resolver body for storage. Conditions: the exact M452 build and a tail call. Obstacle:
+fixtures decode no block or pointer storage, and no shape reads the clear-and-reread or the resolver
+order. Removal route: block and pointer storage decoders, or body shapes for those two facts. The
+checks are the disassembly above, the live scoped matrix, an M45-observe probe (repeated trigger
+and effect blocks change their child counts, a repeated graphical modifier resets its entries and
+keeps omitted metadata, two deferred keys resolve to the second), and `cargo live
+fixture_block_parsing`: a repeated `potential` logs `Duplicate trigger` on the second
+occurrence's line, and a repeated `ai_weight` reads twice with no diagnostic.
+
+**The storage check** runs on the assembled answer, after every grammar is attached. A field at
+any `FieldMembers::Fields` depth gets an `UnresolvedStorage` gap when its repeat is `Unknown`, or
+when its members are `Unresolved` and its reader family is `Unknown`. A trigger or effect family is
+the members answer; a weight, modifier or triggered modifier family whose grammar did not attach
+already has the attach step's `UnresolvedReader` gap.
+
+Pitfalls:
+
+- `CMeanTimeToHappen::Read(CReader&, EScopeType)` (`0x10092e328`) resets `base` and the entries,
+  but the persistent path never calls it. Read the slot that `CReader::Read(CPersistent&)` calls.
+- A deferred reader's key string is a temporary; storing it proves nothing. The destination that
+  the lambda captures, the resolver order and the lambda's write decide the result.
+- A logged duplicate is not a rejection; the repeat is read.
 
 ## Compiler jump tables
 
@@ -176,8 +219,7 @@ condition. Use analysis admits direct `const` owner methods, whose signatures es
 receiver; static, nested-class and other receiver shapes, including
 `CTraditionType::PostReadInit()`, are not proven. The local flag proof follows copies of the
 receiver; a shared loop load address does not establish object identity, and a conditional select
-must get its flags from the adjacent comparison on every incoming path. Primitive tail readers
-establish replacement; block calls alone do not. SDK-546 depends on these relationships for
+must get its flags from the adjacent comparison on every incoming path. SDK-546 depends on these relationships for
 conditional name and icon templates. Locate the inheritance tokens with `inspect -- --strings inherit_`.
 
 Prototype findings, in the `atlas-discovery`, `atlas-command-grammar` and `atlas-numeric-grammar`

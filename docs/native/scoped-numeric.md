@@ -46,8 +46,8 @@ with no failed question. Registry destinations: 7, **0 complete, 7 partial, 0 fa
 arguments: 302, **0 complete, 302 partial, 0 failed**: 150 signed 32-bit integer and 152 signed
 64-bit fixed point at scale 100000, all with a known range. Every partial answer keeps the
 scoped-literal conversion-boundary gap and the outside-method limit for qualified scopes,
-parameters, lookup outcomes and evaluation; the registry answers also keep the repeat and
-nested-field limit.
+parameters, lookup outcomes and evaluation. A repeated operand `Merges`
+([repeat behavior](registry-fields.md#repeat-behavior)).
 
 ## Live fixture pitfalls
 

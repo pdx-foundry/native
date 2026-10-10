@@ -102,7 +102,6 @@ Failure shapes, by field count:
 | Numeric conversion of modifier entries and fixed keys ([numeric conversion](numeric-conversion.md)) | 45 |
 | Scoped-literal conversion and operand method of `mult` and `multiplier` | 45 |
 | Read scope of `potential` (stored scope) and of `modifier` and the field (scope argument) | 50 |
-| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 50 |
 | Tooltip: embedded point, scoped destination and delegate | 5 |
 
 **Not covered.** The sweep lists triggered-named fields with no clause reader:
@@ -125,8 +124,8 @@ The compact selections are in `tests/expected/m452/triggered-modifiers.json`.
   [scoped numeric](scoped-numeric.md).
 - The embedded block keeps every SDK-607 gap. For `other_keys` the gaps are stated on the field,
   because the block's key paths would name the clause's own keys, such as `key`.
-- Repeat behavior of the whole field stays the collection's `Accumulate`, with the field's repeat
-  gap; occurrence bounds are not established.
+- The whole field is the collection's `Accumulate`; its attached clause grammar answers its
+  members, so it has no storage gap. Occurrence bounds are not established.
 - Condition timing, how a multiplier scales the modifier and where it takes effect are runtime
   behavior (see [modifier masks](modifier-masks.md#gaps)).
 
