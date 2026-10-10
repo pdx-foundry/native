@@ -20,7 +20,10 @@ M452 (`c621723d…`).
 - Whitespace: a byte up to 0x7f is space when its `__DefaultRuneLocale` runetype has `0x4000`
   (`_CTYPE_S`). A higher byte is sign-extended and passed to `___maskrune(…, 0x4000)`.
   `tests/numeric_scanner.rs` observes the space bytes 9–13 and 32 in locale C on the recorded
-  `libsystem_c` image. The executable imports no `setlocale`.
+  `libsystem_c` image. The executable imports no `setlocale`. This is a platform-library fact
+  with the same condition as the scanner's faithful ranges
+  ([numeric conversion](numeric-conversion.md#exact-platform-scanner)): the probe pins the
+  library identity and fails on another image. The static check does not read the library.
 
 **Stated input rule.** The rule is: the `CFile` that a lexer reads returns the file's bytes in
 order, returns the pushed-back byte after `UnGet`, and at the end returns 0xff with `IsValid`
