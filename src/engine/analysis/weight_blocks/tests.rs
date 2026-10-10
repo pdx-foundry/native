@@ -522,14 +522,12 @@ fn modifier_input() -> WeightBlockInput {
     )
 }
 
-fn analyze_modifier(variation: Variation, input: &WeightBlockInput) -> Grammar {
+fn modifier_grammar(variation: Variation) -> Grammar {
     let bodies = bodies(variation, ReadVariation::default());
     let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
-    analyze(input, &body).points[&POINT].clone().unwrap()
-}
-
-fn modifier_grammar(variation: Variation) -> Grammar {
-    analyze_modifier(variation, &modifier_input())
+    analyze(&modifier_input(), &body).points[&POINT]
+        .clone()
+        .unwrap()
 }
 
 fn stored(callee: &str, kind: ReaderKind, destination: i64) -> ReaderJoin {
@@ -799,8 +797,10 @@ fn a_value_compared_with_fixed_names_is_a_keyword() {
 fn a_recognized_value_without_one_literal_name_leaves_the_domain_unknown() {
     let mut input = modifier_input();
     input.tokens.get_mut(&22).unwrap().ambiguous = true;
+    let bodies = bodies(Variation::default(), ReadVariation::default());
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
 
-    let grammar = analyze_modifier(Variation::default(), &input);
+    let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
 
     assert_eq!(
         key(&grammar, "calc").readers,
