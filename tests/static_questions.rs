@@ -1965,7 +1965,7 @@ fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
     assert!(!is_accepted_ai_weight_gap(&gap(
         GapKind::NumericConversion,
         "agenda_cost",
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
     )));
     assert!(!is_accepted_ai_weight_gap(&gap(
         GapKind::UnresolvedPath,
@@ -2616,14 +2616,24 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
                 maximum: GrammarProperty::Known(maximum),
             }))
         );
+        let key_gaps: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.subject == Some(pdx_native::GapSubject::Field { name: key.into() }))
+            .collect();
         assert!(
-            answer
-                .gaps
-                .iter()
-                .any(|gap| gap.kind == pdx_native::GapKind::NumericConversion
-                    && gap.subject == Some(pdx_native::GapSubject::Field { name: key.into() }))
+            key_gaps.iter().any(|gap| gap.kind == GapKind::OutsideMethod
+                && gap
+                    .detail
+                    .starts_with("The platform scanner's own conversion")),
+            "{command}/{key}: {key_gaps:?}"
         );
-        assert_eq!(answer.completeness, pdx_native::Completeness::Partial);
+        assert!(
+            key_gaps
+                .iter()
+                .all(|gap| gap.kind != GapKind::NumericConversion),
+            "{command}/{key}: {key_gaps:?}"
+        );
     }
 }
 

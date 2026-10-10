@@ -145,12 +145,12 @@
     },
     "gaps": [
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "weight"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -159,14 +159,6 @@
           "path": ["ai_weight", "modifier", "weight"]
         },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
-      ],
-      [
-        "NumericConversion",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "modifier", "min"]
-        },
-        "Scoped literal conversion boundaries and overflow are incomplete."
       ],
       [
         "OutsideMethod",
@@ -174,15 +166,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "min"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "max"]
+          "path": ["ai_weight", "modifier", "min"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -190,15 +182,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "max"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "factor"]
+          "path": ["ai_weight", "modifier", "max"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -206,15 +198,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "factor"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "add"]
+          "path": ["ai_weight", "modifier", "factor"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -222,15 +214,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "add"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "set"]
+          "path": ["ai_weight", "modifier", "add"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -238,15 +230,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "set"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "mult"]
+          "path": ["ai_weight", "modifier", "set"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -254,15 +246,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "mult"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "subtract"]
+          "path": ["ai_weight", "modifier", "mult"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -270,15 +262,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "subtract"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "multiply"]
+          "path": ["ai_weight", "modifier", "subtract"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -286,15 +278,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "multiply"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modifier", "divide"]
+          "path": ["ai_weight", "modifier", "multiply"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -302,15 +294,23 @@
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "divide"]
         },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modifier", "divide"]
+        },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "modulo"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -321,12 +321,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "round_to"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -337,12 +337,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "modifier", "pow"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -377,28 +377,52 @@
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "add"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "add"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "mul"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "mul"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "div"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "scaled_modifier", "div"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "OutsideMethod",
@@ -441,36 +465,68 @@
         "The keyword domain is not established."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "multiplier"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "multiplier"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "min_value"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "min_value"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "max_value"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "max_value"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "mult"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "complex_trigger_modifier", "mult"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "NumericConversion",
@@ -478,7 +534,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "days"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
         "NumericConversion",
@@ -486,7 +542,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "months"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
         "NumericConversion",
@@ -494,7 +550,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "years"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
         "NumericConversion",
@@ -502,23 +558,39 @@
           "kind": "key_path",
           "path": ["ai_weight", "factor"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "factor"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "factor"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "base"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "weight"]
+          "path": ["ai_weight", "base"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "OutsideMethod",
@@ -526,15 +598,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "weight"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "min"]
+          "path": ["ai_weight", "weight"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -542,15 +614,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "min"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "max"]
+          "path": ["ai_weight", "min"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -558,15 +630,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "max"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "add"]
+          "path": ["ai_weight", "max"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -574,15 +646,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "add"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "set"]
+          "path": ["ai_weight", "add"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -590,15 +662,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "set"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "mult"]
+          "path": ["ai_weight", "set"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -606,15 +678,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "mult"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "subtract"]
+          "path": ["ai_weight", "mult"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -622,15 +694,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "subtract"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "multiply"]
+          "path": ["ai_weight", "subtract"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -638,15 +710,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "multiply"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "divide"]
+          "path": ["ai_weight", "multiply"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -654,15 +726,15 @@
           "kind": "key_path",
           "path": ["ai_weight", "divide"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["ai_weight", "modulo"]
+          "path": ["ai_weight", "divide"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -670,15 +742,23 @@
           "kind": "key_path",
           "path": ["ai_weight", "modulo"]
         },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "modulo"]
+        },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "round_to"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -689,12 +769,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "pow"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -705,12 +785,20 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "field",
           "name": "ai_weight"
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "field",
+          "name": "ai_weight"
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "UnresolvedPath",
@@ -777,12 +865,12 @@
     },
     "gaps": [
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "modifier", "weight"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -791,14 +879,6 @@
           "path": ["weight", "modifier", "weight"]
         },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
-      ],
-      [
-        "NumericConversion",
-        {
-          "kind": "key_path",
-          "path": ["weight", "modifier", "min"]
-        },
-        "Scoped literal conversion boundaries and overflow are incomplete."
       ],
       [
         "OutsideMethod",
@@ -806,15 +886,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "min"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "max"]
+          "path": ["weight", "modifier", "min"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -822,15 +902,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "max"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "factor"]
+          "path": ["weight", "modifier", "max"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -838,15 +918,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "factor"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "add"]
+          "path": ["weight", "modifier", "factor"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -854,15 +934,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "add"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "set"]
+          "path": ["weight", "modifier", "add"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -870,15 +950,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "set"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "mult"]
+          "path": ["weight", "modifier", "set"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -886,15 +966,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "mult"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "subtract"]
+          "path": ["weight", "modifier", "mult"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -902,15 +982,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "subtract"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "multiply"]
+          "path": ["weight", "modifier", "subtract"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -918,15 +998,15 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "multiply"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modifier", "divide"]
+          "path": ["weight", "modifier", "multiply"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -934,15 +1014,23 @@
           "kind": "key_path",
           "path": ["weight", "modifier", "divide"]
         },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modifier", "divide"]
+        },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "modifier", "modulo"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -953,12 +1041,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "modifier", "round_to"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -969,12 +1057,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "modifier", "pow"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -1009,28 +1097,52 @@
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "add"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "add"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "mul"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "mul"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "div"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "scaled_modifier", "div"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "OutsideMethod",
@@ -1073,36 +1185,68 @@
         "The keyword domain is not established."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "multiplier"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "multiplier"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "min_value"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "min_value"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "max_value"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "max_value"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "mult"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "complex_trigger_modifier", "mult"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "NumericConversion",
@@ -1110,7 +1254,7 @@
           "kind": "key_path",
           "path": ["weight", "days"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
         "NumericConversion",
@@ -1118,7 +1262,7 @@
           "kind": "key_path",
           "path": ["weight", "months"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
         "NumericConversion",
@@ -1126,31 +1270,39 @@
           "kind": "key_path",
           "path": ["weight", "years"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "factor"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "factor"]
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "base"]
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "weight"]
+          "path": ["weight", "base"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "OutsideMethod",
@@ -1158,15 +1310,15 @@
           "kind": "key_path",
           "path": ["weight", "weight"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "min"]
+          "path": ["weight", "weight"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1174,15 +1326,15 @@
           "kind": "key_path",
           "path": ["weight", "min"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "max"]
+          "path": ["weight", "min"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1190,15 +1342,15 @@
           "kind": "key_path",
           "path": ["weight", "max"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "add"]
+          "path": ["weight", "max"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1206,15 +1358,15 @@
           "kind": "key_path",
           "path": ["weight", "add"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "set"]
+          "path": ["weight", "add"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1222,15 +1374,15 @@
           "kind": "key_path",
           "path": ["weight", "set"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "mult"]
+          "path": ["weight", "set"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1238,15 +1390,15 @@
           "kind": "key_path",
           "path": ["weight", "mult"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "subtract"]
+          "path": ["weight", "mult"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1254,15 +1406,15 @@
           "kind": "key_path",
           "path": ["weight", "subtract"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "multiply"]
+          "path": ["weight", "subtract"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1270,15 +1422,15 @@
           "kind": "key_path",
           "path": ["weight", "multiply"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "divide"]
+          "path": ["weight", "multiply"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1286,15 +1438,15 @@
           "kind": "key_path",
           "path": ["weight", "divide"]
         },
-        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
-          "path": ["weight", "modulo"]
+          "path": ["weight", "divide"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
         "OutsideMethod",
@@ -1302,15 +1454,23 @@
           "kind": "key_path",
           "path": ["weight", "modulo"]
         },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "modulo"]
+        },
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "round_to"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -1321,12 +1481,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "pow"]
         },
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -1337,12 +1497,20 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {
           "kind": "field",
           "name": "weight"
         },
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "field",
+          "name": "weight"
+        },
+        "The binary-lexer input path of save games and network data is outside this method."
       ]
     ],
     "read_scope": {

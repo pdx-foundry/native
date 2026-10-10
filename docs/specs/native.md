@@ -108,7 +108,12 @@ for contexts and scope types.
   or finite fixture observations. Caller post-processing is outside the shared conversion.
   `accepted_range` means faithful storage; an endpoint is `Known` only under the rule in
   [numeric conversion](../native/numeric-conversion.md#faithful-storage-and-endpoints), and a range
-  with one established endpoint is `Partial`. A known range does not close `numeric-overflow`.
+  with one established endpoint is `Partial`. The imported scanner's own conversion (overflow, the
+  characters it consumes, locale and library behavior) and the binary-lexer input path of the
+  fixed-point readers are `OutsideMethod` boundaries; a known range does not remove the scanner
+  boundary. A numeric reader is complete when its representation, width, signedness, scale and
+  range are `Known` and its engine paths match; otherwise it has a `NumericConversion` gap
+  ([answer rule](../native/numeric-conversion.md#answer-rule)).
 - `ReaderKind::ScopedNumeric` identifies a shared reader whose destination can store an integer
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a

@@ -6,17 +6,34 @@ fixed keys and ordering-selected readers. `Known(None)` is an established nonnum
 retired clamp property is in Git at `d8f9d8a`: no complete reader shape has an explicit clamp,
 which is a different fact from overflow behavior.
 
+## Answer rule
+
+The imported scanner's own conversion is a boundary of the method (decision D1, 2026-10-07). A
+reader's fact keeps two lists:
+
+- **Boundary** (`OutsideMethod`, never partial): `numeric-overflow`, `numeric-trailing-text` and
+  `numeric-external-library-conversion` describe the scanner, and every matched reader has them.
+  The fixed-point readers add `numeric-binary-input` (see [raw paths](#raw-fixed-point-paths)). A
+  field gets one gap for the scanner and one for the binary input path.
+- **Typed** (`NumericConversion`, partial): a [text lexer](text-lexer.md) obstacle,
+  `numeric-float-bound-representation`, an unmatched shape (`numeric-wrapper-shape`,
+  `numeric-token-shape`, `numeric-token-destination`), an unproved raw path
+  (`numeric-raw-conversion`, `numeric-raw-storage`) or an unjoined raw path
+  (`numeric-raw-value-mode`). A storage property or `accepted_range` that is not `Known` is also
+  typed, so narrow signedness, a mismatched scale and the readers without a live field stay
+  partial. `literal_syntax` and the `Partial` wrapper of `Reader.numeric` do not count.
+
+`session/numeric.rs::limits` applies this rule to field, command and weight readers, and
+`session/scoped_numeric.rs` applies it to scoped literals.
+
 ## Result on M452
 
-With the SDK-721 change (`e238523`), the numeric population covers all 164 registries with no
-failed question. Numeric root fields: 188 in 64 registries, **0 complete, 188 partial, 0 failed**;
-178 have a known faithful-storage range. The other 10 are seven short and three float fields.
-Every root field keeps `numeric-overflow`, `numeric-trailing-text` and
-`numeric-external-library-conversion`; the 91 fixed-point fields also keep
-`numeric-raw-value-mode`, and the three float fields keep `numeric-float-bound-representation`.
-No field keeps `numeric-lexical-boundary`: the [text lexer](text-lexer.md) boundary holds, and a
-capture of `main` differs only by that reason. Narrow integer signedness is unresolved. Reproduce
-with `cargo run --release --example numeric-population`.
+`numeric-population` covers all 164 registries with no failed question. Numeric root fields: 188
+in 64 registries, **178 complete, 10 partial, 0 failed**. The 178 are 87 `int` and 91 direct
+fixed-point fields. The 10 partial ones are seven short fields (signedness and range unresolved)
+and three float fields (`numeric-float-bound-representation`). Reproduce with
+`cargo run --release --example numeric-population`; the [discovery page](discovery.md) has the
+other populations.
 
 On M451-hotfix at `main` `6f643a1`, 1,221 of 1,225 numeric reader positions in the command
 inventory had known facts. The other four were the command-level readers of
@@ -29,9 +46,10 @@ the shared fixed-point reader with complete facts.
 `binding/binary/numeric.rs` binds reader and token bodies, their imports and format strings;
 `engine/analysis/numeric.rs` matches complete canonical instruction sequences. Changed calls,
 stores, branches or unsupported shapes give an unresolved result. The scanner-format match binds
-`%i`, `%d`, `%u`, `%lli`, `%lld`, `%llu` and `%f` to their storage and literal forms; it does not
-establish libc overflow, locale or full-string consumption. Which bytes form the token text is the
-[text lexer](text-lexer.md)'s fact, which the numeric method checks once for every reader.
+`%i`, `%d`, `%u`, `%lli`, `%lld`, `%llu` and `%f` to their storage and literal forms. libc
+overflow, locale and the characters that the scanner consumes are the scanner boundary. Which
+bytes form the token text is the [text lexer](text-lexer.md)'s fact, which the numeric method checks
+once for every reader.
 
 | Reader shape | Established storage | Partial literal forms |
 | --- | --- | --- |
@@ -83,9 +101,18 @@ Scoped literals inherit these ranges only when their concrete storage is establi
 - Byte and halfword paths substitute zero when the scanner returns zero; the halfword temporary is
   uninitialized before the call, and EOF is a nonzero return. Do not infer a short value from empty
   input. The two byte bodies cannot distinguish signed from unsigned storage.
-- No reader demands full consumption, but this is not an "ignore all suffixes" rule: direct fixed
-  point searches the original token for a dot (so `1.25tail` gives raw `100025`: the fraction buffer
-  holds `25tai`), and the template asks for a second conversion (quoted `"12 34"` gives 46).
+- No reader demands full consumption, but this is not an "ignore all suffixes" rule. What the
+  engine does with the text after the number differs by reader, and the matched shape of each
+  reader holds it, so no public property says "suffix ignored":
+
+| Reader | Text after the number |
+| --- | --- |
+| Integer, narrow and float | Not read: the reader stores the scanner's result (`12tail` gives 12) |
+| Direct fixed point | `strchr` searches the whole token for a dot and copies up to five characters after it, padded with `0` (`1.25tail` gives raw `100025`: the buffer holds `25tai`) |
+| Fixed-point template | `%lld%lf` asks for a second number (quoted `"12 34"` gives 46); the fraction goes through binary64 arithmetic and `fcvtzs`, and the sum wraps in 64-bit integer arithmetic |
+
+  Removing the dot search or the second directive breaks the shape, so a changed reader never
+  inherits another reader's rule (`each_fixed_point_reader_keeps_its_own_handling_of_the_text_after_the_number`).
 
 | Reader | Token entry | Conversion |
 | --- | --- | --- |
@@ -99,13 +126,34 @@ Scoped literals inherit these ranges only when their concrete storage is establi
 
 ### Raw fixed-point paths
 
-The direct wrapper (`0x1025b7460`) and template wrapper (`0x1025b81f8`) call virtual slot `0x20`
-of the lexer at reader `+0x30` and take a raw path for a nonzero result: `%lld` copied without
-scale. `CTextLexer::IsBinary` (`0x1025af138`) returns 0 and `CBinLexer::IsBinary` (`0x1025af24c`)
-returns 1, so the raw path is the binary-lexer path; the method does not join each reader's
-runtime lexer, so `numeric-raw-value-mode` stays. The template token reader also has token kind
-`0x167`, which calls `atoll` without scaling; it comes from an internal object-to-token
-constructor (`0x1025bd784`), not an authored spelling.
+The direct and template wrappers call virtual slot `0x20` (`IsBinary`) of the lexer at reader
+`+0x30` and take a raw path for a nonzero result: `%lld` copied without scale.
+`CTextLexer::IsBinary` returns 0 and `CBinLexer::IsBinary` returns 1. The binding reads the
+`CTextLexer` vtable slot and `numeric/lexer.rs::text_selector` matches `mov w0,#0; ret`; when it
+holds, the fixed-point readers report `numeric-binary-input` as a boundary, and otherwise
+`numeric-raw-value-mode` stays typed.
+
+**Stated input rule.** A script reader is built on a `CTextLexer`. Callers choose the lexer at run
+time, so the method does not join each caller; `m452_numeric_boundary_engine_parity` checks the
+rule on the whole M452 build:
+
+1. `CReader(CLexer&)` stores its lexer at reader `+0x30` (`0x1025b4d18`).
+2. Of the 269 direct calls of the two `CReader` constructors (`CLexer&` and `CLexer*, bool`), 261
+   pass, in `x1`, the object that a `CTextLexer` constructor in the same function received in
+   `x0` (a stack object, or a heap object from `operator new`). The other 8 are in
+   `CreateCommand`, `CNetworkServer::PackageCallback`, `CProxyServer::PackageCallback` and
+   `SaveGame`.
+3. Only those four places construct a `CBinLexer`.
+4. Live script content takes the scaled ordinary path: `1.25tail` gives raw `100025`
+   (`tests/expected/numeric-m452/live.json`).
+
+To remove the rule, join each content loader's lexer inside the method.
+
+**Template raw token.** The template token reader compares the token kind with `0x167` and calls
+`atoll` without scaling for that kind; the shape requires that value. Kind `0x167` is the kind of a
+token built from a `CFixedPoint` (`CToken(CFixedPoint const&)`, store at `0x1025c06d4`) and the
+static keyword `long_float` (`GetTokenArray`, `0x100da3bbc`). A numeric word has kind `0xc`, so it
+never takes this path.
 
 ### Exact platform scanner
 
@@ -119,7 +167,8 @@ second conversion leaves `%n` unreached (`consumed: -1`), not zero characters co
 ## Live observations
 
 `tests/live/numeric.rs` (`cargo live fixture_numeric`) holds the boundary, fractional, malformed,
-suffix and quoted cases for int, direct and template fixed point, float and short;
+suffix and quoted cases for int, direct and template fixed point, float and short, and the
+template keyword case (`long_float`);
 `tests/expected/numeric-m452/live.json` holds the values, and `check_storage` fails a run when
 static representation, width, scale or signedness differ from the observed storage. Six integer
 readers (`signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long`,
@@ -128,6 +177,10 @@ descriptions stay unreachable); the SDK-544 AC4 amendment excludes them from the
 
 Pitfalls:
 
+- **`long_float` is a number to the fixed-point template.** The word lexes to keyword kind `0x167`,
+  so a template field stores `atoll("long_float")`, 0, unscaled; the direct readers report
+  `Malformed token` for a word. Observed on `fleet_power`: raw 0, no diagnostic
+  (`template_raw_keyword` in `live.json`).
 - **A field can change its value after the member return.** Megastructure `build_time` turns
   nonpositive values into raw 100000; army `war_exhaustion` keeps the same negative value. Do not
   make this a shared-reader clamp.

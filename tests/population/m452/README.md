@@ -17,9 +17,9 @@ selected on M45-release and keeps that build stamp; `cargo live fixture_argument
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Registry fields | 164 registries | 9 | 155 | 0 |
-| Effect grammars | 1,080 named commands | 149 | 929 | 2 |
-| Trigger grammars | 1,098 named commands | 119 | 979 | 0 |
+| Registry fields | 164 registries | 12 | 152 | 0 |
+| Effect grammars | 1,080 named commands | 163 | 915 | 2 |
+| Trigger grammars | 1,098 named commands | 122 | 976 | 0 |
 
 Compared with M451-hotfix, after the `accepted_categories` member that SDK-708 added: eight new
 commands; civics lost `multiply_by_habitability_effect_modifier` and edicts gained

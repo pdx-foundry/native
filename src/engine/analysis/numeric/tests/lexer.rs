@@ -93,6 +93,7 @@ fn production_lexer() -> (LexerInput, Vec<u64>) {
         body: image.function("GetTok").to_vec(),
         names: image.names().clone(),
         data: placed(&addresses, m452_tables()),
+        binary_selector: Vec::new(),
     };
     (input, addresses)
 }

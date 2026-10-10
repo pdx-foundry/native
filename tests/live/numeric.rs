@@ -40,6 +40,10 @@ const INPUTS: &[(&str, &[&str])] = &[
     ("malformed", &["7", "not_a_number"]),
 ];
 
+/// `long_float` lexes to the token kind that sends the template to its unscaled `atoll` path.
+/// A session holds at most 32 questions, so this case has its own.
+const TEMPLATE_KEYWORD_INPUTS: &[(&str, &[&str])] = &[("template_raw_keyword", &["long_float"])];
+
 const FLOAT_INPUTS: &[(&str, &[&str])] = &[
     ("float_boundary", &["3.4028234663852886e38"]),
     (
@@ -141,6 +145,13 @@ pub(super) async fn matrix() -> Outcome {
             true,
             "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
             INPUTS,
+        ),
+        (
+            "common/special_projects",
+            &["fleet_power"][..],
+            true,
+            "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
+            TEMPLATE_KEYWORD_INPUTS,
         ),
         (
             "common/star_classes",

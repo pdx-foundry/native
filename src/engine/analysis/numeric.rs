@@ -1,7 +1,8 @@
 //! Whole-function numeric conversion proofs. Shapes keep every branch, call and destination
 //! store, so a constant alone cannot establish a scale. Bound scanner contracts establish
-//! partial literal forms; library edge cases remain unresolved. The token text that every reader
-//! converts comes from the text lexer, whose boundary `lexer` establishes once.
+//! partial literal forms. The scanner's own conversion is a boundary of the method; what the engine
+//! does around it is in the matched shapes. The token text that every reader converts comes from
+//! the text lexer, whose boundary `lexer` establishes once.
 use std::collections::BTreeMap;
 pub(crate) mod lexer;
 pub(crate) use lexer::LexerInput;
@@ -11,6 +12,21 @@ pub use modifier::ModifierNumericEntry;
 
 /// Exact binary32 extrema do not fit the public bound variants.
 pub(crate) const FLOAT_BOUND_REPRESENTATION_GAP: &str = "numeric-float-bound-representation";
+
+/// The fixed-point raw path, which only a binary lexer takes: save game and network input.
+pub(crate) const BINARY_INPUT_BOUNDARY: &str = "numeric-binary-input";
+
+/// The imported scanner's own conversion of the token text, which the method does not read.
+const SCANNER_BOUNDARY: [&str; 3] = [
+    "numeric-overflow",
+    "numeric-trailing-text",
+    "numeric-external-library-conversion",
+];
+
+/// The token kind that sends the fixed-point template to its unscaled `atoll` path: the static
+/// token `long_float` and the kind of a token built from a `CFixedPoint`. A numeric word has kind
+/// `0xc`, so it never takes this path.
+const TEMPLATE_RAW_TOKEN_KIND: u64 = 0x167;
 
 use super::decode::Instruction;
 use super::references::shapes::{Bindings, Shape, canonical};
@@ -36,8 +52,10 @@ pub struct NumericFacts {
 pub struct NumericReader {
     /// Established properties, without promoting partial facts to a complete conversion.
     pub conversion: GrammarProperty<Option<NumericConversion>>,
-    /// Unqualified paths or external conversion behavior.
+    /// Limitations that make an answer using this reader partial.
     pub gaps: Vec<Unresolved>,
+    /// Behavior outside the method: the platform scanner and the binary input path.
+    pub boundary: Vec<Unresolved>,
 }
 
 /// Executable code and semantic helper identities supplied by the binding.
@@ -65,10 +83,11 @@ pub(crate) struct ReaderInput {
 
 pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
     let lexer = lexer::token_boundary(&input.lexer);
+    let selector = lexer::text_selector(&input.lexer);
     let readers = input
         .readers
         .iter()
-        .map(|(name, input)| (name.clone(), analyze_reader(input, &lexer)))
+        .map(|(name, input)| (name.clone(), analyze_reader(input, &lexer, &selector)))
         .collect();
     NumericFacts {
         modifier_entry: modifier::analyze(&input.modifier, &readers),
@@ -97,14 +116,20 @@ fn analyze_token(input: &TokenInput, lexer: &Result<(), Unresolved>) -> NumericR
         return unresolved("numeric-token-shape");
     };
 
-    let gaps = conversion_gaps(&conversion, lexer);
     NumericReader {
+        gaps: conversion_gaps(&conversion, lexer),
+        boundary: scanner_boundary(),
         conversion: GrammarProperty::Partial(Some(conversion)),
-        gaps,
     }
 }
 
-fn analyze_reader(input: &ReaderInput, lexer: &Result<(), Unresolved>) -> NumericReader {
+/// `selector` is the text lexer's raw-path selector: `Ok` when a reader on a text lexer never takes
+/// the fixed-point raw path.
+fn analyze_reader(
+    input: &ReaderInput,
+    lexer: &Result<(), Unresolved>,
+    selector: &Result<(), Unresolved>,
+) -> NumericReader {
     let wrapper = canonical(&input.wrapper, &input.names);
     let scalar = Shape::parse(include_str!("numeric/shapes/scalar.txt")).matches(&wrapper);
     let fixed = Shape::parse(include_str!("numeric/shapes/fixed_wrapper.txt")).matches(&wrapper);
@@ -125,30 +150,33 @@ fn analyze_reader(input: &ReaderInput, lexer: &Result<(), Unresolved>) -> Numeri
         return unresolved("numeric-token-shape");
     };
     let mut gaps = conversion_gaps(&conversion, lexer);
-    if let Some(reason) = missing_path {
-        gaps.push(Unresolved::new(reason));
-    }
+    let mut boundary = scanner_boundary();
+    gaps.extend(missing_path.map(Unresolved::new));
     if fixed.is_some() {
-        gaps.push(Unresolved::new("numeric-raw-value-mode"));
+        match selector {
+            Ok(()) => boundary.push(Unresolved::new(BINARY_INPUT_BOUNDARY)),
+            Err(obstacle) => gaps.push(obstacle.clone()),
+        }
     }
+
     NumericReader {
         conversion: GrammarProperty::Partial(Some(conversion)),
         gaps,
+        boundary,
     }
 }
 
-/// `lexer` is the token boundary's result. Its obstacle, if any, is the gap on the token text
-/// that every scanner receives.
+fn scanner_boundary() -> Vec<Unresolved> {
+    SCANNER_BOUNDARY.map(Unresolved::new).to_vec()
+}
+
+/// The limitations of a matched conversion. `lexer` is the token boundary's result; its obstacle,
+/// if any, is the gap on the token text that every scanner receives.
 fn conversion_gaps(
     conversion: &NumericConversion,
     lexer: &Result<(), Unresolved>,
 ) -> Vec<Unresolved> {
-    let mut gaps = vec![Unresolved::new("numeric-overflow")];
-    gaps.extend(lexer.clone().err());
-    gaps.extend([
-        Unresolved::new("numeric-trailing-text"),
-        Unresolved::new("numeric-external-library-conversion"),
-    ]);
+    let mut gaps: Vec<_> = lexer.clone().err().into_iter().collect();
     if conversion.representation == GrammarProperty::Known(NumericRepresentation::BinaryFloat)
         && conversion.width_bits == GrammarProperty::Known(32)
     {
@@ -214,6 +242,7 @@ fn unresolved(reason: &'static str) -> NumericReader {
     NumericReader {
         conversion: GrammarProperty::Unresolved,
         gaps: vec![Unresolved::new(reason)],
+        boundary: Vec::new(),
     }
 }
 
@@ -356,6 +385,9 @@ impl Form {
                 )
             }
             Self::Binary => {
+                if number(binding, "raw_token")? != TEMPLATE_RAW_TOKEN_KIND {
+                    return None;
+                }
                 let shift = number(binding, "scale_shift")?;
                 let scale = 1u64.checked_shl(u32::try_from(shift).ok()?);
                 let factor = f64::from_bits(number(binding, "fraction_scale")?);
@@ -395,7 +427,8 @@ impl Form {
             literal_syntax: GrammarProperty::Partial(literal_syntax),
             accepted_range,
             // Every matched path has no explicit bound comparison/select on the converted
-            // value. Scanner overflow and fcvtzs behavior are separate unresolved properties.
+            // value. Scanner overflow is the scanner boundary; the template's `fcvtzs` and
+            // integer arithmetic are in its shape.
         })
     }
 }

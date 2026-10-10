@@ -18,8 +18,8 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v25`) holds
-the baseline: **164 registries, 9 complete, 155 partial, 0 failed**, 1,593 root and 46 nested
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v26`) holds
+the baseline: **164 registries, 12 complete, 152 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -27,8 +27,9 @@ authoring](method-authoring.md#run-over-the-whole-population)).
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
   uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
   ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, but it
-  stays partial for the conversion, zero-mask, keyword-domain, `trigger` lookup and `parameters`
-  gaps listed there. `CPersistent` block classification of `modifier` does not
+  stays partial for the keyword-domain gaps and for `days`, `months`, `years` and one `factor`
+  alternative, whose `CToken::GetInt()` and `GetFloat()` readers have no numeric fact. The
+  scanner, zero-mask, `trigger` lookup and `parameters` limits are `OutsideMethod`. `CPersistent` block classification of `modifier` does not
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter only as a country with self-linked root, from and prev
   ([block entry contexts](#block-entry-contexts)). `ai_weight` keeps an entry gap: a template

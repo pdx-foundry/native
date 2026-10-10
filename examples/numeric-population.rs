@@ -1,6 +1,6 @@
 //! Report every numeric registry field and its shared conversion, including unresolved joins.
 use pdx_native::internals::{numeric_readers, registry_field_stops};
-use pdx_native::{GrammarProperty, Native, ReaderKind};
+use pdx_native::{GapKind, GapSubject, GrammarProperty, Native, ReaderKind};
 use serde_json::json;
 use std::collections::BTreeMap;
 
@@ -45,9 +45,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             {
                 continue;
             }
+            // The conversion keeps its `Partial` wrapper by design; a typed gap on the field, not
+            // the wrapper, makes the answer partial.
+            let subject = Some(GapSubject::Field {
+                name: field.name.clone(),
+            });
+            let limited = run
+                .answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::NumericConversion && gap.subject == subject);
             let status = match &field.reader.numeric {
-                GrammarProperty::Known(Some(_)) => "complete",
-                GrammarProperty::Partial(Some(_)) => "partial",
+                GrammarProperty::Known(Some(_)) | GrammarProperty::Partial(Some(_)) if !limited => {
+                    "complete"
+                }
+                GrammarProperty::Known(Some(_)) | GrammarProperty::Partial(Some(_)) => "partial",
                 _ => "failed",
             };
             *counts.entry(status).or_default() += 1;
@@ -56,8 +68,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .flat_map(|callee| &facts.readers[*callee].gaps)
                 .map(|gap| gap.reason)
                 .collect();
+            let boundary: Vec<_> = callees
+                .iter()
+                .flat_map(|callee| &facts.readers[*callee].boundary)
+                .map(|gap| gap.reason)
+                .collect();
             fields.push(json!({"registry": registry.name, "field": field.name,
-                "status": status, "reader": field.reader, "callees": callees, "reasons": reasons}));
+                "status": status, "reader": field.reader, "callees": callees, "reasons": reasons,
+                "boundary": boundary}));
         }
     }
     println!(

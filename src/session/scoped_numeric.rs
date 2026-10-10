@@ -329,14 +329,7 @@ pub(super) fn attach(
                 return;
             };
             reader.numeric = conversion.conversion.clone();
-            if !conversion.gaps.is_empty() {
-                gap(
-                    gaps,
-                    GapKind::NumericConversion,
-                    subject,
-                    "Scoped literal conversion boundaries and overflow are incomplete.",
-                );
-            }
+            super::numeric::push_gaps(gaps, subject.clone(), &super::numeric::limits(conversion));
             if facts
                 .shared
                 .selection
@@ -464,6 +457,7 @@ mod tests {
             token_readers: [(
                 "CToken::ReadValue(int&) const".into(),
                 NumericReader {
+                    boundary: Vec::new(),
                     conversion: conversion.clone(),
                     gaps: vec![Unresolved::new("numeric-overflow")],
                 },
@@ -498,6 +492,66 @@ mod tests {
                 .any(|gap| gap.kind == GapKind::NumericConversion)
         );
         assert!(!gaps.iter().any(|gap| gap.kind == GapKind::ReaderSemantics));
+    }
+
+    #[test]
+    fn a_scoped_literal_inherits_the_numeric_classification() {
+        let literal = |signedness| {
+            GrammarProperty::Partial(Some(NumericConversion {
+                representation: GrammarProperty::Known(crate::NumericRepresentation::Integer),
+                width_bits: GrammarProperty::Known(32),
+                signedness,
+                scale: GrammarProperty::Known(Some(1)),
+                literal_syntax: GrammarProperty::Partial(Vec::new()),
+                accepted_range: GrammarProperty::Known(Box::new(crate::NumericRange {
+                    minimum: GrammarProperty::Known(crate::NumericBound::Signed(-2147483648)),
+                    maximum: GrammarProperty::Known(crate::NumericBound::Signed(2147483647)),
+                })),
+            }))
+        };
+        let facts = facts(Subtype::Numeric {
+            token_reader: "CToken::ReadValue(int&) const".into(),
+            literal: 0x200,
+        });
+        for (signedness, typed) in [
+            (
+                GrammarProperty::Known(crate::NumericSignedness::Signed),
+                false,
+            ),
+            (GrammarProperty::Unresolved, true),
+        ] {
+            let numeric = NumericFacts {
+                token_readers: [(
+                    "CToken::ReadValue(int&) const".into(),
+                    NumericReader {
+                        conversion: literal(signedness),
+                        gaps: Vec::new(),
+                        boundary: vec![Unresolved::new("numeric-overflow")],
+                    },
+                )]
+                .into(),
+                ..NumericFacts::default()
+            };
+            let mut gaps = Vec::new();
+            attach(
+                &mut reader(),
+                Some(0x8000),
+                &facts,
+                &numeric,
+                &GapSubject::field("cost"),
+                &mut gaps,
+            );
+
+            assert_eq!(
+                gaps.iter()
+                    .any(|gap| gap.kind == GapKind::NumericConversion),
+                typed
+            );
+            assert!(
+                gaps.iter().any(|gap| gap.kind == GapKind::OutsideMethod
+                    && gap.detail.contains("platform scanner"))
+            );
+        }
     }
 
     #[test]

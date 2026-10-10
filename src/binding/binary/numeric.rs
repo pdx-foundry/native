@@ -60,7 +60,23 @@ fn lexer_input(
         body,
         names,
         data: super::declarations::read_only_data(image.bytes)?,
+        binary_selector: binary_selector(text, image)?,
     })
+}
+
+/// The body in the `CTextLexer` primary vtable's slot `0x20`, or nothing when the slot is not bound.
+fn binary_selector(text: &Text<'_>, image: &Image<'_>) -> Result<Vec<Instruction>, AnalysisError> {
+    const ADDRESS_POINT: u64 = 0x10;
+    const SLOT: u64 = 0x20;
+    let Ok(vtable) = super::declarations::unique(image.symbols, "vtable for CTextLexer") else {
+        return Ok(Vec::new());
+    };
+    let Some(&target) = image.pointers.get(&(vtable + ADDRESS_POINT + SLOT)) else {
+        return Ok(Vec::new());
+    };
+
+    let (address, bytes) = text.function(target)?;
+    decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)
 }
 
 fn reader_input(
