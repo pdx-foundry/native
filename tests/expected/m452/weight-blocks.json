@@ -74,7 +74,7 @@
   "7b0a790da1cbdc65": {
     "block": {
       "fixed_keys": {
-        "Partial": [
+        "Known": [
           ["desc", "String", "Replace", {"Known": []}, null],
           ["trigger", "Reference", "Replace", {"Known": []}, null],
           ["potential", "Block", "Replace", "Unresolved", "Unresolved"],
@@ -353,12 +353,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "ReaderSemantics",
@@ -369,12 +369,12 @@
         "The keyword domain is not established."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "scaled_modifier", "limit"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "NumericConversion",
@@ -401,36 +401,36 @@
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "UnresolvedReader",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "parameters"]
         },
-        "The value is read by the object that `trigger` stores."
+        "The value is read by the trigger that `trigger` names: a built-in trigger's form and grammar are its `command_grammar` answer, and a scripted trigger's are its parameter forms."
       ],
       [
-        "ReaderSemantics",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "trigger"]
         },
-        "A name that no trigger command has becomes a scripted-trigger placeholder; when the lookup runs and how it matches are not established."
+        "The name is matched by its lexer token; how the lexer matches a name is outside the method."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["ai_weight", "complex_trigger_modifier", "potential"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "ReaderSemantics",
@@ -985,12 +985,12 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "ReaderSemantics",
@@ -1001,12 +1001,12 @@
         "The keyword domain is not established."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "scaled_modifier", "limit"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "NumericConversion",
@@ -1033,36 +1033,36 @@
         "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "UnresolvedReader",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "parameters"]
         },
-        "The value is read by the object that `trigger` stores."
+        "The value is read by the trigger that `trigger` names: a built-in trigger's form and grammar are its `command_grammar` answer, and a scripted trigger's are its parameter forms."
       ],
       [
-        "ReaderSemantics",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "trigger"]
         },
-        "A name that no trigger command has becomes a scripted-trigger placeholder; when the lookup runs and how it matches are not established."
+        "The name is matched by its lexer token; how the lexer matches a name is outside the method."
       ],
       [
-        "UnresolvedPath",
+        "OutsideMethod",
         {
           "kind": "key_path",
           "path": ["weight", "complex_trigger_modifier", "potential"]
         },
-        "read-scope: zero-mask: the engine reads this block with scope mask 0."
+        "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
         "ReaderSemantics",

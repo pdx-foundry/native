@@ -1,0 +1,73 @@
+# CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(int, CString const&, CString const&) const.
+# Searches the trigger map (database +0x68; node key +0x20, factory +0x28) for the token number in
+# w1 and calls the factory's create slot (+0x10). An empty map, a missing number or a null result
+# constructs a scripted trigger named by x2. Either object then stores the number (+0x30) and the
+# location in x3 (+0x38). No branch tests the name for emptiness.
+stp xr0,xr1,[sp,#-0x40]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp x29,x30,[sp,#0x30]
+add x29,sp,#0x30
+mov xr5,x3
+mov xr2,x2
+mov xr3,x1
+adrp xr1,PAGE
+ldr xr4,[xr1,G] = CTriggerDatabase::_pTriggerDatabase
+cbz xr4,@+4
+ldr xr6,[xr4,#0x68]!
+cbnz xr6,@+9
+b @+27
+mov w0,#0x78
+bl CALL = operator new(unsigned long)
+mov xr4,x0
+bl CALL = CTriggerDatabase::CTriggerDatabase()
+str xr4,[xr1,G] = CTriggerDatabase::_pTriggerDatabase
+ldr xr6,[xr4,#0x68]!
+cbz xr6,@+20
+mov xr7,xr4
+ldr wr8,[xr6,#0x20]
+add xr9,xr6,#0x8
+cmp wr8,wr3
+csel xr8,xr9,xr6,lt
+csel xr7,xr7,xr6,lt
+ldr xr6,[xr8]
+cbnz xr6,@-6
+cmp xr7,xr4
+b.eq @+10
+ldr wr6,[xr7,#0x20]
+cmp wr6,wr3
+b.gt @+7
+ldr x0,[xr7,#0x28]
+ldr xr7,[x0]
+ldr xr7,[xr7,#0x10]
+blr xr7
+mov xr4,x0
+cbnz x0,@+6
+mov w0,#0xd0
+bl CALL = operator new(unsigned long)
+mov xr4,x0
+mov x1,xr2
+bl CALL = CScriptedTrigger::CScriptedTrigger(CString const&)
+str wr3,[xr4,#0x30]
+ldrsb wr7,[xr5,#0x17]
+ldr xr6,[xr5]
+cmp wr7,#0x0
+csel xr5,xr6,xr5,lt
+mov x0,xr5
+bl CALL = _strlen
+mov x2,x0
+add x0,xr4,#0x38
+mov x1,xr5
+bl CALL = std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)
+mov x0,xr4
+ldp x29,x30,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x40
+ret
+b @+1
+mov xr5,x0
+mov x0,xr4
+bl CALL = operator delete(void*)
+mov x0,xr5
+bl CALL = __Unwind_Resume

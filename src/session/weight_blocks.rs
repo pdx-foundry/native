@@ -8,10 +8,9 @@ use crate::engine::analysis::{
     weight_blocks::{Grammar, Nested, Operand, OtherKeys, WeightBlockFacts},
 };
 use crate::{
-    BlockFamily, EmptyKey, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference,
-    Gap, GapKind, GapSubject, GrammarProperty, KeyMatch, LookupStage, MissingResult, ReadScope,
-    Reader, ReaderKind, ReferenceLookup, ReferenceTarget, ValueShape, WeightBlock, WeightOperation,
-    WeightOtherKeys,
+    BlockFamily, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference, Gap,
+    GapKind, GapSubject, GrammarProperty, ReadScope, Reader, ReaderKind, ReferenceLookup,
+    ReferenceTarget, ValueShape, WeightBlock, WeightOperation, WeightOtherKeys,
 };
 use std::collections::BTreeSet;
 
@@ -115,27 +114,36 @@ impl Block<'_> {
         words: &dyn Fn(u64) -> Option<u64>,
         gaps: &mut Vec<Gap>,
     ) -> GrammarProperty<Vec<ReadScope>> {
-        let arguments: BTreeSet<_> = scope_arguments(grammar)
-            .map(|scope| scope.and_then(|scope| resolve(scope, words)))
-            .collect();
+        let arguments: BTreeSet<_> = scope_arguments(grammar).collect();
         if arguments.is_empty() {
             return GrammarProperty::Known(Vec::new());
         }
-        self.normalize_scopes(arguments.into_iter().collect(), self.subject(None), gaps)
+        self.normalize_scopes(
+            arguments.into_iter().collect(),
+            words,
+            self.subject(None),
+            gaps,
+        )
     }
 
-    /// The read scopes that the scope `arguments` give. The weight readers read some trigger
-    /// blocks with scope mask 0 and check their scope only later, so a zero mask gets its own
-    /// reason.
+    /// The read scopes that the scope `arguments` give, with a stored scope replaced by the word
+    /// that `words` gives. The scaled and complex entry readers pass a literal scope mask 0 and
+    /// check the scope only later, so a literal zero is outside the method (decision D5a). A
+    /// stored zero has no such check and stays an unresolved path.
     fn normalize_scopes(
         &self,
-        arguments: Vec<Option<Value>>,
+        arguments: Vec<Option<&Value>>,
+        words: &dyn Fn(u64) -> Option<u64>,
         subject: GapSubject,
         gaps: &mut Vec<Gap>,
     ) -> GrammarProperty<Vec<ReadScope>> {
         let (zero, other): (Vec<_>, Vec<_>) = arguments
             .into_iter()
-            .partition(|argument| *argument == Some(Value::Constant(0)));
+            .partition(|argument| *argument == Some(&Value::Constant(0)));
+        let other: Vec<_> = other
+            .into_iter()
+            .map(|scope| scope.and_then(|scope| resolve(scope, words)))
+            .collect();
         if zero.is_empty() {
             return super::read_scope::normalize_scopes(
                 other,
@@ -147,7 +155,7 @@ impl Block<'_> {
 
         push(
             gaps,
-            GapKind::UnresolvedPath,
+            GapKind::OutsideMethod,
             subject.clone(),
             ZERO_MASK.into(),
         );
@@ -180,11 +188,7 @@ impl Block<'_> {
             .filter(|own| matches!(own, Value::Load(..) | Value::EnclosingScope));
         match scope {
             Some(scope) if Some(scope) == own => GrammarProperty::Known(vec![ReadScope::Enclosing]),
-            scope => self.normalize_scopes(
-                vec![scope.and_then(|scope| resolve(scope, words))],
-                subject,
-                gaps,
-            ),
+            scope => self.normalize_scopes(vec![scope], words, subject, gaps),
         }
     }
 
@@ -194,24 +198,38 @@ impl Block<'_> {
         words: &dyn Fn(u64) -> Option<u64>,
         gaps: &mut Vec<Gap>,
     ) -> WeightBlock {
+        let mut key_stops = false;
         for (key, stop) in &grammar.stops {
-            let kind = if key.is_some() {
-                GapKind::UnresolvedReader
-            } else {
-                GapKind::UnresolvedPath
-            };
             let source = key
                 .as_ref()
                 .and_then(|key| grammar.dependent_readers.get(key));
-            let detail = match source {
-                Some(source) => format!("The value is read by the object that `{source}` stores."),
-                None => format!("The weight block analysis stopped at {}.", stop.reason),
+            let (kind, detail) = match (key, source) {
+                (Some(_), Some(source)) if reads_trigger(grammar, source) => (
+                    GapKind::OutsideMethod,
+                    format!(
+                        "The value is read by the trigger that `{source}` names: a built-in \
+                         trigger's form and grammar are its `command_grammar` answer, and a \
+                         scripted trigger's are its parameter forms."
+                    ),
+                ),
+                (Some(_), Some(source)) => (
+                    GapKind::UnresolvedReader,
+                    format!("The value is read by the object that `{source}` stores."),
+                ),
+                (Some(_), None) => (
+                    GapKind::UnresolvedReader,
+                    format!("The weight block analysis stopped at {}.", stop.reason),
+                ),
+                (None, _) => (
+                    GapKind::UnresolvedPath,
+                    format!("The weight block analysis stopped at {}.", stop.reason),
+                ),
             };
+            key_stops |= key.is_some() && kind != GapKind::OutsideMethod;
             push(gaps, kind, self.subject(key.as_deref()), detail);
         }
 
         let keys = self.fixed_keys(grammar, words, gaps);
-        let key_stops = grammar.stops.iter().any(|(key, _)| key.is_some());
         let operations: Vec<_> = grammar
             .operations
             .iter()
@@ -356,15 +374,7 @@ impl Block<'_> {
                 );
             }
             if root.is_some_and(looks_up_trigger) {
-                key.reference = FieldReference::Lookups(vec![trigger_lookup()]);
-                push(
-                    gaps,
-                    GapKind::ReaderSemantics,
-                    subject.clone(),
-                    "A name that no trigger command has becomes a scripted-trigger placeholder; \
-                     when the lookup runs and how it matches are not established."
-                        .into(),
-                );
+                key.reference = self.trigger_lookup(subject.clone(), gaps);
             }
             if key.reader.kind == ReaderKind::Unknown && !stopped {
                 push(
@@ -377,6 +387,25 @@ impl Block<'_> {
         }
         super::numeric::fields(&mut keys, self.facts.numeric, &self.path, gaps);
         keys
+    }
+
+    /// The trigger lookup of a key's value, from the reference method's trigger lookup fact. The
+    /// map is keyed by the lexer's token number, so the key match stays unresolved.
+    fn trigger_lookup(&self, subject: GapSubject, gaps: &mut Vec<Gap>) -> FieldReference {
+        let lookup = self.facts.references.trigger_lookup.as_ref().ok();
+        let (kind, detail) = match lookup {
+            Some(_) => (GapKind::OutsideMethod, LEXER_MATCH),
+            None => (
+                GapKind::ReaderSemantics,
+                "No lookup shape matched the trigger lookup.",
+            ),
+        };
+        push(gaps, kind, subject, detail.into());
+
+        FieldReference::Lookups(vec![ReferenceLookup {
+            target: ReferenceTarget::Triggers,
+            ..super::fields::reference_lookup(FieldCondition::Always, None, lookup)
+        }])
     }
 
     /// The block of the nested entry at `key`.
@@ -422,8 +451,14 @@ impl Block<'_> {
     }
 }
 
-/// Why a block read with scope mask 0 has no established read scope.
-const ZERO_MASK: &str = "read-scope: zero-mask: the engine reads this block with scope mask 0.";
+/// Why a trigger lookup's key match is outside the method.
+const LEXER_MATCH: &str =
+    "The name is matched by its lexer token; how the lexer matches a name is outside the method.";
+
+/// Why the read scope of a block that a weight entry reads with scope mask 0 is outside the
+/// method (decision D5a, a recorded exception in `docs/design/simplification.md`).
+const ZERO_MASK: &str = "Read with scope mask 0; the engine checks the scope later, when it \
+                         validates the block, which the method does not report.";
 
 /// Give the key the value kind that every read alternative shares, when its readers differ but
 /// agree on the kind, such as a fixed-point value read either way. The reader identity stays
@@ -472,16 +507,13 @@ fn looks_up_trigger(field: &RootField) -> bool {
     })
 }
 
-/// The trigger lookup of a key's value. Only its collection is established.
-fn trigger_lookup() -> ReferenceLookup {
-    ReferenceLookup {
-        condition: FieldCondition::Always,
-        target: ReferenceTarget::Triggers,
-        stage: LookupStage::Unresolved,
-        key_match: KeyMatch::Unresolved,
-        empty_key: EmptyKey::Unresolved,
-        on_missing: MissingResult::Unresolved,
-    }
+/// Whether `source` is a key whose value names the trigger that the engine looks up and stores,
+/// so a value that the stored object reads is read by that trigger (decision D3).
+fn reads_trigger(grammar: &Grammar, source: &str) -> bool {
+    grammar
+        .fields
+        .iter()
+        .any(|field| field.name == source && looks_up_trigger(field))
 }
 
 /// The scope arguments of the block's keys and conditions; `None` is a trigger condition whose

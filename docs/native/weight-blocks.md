@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v22`. The method is
+`WeightBlock`. Source stamp `registry-fields/v25`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -81,8 +81,8 @@ conditions.
 
 | Token | Key | Behavior | Answer |
 | --- | --- | --- | --- |
-| `0x2ca2` | `trigger` | `__assign_external` of the value token's text into `+0x60`, then `CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&)` with the value token; the result goes to `+0x88` | `Reference`, target `Triggers` |
-| `0x3377` | `parameters` | `+0x88` null: logs `specify trigger before parameters`; otherwise a tail branch through vtable slot `+0x30` of the `+0x88` object, with the reader and scope `0` | gap: read by the object that `trigger` stores |
+| `0x2ca2` | `trigger` | `__assign_external` of the value token's text into `+0x60`, then `CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&)` with the value token; the result goes to `+0x88` | `Reference`, target `Triggers`, `WhileReading`, empty key looked up, `ScriptedTriggerPlaceholder` on a miss; key match `OutsideMethod` |
+| `0x3377` | `parameters` | `+0x88` null: logs `specify trigger before parameters`; otherwise a tail branch through vtable slot `+0x30` of the `+0x88` object, with the reader and scope `0` | `Unknown`; `OutsideMethod`: read by the trigger that `trigger` names |
 | `0x3378` | `trigger_scope` | the `scope` event-target chain into `+0x148` | `Target` |
 | `0x399e` | `mode` | `TokenToEnum<EScriptMaths>` on the **value** token, stored at `+0x2e0` | `Keyword` |
 | `0x2d21` | `potential` | tail call `ReadTrigger<CRootTrigger>` on `+0x90` with scope `0` | `Block`, trigger family |
@@ -90,8 +90,9 @@ conditions.
 | `0x2d5c`, `0x3c59`, `0x2d5d`, `0x2d5e` | `multiplier`, `mult`, `min_value`, `max_value` | `Read(CFixedPoint&)`; the last two set a flag at `+0x2e8` first | `FixedPoint` |
 | other | | `CPersistent::ReadMember` of the base at `+8` | rejected |
 
-`CreateTriggerOrScriptedPlaceholder` searches the trigger database by token and calls the found
-trigger's factory; for a name that no trigger has, it makes a `CScriptedTrigger` with that name.
+`CreateTriggerOrScriptedPlaceholder` searches the trigger database by token number and calls the
+found trigger's factory; for a name that no trigger has, it makes a `CScriptedTrigger` with that
+name. The [reference method](references.md#trigger-lookup) establishes its lookup facts.
 `mode` stores `0x10` for a name that the switch does not know, without a diagnostic.
 
 **Entry read entries.** `CScaledMTTHModifier::Read` and `CComplexTriggerMTTHModifier::Read` move
@@ -104,7 +105,9 @@ reads as a block. All three entries report `scalar: None`.
 **Later scope checks.** `CScaledMTTHModifier::ValidateScope` checks the `scope` target chain and then
 `limit` in the target's scope type; `CComplexTriggerMTTHModifier::ValidateScope` checks `potential`
 in the received scope, `trigger_scope`, and the trigger through vtable slot `+0x90`. The method does
-not read these functions; the read scope of `limit` and `potential` stays a zero-mask gap.
+not read these functions. The read scope of `limit` and `potential`, and of the two entries, whose
+read scope comes from their keys, stays `Unresolved` with an `OutsideMethod` gap: decision D5(a), a
+[recorded exception](../design/simplification.md#decisions-of-2026-10-07) with its stated limit.
 
 **Stored scope.** `CMeanTimeToHappen(EScopeType, CFixedPoint, bool)` stores `x1` (the scope) at
 `+0x30` and `x2` (the default base) at `+0x10`. The council agenda, tradition and tradition
@@ -127,14 +130,15 @@ Failure shapes, by field count:
 | Shape | Fields |
 | --- | ---: |
 | Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 73 |
-| Zero-mask read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential` | 73 |
 | Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 73 |
-| `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 73 |
-| `parameters` read by the object that `trigger` stores | 73 |
 | Repeat behavior, where the field's read is not a tail call (M452: `overlord_weight` and `subject_weight` in `common/agreement_presets`, `total_progress` in `common/situations`) | 3 |
 
+Every field also has three `OutsideMethod` limits (SDK-722): the zero-mask read scope of
+`scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential`; the key match of
+the `trigger` lookup; and `parameters`, read by the trigger that `trigger` names.
+
 Nine root fields also have a zero-mask read scope of their own, because their owner constructor
-stores scope `0`: the five weight fields of `common/buildings`, `planet_damage` in
+stores scope `0`. No later scope check is known for these, so they keep an `UnresolvedPath` gap: the five weight fields of `common/buildings`, `planet_damage` in
 `common/bombardment_stances`, `weight_modifier` in `common/colony_types`, and `random_weight` in
 `common/ethics` and `common/governments/authorities`.
 
@@ -231,9 +235,12 @@ a species from; building `ai_weight` also runs on a country with a country from
   so the key reports `FixedPoint` with no reader identity.
 - `calc` and `mode` are `Keyword`; their domains stay `Unknown` (SDK-627).
 - The read scope of `limit` and `potential` stays unresolved: the engine reads them with scope mask
-  0, and a zero mask never establishes a scope.
-- `parameters` is read by the trigger that `trigger` names; its grammar is that trigger's, which
-  the method does not follow.
+  0 and checks the scope later, when it validates the entry. The gap is `OutsideMethod` (D5a).
+- `parameters` is read by the trigger that `trigger` names (`OutsideMethod`, D3): a built-in
+  trigger's form and grammar are its `command_grammar` answer, and a scripted trigger's are its
+  parameter forms ([script expansion](script-expansion.md)).
+- The `trigger` lookup's key match is the lexer's token number, not the name's bytes; the lexer's
+  case rule is outside the method ([references](references.md#trigger-lookup)).
 - A repeated weight field `Merges`: the persistent read never resets the block, so it replaces
   `base` and keeps earlier entries ([repeat behavior](registry-fields.md#repeat-behavior)). A field
   whose read is not a tail call keeps `Unknown`.
@@ -252,7 +259,11 @@ a species from; building `ai_weight` also runs on a country with a country from
   `mode` is not an operation.
 - **A dependent reader is named, not followed.** `parameters` branches through a function pointer
   of the object at `+0x88`; the path stops there, and the method names the key whose stored
-  destination is that word.
+  destination is that word. Only a dependent reader through a trigger lookup is `OutsideMethod`;
+  another stays `UnresolvedReader`.
+- **A literal zero mask is not a stored zero.** The session splits literal scope mask 0, which the
+  entry readers pass before their later scope check, from a stored scope that resolves to 0. Only
+  the literal one is `OutsideMethod`; split before the stored word is resolved.
 - **A bare nested value is not rejected.** `CPersistent::Read` has no scalar branch, so
   `scalar: None` means that no bare value is read, not that the engine reports one.
 - **The domain is every token value.** The method evaluates each value from zero to the largest

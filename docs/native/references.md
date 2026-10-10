@@ -109,6 +109,35 @@ link's keyword token (`+0x58`) through compare trees and two `ldrh` jump tables.
 database, so the method finds no lookup in it; the SDK-482 prototype's unknown result for it was
 not a failed reference shape. Its keyword classification is scope work (SDK-565, SDK-549).
 
+### Trigger lookup
+
+`CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&) const` makes the
+trigger that a token names; the weight `complex_trigger_modifier` reads its `trigger` key with it.
+It is not an `NParserUtil` reader and takes no `CReader`, so `references::reader` does not name it:
+that function feeds the reader joins of the field and command grammar walkers. The reference
+method reads it as its own fact, `ReferenceFacts.trigger_lookup`, from two shapes. On M452:
+
+- `trigger_token`: the overload makes `CTriggerDatabase::_pTriggerDatabase` when it is null, builds
+  a `CString` from the token text (`token+0x10`) and calls the `(int, CString const&, CString
+  const&)` overload with the token number (`ldr w,[token]`).
+- `trigger_map`: that overload searches the `std::map` at database `+0x68` (node key `+0x20`) for
+  the number and calls the factory at node `+0x28` through vtable slot `+0x10`. An empty map, a
+  missing number or a null result constructs `CScriptedTrigger(CString const&)` with the name; no
+  branch tests the name for emptiness. Either object then stores the number (`+0x30`) and the
+  location (`+0x38`).
+
+So the lookup runs `WhileReading`, looks up an empty key, and yields
+`MissingResult::ScriptedTriggerPlaceholder` on a miss; nothing checks that a scripted trigger has
+the name. The declarations method registers trigger commands by the same token number
+(`RegisterTriggerEntry(int, …)`), so the target is `ReferenceTarget::Triggers`.
+
+The key match stays `Unresolved` with an `OutsideMethod` gap (Jackson, 2026-10-09). The map holds
+token numbers, and the lexer assigns them: `CTernary<int*, STernaryTrait<int*> >::Get(char const*)
+const` (`0x1025b02a0`) calls `tolower` on each input character before it compares, and
+`CLexer::FindTok` returns `0xc` for text with no literal token. So `HAS_TECHNOLOGY` most likely
+selects `has_technology`, which the byte-for-byte contract of `KeyMatch` cannot state. A live
+control of an upper-case trigger name would establish the rule; Atlas does not need it now.
+
 ### Database directories
 
 Template databases name their directory in the `CSingleObjectGameDatabaseBase(CString const&)`
@@ -202,6 +231,8 @@ string reader stores that key.
 - A miss selects `TPdxNullObject<C>::_pInstance`, but the scan shapes bind `C` without joining it
   to the target database's item type. `MissingResult::NullObject` claims a typed placeholder, not
   its class.
+- A search by token number is not a byte compare. The trigger map's key is the number that the
+  lexer assigned to the name, so its case and normalization rules are the lexer's.
 - `DeclaredScopes` states where a command may run, not which store it writes; flag stores are
   compared per scope.
 - A database or null-object class in an initializer is not a lookup. The SDK-482 controls kept
@@ -219,14 +250,14 @@ lookups and flags on this page.
 
 | Property | Result on M45-release | Evidence or boundary |
 | --- | --- | --- |
-| Case | Byte for byte, no case folding | The scan shapes compare length, then bytes or `memcmp`; the qualified `Find<CString>` hashes with `_PMurHash32`, then compares length and bytes |
+| Case | Byte for byte, no case folding; the trigger lookup is not established | The scan shapes compare length, then bytes or `memcmp`; the qualified `Find<CString>` hashes with `_PMurHash32`, then compares length and bytes. The trigger lookup compares lexer token numbers, and the lexer's token lookup folds ASCII case ([trigger lookup](#trigger-lookup)) |
 | Encoding | Bytes; the lookup decodes nothing | The lexer's encoding is outside the method |
 | Quoting | Readers take the lexed token text at `CReader+0x288` | Quote handling is a lexer fact. The SDK-482 Intel spike saw quoted and unquoted `corvette` select one ship size; it is not established here |
 | Length | The whole key is compared; nothing truncates it | No maximum length is established |
 | Namespaces | One registry per lookup; flags intern in one table for every flag kind and are stored per scope object or in the global store | `ReferenceTarget`; `DynamicNamespace` |
-| Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method |
+| Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method, including the token number that the trigger lookup compares |
 | Collisions | A scan returns the first equal item; equal flag names are one flag in every store | `FirstEqual`; the shared interner |
-| Missing key | The typed null object | `MissingResult::NullObject`, from the shape's miss edge |
+| Missing key | The typed null object; a scripted-trigger placeholder for the trigger lookup | `MissingResult::NullObject` or `ScriptedTriggerPlaceholder`, from the shape's miss edge |
 | Duplicate definitions | A scan returns the first in collection order; a map keeps what loading inserted | Load-time replacement belongs to SDK-552 |
 
 ## SDK-482 prototype

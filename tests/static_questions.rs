@@ -155,7 +155,8 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     use pdx_native::{
-        BlockFamily, Field, FieldMembers, FieldReference, GrammarProperty, ReadScope,
+        BlockFamily, EmptyKey, Field, FieldCondition, FieldMembers, FieldReference,
+        GrammarProperty, KeyMatch, LookupStage, MissingResult, ReadScope, ReferenceLookup,
         ReferenceTarget, RepeatBehavior, WeightBlock, WeightOtherKeys,
     };
     use std::collections::BTreeSet;
@@ -308,36 +309,83 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     assert_eq!(kind(&complex, "mode"), Some(ReaderKind::Keyword));
     let trigger = complex.iter().find(|key| key.name == "trigger").unwrap();
     assert_eq!(trigger.reader.kind, ReaderKind::Reference);
-    assert!(matches!(
-        &trigger.reference,
-        FieldReference::Lookups(lookups)
-            if lookups.len() == 1 && lookups[0].target == ReferenceTarget::Triggers
-    ));
+    assert_eq!(
+        trigger.reference,
+        FieldReference::Lookups(vec![ReferenceLookup {
+            condition: FieldCondition::Always,
+            target: ReferenceTarget::Triggers,
+            stage: LookupStage::WhileReading,
+            key_match: KeyMatch::Unresolved,
+            empty_key: EmptyKey::LookedUp,
+            on_missing: MissingResult::ScriptedTriggerPlaceholder,
+        }])
+    );
+    let nested = top.iter().find(|key| key.name == "modifier").unwrap();
+    assert_eq!(
+        nested.read_scope,
+        GrammarProperty::Known(vec![ReadScope::Enclosing])
+    );
 
-    let gaps = native
-        .registry_fields("common/council_agendas")
-        .unwrap()
-        .gaps;
-    let details = |path: &[&str]| -> Vec<String> {
-        gaps.iter()
+    let answer = native.registry_fields("common/council_agendas").unwrap();
+    let gaps = |path: &[&str]| -> Vec<(GapKind, String)> {
+        answer
+            .gaps
+            .iter()
             .filter(|gap| {
                 let subject = serde_json::to_value(&gap.subject).unwrap();
                 subject["path"] == serde_json::json!(path)
             })
-            .map(|gap| gap.detail.clone())
+            .map(|gap| (gap.kind, gap.detail.clone()))
             .collect()
     };
-    let zero_mask = "read-scope: zero-mask: the engine reads this block with scope mask 0.";
+    let zero_mask = "Read with scope mask 0; the engine checks the scope later, when it \
+                     validates the block, which the method does not report.";
     for path in [
-        ["ai_weight", "scaled_modifier", "limit"],
-        ["ai_weight", "complex_trigger_modifier", "potential"],
+        &["ai_weight", "scaled_modifier"][..],
+        &["ai_weight", "scaled_modifier", "limit"],
+        &["ai_weight", "complex_trigger_modifier"],
+        &["ai_weight", "complex_trigger_modifier", "potential"],
     ] {
-        assert_eq!(details(&path), [zero_mask], "{path:?}");
+        assert_eq!(
+            gaps(path),
+            [(GapKind::OutsideMethod, zero_mask.to_owned())],
+            "{path:?}"
+        );
     }
     assert_eq!(
-        details(&["ai_weight", "complex_trigger_modifier", "parameters"]),
-        ["The value is read by the object that `trigger` stores."]
+        gaps(&["ai_weight", "complex_trigger_modifier", "parameters"]),
+        [(
+            GapKind::OutsideMethod,
+            "The value is read by the trigger that `trigger` names: a built-in trigger's form \
+             and grammar are its `command_grammar` answer, and a scripted trigger's are its \
+             parameter forms."
+                .to_owned()
+        )]
     );
+    assert_eq!(
+        gaps(&["ai_weight", "complex_trigger_modifier", "trigger"]),
+        [(
+            GapKind::OutsideMethod,
+            "The name is matched by its lexer token; how the lexer matches a name is outside the \
+             method."
+                .to_owned()
+        )]
+    );
+    let field = |name: &str| {
+        answer
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .unwrap()
+    };
+    assert_eq!(field("modifier").read_scope, GrammarProperty::Known(vec![]));
+    assert_eq!(field("potential").read_scope, agenda.read_scope);
+
+    // A stored zero mask has no later scope check, so it stays an unresolved path.
+    let buildings = native.registry_fields("common/buildings").unwrap();
+    assert!(buildings.gaps.iter().any(|gap| {
+        gap.kind == GapKind::UnresolvedPath && gap.detail == "read-scope: zero-mask"
+    }));
 }
 
 #[test]

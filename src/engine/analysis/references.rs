@@ -13,6 +13,7 @@ pub mod shapes;
 
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::directories::Directory;
+use crate::engine::analysis::readers;
 use crate::engine::analysis::stop::Unresolved;
 use initialization::Initialization;
 use shapes::{Bindings, Line, Shape, canonical};
@@ -139,6 +140,15 @@ pub enum KeyMatch {
     FirstEqual,
 }
 
+/// What a key that selects no item yields.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Missing {
+    /// The typed null object.
+    NullObject,
+    /// A scripted-trigger placeholder that holds the key as its name.
+    ScriptedTriggerPlaceholder,
+}
+
 /// The lookup semantics that complete shapes establish. `None` is an unresolved fact.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lookup {
@@ -148,8 +158,8 @@ pub struct Lookup {
     pub key_match: Option<KeyMatch>,
     /// Whether an empty key is looked up like any other key.
     pub empty_key_looked_up: Option<bool>,
-    /// Whether a key that selects no item yields the typed null object.
-    pub missing_yields_null: Option<bool>,
+    /// What a key that selects no item yields.
+    pub on_missing: Option<Missing>,
 }
 
 /// Everything established about one reference reader.
@@ -164,12 +174,24 @@ pub struct ReaderLookup {
 }
 
 /// Reference facts for every reference reader that a method may join.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceFacts {
     /// Keyed by the reader's demangled callee.
     pub readers: BTreeMap<String, ReaderLookup>,
     /// Keyed by the initializer's demangled name.
     pub initializers: BTreeMap<String, Initialization>,
+    /// The lookup of [`readers::TRIGGER_LOOKUP`], which makes the trigger that a token names.
+    pub trigger_lookup: Result<Lookup, Unresolved>,
+}
+
+impl Default for ReferenceFacts {
+    fn default() -> Self {
+        Self {
+            readers: BTreeMap::new(),
+            initializers: BTreeMap::new(),
+            trigger_lookup: Err(Unresolved::new("trigger-lookup-body")),
+        }
+    }
 }
 
 /// The executable code and joins that the reference method reads.
@@ -180,7 +202,8 @@ pub struct ReferenceInput {
     /// Every owner initializer (`{Owner}::PostInit()`) to analyze.
     pub initializers: BTreeSet<String>,
     /// Complete decoded bodies by demangled name: the readers, their resolver lambdas, the
-    /// initializers, and the functions that those call.
+    /// initializers, the trigger lookup ([`readers::TRIGGER_LOOKUP`]), and the functions that
+    /// those call.
     pub functions: BTreeMap<String, Vec<Instruction>>,
     /// Demangled names at symbol addresses and pointer slots.
     pub names: BTreeMap<u64, String>,
@@ -188,7 +211,9 @@ pub struct ReferenceInput {
     pub directories: BTreeMap<String, Directory>,
 }
 
-/// Establish the facts of every reader and initializer in `input`.
+/// Establish the facts of every reader and initializer in `input`, and the trigger lookup's facts
+/// from its body and the search it calls in `input.functions`; without them the trigger lookup
+/// is unresolved.
 pub fn analyze(input: &ReferenceInput) -> ReferenceFacts {
     let method = Method { input };
     let readers = input
@@ -217,6 +242,7 @@ pub fn analyze(input: &ReferenceInput) -> ReferenceFacts {
     ReferenceFacts {
         readers,
         initializers,
+        trigger_lookup: method.trigger_lookup(),
     }
 }
 
@@ -297,7 +323,7 @@ impl Method<'_> {
             stage: Stage::WhileReading,
             key_match,
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
         })
     }
 
@@ -327,7 +353,33 @@ impl Method<'_> {
             stage: Stage::Deferred,
             key_match: search,
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
+        })
+    }
+
+    /// The trigger lookup forwards the token's number and text to a search of the trigger map,
+    /// whose miss edge makes a scripted-trigger placeholder. The map is keyed by the lexer's token
+    /// number, not by the name's bytes, so the key match stays unresolved: how the lexer matches a
+    /// name is outside the method.
+    fn trigger_lookup(&self) -> Result<Lookup, Unresolved> {
+        let lines = self
+            .lines(readers::TRIGGER_LOOKUP)
+            .ok_or_else(|| Unresolved::new("trigger-lookup-body"))?;
+        let forwarded = TRIGGER_TOKEN
+            .matches(&lines)
+            .ok_or_else(|| Unresolved::new("trigger-lookup-shape"))?;
+        let search = self
+            .lines(&forwarded["search"])
+            .ok_or_else(|| Unresolved::new("trigger-search-body"))?;
+        TRIGGER_MAP
+            .matches(&search)
+            .ok_or_else(|| Unresolved::new("trigger-search-shape"))?;
+
+        Ok(Lookup {
+            stage: Stage::WhileReading,
+            key_match: None,
+            empty_key_looked_up: Some(true),
+            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
         })
     }
 
@@ -428,6 +480,10 @@ static GETTER_SCAN: LazyLock<Shape> =
     LazyLock::new(|| Shape::parse(include_str!("references/shapes/getter_scan.shape")));
 static MAP_FIND: LazyLock<Shape> =
     LazyLock::new(|| Shape::parse(include_str!("references/shapes/map_find.shape")));
+static TRIGGER_TOKEN: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/trigger_token.shape")));
+static TRIGGER_MAP: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/trigger_map.shape")));
 
 #[cfg(test)]
 #[path = "references/tests.rs"]

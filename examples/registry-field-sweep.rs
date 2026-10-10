@@ -129,7 +129,8 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
     )
 }
 
-/// Every reference reader in the executable, counted by form and by what the method established.
+/// Every reference reader in the executable, counted by form and by what the method established,
+/// and whether the trigger lookup's shape was established.
 fn reader_census(native: &Native) -> Result<Value, Box<dyn std::error::Error>> {
     let facts = reference_readers::run(native)?;
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
@@ -161,6 +162,10 @@ fn reader_census(native: &Native) -> Result<Value, Box<dyn std::error::Error>> {
         "by_form_and_status": counts,
         "unresolved": unresolved,
         "initializers": initializer_census(&facts),
+        "trigger_lookup": match &facts.trigger_lookup {
+            Ok(_) => "established",
+            Err(stop) => stop.reason,
+        },
     }))
 }
 

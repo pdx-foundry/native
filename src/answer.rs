@@ -644,8 +644,9 @@ pub struct Field {
     /// of this answer. Empty for other fields, and for a block that no followed call evaluates,
     /// which has a gap.
     pub entry_contexts: Vec<EntryContext>,
-    /// Scope alternatives supplied when the engine reads this block. A known empty list
-    /// means no block scope applies. This does not describe evaluation or availability.
+    /// Scope alternatives supplied when the engine reads this block. A known empty list means
+    /// that no scope is used to read the field's value or the block's children, as for a scalar
+    /// or a modifier block. This does not describe evaluation or availability.
     pub read_scope: crate::GrammarProperty<Vec<ReadScope>>,
     /// The categories of modifier entries that the field's modifier container accepts.
     pub accepted_categories: AcceptedCategories,

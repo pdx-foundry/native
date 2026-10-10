@@ -68,11 +68,6 @@
         "read-scope: stored-scope"
       ],
       [
-        "UnresolvedPath",
-        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier"]},
-        "read-scope: scope-argument"
-      ],
-      [
         "UnresolvedReader",
         {"kind": "field", "name": "triggered_country_modifier"},
         "Keys that the triggered modifier does not name, at `key`: The modifier block analysis stopped at reader-routing."
@@ -260,11 +255,6 @@
         "UnresolvedPath",
         {"kind": "key_path", "path": ["triggered_modifier", "potential"]},
         "read-scope: stored-scope"
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "key_path", "path": ["triggered_modifier", "modifier"]},
-        "read-scope: scope-argument"
       ],
       [
         "UnresolvedReader",

@@ -897,7 +897,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "5a74c67fe5a4adf9",
    "kind": "Block",

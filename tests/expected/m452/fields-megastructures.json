@@ -646,7 +646,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
@@ -866,7 +868,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
@@ -977,7 +981,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
@@ -1061,7 +1067,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",
@@ -3509,7 +3517,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "ba5f8cddeba0d833",
    "kind": "Block",

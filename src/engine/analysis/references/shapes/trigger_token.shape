@@ -1,0 +1,59 @@
+# CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&) const.
+# Makes the trigger database when it does not exist yet, then calls {search} with the token number
+# (`[x1]`), the token text (`[x1,#0x10]`) as the name and the location.
+sub sp,sp,#0x60
+stp xr0,xr1,[sp,#0x30]
+stp xr2,xr3,[sp,#0x40]
+stp x29,x30,[sp,#0x50]
+add x29,sp,#0x50
+mov xr3,x2
+mov xr2,x1
+adrp xr0,PAGE
+ldr xr4,[xr0,G] = CTriggerDatabase::_pTriggerDatabase
+cbnz xr4,@+6
+mov w0,#0x78
+bl CALL = operator new(unsigned long)
+mov xr1,x0
+bl CALL = CTriggerDatabase::CTriggerDatabase()
+str xr1,[xr0,G] = CTriggerDatabase::_pTriggerDatabase
+ldr wr1,[xr2]
+ldr x1,[xr2,#0x10]
+add x0,sp,#0x8
+bl CALL = CString::CString(char const*)
+add x2,sp,#0x8
+mov x1,xr1
+mov x3,xr3
+bl CALL = {search}
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbnz wr4,#0x1f,@+7
+mov x0,xr3
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+add xr4,sp,#0x8
+add x0,xr4,#0x18
+ldr x1,[sp,#0x8]
+ldr xr4,[sp,#0x18]
+and x2,xr4,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr3
+ldp x29,x30,[sp,#0x50]
+ldp xr2,xr3,[sp,#0x40]
+ldp xr0,xr1,[sp,#0x30]
+add sp,sp,#0x60
+ret
+mov xr3,x0
+mov x0,xr1
+bl CALL = operator delete(void*)
+mov x0,xr3
+bl CALL = __Unwind_Resume
+mov xr3,x0
+ldrsb wr4,[sp,#0x1f]
+tbz wr4,#0x1f,@-4
+add x0,sp,#0x8
+bl CALL = CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&) const [clone .cold.1]
+mov x0,xr3
+bl CALL = __Unwind_Resume
