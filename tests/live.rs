@@ -620,6 +620,45 @@ fn cases() -> Vec<(String, Case)> {
             ],
         },
     ));
+    // An unknown `calc` name is reported as malformed. `InitPostRead` reports an unknown `mode`
+    // name, and an operation without an operand, and sets `factor`. Each recognized name comes
+    // first in its case.
+    let calc = |name: &str, value: &str, stage| {
+        let child = format!("scaled_modifier = {{ scope = this add = 1 calc = {value} }}");
+        ValidationSample::new(name, child, stage)
+    };
+    let mode = |name: &str, value: &str, stage| {
+        let child = format!(
+            "complex_trigger_modifier = {{ trigger = astral_rifts_completed mode = {value} }}"
+        );
+        ValidationSample::new(name, child, stage)
+    };
+    for (name, samples) in [
+        (
+            "calc",
+            vec![
+                calc("recognized", "planets_in_country", None),
+                calc("unknown", "native_unknown", Some("reader-malformed-report")),
+            ],
+        ),
+        (
+            "mode",
+            vec![
+                mode("recognized", "mult", None),
+                mode("no_operand", "round", parser_log),
+                mode("unknown", "native_unknown", parser_log),
+            ],
+        ),
+    ] {
+        cases.push((
+            format!("fixture_control_weight_{name}"),
+            Case::FixtureValidation {
+                field: "ai_weight",
+                family: pdx_native::BlockFamily::Weight,
+                samples,
+            },
+        ));
+    }
     // A reader report or a malformed block can upset the parsing of the definitions after it, so
     // each of these samples keeps its own session.
     for (name, child, stage) in [

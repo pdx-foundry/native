@@ -4,7 +4,7 @@
 weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
-`WeightBlock`. Source stamp `registry-fields/v27`. The method is
+`WeightBlock`. Source stamp `registry-fields/v28`. The method is
 `src/engine/analysis/weight_blocks.rs`, bound in `src/binding/binary/weight_blocks.rs` and
 normalized in `src/session/weight_blocks.rs`; its module comment states the acceptance shapes and
 the operation rule. The field's read scope comes from a constructor-stored word that
@@ -98,7 +98,8 @@ conditions.
 `CreateTriggerOrScriptedPlaceholder` searches the trigger database by token number and calls the
 found trigger's factory; for a name that no trigger has, it makes a `CScriptedTrigger` with that
 name. The [reference method](references.md#trigger-lookup) establishes its lookup facts.
-`mode` stores `0x10` for a name that the switch does not know, without a diagnostic.
+`mode` stores `0x10` for a name that the switch does not know, without a diagnostic; the
+post-read check below reports it.
 
 **Entry read entries.** `CScaledMTTHModifier::Read` and `CComplexTriggerMTTHModifier::Read` move
 `GetFileLocationDescription` into the owner (`+0x1b8`, `+0x38`) and call `CPersistent::Read` on the
@@ -113,6 +114,34 @@ in the received scope, `trigger_scope`, and the trigger through vtable slot `+0x
 not read these functions. The read scope of `limit` and `potential`, and of the two entries, whose
 read scope comes from their keys, stays `Unresolved` with an `OutsideMethod` gap: decision D5(a), a
 [recorded exception](../design/simplification.md#decisions-of-2026-10-07) with its stated limit.
+
+## Keyword domains (M452)
+
+Executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`. `Field.domain` of
+`calc` and `mode` is `Listed`; both lists equal the config's `scaled_modifier_calc` and
+`complex_maths_enum`.
+
+- **`calc`**: `planet_distance_empire`, `planets_in_country`, `pop_amount`, `pop_happiness`, the
+  four values of the compare tree. Any other value calls `CReader::ReportMalformed`, which the
+  fixture reports as `reader-malformed-report` on its line.
+- **`mode`**: `add`, `divide`, `factor`, `max`, `min`, `modulo`, `mult`, `multiply`, `pow`,
+  `round_to`, `set`, `subtract`, `weight`. The member reader stores the switch value, and `0x10`
+  for an unknown name, with no diagnostic. After the read, `CComplexTriggerMTTHModifier::
+  InitPostRead()` (`0x10092d180`) tests the stored value: when it is at most 16 and its bit is in
+  `0x1b380` (16 and the six operand-free operations 7, 8, 9, 12, 13 and 15), it logs
+  `complex_trigger_modifier at … has invalid mode, setting to 'factor'` and stores 3. The fixture
+  reports this as `engine-parser-log` on the line. The six operand-free spellings are the
+  config's separate `simple_maths_enum`. `CScaledMTTHModifier` has no `InitPostRead`.
+
+**Method.** The value pass of each keyword runs every value token. A value is accepted when it
+is stored without a diagnostic and the member class's `InitPostRead()`, run on the stored bytes,
+does not report it and overwrite it. The run-time token (`last token + 1`) stands for an unknown
+name: when it is rejected, every accepted value is a member; when a switch stores a result for it,
+values with that same result are its fallback, not members. Every member must have one unambiguous
+literal name, or the domain stays `Unknown` with the gap. Both checks are validated inferences:
+the switch rule assumes that no known name maps to the fallback value, and the post-read rule
+assumes that the report concerns the value it overwrites. The parity test checks both lists
+against the 19 operation spellings less the six operand-free ones, and against the four names.
 
 **Stored scope.** `CMeanTimeToHappen(EScopeType, CFixedPoint, bool)` stores `x1` (the scope) at
 `+0x30` and `x2` (the default base) at `+0x10`. The council agenda, tradition and tradition
@@ -135,7 +164,6 @@ Failure shapes, by field count:
 | Shape | Fields |
 | --- | ---: |
 | Numeric and scoped-literal conversion limits ([numeric conversion](numeric-conversion.md), [scoped numeric](scoped-numeric.md)) | 73 |
-| Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 73 |
 | Repeat behavior, where the field's read is not a tail call (M452: `overlord_weight` and `subject_weight` in `common/agreement_presets`, `total_progress` in `common/situations`) | 3 |
 
 Every field also has three `OutsideMethod` limits (SDK-722): the zero-mask read scope of
@@ -238,7 +266,8 @@ a species from; building `ai_weight` also runs on a country with a country from
 
 - `factor` keeps both of its readers with an unresolved condition. Both read a fixed-point value,
   so the key reports `FixedPoint` with no reader identity.
-- `calc` and `mode` are `Keyword`; their domains stay `Unknown` (SDK-627).
+- `calc` and `mode` are `Keyword` with `Listed` domains (SDK-725). Other keyword readers keep
+  `Unknown` (SDK-627).
 - The read scope of `limit` and `potential` stays unresolved: the engine reads them with scope mask
   0 and checks the scope later, when it validates the entry. The gap is `OutsideMethod` (D5a).
 - `parameters` is read by the trigger that `trigger` names (`OutsideMethod`, D3): a built-in
@@ -274,6 +303,10 @@ a species from; building `ai_weight` also runs on a country with a country from
 - **The domain is every token value.** The method evaluates each value from zero to the largest
   literal token and the first value after it, as `scopes.rs` does. Sampling only the literal
   tokens would miss an interior value that a compare tree accepts.
+- **A stored value is not an accepted name.** `mode` stores a fallback for an unknown name
+  without a diagnostic, and its `InitPostRead` reports and replaces six spellings that the switch
+  knows. Checking only "stored without a diagnostic" accepts every token value; checking only
+  the switch gives 19 names. Both are wrong.
 - **A log call is not a rejection.** The entry reader logs a reassignment and then stores the
   operation, so a key is rejected only when a path returns with no accepted shape after a
   diagnostic.
@@ -291,11 +324,14 @@ a species from; building `ai_weight` also runs on a country with a country from
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"
 cargo parity weight_blocks
 cargo live fixture_weight_block
-cargo live fixture_control_weight_scope
+cargo live fixture_control_weight
 ```
 
 The sweep's `weight_blocks` section gives fields by status and failure shapes per reader identity.
 `fixture_weight_block` parses `ai_weight = { add = 2 modifier = { factor = 0.5 always = yes } }`,
 with no `base`, completely and without a diagnostic; the malformed `base` control gets a
 `reader-malformed-report` on its line. `fixture_control_weight_scope` checks that a planet trigger
-in a weight `modifier` logs `Current Scope: country` on its line.
+in a weight `modifier` logs `Current Scope: country` on its line. `fixture_control_weight_calc`
+checks that an unknown `calc` name gets `reader-malformed-report` and a listed one none;
+`fixture_control_weight_mode` checks that `round` and an unknown `mode` name get
+`engine-parser-log` and `mult` none.
