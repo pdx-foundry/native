@@ -63,6 +63,10 @@ pub(crate) struct NumericInput {
     pub modifier: ModifierInput,
     pub readers: BTreeMap<String, ReaderInput>,
     pub token_readers: BTreeMap<String, TokenInput>,
+    /// Token methods that return the converted value of their text, such as `CToken::GetInt`.
+    pub token_values: BTreeMap<String, TokenInput>,
+    /// The engine's own fixed-point conversion of a text, which a token value method may call.
+    pub fixed_point_text: Vec<Instruction>,
     pub lexer: LexerInput,
 }
 
@@ -84,11 +88,15 @@ pub(crate) struct ReaderInput {
 pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
     let lexer = lexer::token_boundary(&input.lexer);
     let selector = lexer::text_selector(&input.lexer);
-    let readers = input
+    let mut readers: BTreeMap<_, _> = input
         .readers
         .iter()
         .map(|(name, input)| (name.clone(), analyze_reader(input, &lexer, &selector)))
         .collect();
+    readers.extend(input.token_values.iter().map(|(name, value)| {
+        let conversion = value_conversion(value, &input.fixed_point_text);
+        (name.clone(), reader_from_conversion(conversion, &lexer))
+    }));
     NumericFacts {
         modifier_entry: modifier::analyze(&input.modifier, &readers),
         readers,
@@ -111,8 +119,16 @@ impl Default for NumericFacts {
 }
 
 fn analyze_token(input: &TokenInput, lexer: &Result<(), Unresolved>) -> NumericReader {
-    let Some(conversion) = token_conversion(&input.body, &input.names, input.token_text_offset)
-    else {
+    let conversion = token_conversion(&input.body, &input.names, input.token_text_offset);
+    reader_from_conversion(conversion, lexer)
+}
+
+/// The fact of a token conversion that has no reader wrapper and no raw path.
+fn reader_from_conversion(
+    conversion: Option<NumericConversion>,
+    lexer: &Result<(), Unresolved>,
+) -> NumericReader {
+    let Some(conversion) = conversion else {
         return unresolved("numeric-token-shape");
     };
 
@@ -276,11 +292,38 @@ fn token_conversion(
     None
 }
 
+/// A token value method loads the token text and tail-calls one conversion: the imported `atoi`,
+/// or the engine's fixed-point conversion, whose whole body must match its own shape.
+fn value_conversion(
+    input: &TokenInput,
+    fixed_point_text: &[Instruction],
+) -> Option<NumericConversion> {
+    let lines = canonical(&input.body, &input.names);
+    let binding = Shape::parse(include_str!("numeric/shapes/token_value.txt")).matches(&lines)?;
+    if number(&binding, "token_text") != Some(input.token_text_offset) {
+        return None;
+    }
+    match binding.get("conversion")?.as_str() {
+        "decimal_int" => Form::Int.conversion(&binding),
+        "fixed_point_text" => {
+            let lines = canonical(fixed_point_text, &input.names);
+            let binding = Shape::parse(include_str!("numeric/shapes/fixed_point_text.txt"))
+                .matches(&lines)?;
+            Form::FixedPointText.conversion(&binding)
+        }
+        _ => None,
+    }
+}
+
 enum Form {
     Scan,
     Narrow(u8),
     Decimal,
     Binary,
+    /// `atoi`: the scanner's `int`.
+    Int,
+    /// `StringToFixedPoint`: `atoll` for the whole part, then every character after the first dot.
+    FixedPointText,
 }
 
 impl Form {
@@ -363,12 +406,7 @@ impl Form {
                 )
             }
             Self::Decimal => {
-                let low = number(binding, "scale_low")?;
-                let high = number(binding, "scale_high")?;
-                if low > u16::MAX.into() || high > u16::MAX.into() {
-                    return None;
-                }
-                let factor = low | (high << 16);
+                let factor = scale_factor(binding)?;
                 // The matched fractional path pads exactly five decimal digits. Both paths
                 // must use the same unit before a single storage scale is established.
                 let scale = if factor == 10u64.pow(5) {
@@ -382,6 +420,30 @@ impl Form {
                     Known(Signed),
                     scale,
                     vec![DecimalInteger, DecimalFraction, RadixPrefixedInteger],
+                )
+            }
+            Self::Int => (
+                Integer,
+                32,
+                Known(Signed),
+                Known(Some(1)),
+                vec![DecimalInteger],
+            ),
+            Self::FixedPointText => {
+                // The matched body scales a fraction of at most five digits to five; a longer
+                // fraction keeps every digit unscaled. Only 10^5 is the unit of both parts.
+                let factor = scale_factor(binding)?;
+                let scale = if factor == 10u64.pow(5) {
+                    Known(Some(factor))
+                } else {
+                    Unresolved
+                };
+                (
+                    Integer,
+                    64,
+                    Known(Signed),
+                    scale,
+                    vec![DecimalInteger, DecimalFraction],
                 )
             }
             Self::Binary => {
@@ -431,6 +493,16 @@ impl Form {
             // integer arithmetic are in its shape.
         })
     }
+}
+
+/// The constant that `mov` and `movk` form from `scale_low` and `scale_high`.
+fn scale_factor(binding: &Bindings) -> Option<u64> {
+    let low = number(binding, "scale_low")?;
+    let high = number(binding, "scale_high")?;
+    if low > u16::MAX.into() || high > u16::MAX.into() {
+        return None;
+    }
+    Some(low | (high << 16))
 }
 
 fn scaled_range(denominator: u64) -> GrammarProperty<Box<NumericRange>> {

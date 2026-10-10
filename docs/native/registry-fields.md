@@ -28,7 +28,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
   ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, but it
   stays partial for the keyword-domain gaps and for `days`, `months`, `years` and one `factor`
-  alternative, whose `CToken::GetInt()` and `GetFloat()` readers have no numeric fact. The
+  alternative, whose `CToken::GetInt()` and `GetFloat()` readers have established storage but
+  no faithful-storage range ([token value methods](numeric-conversion.md#token-value-methods)). The
   scanner, zero-mask, `trigger` lookup and `parameters` limits are `OutsideMethod`. `CPersistent` block classification of `modifier` does not
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter only as a country with self-linked root, from and prev
@@ -36,7 +37,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   helper evaluates it on an array element ([weight blocks](weight-blocks.md#entry-contexts-m452)).
   The acceptance test `council_agenda_fields_are_complete_with_every_milestone_4_fact`
   (`cargo parity council_agenda`) lists each missing fact and typed gap in one run. It accepts
-  that one `ai_weight` gap and no other typed gap.
+  that one `ai_weight` gap and the range gaps of those four weight keys, when their storage is
+  known; no Atlas claim needs either. It accepts no other typed gap.
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
   from unresolved root paths, not from unclassified reader signatures (`CVariableValue::Read`,
   `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`).

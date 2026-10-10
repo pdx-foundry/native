@@ -30,12 +30,17 @@ write the stored scope at `+0x30`.
 | Token | Key | Behavior |
 | --- | --- | --- |
 | `0x2ef2` | `base` | tail call `CReader::Read(CFixedPoint&)` into `+0x10` |
-| `0x2c89`–`0x2c8b` | `days`, `months`, `years` | jump table; `CToken::GetInt()` on the value token, times 1, 30 or 360, stored to `+0x10` |
-| `0x2c8c` | `factor` | `+0x10 == 0`: `Read(CFixedPoint&)` into `+0x10`; otherwise `CToken::GetFloat()` (a raw fixed-point value) multiplies `+0x10` |
+| `0x2c89`–`0x2c8b` | `days`, `months`, `years` | jump table; `CToken::GetInt()` on the value token, times 1, 30 or 360, times 100000, stored to `+0x10` as a fixed-point day count |
+| `0x2c8c` | `factor` | `+0x10 == 0`: `Read(CFixedPoint&)` into `+0x10`; otherwise `CToken::GetFloat()` (a raw fixed-point value) multiplies `+0x10` as fixed point (divided by 100000) |
 | `0x3fff` | `modifier` | `new(0x2f8)`, inline `CTriggerMTTHModifier` vtables, virtual `CTrigger::Read(CReader&, EScopeType)` with the stored scope, `InsertAtEmplace` into the array at `+0x18` |
 | `0x40b6` | `scaled_modifier` | `new(0x2a0)`, inline vtable, virtual `CScaledMTTHModifier::Read(CReader&)`, insert |
 | `0x40b7` | `complex_trigger_modifier` | `new(0x308)`, constructor, virtual `CComplexTriggerMTTHModifier::Read(CReader&)`, insert |
 | other | operations | `EScriptMaths TokenToEnum<EScriptMaths>(int const&)` (`0x1006c554c`) on the key token |
+
+On M452 (`0x10092e448`), `months` and `years` multiply the 32-bit `int` by 30 or 360 in 32 bits
+before the 64-bit multiply by 100000, so the day count wraps beyond ±71,582,788 months or
+±5,965,232 years; `days` widens first. The [numeric facts](numeric-conversion.md#token-value-methods)
+of the two token methods describe their own result, not this product.
 
 A key that the switch does not name (value `0x10`) logs `unknown command '…' for MTTH/script value
 in file … line : N` and stores nothing. Every operation inserts a `CTriggerMTTHModifier` with an

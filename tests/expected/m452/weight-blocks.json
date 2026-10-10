@@ -537,6 +537,14 @@
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "days"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
         "NumericConversion",
         {
           "kind": "key_path",
@@ -545,12 +553,28 @@
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "months"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
         "NumericConversion",
         {
           "kind": "key_path",
           "path": ["ai_weight", "years"]
         },
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["ai_weight", "years"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "NumericConversion",
@@ -1257,6 +1281,14 @@
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "days"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
         "NumericConversion",
         {
           "kind": "key_path",
@@ -1265,12 +1297,28 @@
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
       ],
       [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "months"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
         "NumericConversion",
         {
           "kind": "key_path",
           "path": ["weight", "years"]
         },
         "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+      ],
+      [
+        "OutsideMethod",
+        {
+          "kind": "key_path",
+          "path": ["weight", "years"]
+        },
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",

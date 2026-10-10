@@ -332,7 +332,7 @@ fn m452_numeric_boundary_engine_parity() {
     }
     let native = crate::Native::open(path).unwrap();
     let facts = crate::internals::numeric_readers::run(&native).unwrap();
-    assert_eq!(facts.readers.len(), 11);
+    assert_eq!(facts.readers.len(), 13);
     for (name, reader) in &facts.token_readers {
         assert!(
             reader.gaps.iter().all(

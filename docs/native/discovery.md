@@ -123,9 +123,27 @@ Failure shapes, by gap count in the field sweep (and in the command population):
 | `OutsideMethod`: the binary-lexer input path | 0 | 903 (139) |
 
 The triggered-modifier `other_keys` details carry the same change under their prefix (45 each).
-Of the 300 remaining typed gaps, 290 are weight-block keys whose reader has no numeric fact:
-`days`, `months` and `years` (73 each) use `CToken::GetInt()`, and one `factor` alternative (71)
-uses `CToken::GetFloat()`. The other 10 are the seven short and three float fields.
+Of the 300 remaining typed gaps, 290 are weight-block keys: `days`, `months` and `years` (73 each)
+use `CToken::GetInt()`, and one `factor` alternative (71) uses `CToken::GetFloat()`. The other 10
+are the seven short and three float fields.
+
+## Token value methods (SDK-739)
+
+`CToken::GetInt()` and `CToken::GetFloat()` now have numeric facts
+([token value methods](numeric-conversion.md#token-value-methods)): signed 32-bit at scale 1, and
+signed 64-bit at scale 100000. Their `accepted_range` stays `Unresolved`, so the 290 weight-key
+gaps keep the typed `NumericConversion` gap, now for the range only. M452:
+
+| Population | Change |
+| --- | --- |
+| `numeric-population`, numeric root fields | none: 188, 178 complete, 10 partial, 0 failed |
+| `registry-field-sweep`, registries | none: 164, 12 complete, 152 partial, 0 failed; 47 registries gain facts and gaps |
+| `command-population` | none |
+
+In the field sweep, 290 weight-key readers have `Reader.numeric` facts; the 219 `GetInt()` keys add
+the scanner `OutsideMethod` gap (3,087 to 3,306). The `factor` key already had it from its
+`CReader::Read(CFixedPoint&)` alternative. Typed gaps stay at 300 and 3. The council agenda gate
+accepts the four range gaps of `ai_weight` ([registry fields](registry-fields.md)).
 
 ## Repeat behavior (SDK-724)
 

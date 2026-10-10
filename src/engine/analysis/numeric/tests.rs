@@ -662,6 +662,133 @@ fn an_incompatible_raw_conversion_cannot_add_literal_forms() {
     assert_eq!(combined.literal_syntax, forms);
 }
 
+/// `StringToFixedPoint` as M452 compiles it, with `scale` as the unit of the whole part.
+fn fixed_point_text_rows(scale: u32) -> Vec<Instruction> {
+    let (low, high) = (scale & 0xffff, scale >> 16);
+    let bytes = arm64!(at 0x3000;
+        stp x20, x19, [sp, #-0x20]!;
+        stp x29, x30, [sp, #0x10];
+        add x29, sp, #0x10;
+        mov x19, x0;
+        bl extern 0x9100;
+        mov x8, #0;
+        dot:;
+        ldrb w9, [x19, x8];
+        cbz w9, >found;
+        add x8, x8, #1;
+        cmp w9, #0x2e;
+        b.ne <dot;
+        found:;
+        sxtw x10, w8;
+        ldrb w11, [x19, x10];
+        cbz w11, >whole;
+        mov x9, #0;
+        mov x8, #0;
+        add x10, x10, x19;
+        add x10, x10, #1;
+        mov w12, #0xa;
+        digit:;
+        mov x13, x9;
+        mul x8, x8, x12;
+        add x8, x8, w11, sxtb;
+        sub x8, x8, #0x30;
+        add x9, x9, #1;
+        ldrb w11, [x10, x13];
+        cbnz w11, <digit;
+        cmp x13, #3;
+        b.hi >sign;
+        cmp x9, #1;
+        b.ls >group;
+        b >tens;
+        whole:;
+        mov x9, #0;
+        mov x8, #0;
+        cmp x9, #1;
+        b.hi >tens;
+        group:;
+        mov w10, #5;
+        sub x11, x10, x9;
+        and x10, x11, #0xfffffffffffffffc;
+        mov w12, #0x2710;
+        mul x8, x8, x12;
+        cmp x11, x10;
+        b.eq >sign;
+        add x9, x9, x10;
+        tens:;
+        sub x9, x9, #5;
+        ten:;
+        add x8, x8, x8, lsl #2;
+        lsl x8, x8, #1;
+        adds x9, x9, #1;
+        b.lo <ten;
+        sign:;
+        ldrb w9, [x19];
+        cmp x0, #0;
+        mov w10, #0x2d;
+        ccmp w9, w10, #0, eq;
+        ccmp x0, #0, #8, ne;
+        cneg x8, x8, lt;
+        mov w9, #low;
+        movk w9, #high, lsl #16;
+        madd x0, x0, x9, x8;
+        ldp x29, x30, [sp, #0x10];
+        ldp x20, x19, [sp], #0x20;
+        ret
+    );
+    decode_arm64(&bytes, 0x3000).unwrap()
+}
+
+/// `CToken::GetInt` and `CToken::GetFloat`: load the token text and tail-call a conversion.
+fn token_value(conversion: u64, text_offset: u32) -> TokenInput {
+    let bytes = arm64!(at 0x2000;
+        ldr x0, [x0, #text_offset];
+        b extern conversion as usize
+    );
+    TokenInput {
+        body: decode_arm64(&bytes, 0x2000).unwrap(),
+        names: BTreeMap::from([
+            (0x3000, "fixed_point_text".into()),
+            (0x9100, "decimal_integer".into()),
+            (0x9200, "decimal_int".into()),
+            (0x9300, "_strtol".into()),
+        ]),
+        token_text_offset: 0x10,
+    }
+}
+
+#[test]
+fn token_value_methods_take_their_storage_from_the_conversion_that_they_call() {
+    let fixed_point_text = fixed_point_text_rows(100_000);
+    let int = value_conversion(&token_value(0x9200, 0x10), &fixed_point_text).unwrap();
+    assert_eq!(
+        (int.width_bits, int.signedness, int.scale),
+        (Known(32), Known(NumericSignedness::Signed), Known(Some(1)))
+    );
+    assert_eq!(
+        int.literal_syntax,
+        GrammarProperty::Partial(vec![NumericLiteralSyntax::DecimalInteger])
+    );
+    let fixed = value_conversion(&token_value(0x3000, 0x10), &fixed_point_text).unwrap();
+    assert_eq!(
+        (fixed.width_bits, fixed.signedness, fixed.scale),
+        (
+            Known(64),
+            Known(NumericSignedness::Signed),
+            Known(Some(100_000))
+        )
+    );
+    // No live case reaches a token value method, so neither has a faithful-storage range.
+    assert_eq!(int.accepted_range, Unresolved);
+    assert_eq!(fixed.accepted_range, Unresolved);
+
+    let changed_scale =
+        value_conversion(&token_value(0x3000, 0x10), &fixed_point_text_rows(10_000));
+    assert_eq!(changed_scale.unwrap().scale, Unresolved);
+    assert!(value_conversion(&token_value(0x3000, 0x10), &fixed_point_text[1..]).is_none());
+    assert!(value_conversion(&token_value(0x9200, 0x18), &fixed_point_text).is_none());
+    assert!(value_conversion(&token_value(0x9300, 0x10), &fixed_point_text).is_none());
+}
+
 fn signed_32_range() -> GrammarProperty<Box<NumericRange>> {
     Known(Box::new(NumericRange {
         minimum: Known(NumericBound::Signed(-2147483648)),

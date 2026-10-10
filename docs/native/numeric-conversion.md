@@ -21,7 +21,7 @@ reader's fact keeps two lists:
   (`numeric-raw-conversion`, `numeric-raw-storage`) or an unjoined raw path
   (`numeric-raw-value-mode`). A storage property or `accepted_range` that is not `Known` is also
   typed, so narrow signedness, a mismatched scale and the readers without a live field stay
-  partial. `literal_syntax` and the `Partial` wrapper of `Reader.numeric` do not count.
+  partial. The weight keys' [token value methods](#token-value-methods) are such readers. `literal_syntax` and the `Partial` wrapper of `Reader.numeric` do not count.
 
 `session/numeric.rs::limits` applies this rule to field, command and weight readers, and
 `session/scoped_numeric.rs` applies it to scoped literals.
@@ -43,8 +43,9 @@ the shared fixed-point reader with complete facts.
 
 ## Method
 
-`binding/binary/numeric.rs` binds reader and token bodies, their imports and format strings;
-`engine/analysis/numeric.rs` matches complete canonical instruction sequences. Changed calls,
+`binding/binary/numeric.rs` binds reader and token bodies, the two token value methods, their
+imports and format strings; `engine/analysis/numeric.rs` matches complete canonical instruction
+sequences. Changed calls,
 stores, branches or unsupported shapes give an unresolved result. The scanner-format match binds
 `%i`, `%d`, `%u`, `%lli`, `%lld`, `%llu` and `%f` to their storage and literal forms. libc
 overflow, locale and the characters that the scanner consumes are the scanner boundary. Which
@@ -61,6 +62,8 @@ once for every reader.
 | Direct `CFixedPoint` | Signed 64-bit integer, scale 100000 | Decimal integer/fraction and radix-prefixed integer |
 | Fixed-point template | Signed 64-bit integer, scale 32768 | Decimal integer/fraction |
 | Direct float | Signed IEEE binary32, no integer scale | Decimal integer/fraction and exponent |
+| `CToken::GetInt()` | Signed 32-bit integer, scale 1 | Decimal integer |
+| `CToken::GetFloat()` | Signed 64-bit integer, scale 100000 | Decimal integer/fraction |
 
 The modifier-entry proof follows the declaration-table numeric path into the direct fixed-point
 reader (`a9818fec780f8313`) and through both insertion capacity paths to a 64-bit entry store;
@@ -86,6 +89,7 @@ enough, and a known range does not close `numeric-overflow`.
 | `signed char`, `unsigned char`, `short`, `unsigned short` | `Unresolved` | Narrow paths keep the low byte or halfword of a 32-bit scan; discarding high bits is narrowing. Sign interpretation is unresolved. |
 | `unsigned int`, `long long`, `unsigned long long` | `Unresolved` | No exposed live field, so no live boundary set. |
 | `float` | `Unresolved` | No exact binary32 variant in `NumericBound`; the public `NumericConversion` gap says so. |
+| `CToken::GetInt()`, `CToken::GetFloat()` | `Unresolved` | No live fixture reaches a weight key. `GetFloat` scales a fraction of up to five digits; see [token value methods](#token-value-methods). |
 
 Scoped literals inherit these ranges only when their concrete storage is established; see
 [scoped numeric](scoped-numeric.md#engine-facts-and-method-m45-release-to-m452).
@@ -107,7 +111,7 @@ Scoped literals inherit these ranges only when their concrete storage is establi
 
 | Reader | Text after the number |
 | --- | --- |
-| Integer, narrow and float | Not read: the reader stores the scanner's result (`12tail` gives 12) |
+| Integer, narrow, float and `CToken::GetInt()` | Not read: the reader stores the scanner's result (`12tail` gives 12) |
 | Direct fixed point | `strchr` searches the whole token for a dot and copies up to five characters after it, padded with `0` (`1.25tail` gives raw `100025`: the buffer holds `25tai`) |
 | Fixed-point template | `%lld%lf` asks for a second number (quoted `"12 34"` gives 46); the fraction goes through binary64 arithmetic and `fcvtzs`, and the sum wraps in 64-bit integer arithmetic |
 
@@ -123,6 +127,33 @@ Scoped literals inherit these ranges only when their concrete storage is establi
 | `float` | `0x1025bdc68` | `%f` |
 | `CFixedPoint` | `0x1025bdc9c` | `%lli`, a `strchr` search for a dot, up to five fractional characters |
 | Fixed-point template | `0x1025bdddc` | `%lld%lf`, scaled fraction, whole-component shift; the assignment count is ignored |
+
+### Token value methods
+
+The weight member reader converts `days`, `months`, `years` and one `factor` alternative with token
+methods that return the value instead of storing it ([weight blocks](weight-blocks.md)). Each loads
+the text from token `+0x10` and tail-calls one conversion; `token_value.txt` matches that body, and
+the callee's alias selects the fact. They have no raw path, so no `numeric-binary-input`. M452:
+
+| Method | Conversion |
+| --- | --- |
+| `CToken::GetInt()` (`0x1025c0b28`) | the imported `atoi`: a signed 32-bit `int`, decimal only |
+| `CToken::GetFloat()` (`0x1025c0b30`) | `StringToFixedPoint(char const*)` (`0x102527140`), engine code matched by `fixed_point_text.txt` |
+
+`StringToFixedPoint` gives `atoll(text) * 100000 + fraction` in 64-bit arithmetic. The fraction is
+every character after the first dot, each read as `character - '0'`, with no digit check. A
+fraction of at most four characters is multiplied up to five places; five or more are kept
+unscaled. The fraction is negated when the whole part is negative, or zero with a leading `-`.
+Unlike the direct reader, which copies at most five characters, a long fraction is not truncated:
+by the matched code `0.123456` gives raw `123456` (1.23456), `1.5tail` folds `tail` into the
+fraction, and a long fraction can overflow the sum. None of this is observed live.
+The scale is `Known(100000)` only when the bound `madd` constant is 10^5, the unit of the
+five-place fraction.
+
+`accepted_range` stays `Unresolved`, so the four weight keys keep the typed gap. A known range
+needs live cases, and the fixture route decodes only a tail reader's destination: a weight key
+stores the caller's product into the weight's base. One reader range would also be wrong for
+`months` and `years`, whose caller multiplies in 32 bits.
 
 ### Raw fixed-point paths
 
