@@ -1190,6 +1190,52 @@ mod tests {
     use crate::engine::analysis::decode::{Instruction, decode_arm64};
     use crate::engine::analysis::discovery::Symbol;
 
+    #[test]
+    fn selected_virtual_evaluations_keep_their_functions_for_context_decoding() {
+        use crate::BlockFamily;
+        use crate::engine::analysis::callbacks::StringFunctions;
+        use crate::engine::analysis::callbacks::blocks::{
+            Evaluation, EvaluationCall, EvaluationSite, TypePointers, named_functions,
+        };
+
+        let bytes = arm64!(at 0x1000;
+            add x8, x0, #0x40;
+            ldr x9, [x0, #0x80];
+            cmp x2, #0;
+            csel x0, x8, x9, eq;
+            ldr x8, [x0];
+            ldr x8, [x8, #0x48];
+            blr x8;
+            ret
+        );
+        let rows = decode_arm64(&bytes, 0x1000).unwrap();
+        let site = EvaluationSite {
+            address: 0x1018,
+            function: 0x1000,
+            call: EvaluationCall::Register(8),
+        };
+        let pointers = TypePointers {
+            method_of: Some("COwner".into()),
+            registers: BTreeMap::from([(0, "COwner".into())]),
+            members: BTreeMap::new(),
+        };
+        let named = named_functions(
+            &[site],
+            &BTreeMap::from([(0x1000, rows)]),
+            &BTreeMap::from([(0x1000, pointers)]),
+            &Evaluation {
+                evaluators: &BTreeMap::new(),
+                slots: &BTreeMap::from([(0x48, BlockFamily::Effect)]),
+                tooltip_builders: &BTreeMap::new(),
+                tooltip_slots: &BTreeMap::new(),
+            },
+            &StringFunctions::default(),
+            &BTreeMap::new(),
+        );
+        assert_eq!(named.evaluating, BTreeSet::from([0x1000]));
+        assert!(named.tooltips.is_empty());
+    }
+
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {
         Instruction {
             address,

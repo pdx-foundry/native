@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v22`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v23`) holds
 the baseline: **164 registries, 8 complete, 156 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -440,8 +440,8 @@ rule.
 **Result on M452.** The field sweep's `entry_contexts` section gives these counts
 ([method authoring](method-authoring.md#run-over-the-whole-population)). 312 root trigger,
 effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and effect blocks, 154
-have contexts and no entry gap, 50 have contexts and a gap, and 35 have none (SDK-732 part 2;
-153, 46 and 40 before); 26 keep several
+have contexts and no entry gap, 54 have contexts and a gap, and 31 have none (SDK-735;
+154, 50 and 35 before); 26 keep several
 contexts with a known `this`, 66 name a typed `from` and 4 a typed `prev`. The 73 weight blocks
 are on [weight blocks](weight-blocks.md#entry-contexts-m452). 6 registries have 7 direct
 evaluation calls in the owner's methods whose block the method cannot name. SDK-726's two rules
@@ -521,8 +521,14 @@ call sites were checked by hand in the disassembly:
 - tradition `potential`: `CTraditionType::IsPotential` builds its own country scope.
 - diplomatic action `on_accept`: `CDiplomaticActionType::OnAccept` builds two country scopes, links
   the second as the first's from and runs `this + 0x2f8` with the first.
-- tradition `on_enabled`: `OnEnabled` runs the swap's or its own effect through vtable slot `+0x48`
-  of a `csel` of the two objects, which names no one block, so the block has a gap (SDK-735).
+- tradition and ascension perk `on_enabled` and `on_disabled` (SDK-735): both registries use
+  `CTraditionType`. `OnEnabled` (`0x100ce3648`) builds a country scope at `sp + 0x60`, selects
+  the swap's block `+0x378` or its own `+0x418` at `0x100ce3748`, then calls slot `+0x48` of
+  that same selected object at `0x100ce3848`. `OnDisabled` (`0x100ce3a80`) builds the same scope,
+  selects the swap's `+0x420` or its own `+0x4c0` at `0x100ce3b7c`, and calls the slot at
+  `0x100ce3c7c`. Each owner's block gains a country with self-links. The indexed swap load is
+  still unknown; those arrivals retain `selected-block-identity`, which also keeps the path-limit
+  gap. The two `on_enabled` contexts agree with the config's country `this` and `root`.
 - edict `effect`: `CCountry::AddEdict(CEdict const*)` (`0x10028d49c`) keeps the edict in `x21`,
   builds a scope at `x19 + 0x60` (`CEventScope(int)`, `SetCountry` of `this`) and calls
   `[[x21 + 0x2e0]] + 0x48` with `x0 = x21 + 0x2e0`: a country with self-links. `RemoveEdict` runs
@@ -615,10 +621,28 @@ the 4 mission blocks have no readable context. Specialist subject type `on_progr
 config gives `this = country`, but `FinishConversion` runs it on the agreement (above). The vanilla
 blocks are empty, so no script shows the intended scope; read it as a source error.
 
+**Conditional selections (SDK-735).** Against `30574fe`, the full sweep changes only these four
+blocks in two registries; no existing context or other answer changes. Across all 312 blocks,
+187 have contexts without an entry gap, 57 have contexts with a gap, and 68 have no context.
+The registry totals remain 8 complete, 156 partial and 0 failed. Unknown receiver memory is
+reserved only for the selection fallback, so existing singleton runs retain their former memory
+behavior. A test confirms that storing a scope pointer in this receiver still lets it escape at
+an opaque call.
+
+The fallback covers positive receiver offsets below 1 MiB, with at most 16 candidate offsets per
+register, and a direct evaluator or a locally proved same-receiver virtual slot. Receiver spills,
+array elements and caller-supplied scopes need further origin tracking. Keep these limits until
+an Atlas-required block needs those shapes; increasing bounds alone cannot establish an origin.
+The local dispatch proof must discard a vtable identity after a 32-bit write: `mov w8,w8`
+truncates the pointer even though the register number stays the same.
+
 **Gaps.**
 
-- 26 trigger and effect blocks have no attributed evaluation and 1 is named only by tooltip calls
-  (31 before SDK-732 part 2, 56 before part 1). The 35 weight blocks with this gap are on
+- Four effect blocks retain `selected-block-identity` and `path-limit`: the swap paths above do
+  not establish which block they evaluate. A readable owner context does not erase this uncertainty.
+
+- 21 trigger and effect blocks have no attributed evaluation and 1 is named only by tooltip calls
+  (25 before SDK-735). The 35 weight blocks with this gap are on
   [weight blocks](weight-blocks.md#entry-contexts-m452). By group, read by hand on M452:
   - *Offset getters.* Specialist subject type `on_progress_complete` resolves (above). Agreement
     term value `activate_effect` and `deactivate_effect` keep the gap:
@@ -629,8 +653,6 @@ blocks are empty, so no script shows the intended scope; read it as a source err
     `CSpecialistSubjectLevel::OnLevelUp` and `DeactivatePerks` call slot `+0x48` of each perk of the
     level's perk array through `ldr x8,[x0,#0x40]!` and `#0xe8]!` on an agreement scope.
   - *Helper.* Mission `on_success`, `on_fail` and `on_cancel` gain an unreadable context (above).
-  - *Conditional selection* (SDK-735). Tradition and ascension perk `on_enabled` and `on_disabled`
-    keep the gap: `OnEnabled` runs a `csel` of the swap's and its own effect.
   - *Members that no type pointer leads to.* First contact `on_roll_failed`:
     `CFirstContact::HandleRollFailed(int)` calls slot `+0x48` of `[this + 0x38] + 0x1d0`, and no
     `CFirstContact` constructor fills `+0x38` with a stage parameter. Pop faction `on_create`:
@@ -673,7 +695,7 @@ blocks are empty, so no script shows the intended scope; read it as a source err
   a function that the pass enters and that stops at the path limit (`AddSpentResourcesToScope`
   under buildings `on_queued` and `on_unqueued`; the callers of `CColony::CanAddBuildingType` for
   buildings `potential`).
-- Path, loop and step limits are gaps only where a contradiction appears (37 trigger and effect
+- Path, loop and step limits are gaps only where a contradiction appears (41 trigger and effect
   blocks at the path limit, 15 at the loop limit); 16 stop at a branch on an unknown value and 4 at
   an instruction. The weight blocks' bounds are on
   [weight blocks](weight-blocks.md#entry-contexts-m452).

@@ -357,6 +357,25 @@ mod tests {
     }
 
     #[test]
+    fn a_selected_blocks_known_context_keeps_its_identity_gap() {
+        let mut fields = [field("potential", "Trigger")];
+        let mut findings = found(&[country()]);
+        findings.unresolved.insert("selected-block-identity");
+        let gaps = attached(
+            &mut fields,
+            vec![root("potential", Some(0x40))],
+            &facts(&[(0x40, BlockFamily::Trigger, findings)], 0),
+        );
+
+        assert_eq!(fields[0].entry_contexts.len(), 1);
+        assert!(
+            field_gaps(&gaps, "potential")
+                .iter()
+                .any(|detail| { detail.ends_with("(selected-block-identity)") })
+        );
+    }
+
+    #[test]
     fn a_weight_block_that_no_call_evaluates_has_a_gap() {
         let mut fields = [field("ai_weight", "Weight")];
         let gaps = attached(
