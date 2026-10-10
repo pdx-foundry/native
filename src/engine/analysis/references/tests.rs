@@ -10,12 +10,14 @@ const FIND: &str = "NPdxRobinHoodTable::CIterator<CShip> CPdxRobinHoodTable<CShi
 const GETTER: &str = "CShipDatabase::GetShip(CString const&) const";
 
 /// Code and names built from shape text: each placeholder is replaced by a test value, scratch
-/// registers `xrN` become `x(8+N)`, and every named address gets its own location.
+/// registers `xrN` become `x(8+N)`, and every named address gets its own location. Each unnamed
+/// `?` address gets its own `0x100`-byte range, recorded in order, so data can be placed there.
 #[derive(Default)]
-pub(super) struct Image {
+pub(crate) struct Image {
     functions: BTreeMap<String, Vec<Instruction>>,
     names: BTreeMap<u64, String>,
     next_function: u64,
+    unnamed: Vec<u64>,
 }
 
 impl Image {
@@ -29,8 +31,34 @@ impl Image {
         address
     }
 
+    /// The address that a shape value names: a fresh unnamed range for `?`.
+    fn value_address(&mut self, value: &str) -> u64 {
+        if value != "?" {
+            return self.address_of(value);
+        }
+
+        let address = 0x90_0000 + self.unnamed.len() as u64 * 0x100;
+        self.unnamed.push(address);
+
+        address
+    }
+
+    /// The rows of the function that `add` built as `name`.
+    pub(crate) fn function(&self, name: &str) -> &[Instruction] {
+        &self.functions[name]
+    }
+
+    pub(crate) fn names(&self) -> &BTreeMap<u64, String> {
+        &self.names
+    }
+
+    /// The unnamed `?` addresses, in the order that their `adrp` lines formed them.
+    pub(crate) fn unnamed(&self) -> &[u64] {
+        &self.unnamed
+    }
+
     /// Add the function `name`, built from `shape` with `values` substituted for placeholders.
-    pub(super) fn add(&mut self, name: &str, shape: &str, values: &[(&str, &str)]) -> &mut Self {
+    pub(crate) fn add(&mut self, name: &str, shape: &str, values: &[(&str, &str)]) -> &mut Self {
         let mut text = shape.to_owned();
         for (key, value) in values {
             text = text.replace(&format!("{{{key}}}"), value);
@@ -72,10 +100,18 @@ impl Image {
         let (operation, operands) = text.split_once(' ').unwrap_or((text, ""));
         let mut operands = concrete_registers(operands);
         if operation == "adrp" {
-            let page = self.address_of(next.expect("an adrp completes a named address")) & !0xfff;
+            let address = self.value_address(next.expect("an adrp completes a named address"));
+            let page = address & !0xfff;
             operands = operands.replace("PAGE", &format!("#{page:#x}"));
         } else if let Some(value) = value.filter(|_| operands.contains('G')) {
-            let offset = self.address_of(value) & 0xfff;
+            let address = match value {
+                "?" => *self
+                    .unnamed
+                    .last()
+                    .expect("an adrp forms each unnamed address"),
+                named => self.address_of(named),
+            };
+            let offset = address & 0xfff;
             operands = operands.replacen('G', &format!("#{offset:#x}"), 1);
         } else if let Some(value) = value.filter(|_| operands.ends_with("CALL")) {
             let target = self.address_of(value);

@@ -1,10 +1,11 @@
 {
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
-  "imports": ["(undefined) external _atoll (from libSystem)", "(undefined) external _sscanf (from libSystem)"],
+  "imports": ["(undefined) external __DefaultRuneLocale (from libSystem)", "(undefined) external ___maskrune (from libSystem)", "(undefined) external _atoll (from libSystem)", "(undefined) external _sscanf (from libSystem)"],
   "observations": [
     {"architecture": "arm64","locale": "C","os_build": "26A428"},
     {"library": "/usr/lib/system/libsystem_c.dylib","symbol": "sscanf","uuid": "fba7b23eaa603a909aa4a7a2e0ad63ee"},
     {"library": "/usr/lib/system/libsystem_c.dylib","symbol": "atoll","uuid": "fba7b23eaa603a909aa4a7a2e0ad63ee"},
+    {"library": "/usr/lib/system/libsystem_c.dylib","symbol": "__maskrune","uuid": "fba7b23eaa603a909aa4a7a2e0ad63ee"},
     {"assignments": 1,"bits": "000000007fffffff","consumed": 11,"counted_assignments": 1,"errno": 0,"format": "%i","fraction_bits": "0000000000000000","input": "-2147483649"},
     {"assignments": 1,"bits": "0000000080000000","consumed": 11,"counted_assignments": 1,"errno": 0,"format": "%i","fraction_bits": "0000000000000000","input": "-2147483648"},
     {"assignments": 1,"bits": "0000000080000001","consumed": 11,"counted_assignments": 1,"errno": 0,"format": "%i","fraction_bits": "0000000000000000","input": "-2147483647"},
@@ -235,6 +236,7 @@
     {"errno": 0,"function": "atoll","input": "1e2","value": 1},
     {"errno": 22,"function": "atoll","input": "not_a_number","value": 0},
     {"errno": 22,"function": "atoll","input": "","value": 0},
-    {"errno": 0,"function": "atoll","input": "1.25tail","value": 1}
+    {"errno": 0,"function": "atoll","input": "1.25tail","value": 1},
+    {"bytes": [9,10,11,12,13,32],"function": "lexer_space"}
   ]
 }

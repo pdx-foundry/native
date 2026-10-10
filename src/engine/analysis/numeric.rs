@@ -1,7 +1,10 @@
 //! Whole-function numeric conversion proofs. Shapes keep every branch, call and destination
 //! store, so a constant alone cannot establish a scale. Bound scanner contracts establish
-//! partial literal forms; library edge cases and lexer acceptance remain unresolved.
+//! partial literal forms; library edge cases remain unresolved. The token text that every reader
+//! converts comes from the text lexer, whose boundary `lexer` establishes once.
 use std::collections::BTreeMap;
+pub(crate) mod lexer;
+pub(crate) use lexer::LexerInput;
 pub(crate) mod modifier;
 pub(crate) use modifier::ModifierInput;
 pub use modifier::ModifierNumericEntry;
@@ -42,6 +45,7 @@ pub(crate) struct NumericInput {
     pub modifier: ModifierInput,
     pub readers: BTreeMap<String, ReaderInput>,
     pub token_readers: BTreeMap<String, TokenInput>,
+    pub lexer: LexerInput,
 }
 
 pub(crate) struct TokenInput {
@@ -60,10 +64,11 @@ pub(crate) struct ReaderInput {
 }
 
 pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
+    let lexer = lexer::token_boundary(&input.lexer);
     let readers = input
         .readers
         .iter()
-        .map(|(name, input)| (name.clone(), analyze_reader(input)))
+        .map(|(name, input)| (name.clone(), analyze_reader(input, &lexer)))
         .collect();
     NumericFacts {
         modifier_entry: modifier::analyze(&input.modifier, &readers),
@@ -71,7 +76,7 @@ pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
         token_readers: input
             .token_readers
             .iter()
-            .map(|(name, token)| (name.clone(), analyze_token(token)))
+            .map(|(name, token)| (name.clone(), analyze_token(token, &lexer)))
             .collect(),
     }
 }
@@ -86,20 +91,20 @@ impl Default for NumericFacts {
     }
 }
 
-fn analyze_token(input: &TokenInput) -> NumericReader {
+fn analyze_token(input: &TokenInput, lexer: &Result<(), Unresolved>) -> NumericReader {
     let Some(conversion) = token_conversion(&input.body, &input.names, input.token_text_offset)
     else {
         return unresolved("numeric-token-shape");
     };
 
-    let gaps = conversion_gaps(&conversion);
+    let gaps = conversion_gaps(&conversion, lexer);
     NumericReader {
         conversion: GrammarProperty::Partial(Some(conversion)),
         gaps,
     }
 }
 
-fn analyze_reader(input: &ReaderInput) -> NumericReader {
+fn analyze_reader(input: &ReaderInput, lexer: &Result<(), Unresolved>) -> NumericReader {
     let wrapper = canonical(&input.wrapper, &input.names);
     let scalar = Shape::parse(include_str!("numeric/shapes/scalar.txt")).matches(&wrapper);
     let fixed = Shape::parse(include_str!("numeric/shapes/fixed_wrapper.txt")).matches(&wrapper);
@@ -119,7 +124,7 @@ fn analyze_reader(input: &ReaderInput) -> NumericReader {
     let Some(conversion) = conversion else {
         return unresolved("numeric-token-shape");
     };
-    let mut gaps = conversion_gaps(&conversion);
+    let mut gaps = conversion_gaps(&conversion, lexer);
     if let Some(reason) = missing_path {
         gaps.push(Unresolved::new(reason));
     }
@@ -132,13 +137,18 @@ fn analyze_reader(input: &ReaderInput) -> NumericReader {
     }
 }
 
-fn conversion_gaps(conversion: &NumericConversion) -> Vec<Unresolved> {
-    let mut gaps = vec![
-        Unresolved::new("numeric-overflow"),
-        Unresolved::new("numeric-lexical-boundary"),
+/// `lexer` is the token boundary's result. Its obstacle, if any, is the gap on the token text
+/// that every scanner receives.
+fn conversion_gaps(
+    conversion: &NumericConversion,
+    lexer: &Result<(), Unresolved>,
+) -> Vec<Unresolved> {
+    let mut gaps = vec![Unresolved::new("numeric-overflow")];
+    gaps.extend(lexer.clone().err());
+    gaps.extend([
         Unresolved::new("numeric-trailing-text"),
         Unresolved::new("numeric-external-library-conversion"),
-    ];
+    ]);
     if conversion.representation == GrammarProperty::Known(NumericRepresentation::BinaryFloat)
         && conversion.width_bits == GrammarProperty::Known(32)
     {

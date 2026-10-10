@@ -488,4 +488,4 @@ static TRIGGER_MAP: LazyLock<Shape> =
 
 #[cfg(test)]
 #[path = "references/tests.rs"]
-mod tests;
+pub(crate) mod tests;

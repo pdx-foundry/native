@@ -55,6 +55,31 @@ pub fn canonical(rows: &[Instruction], names: &BTreeMap<u64, String>) -> Vec<Lin
         .collect()
 }
 
+/// Canonicalize a function whose `adr` lines form local jump-table bases. Each `adr` keeps its
+/// relative instruction position, so a relocated body still matches; `None` when an `adr`
+/// target is outside the body.
+pub(crate) fn canonical_local(
+    rows: &[Instruction],
+    names: &BTreeMap<u64, String>,
+) -> Option<Vec<Line>> {
+    let mut lines = canonical(rows, names);
+    for (index, (row, line)) in rows.iter().zip(&mut lines).enumerate() {
+        if row.operation != "adr" {
+            continue;
+        }
+
+        let target = row
+            .operands
+            .split_once(",#0x")
+            .and_then(|(_, address)| u64::from_str_radix(address, 16).ok())
+            .and_then(|address| rows.iter().position(|row| row.address == address))?;
+        let (destination, _) = line.text.split_once(',')?;
+        line.text = format!("{destination},@{:+}", target as i64 - index as i64);
+    }
+
+    Some(lines)
+}
+
 /// The state that one function's canonical lines share.
 struct Canonicalizer<'a> {
     names: &'a BTreeMap<u64, String>,

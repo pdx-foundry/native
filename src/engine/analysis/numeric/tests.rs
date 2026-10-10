@@ -85,19 +85,25 @@ fn direct_scan_proves_storage_and_partial_syntax_without_universal_acceptance() 
 
 #[test]
 fn scoped_token_reader_keeps_conversion_limits_and_fails_closed() {
-    let fact = analyze_token(&TokenInput {
-        body: scan_rows(),
-        names: names("%i"),
-        token_text_offset: 0x10,
-    });
+    let fact = analyze_token(
+        &TokenInput {
+            body: scan_rows(),
+            names: names("%i"),
+            token_text_offset: 0x10,
+        },
+        &Ok(()),
+    );
     assert!(matches!(fact.conversion, GrammarProperty::Partial(Some(_))));
     assert!(fact.gaps.iter().any(|gap| gap.reason == "numeric-overflow"));
 
-    let missing = analyze_token(&TokenInput {
-        body: scan_rows(),
-        names: BTreeMap::new(),
-        token_text_offset: 0x10,
-    });
+    let missing = analyze_token(
+        &TokenInput {
+            body: scan_rows(),
+            names: BTreeMap::new(),
+            token_text_offset: 0x10,
+        },
+        &Ok(()),
+    );
     assert_eq!(missing.conversion, GrammarProperty::Unresolved);
 }
 
@@ -546,6 +552,7 @@ fn byte_conversion_keeps_narrowing_separate_from_parser_range() {
 }
 
 mod boundaries;
+mod lexer;
 mod modifier;
 
 #[test]

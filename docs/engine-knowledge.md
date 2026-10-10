@@ -17,6 +17,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Nested command grammar | [Command grammar](native/command-grammar.md) | Forms and stage chains, member ledgers, target arguments, parser observations, population results and the consumer boundary |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Declarations, target getters, modifiers, categories, scopes and links, localization tables, on_action and game rule call sites, defines |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, owner initializers, identifier grammar, flag stores and namespaces |
+| Script tokens | [Text lexer](native/text-lexer.md) | The token boundary: input file rule, word, quote, comment and operator rules, token kinds, what readers receive and the end-of-input kind |
 | Numeric conversion | [Numeric conversion](native/numeric-conversion.md) | Reader shapes, scanner formats, faithful-storage ranges, live boundary samples and the current numeric result |
 | Scoped numeric operands | [Scoped numeric](native/scoped-numeric.md) | Whole-body operand proofs, subtype joins, routing forms, owner derivation, the lexer string investigation and retired world evaluation results |
 | Duration keys | [Duration keys](native/durations.md) | Unit factors, combination rules, omitted counts, the flag-store countdown and the modifier and trait consumers |

@@ -39,15 +39,20 @@ constructor evidence establishes the concrete storage; unresolved destinations k
 `Reader.numeric: Unresolved`. The live matrix (`tests/expected/scoped-numeric-m452/`) checks the
 inherited range at `overclock_cooldown` and `cycle_length_in_days`.
 
-## Result on M451-hotfix
+## Result on M452
 
-At `main` `6f643a1`, `scoped-numeric-population` covers all 164 registries and 2,170 commands
-with no failed question. Registry destinations: 7, **0 complete, 7 partial, 0 failed**. Command
-arguments: 302, **0 complete, 302 partial, 0 failed**: 150 signed 32-bit integer and 152 signed
-64-bit fixed point at scale 100000, all with a known range. Every partial answer keeps the
-scoped-literal conversion-boundary gap and the outside-method limit for qualified scopes,
-parameters, lookup outcomes and evaluation. A repeated operand `Merges`
-([repeat behavior](registry-fields.md#repeat-behavior)).
+With the SDK-721 change (`e238523`), `scoped-numeric-population` covers all 164 registries and
+2,178 commands with no failed question; a capture of `main` gives the same report. Registry
+destinations, including nested key paths: 107 in 21 registries, **0 complete, 97 partial, 10
+failed**. The 97 partial ones are 95 signed 64-bit fixed point at scale 100000 and two signed
+32-bit integer, all with a known range. The 10 failed ones are the `multiplier` and `mult` keys of
+five triggered modifier blocks of `common/pop_jobs`, whose scoped destination vtable is not
+established. Command arguments: 302, **0 complete, 302 partial, 0 failed**: 150 signed 32-bit
+integer and 152 signed 64-bit fixed point at scale 100000, all with a known range. Every partial
+answer keeps the scoped-literal conversion-boundary gap and the outside-method limit for qualified
+scopes, parameters, lookup outcomes and evaluation. The token readers no longer keep
+`numeric-lexical-boundary` ([text lexer](text-lexer.md)); the public gap text stays as it is
+until SDK-720. A repeated operand `Merges` ([repeat behavior](registry-fields.md#repeat-behavior)).
 
 ## Live fixture pitfalls
 

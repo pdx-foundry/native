@@ -108,7 +108,7 @@ fn fixed_reader(binary: bool) -> ReaderInput {
 fn both_fixed_wrappers_prove_unscaled_raw_storage_but_not_mode_selection() {
     for (binary, scale) in [(false, 100000), (true, 32768)] {
         let input = fixed_reader(binary);
-        let reader = analyze_reader(&input);
+        let reader = analyze_reader(&input, &Ok(()));
         let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
             panic!("unproved wrapper: {:?}", reader.gaps);
         };
@@ -119,7 +119,6 @@ fn both_fixed_wrappers_prove_unscaled_raw_storage_but_not_mode_selection() {
             reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>(),
             [
                 "numeric-overflow",
-                "numeric-lexical-boundary",
                 "numeric-trailing-text",
                 "numeric-external-library-conversion",
                 "numeric-raw-value-mode"
@@ -139,13 +138,13 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
         let mut input = fixed_reader(false);
         input.wrapper[index].operation = operation.into();
         input.wrapper[index].operands = operands.into();
-        let reader = analyze_reader(&input);
+        let reader = analyze_reader(&input, &Ok(()));
         assert_eq!(reader.conversion, GrammarProperty::Unresolved);
         assert_eq!(reader.gaps[0].reason, "numeric-wrapper-shape");
     }
     let mut input = fixed_reader(true);
     input.raw_token.clear();
-    let reader = analyze_reader(&input);
+    let reader = analyze_reader(&input, &Ok(()));
     let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
         panic!("ordinary path was lost");
     };
@@ -161,19 +160,38 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
 }
 
 #[test]
-fn scanner_pointer_and_return_check_are_required_without_proving_the_lexer() {
+fn a_lexer_obstacle_is_the_token_text_gap_of_readers_and_token_readers() {
+    let obstacle = Err(super::super::Unresolved::new("numeric-lexer-shape"));
+    let reader = analyze_reader(&fixed_reader(false), &obstacle);
+    let token = analyze_token(
+        &TokenInput {
+            body: scan_rows(),
+            names: names("%i"),
+            token_text_offset: 0x10,
+        },
+        &obstacle,
+    );
+    for gaps in [&reader.gaps, &token.gaps] {
+        assert_eq!(gaps[1].reason, "numeric-lexer-shape");
+        assert!(
+            gaps.iter()
+                .all(|gap| gap.reason != "numeric-lexical-boundary")
+        );
+    }
+    assert!(matches!(
+        reader.conversion,
+        GrammarProperty::Partial(Some(_))
+    ));
+}
+
+#[test]
+fn scanner_pointer_and_return_check_are_required() {
     let token = TokenInput {
         body: scan_rows(),
         names: names("%i"),
         token_text_offset: 0x10,
     };
-    let reader = analyze_token(&token);
-    assert!(
-        reader
-            .gaps
-            .iter()
-            .any(|gap| gap.reason == "numeric-lexical-boundary")
-    );
+    let reader = analyze_token(&token, &Ok(()));
     assert!(
         reader
             .gaps
@@ -200,7 +218,7 @@ fn binary32_bounds_have_a_specific_gap_only_after_the_conversion_is_proved() {
             names: names(format),
             token_text_offset: 0x10,
         };
-        let reader = analyze_token(&token);
+        let reader = analyze_token(&token, &Ok(()));
         assert_eq!(
             reader
                 .gaps
@@ -220,11 +238,14 @@ fn binary32_bounds_have_a_specific_gap_only_after_the_conversion_is_proved() {
             }
         );
     }
-    let missing = analyze_token(&TokenInput {
-        body: scan_rows(),
-        names: BTreeMap::new(),
-        token_text_offset: 0x10,
-    });
+    let missing = analyze_token(
+        &TokenInput {
+            body: scan_rows(),
+            names: BTreeMap::new(),
+            token_text_offset: 0x10,
+        },
+        &Ok(()),
+    );
     assert_eq!(missing.conversion, Unresolved);
     assert_eq!(missing.gaps.len(), 1);
     assert_eq!(missing.gaps[0].reason, "numeric-token-shape");
@@ -256,7 +277,22 @@ fn m452_numeric_boundary_engine_parity() {
             [format!("mov w0,#{result:#x}"), "ret".into()]
         );
     }
+    // The lexer's input is the `CFile` that both `CTextLexer(CFile*, bool)` bodies store at
+    // `+8`; GetTok calls its slots `0x10` and `0x58`.
+    for class in ["CMemoryFile", "CArchiveFile"] {
+        let vtable = image.address(&format!("vtable for {class}")).unwrap() + 0x10;
+        for (slot, member) in [(0x10, "Get()"), (0x58, "IsValid() const")] {
+            let target = format!("{class}::{member}");
+            let address = image.address(&target).unwrap();
+            assert_eq!(
+                image.slots(vtable + slot, 1).unwrap()[0].holds,
+                format!("{address:#x} {target}")
+            );
+        }
+    }
     for (address, operation, operands) in [
+        (0x1025b0e88, "stp", "x8,x1,[x0],#0x18"),
+        (0x1025b0f44, "stp", "x8,x1,[x0],#0x18"),
         (0x1025b4d18, "str", "x1,[x0,#0x30]"),
         (0x1025c06d4, "mov", "w8,#0x167"),
         (0x1025c06d8, "str", "w8,[x0]"),
@@ -270,6 +306,14 @@ fn m452_numeric_boundary_engine_parity() {
     let native = crate::Native::open(path).unwrap();
     let facts = crate::internals::numeric_readers::run(&native).unwrap();
     assert_eq!(facts.readers.len(), 11);
+    for (name, reader) in &facts.token_readers {
+        assert!(
+            reader.gaps.iter().all(
+                |gap| !gap.reason.contains("lexer") && gap.reason != "numeric-lexical-boundary"
+            ),
+            "{name}"
+        );
+    }
     for (name, reader) in facts.readers {
         let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
             panic!("{name}: {:?}", reader.gaps);
@@ -285,12 +329,17 @@ fn m452_numeric_boundary_engine_parity() {
         assert_eq!(conversion.accepted_range, range, "{name}");
         for reason in [
             "numeric-overflow",
-            "numeric-lexical-boundary",
             "numeric-trailing-text",
             "numeric-external-library-conversion",
         ] {
             assert!(reader.gaps.iter().any(|gap| gap.reason == reason), "{name}");
         }
+        assert!(
+            reader.gaps.iter().all(
+                |gap| !gap.reason.contains("lexer") && gap.reason != "numeric-lexical-boundary"
+            ),
+            "{name}"
+        );
         if matches!(conversion.width_bits, Known(8 | 16)) {
             assert_eq!(conversion.signedness, Unresolved, "{name}");
         }

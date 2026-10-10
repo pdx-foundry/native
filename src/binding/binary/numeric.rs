@@ -5,7 +5,7 @@ use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     decode::{Instruction, decode_arm64},
     discovery::Symbol,
-    numeric::{ModifierInput, NumericInput, ReaderInput, TokenInput},
+    numeric::{LexerInput, ModifierInput, NumericInput, ReaderInput, TokenInput},
     references::shapes::canonical,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,10 +40,26 @@ pub(in crate::binding) fn read(
             ))
         })
         .collect();
+    let lexer = lexer_input(&text, image, &names)?;
     Ok(NumericInput {
         readers,
         modifier,
         token_readers,
+        lexer,
+    })
+}
+
+fn lexer_input(
+    text: &Text<'_>,
+    image: &Image<'_>,
+    names: &BTreeMap<u64, String>,
+) -> Result<LexerInput, AnalysisError> {
+    let body = decode_unique_symbol_or_empty(text, image.symbols, "CTextLexer::GetTok()")?;
+    let names = referenced_names(&[&body], names, &[]);
+    Ok(LexerInput {
+        body,
+        names,
+        data: super::declarations::read_only_data(image.bytes)?,
     })
 }
 
@@ -63,7 +79,7 @@ fn reader_input(
     let cold_one = format!("{wrapper_name} [clone .cold.1]");
     let cold_two = format!("{wrapper_name} [clone .cold.2]");
     // The scanner contract supplies C-format storage types and representable conversion
-    // forms, not overflow, locale, trailing-text or lexer acceptance rules.
+    // forms, not overflow, locale or trailing-text rules. The lexer forms the token text.
     let aliases = [
         (token_name.as_str(), "token_conversion"),
         (raw_name, "raw_conversion"),

@@ -2,7 +2,7 @@
 use std::collections::BTreeMap;
 
 use super::decode::Instruction;
-use super::references::shapes::{Bindings, Line, Shape, canonical};
+use super::references::shapes::{Bindings, Shape, canonical_local};
 use super::stop::Unresolved;
 
 #[derive(Clone)]
@@ -138,7 +138,8 @@ fn matched(input: &Input, name: &str, shape: &str) -> Result<Bindings, Unresolve
         .bodies
         .get(name)
         .ok_or(Unresolved::new("scoped-body"))?;
-    let lines = canonical_body(body, &input.names)?;
+    let lines =
+        canonical_local(body, &input.names).ok_or(Unresolved::new("scoped-local-address"))?;
     let bindings = Shape::parse(shape)
         .matches(&lines)
         .ok_or(Unresolved::new("scoped-body-shape"))?;
@@ -148,31 +149,6 @@ fn matched(input: &Input, name: &str, shape: &str) -> Result<Bindings, Unresolve
         return Err(Unresolved::new("scoped-diagnostic-source"));
     }
     Ok(bindings)
-}
-
-/// Local jump-table bases retain their instruction position when the executable moves.
-fn canonical_body(
-    body: &[Instruction],
-    names: &BTreeMap<u64, String>,
-) -> Result<Vec<Line>, Unresolved> {
-    let mut lines = canonical(body, names);
-    for (index, (row, line)) in body.iter().zip(&mut lines).enumerate() {
-        if row.operation != "adr" {
-            continue;
-        }
-        let target = row
-            .operands
-            .split_once(",#0x")
-            .and_then(|(_, address)| u64::from_str_radix(address, 16).ok())
-            .and_then(|address| body.iter().position(|row| row.address == address))
-            .ok_or(Unresolved::new("scoped-local-address"))?;
-        let (destination, _) = line
-            .text
-            .split_once(',')
-            .ok_or(Unresolved::new("scoped-local-address"))?;
-        line.text = format!("{destination},@{:+}", target as i64 - index as i64);
-    }
-    Ok(lines)
 }
 
 fn offset(bindings: &Bindings, name: &str) -> Result<u64, Unresolved> {
