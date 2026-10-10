@@ -10,11 +10,15 @@ use super::super::evaluate::ReadOnlyData;
 use super::super::references::shapes::{Line, Shape, canonical_local};
 use super::super::stop::Unresolved;
 
-/// `CTextLexer::GetTok` and the read-only bytes that hold its character tables.
+/// `CTextLexer::GetTok`, the read-only bytes that hold its character tables, and the body of
+/// `CTextLexer::IsBinary`.
 pub(crate) struct LexerInput {
     pub body: Vec<Instruction>,
     pub names: BTreeMap<u64, String>,
     pub data: ReadOnlyData,
+    /// The text lexer's virtual slot `0x20`, which the fixed-point wrappers call to choose their
+    /// raw path.
+    pub binary_selector: Vec<Instruction>,
 }
 
 /// The bytes that each table classifies; the shape sends every other byte to a word.
@@ -60,6 +64,21 @@ pub(crate) fn token_boundary(input: &LexerInput) -> Result<(), Unresolved> {
         .ok_or(Unresolved::new("numeric-lexer-shape"))?;
 
     character_tables(&input.body, &lines, &input.data)
+}
+
+/// `Ok` when the text lexer's `IsBinary` returns 0, so a fixed-point reader on a text lexer takes
+/// its ordinary path. Only a binary lexer takes the raw path.
+pub(crate) fn text_selector(input: &LexerInput) -> Result<(), Unresolved> {
+    match input.binary_selector.as_slice() {
+        [result, ret]
+            if result.operation == "mov"
+                && result.operands == "w0,#0"
+                && ret.operation == "ret" =>
+        {
+            Ok(())
+        }
+        _ => Err(Unresolved::new("numeric-raw-value-mode")),
+    }
 }
 
 /// Compare the first-byte, word-end and push-back tables that a matched body forms, in that

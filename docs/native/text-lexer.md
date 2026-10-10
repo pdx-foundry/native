@@ -1,7 +1,7 @@
 # Text lexer token boundary
 
 The text lexer cuts script into the tokens that every reader receives. `Reader.numeric`
-(`registry-fields/v25`, `command-grammar/v16`) uses this boundary: `engine/analysis/numeric/lexer.rs`
+(`registry-fields/v26`, `command-grammar/v17`) uses this boundary: `engine/analysis/numeric/lexer.rs`
 matches `CTextLexer::GetTok` whole, with its three character tables byte for byte. When the match
 holds, no numeric reader keeps `numeric-lexical-boundary`. A changed body gives
 `numeric-lexer-shape` and a changed table gives `numeric-lexer-table`. The facts below are for

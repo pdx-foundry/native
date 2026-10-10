@@ -344,6 +344,7 @@ fn readers() -> BTreeMap<String, NumericReader> {
     [(
         "shared-conversion".into(),
         NumericReader {
+            boundary: Vec::new(),
             conversion: GrammarProperty::Partial(Some(NumericConversion::default())),
             gaps: Vec::new(),
         },

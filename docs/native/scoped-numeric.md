@@ -41,18 +41,24 @@ inherited range at `overclock_cooldown` and `cycle_length_in_days`.
 
 ## Result on M452
 
-With the SDK-721 change (`e238523`), `scoped-numeric-population` covers all 164 registries and
-2,178 commands with no failed question; a capture of `main` gives the same report. Registry
-destinations, including nested key paths: 107 in 21 registries, **0 complete, 97 partial, 10
-failed**. The 97 partial ones are 95 signed 64-bit fixed point at scale 100000 and two signed
-32-bit integer, all with a known range. The 10 failed ones are the `multiplier` and `mult` keys of
-five triggered modifier blocks of `common/pop_jobs`, whose scoped destination vtable is not
-established. Command arguments: 302, **0 complete, 302 partial, 0 failed**: 150 signed 32-bit
-integer and 152 signed 64-bit fixed point at scale 100000, all with a known range. Every partial
-answer keeps the scoped-literal conversion-boundary gap and the outside-method limit for qualified
-scopes, parameters, lookup outcomes and evaluation. The token readers no longer keep
-`numeric-lexical-boundary` ([text lexer](text-lexer.md)); the public gap text stays as it is
-until SDK-720. A repeated operand `Merges` ([repeat behavior](registry-fields.md#repeat-behavior)).
+`scoped-numeric-population` covers all 164 registries and 2,178 commands with no failed question.
+A destination is complete when its literal conversion has no typed gap and its routing forms are
+established; the `Partial` wrappers of `Reader.numeric` and `forms` stay by design.
+
+- Registry destinations, including nested key paths: 107 in 21 registries, **97 complete, 0
+  partial, 10 failed**. The 97 are 95 signed 64-bit fixed point at scale 100000 and two signed
+  32-bit integer, all with a known range. The 10 failed ones are the `multiplier` and `mult` keys of
+  five triggered modifier blocks of `common/pop_jobs`, whose scoped destination vtable is not
+  established.
+- Command arguments: 302, **302 complete**: 150 signed 32-bit integer and 152 signed 64-bit fixed
+  point at scale 100000, all with a known range.
+
+Every literal inherits the [numeric conversion](numeric-conversion.md#answer-rule) rule: the
+scanner gap is `OutsideMethod`, and a typed limitation of the token reader is a
+`NumericConversion` gap. The token readers have no raw path, so no literal has the binary input
+gap. Each destination also keeps the outside-method limit for qualified scopes, parameters, lookup
+outcomes and evaluation. A repeated operand `Merges`
+([repeat behavior](registry-fields.md#repeat-behavior)).
 
 ## Live fixture pitfalls
 

@@ -104,26 +104,56 @@ fn fixed_reader(binary: bool) -> ReaderInput {
     }
 }
 
+fn reasons(gaps: &[super::super::Unresolved]) -> Vec<&'static str> {
+    gaps.iter().map(|gap| gap.reason).collect()
+}
+
+fn selector(binary: bool) -> LexerInput {
+    let rows = if binary {
+        arm64!(at 0x5000; mov w0,#1; ret)
+    } else {
+        arm64!(at 0x5000; mov w0,#0; ret)
+    };
+    LexerInput {
+        body: Vec::new(),
+        names: BTreeMap::new(),
+        data: Default::default(),
+        binary_selector: decode_arm64(&rows, 0x5000).unwrap(),
+    }
+}
+
 #[test]
-fn both_fixed_wrappers_prove_unscaled_raw_storage_but_not_mode_selection() {
-    for (binary, scale) in [(false, 100000), (true, 32768)] {
-        let input = fixed_reader(binary);
-        let reader = analyze_reader(&input, &Ok(()));
+fn both_fixed_wrappers_report_the_raw_path_as_binary_input_only_after_the_text_selector() {
+    let text = super::super::lexer::text_selector(&selector(false));
+    let binary = super::super::lexer::text_selector(&selector(true));
+    assert_eq!(text, Ok(()));
+    assert_eq!(
+        binary.clone().map_err(|obstacle| obstacle.reason),
+        Err("numeric-raw-value-mode")
+    );
+
+    for (template, scale) in [(false, 100000), (true, 32768)] {
+        let input = fixed_reader(template);
+        let reader = analyze_reader(&input, &Ok(()), &text);
         let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
             panic!("unproved wrapper: {:?}", reader.gaps);
         };
         assert_eq!(conversion.scale, Known(Some(scale)));
-
         assert_eq!(conversion.accepted_range, fixed_point_range(scale));
+        assert!(reader.gaps.is_empty(), "{:?}", reader.gaps);
         assert_eq!(
-            reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>(),
+            reasons(&reader.boundary),
             [
                 "numeric-overflow",
                 "numeric-trailing-text",
                 "numeric-external-library-conversion",
-                "numeric-raw-value-mode"
+                BINARY_INPUT_BOUNDARY
             ]
         );
+
+        let reader = analyze_reader(&input, &Ok(()), &binary);
+        assert_eq!(reasons(&reader.gaps), ["numeric-raw-value-mode"]);
+        assert!(!reasons(&reader.boundary).contains(&BINARY_INPUT_BOUNDARY));
     }
 }
 
@@ -138,13 +168,13 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
         let mut input = fixed_reader(false);
         input.wrapper[index].operation = operation.into();
         input.wrapper[index].operands = operands.into();
-        let reader = analyze_reader(&input, &Ok(()));
+        let reader = analyze_reader(&input, &Ok(()), &Ok(()));
         assert_eq!(reader.conversion, GrammarProperty::Unresolved);
         assert_eq!(reader.gaps[0].reason, "numeric-wrapper-shape");
     }
     let mut input = fixed_reader(true);
     input.raw_token.clear();
-    let reader = analyze_reader(&input, &Ok(()));
+    let reader = analyze_reader(&input, &Ok(()), &Ok(()));
     let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
         panic!("ordinary path was lost");
     };
@@ -162,7 +192,7 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
 #[test]
 fn a_lexer_obstacle_is_the_token_text_gap_of_readers_and_token_readers() {
     let obstacle = Err(super::super::Unresolved::new("numeric-lexer-shape"));
-    let reader = analyze_reader(&fixed_reader(false), &obstacle);
+    let reader = analyze_reader(&fixed_reader(false), &obstacle, &Ok(()));
     let token = analyze_token(
         &TokenInput {
             body: scan_rows(),
@@ -172,7 +202,7 @@ fn a_lexer_obstacle_is_the_token_text_gap_of_readers_and_token_readers() {
         &obstacle,
     );
     for gaps in [&reader.gaps, &token.gaps] {
-        assert_eq!(gaps[1].reason, "numeric-lexer-shape");
+        assert_eq!(gaps[0].reason, "numeric-lexer-shape");
         assert!(
             gaps.iter()
                 .all(|gap| gap.reason != "numeric-lexical-boundary")
@@ -192,12 +222,8 @@ fn scanner_pointer_and_return_check_are_required() {
         token_text_offset: 0x10,
     };
     let reader = analyze_token(&token, &Ok(()));
-    assert!(
-        reader
-            .gaps
-            .iter()
-            .any(|gap| gap.reason == "numeric-trailing-text")
-    );
+    assert!(reader.gaps.is_empty());
+    assert!(reasons(&reader.boundary).contains(&"numeric-trailing-text"));
     for (index, operation, operands) in [
         (3, "ldr", "x0,[x0,#0x18]"),
         (8, "cmp", "w0,#0x1"),
@@ -277,6 +303,7 @@ fn m452_numeric_boundary_engine_parity() {
             [format!("mov w0,#{result:#x}"), "ret".into()]
         );
     }
+    text_lexer_census(&image);
     // The lexer's input is the `CFile` that both `CTextLexer(CFile*, bool)` bodies store at
     // `+8`; GetTok calls its slots `0x10` and `0x58`.
     for class in ["CMemoryFile", "CArchiveFile"] {
@@ -327,30 +354,22 @@ fn m452_numeric_boundary_engine_parity() {
             _ => Unresolved,
         };
         assert_eq!(conversion.accepted_range, range, "{name}");
-        for reason in [
-            "numeric-overflow",
-            "numeric-trailing-text",
-            "numeric-external-library-conversion",
-        ] {
-            assert!(reader.gaps.iter().any(|gap| gap.reason == reason), "{name}");
+        let fixed_point = name.contains("CFixedPoint") || name.contains("fixed_point<");
+        let mut boundary = SCANNER_BOUNDARY.to_vec();
+        if fixed_point {
+            boundary.push(BINARY_INPUT_BOUNDARY);
         }
-        assert!(
-            reader.gaps.iter().all(
-                |gap| !gap.reason.contains("lexer") && gap.reason != "numeric-lexical-boundary"
-            ),
-            "{name}"
-        );
+        assert_eq!(reasons(&reader.boundary), boundary, "{name}");
+        let float = conversion.representation == Known(NumericRepresentation::BinaryFloat);
+        let typed: &[&str] = if float {
+            &[FLOAT_BOUND_REPRESENTATION_GAP]
+        } else {
+            &[]
+        };
+        assert_eq!(reasons(&reader.gaps), typed, "{name}");
         if matches!(conversion.width_bits, Known(8 | 16)) {
             assert_eq!(conversion.signedness, Unresolved, "{name}");
         }
-        assert_eq!(
-            reader
-                .gaps
-                .iter()
-                .any(|gap| gap.reason == FLOAT_BOUND_REPRESENTATION_GAP),
-            conversion.representation == Known(NumericRepresentation::BinaryFloat),
-            "{name}"
-        );
     }
     let answer = native.registry_fields("common/star_classes").unwrap();
     assert!(answer.gaps.iter().any(|gap| {
@@ -358,4 +377,162 @@ fn m452_numeric_boundary_engine_parity() {
             && gap.subject == Some(crate::GapSubject::field("icon_scale"))
             && gap.detail == "Exact binary32 range endpoints cannot be represented by NumericBound."
     }));
+}
+
+/// The stated input rule of the fixed-point raw path, checked on the whole build: every direct
+/// construction of a `CReader` outside save game, network and command packet code passes a
+/// `CTextLexer` that its own function constructed, and only that code constructs a `CBinLexer`.
+fn text_lexer_census(image: &crate::binding::inspect::Image<'_>) {
+    let address = |name: &str| -> Vec<u64> {
+        image
+            .symbols(name)
+            .into_iter()
+            .filter(|(_, symbol)| *symbol == name)
+            .map(|(address, _)| address)
+            .collect()
+    };
+    let callers = |target: u64| -> Vec<crate::binding::inspect::Caller> {
+        image
+            .callers(target)
+            .into_iter()
+            .filter(|caller| caller.operation == "bl")
+            .collect()
+    };
+    let text_constructors: Vec<u64> = [
+        "CTextLexer::CTextLexer(CString const&, ELexerFileType)",
+        "CTextLexer::CTextLexer(CFile*, bool)",
+    ]
+    .into_iter()
+    .flat_map(address)
+    .collect();
+
+    let sites: Vec<_> = [
+        "CReader::CReader(CLexer&)",
+        "CReader::CReader(CLexer*, bool)",
+    ]
+    .into_iter()
+    .flat_map(address)
+    .flat_map(callers)
+    .collect();
+    let binary_input = |site: &crate::binding::inspect::Caller| {
+        image.function_at(site.at).is_some_and(|function| {
+            [
+                "CreateCommand(",
+                "CNetworkServer::",
+                "CProxyServer::",
+                "SaveGame::",
+            ]
+            .iter()
+            .any(|prefix| function.starts_with(prefix))
+        })
+    };
+    let (binary, unmatched): (Vec<_>, Vec<_>) = sites
+        .iter()
+        .filter(|site| !passes_its_own_text_lexer(image, site.at, &text_constructors))
+        .partition(|site| binary_input(site));
+    let places = |sites: &[&crate::binding::inspect::Caller]| -> Vec<String> {
+        sites.iter().map(|site| site.place.clone()).collect()
+    };
+    assert_eq!(sites.len(), 269);
+    assert!(unmatched.is_empty(), "{:#?}", places(&unmatched));
+    assert_eq!(binary.len(), 8, "{:#?}", places(&binary));
+
+    let mut binary_callers: Vec<_> = [
+        "CBinLexer::CBinLexer(CFile*, bool)",
+        "CBinLexer::CBinLexer(CString const&)",
+    ]
+    .into_iter()
+    .flat_map(address)
+    .flat_map(callers)
+    .filter_map(|caller| {
+        let function = image.function_at(caller.at)?;
+        Some(function.split(['(', ':']).next()?.to_owned())
+    })
+    .collect();
+    binary_callers.sort();
+    binary_callers.dedup();
+    assert_eq!(
+        binary_callers,
+        [
+            "CNetworkServer",
+            "CProxyServer",
+            "CreateCommand",
+            "SaveGame"
+        ]
+    );
+}
+
+/// Whether the reader constructed at `call` receives, in `x1`, the object that a `CTextLexer`
+/// constructor earlier in the same function received in `x0`.
+fn passes_its_own_text_lexer(
+    image: &crate::binding::inspect::Image<'_>,
+    call: u64,
+    text_constructors: &[u64],
+) -> bool {
+    let Some(function) = image.function_at(call) else {
+        return false;
+    };
+    let Some(start) = image
+        .symbols(function)
+        .into_iter()
+        .filter(|(address, symbol)| *symbol == function && *address <= call)
+        .map(|(address, _)| address)
+        .max()
+    else {
+        return false;
+    };
+    let Ok(listing) = image.disassemble(start, call - start + 4) else {
+        return false;
+    };
+    let rows = &listing.rows;
+    let Some(reader_call) = rows.iter().position(|row| row.address == call) else {
+        return false;
+    };
+    let Some(lexer) = value_of(&rows[..reader_call], "x1") else {
+        return false;
+    };
+
+    rows[..reader_call].iter().enumerate().any(|(index, row)| {
+        row.operation == "bl"
+            && text_constructors
+                .iter()
+                .any(|target| row.operands == format!("#{target:#x}"))
+            && value_of(&rows[..index], "x0").as_deref() == Some(lexer.as_str())
+    })
+}
+
+/// The value that `register` holds after `rows`, followed through register copies: a stack or
+/// frame address, or the result of a call. `None` when another instruction or a call that does
+/// not return it last wrote the register.
+fn value_of(rows: &[crate::binding::inspect::Row], register: &str) -> Option<String> {
+    let number = &register[1..];
+    let names = [format!("x{number}"), format!("w{number}")];
+    let writes = |row: &crate::binding::inspect::Row| {
+        let first = row.operands.split(',').next().unwrap_or_default();
+        let stores = ["str", "stp", "stur", "strb", "strh", "cmp", "cmn", "tst"];
+        !stores.contains(&row.operation.as_str())
+            && !row.operation.starts_with('b')
+            && !row.operation.starts_with("cb")
+            && !row.operation.starts_with("tb")
+            && names.iter().any(|name| name == first)
+    };
+    let call = |row: &crate::binding::inspect::Row| matches!(row.operation.as_str(), "bl" | "blr");
+    let clobbered = number.parse::<u8>().is_ok_and(|number| number <= 17);
+    let index = rows
+        .iter()
+        .rposition(|row| writes(row) || (clobbered && call(row)))?;
+    let row = &rows[index];
+    if call(row) {
+        return (number == "0").then(|| format!("call {:#x}", row.address));
+    }
+    let source = row.operands.split_once(',')?.1;
+
+    match row.operation.as_str() {
+        "mov" if source == "sp" => Some("sp,#0x0".to_owned()),
+        "mov" if source.starts_with('x') => value_of(&rows[..index], source),
+        "add" | "sub" if source.starts_with("sp,") || source.starts_with("x29,") => {
+            Some(format!("{} {source}", row.operation))
+        }
+        _ => None,
+    }
 }

@@ -12,17 +12,17 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v3` | `discovery.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v25` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m452-sweep) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v25`, `command-grammar/v16` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v25`, `command-grammar/v16` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v25`, `command-grammar/v16` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v25` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v25` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v25` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
-| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v25` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
-| `CommandGrammar.durations` | `command-grammar/v16` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
+| `Native::registry_fields` | `registry-fields/v26` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-m452-sweep) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v26`, `command-grammar/v17` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v26`, `command-grammar/v17` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v26`, `command-grammar/v17` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v26` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v26` | `modifier_blocks.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v26` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
+| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v26` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
+| `CommandGrammar.durations` | `command-grammar/v17` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v3` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v16` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v17` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -32,7 +32,7 @@ check a method in one task.
 | `Native::on_actions`, `Native::game_rules` | `callbacks/v4` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
 | `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `families/strings.rs` | [Generation calls and roots](modifier-families.md#engine-code-m45-release) |
-| `Field.accepted_categories` in `registry_fields` | `registry-fields/v25` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
+| `Field.accepted_categories` in `registry_fields` | `registry-fields/v26` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
@@ -91,6 +91,41 @@ gaps are unknown arguments, memory-loaded scopes and missing child-family bounda
 failed receiver joins comprise two `factory-terminal` and one unsupported `instruction`; template
 constructor summaries (SDK-673) joined the six former `command-vtable` cases. Other grammar gaps are described on [command grammar](command-grammar.md) and
 [registry fields](registry-fields.md); the full case lists remain in `.local/sdk-549/implementation`.
+
+## Numeric scanner boundary (SDK-720)
+
+The imported scanner's own conversion and the fixed-point binary input path are `OutsideMethod`
+boundaries; only typed limitations make a numeric answer partial
+([answer rule](numeric-conversion.md#answer-rule)). The two numeric reporters now classify each
+reader by its typed gaps, not by the `Partial` wrapper of `Reader.numeric`. All counts are M452.
+
+| Population | Total | Complete | Partial | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| `numeric-population`, numeric root fields | 188 | 178 | 10 | 0 |
+| `scoped-numeric-population`, registry destinations | 107 | 97 | 0 | 10 |
+| `scoped-numeric-population`, command arguments | 302 | 302 | 0 | 0 |
+| `registry-field-sweep`, registries | 164 | 12 | 152 | 0 |
+| `command-population`, effects | 1,080 | 163 | 915 | 2 |
+| `command-population`, triggers | 1,098 | 122 | 976 | 0 |
+
+Before this change every numeric reader was partial. The field sweep gained
+`common/asteroid_belts`, `common/leader_tiers` and `common/resource_regions`; 14 effects and 3
+triggers became complete. No answer value changed; only gaps, completeness and source stamps.
+
+Failure shapes, by gap count in the field sweep (and in the command population):
+
+| Shape | Before | After |
+| --- | ---: | ---: |
+| `NumericConversion`: the old general numeric detail | 1,384 (317) | 0 |
+| `NumericConversion`: `Scoped literal conversion boundaries and overflow are incomplete.` | 1,922 (302) | 0 |
+| `NumericConversion`: `Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established.` | 0 | 300 (6) |
+| `OutsideMethod`: the platform scanner | 0 | 3,087 (619) |
+| `OutsideMethod`: the binary-lexer input path | 0 | 903 (139) |
+
+The triggered-modifier `other_keys` details carry the same change under their prefix (45 each).
+Of the 300 remaining typed gaps, 290 are weight-block keys whose reader has no numeric fact:
+`days`, `months` and `years` (73 each) use `CToken::GetInt()`, and one `factor` alternative (71)
+uses `CToken::GetFloat()`. The other 10 are the seven short and three float fields.
 
 ## Repeat behavior (SDK-724)
 

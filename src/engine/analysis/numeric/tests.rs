@@ -94,7 +94,11 @@ fn scoped_token_reader_keeps_conversion_limits_and_fails_closed() {
         &Ok(()),
     );
     assert!(matches!(fact.conversion, GrammarProperty::Partial(Some(_))));
-    assert!(fact.gaps.iter().any(|gap| gap.reason == "numeric-overflow"));
+    assert!(
+        fact.boundary
+            .iter()
+            .any(|gap| gap.reason == "numeric-overflow")
+    );
 
     let missing = analyze_token(
         &TokenInput {
@@ -212,7 +216,12 @@ fn m452_numeric_reader_static_parity() {
                     conversion.scale,
                     conversion.literal_syntax,
                     conversion.accepted_range,
-                    reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>()
+                    reader.gaps.iter().map(|gap| gap.reason).collect::<Vec<_>>(),
+                    reader
+                        .boundary
+                        .iter()
+                        .map(|gap| gap.reason)
+                        .collect::<Vec<_>>()
                 ]),
             )
         })
@@ -449,6 +458,23 @@ fn raw_token_path_unknown_call_or_wrong_store_prevents_a_complete_shape_match() 
         .into();
         assert!(token_conversion(&changed, &names, 0x10).is_none());
     }
+}
+
+#[test]
+fn each_fixed_point_reader_keeps_its_own_handling_of_the_text_after_the_number() {
+    let (rows, names) = decimal_rows();
+    let mut no_dot_search = rows.clone();
+    no_dot_search.retain(|row| row.operands != "#0x9010");
+    assert!(token_conversion(&no_dot_search, &names, 0x10).is_none());
+
+    let (rows, mut names) = binary_rows();
+    names.insert(0x8028, "\"%lld\"".into());
+    assert!(token_conversion(&rows, &names, 0x10).is_none());
+
+    let (mut rows, names) = binary_rows();
+    let kind = rows.iter_mut().find(|row| row.operation == "cmp").unwrap();
+    kind.operands = "w8,#0xc".into();
+    assert!(token_conversion(&rows, &names, 0x10).is_none());
 }
 
 #[test]

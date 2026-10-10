@@ -1317,6 +1317,7 @@ fn scoped_byte_bounds_require_the_subtype_selection_and_literal_width() {
         token_readers: [(
             "numeric-token-reader".into(),
             NumericReader {
+                boundary: Vec::new(),
                 conversion: GrammarProperty::Partial(Some(NumericConversion {
                     width_bits: GrammarProperty::Known(32),
                     ..Default::default()

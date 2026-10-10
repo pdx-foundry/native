@@ -1557,6 +1557,7 @@ mod tests {
             token_readers: [(
                 "CReader::Read(int&)".into(),
                 NumericReader {
+                    boundary: Vec::new(),
                     conversion: GrammarProperty::Partial(Some(crate::NumericConversion {
                         width_bits: GrammarProperty::Known(width),
                         ..Default::default()

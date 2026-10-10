@@ -28,24 +28,29 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "icon_frame"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "modifier"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier"]},
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "multiplier"]},
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -53,9 +58,9 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "mult"]},
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -83,19 +88,24 @@
         "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name, at `data`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name, at `data`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name, at `icon_frame`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name, at `icon_frame`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "triggered_country_modifier"},
+        "Keys that the triggered modifier does not name: The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "UnresolvedPath",
@@ -217,24 +227,29 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "icon_frame"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier"]},
+        "The binary-lexer input path of save games and network data is outside this method."
+      ],
+      [
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "multiplier"]},
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -242,9 +257,9 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "mult"]},
-        "Scoped literal conversion boundaries and overflow are incomplete."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
         "OutsideMethod",
@@ -282,19 +297,24 @@
         "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name, at `data`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name, at `data`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name, at `icon_frame`: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name, at `icon_frame`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name: Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "Keys that the triggered modifier does not name: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name: The binary-lexer input path of save games and network data is outside this method."
       ],
       [
         "UnresolvedPath",

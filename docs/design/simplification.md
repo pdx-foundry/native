@@ -107,7 +107,9 @@ Linear.
 ## Decisions of 2026-10-07
 
 The council agenda gate plan (SDK-600) settled the last weight-entry and modifier gaps (SDK-722).
-D3 and D4 are in the specification and on the [weight blocks](../native/weight-blocks.md) page.
+D3 and D4 are in the specification and on the [weight blocks](../native/weight-blocks.md) page. D1,
+the numeric scanner boundary, is in the specification and on the
+[numeric conversion](../native/numeric-conversion.md#answer-rule) page.
 
 - **Decision D5(a), zero-mask weight entries. A recorded exception.**
   - *Claim.* The read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its

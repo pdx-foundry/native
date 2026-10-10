@@ -5,7 +5,7 @@ mod population_filter;
 
 use pdx_native::internals::registry_field_stops;
 use pdx_native::{
-    CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapSubject,
+    CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
     GrammarProperty, Native, Reader, ReaderKind,
 };
 use serde_json::{Value, json};
@@ -60,25 +60,30 @@ impl Population {
         if reader.kind != ReaderKind::ScopedNumeric {
             return;
         }
-        let state = match (&reader.numeric, &reader.scoped_operand) {
-            (GrammarProperty::Known(Some(_)), GrammarProperty::Known(Some(operand)))
-                if matches!(operand.forms, GrammarProperty::Known(_)) =>
-            {
-                "complete"
-            }
-            (GrammarProperty::Known(Some(_)) | GrammarProperty::Partial(Some(_)), _) => "partial",
-            _ => "failed",
-        };
-        *self.counts.entry(state).or_default() += 1;
-        *self.storage.entry(storage(reader)).or_default() += 1;
+        // A command's value forms report at the command's own answer item.
         let relevant: Vec<_> = gaps
             .iter()
             .filter(|gap| match &gap.subject {
                 Some(GapSubject::Field { name }) => path.len() == 1 && name == &path[0],
                 Some(GapSubject::KeyPath { path: subject }) => subject == path,
+                Some(GapSubject::AnswerItem { .. }) => path.is_empty(),
                 _ => false,
             })
             .collect();
+        // Literal conversion and routing forms keep their `Partial` wrappers by design; a typed
+        // conversion gap or unestablished forms make the destination partial.
+        let limited = relevant
+            .iter()
+            .any(|gap| gap.kind == GapKind::NumericConversion);
+        let routed = matches!(&reader.scoped_operand,
+            GrammarProperty::Known(Some(operand)) if established(&operand.forms).is_some());
+        let state = match established(&reader.numeric) {
+            Some(Some(_)) if routed && !limited => "complete",
+            Some(Some(_)) => "partial",
+            _ => "failed",
+        };
+        *self.counts.entry(state).or_default() += 1;
+        *self.storage.entry(storage(reader)).or_default() += 1;
         for gap in &relevant {
             *self
                 .failure_shapes

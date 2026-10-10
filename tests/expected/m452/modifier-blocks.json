@@ -60,19 +60,24 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "icon_frame"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "modifier"},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "modifier"},
+        "The binary-lexer input path of save games and network data is outside this method."
       ]
     ]
   },
@@ -102,19 +107,24 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "icon_frame"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "modifier"},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "modifier"},
+        "The binary-lexer input path of save games and network data is outside this method."
       ]
     ]
   },
@@ -157,19 +167,24 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["country_modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["country_modifier", "icon_frame"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "country_modifier"},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "country_modifier"},
+        "The binary-lexer input path of save games and network data is outside this method."
       ]
     ]
   },
@@ -193,14 +208,19 @@
         "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
       ],
       [
-        "NumericConversion",
+        "OutsideMethod",
         {"kind": "field", "name": "modifier"},
-        "Numeric conversion is incomplete: lexical boundaries, trailing text, accepted range, overflow and library-dependent behavior are not fully established."
+        "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
+      ],
+      [
+        "OutsideMethod",
+        {"kind": "field", "name": "modifier"},
+        "The binary-lexer input path of save games and network data is outside this method."
       ]
     ]
   }
