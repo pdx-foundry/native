@@ -18,7 +18,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v26`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v27`) holds
 the baseline: **164 registries, 12 complete, 152 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
