@@ -1,4 +1,5 @@
-//! Exact-platform boundary checks supporting faithful-storage ranges; overflow remains sampled.
+//! Exact-platform boundary checks supporting faithful-storage ranges and the text lexer's
+//! whitespace test; overflow remains sampled.
 #![cfg(all(target_os = "macos", target_arch = "aarch64"))]
 
 use std::path::PathBuf;
@@ -40,12 +41,21 @@ fn m452_numeric_scanner_platform_observations() {
         .map(str::trim)
         .filter(|line| {
             line.starts_with("(undefined)")
-                && (line.contains(" _sscanf ") || line.contains(" _atoll "))
+                && [
+                    " _sscanf ",
+                    " _atoll ",
+                    " ___maskrune ",
+                    " __DefaultRuneLocale ",
+                ]
+                .iter()
+                .any(|import| line.contains(import))
         })
         .collect();
     assert_eq!(
         imports,
         [
+            "(undefined) external __DefaultRuneLocale (from libSystem)",
+            "(undefined) external ___maskrune (from libSystem)",
             "(undefined) external _atoll (from libSystem)",
             "(undefined) external _sscanf (from libSystem)"
         ]

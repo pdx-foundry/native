@@ -1,10 +1,12 @@
 // Finite observations of the macOS library imported by the game's numeric readers.
 // Overflow results are platform observations, not portable C guarantees.
+#include <ctype.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <locale.h>
 #include <mach-o/loader.h>
+#include <runetype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,6 +120,24 @@ static void cases(const char *format, enum storage storage, const char *const *i
 
 #define CASES(format, storage, inputs) cases(format, storage, inputs, sizeof(inputs) / sizeof(*inputs))
 
+// The text lexer's whitespace test: the C-locale table for a byte up to 0x7f, and __maskrune for
+// a higher byte, which the lexer sign-extends before the call.
+static void lexer_spaces(void) {
+    printf("{\"function\":\"lexer_space\",\"bytes\":[");
+    const char *separator = "";
+    for (int byte = 0; byte <= 0xff; byte++) {
+        int rune = (uint16_t)(int8_t)byte;
+        unsigned long space = rune <= 0x7f
+            ? _DefaultRuneLocale.__runetype[rune] & _CTYPE_S
+            : (unsigned long)__maskrune(rune, _CTYPE_S);
+        if (space) {
+            printf("%s%d", separator, byte);
+            separator = ",";
+        }
+    }
+    puts("]}");
+}
+
 static void decimal_integer(const char *input) {
     errno = 0;
     long long value = atoll(input);
@@ -140,6 +160,7 @@ int main(void) {
     printf("{\"os_build\":\"%s\",\"locale\":\"C\",\"architecture\":\"arm64\"}\n", os_build);
     library_identity("sscanf");
     library_identity("atoll");
+    library_identity("__maskrune");
 
     const char *signed32[] = {
         "-2147483649", "-2147483648", "-2147483647",
@@ -211,5 +232,6 @@ int main(void) {
     for (size_t index = 0; index < sizeof(lexical) / sizeof(*lexical); index++) {
         decimal_integer(lexical[index]);
     }
+    lexer_spaces();
     return 0;
 }

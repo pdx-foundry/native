@@ -252,7 +252,7 @@ lookups and flags on this page.
 | --- | --- | --- |
 | Case | Byte for byte, no case folding; the trigger lookup is not established | The scan shapes compare length, then bytes or `memcmp`; the qualified `Find<CString>` hashes with `_PMurHash32`, then compares length and bytes. The trigger lookup compares lexer token numbers, and the lexer's token lookup folds ASCII case ([trigger lookup](#trigger-lookup)) |
 | Encoding | Bytes; the lookup decodes nothing | The lexer's encoding is outside the method |
-| Quoting | Readers take the lexed token text at `CReader+0x288` | Quote handling is a lexer fact. The SDK-482 Intel spike saw quoted and unquoted `corvette` select one ship size; it is not established here |
+| Quoting | Readers take the lexed token text at `CReader+0x288` | Quote handling is a lexer fact: on M452 the [text lexer](text-lexer.md) removes the quotes and keeps the bytes between them. The SDK-482 Intel spike saw quoted and unquoted `corvette` select one ship size |
 | Length | The whole key is compared; nothing truncates it | No maximum length is established |
 | Namespaces | One registry per lookup; flags intern in one table for every flag kind and are stored per scope object or in the global store | `ReferenceTarget`; `DynamicNamespace` |
 | Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method, including the token number that the trigger lookup compares |
