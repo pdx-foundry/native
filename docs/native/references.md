@@ -26,6 +26,11 @@ All facts below are for the exact executable in [targets](targets.md).
   `Run()` has one caller, `NNullObjAndDatabaseInitUtil::SetupDatabases`, after the loop that
   initializes every database. `ResolveReference` calls the lambda and, when it returns false, logs
   `Failed to deferred read key reference %s from database %s` with the key and location.
+- On M452, `Register_Internal` (`0x1025b2a90`) inserts at the current count and compares no
+  earlier entry, and `Run()` (`0x1025b2f20`) resolves the entries in array order. Two
+  registrations for one destination both resolve, and the later one writes last; this is the
+  `Replace` rule of [repeat behavior](registry-fields.md#repeat-behavior). Read both functions
+  again on a new build.
 - `NParserUtil::ReadKeyReference<D>(CReader&, D const&, bool)` has 87 instantiations. It looks the
   token up at read time, returns the item or the typed null object, and logs
   `Failed to read key reference '%s' from database '%s' at '%s'` for an invalid result unless the

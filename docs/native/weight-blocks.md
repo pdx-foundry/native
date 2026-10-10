@@ -131,7 +131,7 @@ Failure shapes, by field count:
 | Keyword domain of `calc` and `mode` (`ReaderSemantics`, SDK-627) | 73 |
 | `trigger` lookup stage and match, and the scripted-trigger placeholder (`ReaderSemantics`) | 73 |
 | `parameters` read by the object that `trigger` stores | 73 |
-| Field repeat behavior (`Repeat behavior or nested fields remain unresolved`) | 73 |
+| Repeat behavior, where the field's read is not a tail call (M452: `overlord_weight` and `subject_weight` in `common/agreement_presets`, `total_progress` in `common/situations`) | 3 |
 
 Nine root fields also have a zero-mask read scope of their own, because their owner constructor
 stores scope `0`: the five weight fields of `common/buildings`, `planet_damage` in
@@ -234,8 +234,9 @@ a species from; building `ai_weight` also runs on a country with a country from
   0, and a zero mask never establishes a scope.
 - `parameters` is read by the trigger that `trigger` names; its grammar is that trigger's, which
   the method does not follow.
-- Repeat behavior of a whole weight field stays `Unknown`: a repeated block replaces `base` and
-  keeps earlier entries.
+- A repeated weight field `Merges`: the persistent read never resets the block, so it replaces
+  `base` and keeps earlier entries ([repeat behavior](registry-fields.md#repeat-behavior)). A field
+  whose read is not a tail call keeps `Unknown`.
 - Weight evaluation, operation semantics and the default base value are outside the method.
 
 ## Pitfalls

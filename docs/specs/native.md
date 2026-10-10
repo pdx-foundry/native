@@ -113,6 +113,13 @@ for contexts and scope types.
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a
   successful lookup or an evaluated number.
+- `FieldShape.repeat` gives what a second successful read does to storage, on the field and on
+  each `FieldReadOutcome::Read` alternative: `Replace` (the last occurrence is stored),
+  `Accumulate` (each occurrence adds an entry), `Merges` (a repeat is accepted; it replaces some
+  stored parts and keeps others) or `Unknown`. It never gives a minimum or maximum count, and a
+  repeat that the engine logs, such as `Duplicate trigger`, is still read. A field whose repeat is
+  `Unknown`, or whose block members no block family or attached grammar answers, has an
+  `UnresolvedStorage` gap. See [registry fields](../native/registry-fields.md#repeat-behavior).
 - `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
   means equality with the parent's scope, never `Any`. A known empty list means the field does
@@ -139,8 +146,8 @@ for contexts and scope types.
   reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial
   or unresolved. Numeric entries share the ordinary conversion facts; scripted modifier names
   come from the registry's existing `modifier_families` answer. String reads do not establish
-  localisation-key existence. Runtime effects, repeated-block behavior, deferred completion and
-  nested modifier fields remain outside this grammar. See [modifier blocks](../native/modifier-blocks.md).
+  localisation-key existence. Runtime effects, deferred completion and nested modifier fields
+  remain outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
 - Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
   the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
   operation accumulates or replaces, and whether other keys are rejected or read as trigger

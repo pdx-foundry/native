@@ -92,6 +92,30 @@ failed receiver joins comprise two `factory-terminal` and one unsupported `instr
 constructor summaries (SDK-673) joined the six former `command-vtable` cases. Other grammar gaps are described on [command grammar](command-grammar.md) and
 [registry fields](registry-fields.md); the full case lists remain in `.local/sdk-549/implementation`.
 
+## Repeat behavior (SDK-724)
+
+`FieldShape.repeat` comes from one rule for each shared reader, and the storage check runs on the
+assembled answer ([repeat behavior](registry-fields.md#repeat-behavior)).
+
+**Full inventory, M452.** `registry-field-sweep` at `registry-fields/v24`, all 164 registries:
+**9 complete, 155 partial, 0 failed** (`common/colony_automation_categories` became complete).
+Nested fields are the members of `FieldMembers::Fields`, modifier blocks and triggered clauses.
+
+| Fields | Replace | Accumulate | Merges | Unknown |
+| --- | ---: | ---: | ---: | ---: |
+| Root, before | 556 | 57 | — | 980 |
+| Root, after | 799 | 57 | 114 | 623 |
+| Nested, before | 730 | 0 | — | 559 |
+| Nested, after | 737 | 0 | 145 | 407 |
+
+`UnresolvedStorage` gaps fell from 1,053 to 639. Failure shapes, by gap count:
+
+| Shape | Gaps |
+| --- | ---: |
+| `Repeat behavior and nested fields remain unresolved.`: a field with no single established reader or an unclassified block | 604 |
+| `Repeat behavior remains unresolved.`: a known family with a read that is not a tail call or alternatives that disagree, such as `overlord_weight` in `common/agreement_presets` | 35 |
+| `Scoped destination vtable is not established.` (unchanged, [scoped numeric](scoped-numeric.md)) | 10 |
+
 ## Weight blocks (SDK-545, SDK-705)
 
 `FieldMembers::WeightBlock` gives the grammar of the shared mean-time reader and of its
@@ -113,8 +137,7 @@ Two reader identities cover them: 67 fields share `f08cb83d92484a89`, and
 key of the two entry grammars has an established reader or a narrow gap. Every field is partial for
 the same shapes: conversion limits of numeric keys and scoped operands, the zero-mask read scopes
 of the two entries and of `limit` and `potential`, the keyword domains of `calc` and `mode`, the
-`trigger` lookup facts, `parameters` (read by the trigger that `trigger` names) and whole-field
-repeat behavior. Fifteen weight-named persistent blocks have no constructor-proven
+`trigger` lookup facts and `parameters` (read by the trigger that `trigger` names). Fifteen weight-named persistent blocks have no constructor-proven
 reader, so the method does not reach them. The stored-scope join resolves the read scope of every
 weight field whose constructors agree; it does not change the registry counts above.
 
@@ -138,7 +161,7 @@ the Tooltip variant `d3a866b65e16b749`, and traditions and ascension perks use t
 variant `f9fb8c8f5f2ca714`. Static and CustomDesc join `modifier` and `other_keys` to the SDK-607
 identities `ba5f8cddeba0d833` and `1c2988588f7e8eaa`. Every field is partial for the inherited
 modifier-block reader and numeric gaps, the scoped-operand gaps of `mult` and `multiplier`, the
-read scopes (SDK-549) and whole-field repeat behavior; the Tooltip variant also lacks its embedded
+read scopes (SDK-549); the Tooltip variant also lacks its embedded
 join (a branch-island base constructor). The nested `tradition_swap.triggered_modifier` uses in
 traditions and ascension perks are not joined (SDK-676).
 
