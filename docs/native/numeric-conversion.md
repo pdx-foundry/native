@@ -6,20 +6,23 @@ fixed keys and ordering-selected readers. `Known(None)` is an established nonnum
 retired clamp property is in Git at `d8f9d8a`: no complete reader shape has an explicit clamp,
 which is a different fact from overflow behavior.
 
-## Result on M451-hotfix
+## Result on M452
 
-At `main` `6f643a1`, the numeric population covers all 164 registries with no failed question.
-Numeric root fields: 184 in 63 registries, **0 complete, 184 partial, 0 failed**; 174 have a
-known faithful-storage range. The other 10 are seven short and three float fields. Every root
-field keeps `numeric-overflow`, `numeric-lexical-boundary`, `numeric-trailing-text` and
-`numeric-external-library-conversion`; the 88 fixed-point fields also keep
+With the SDK-721 change (`e238523`), the numeric population covers all 164 registries with no
+failed question. Numeric root fields: 188 in 64 registries, **0 complete, 188 partial, 0 failed**;
+178 have a known faithful-storage range. The other 10 are seven short and three float fields.
+Every root field keeps `numeric-overflow`, `numeric-trailing-text` and
+`numeric-external-library-conversion`; the 91 fixed-point fields also keep
 `numeric-raw-value-mode`, and the three float fields keep `numeric-float-bound-representation`.
-Narrow integer signedness is unresolved. In the command inventory, 1,221 of 1,225 numeric reader
-positions have known facts. The other four are the command-level readers of
+No field keeps `numeric-lexical-boundary`: the [text lexer](text-lexer.md) boundary holds, and a
+capture of `main` differs only by that reason. Narrow integer signedness is unresolved. Reproduce
+with `cargo run --release --example numeric-population`.
+
+On M451-hotfix at `main` `6f643a1`, 1,221 of 1,225 numeric reader positions in the command
+inventory had known facts. The other four were the command-level readers of
 `set_ai_armor_ratio`, `set_ai_shields_ratio`, `set_ai_starbase_armor_ratio` and
-`set_ai_starbase_shields_ratio`: their numeric property is unresolved, but each value form joins
-the shared fixed-point reader with complete facts. Reproduce with
-`cargo run --release --example numeric-population`.
+`set_ai_starbase_shields_ratio`: their numeric property was unresolved, but each value form joined
+the shared fixed-point reader with complete facts.
 
 ## Method
 

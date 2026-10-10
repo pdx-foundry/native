@@ -130,24 +130,15 @@ fn expected_tables() -> [Vec<u8>; 3] {
                 .map_or(WORD_START, |(_, entry)| *entry)
         })
         .collect();
-    let word_end = TABLE_BYTES
+    let (word_end, push_back) = TABLE_BYTES
         .map(|byte| {
             if TERMINATORS.contains(&byte) {
-                WORD_END
+                (WORD_END, 0)
             } else {
-                0
+                (0, NOT_PUSHED_BACK)
             }
         })
-        .collect();
-    let push_back = TABLE_BYTES
-        .map(|byte| {
-            if TERMINATORS.contains(&byte) {
-                0
-            } else {
-                NOT_PUSHED_BACK
-            }
-        })
-        .collect();
+        .unzip();
 
     [first_byte, word_end, push_back]
 }
