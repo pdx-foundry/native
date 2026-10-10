@@ -1947,6 +1947,51 @@ fn is_accepted_ai_weight_gap(gap: &pdx_native::Gap) -> bool {
         && gap.detail == "no evaluation that the method attributes evaluates this block"
 }
 
+/// The range gap of a council agenda weight key, the one typed numeric gap that the Milestone 4
+/// council agenda test accepts. `days`, `months` and `years` read `CToken::GetInt()`, and one
+/// `factor` alternative reads `CToken::GetFloat()`. Their storage is established, but no live
+/// fixture reaches a weight key, so the faithful-storage range stays unresolved (SDK-739). No
+/// Atlas claim needs it: the config's `modifier_rule` gives these keys no range. Jackson's rule
+/// of 2026-10-08 applies: the gate should not go red for something Atlas does not need.
+fn is_accepted_weight_range_gap(gap: &pdx_native::Gap, fields: &[pdx_native::Field]) -> bool {
+    use pdx_native::{FieldMembers, FieldReadOutcome, GrammarProperty};
+    let Some(GapSubject::KeyPath { path }) = &gap.subject else {
+        return false;
+    };
+    let [block, key] = path.as_slice() else {
+        return false;
+    };
+    let Some(FieldMembers::WeightBlock(weight)) = fields
+        .iter()
+        .find(|field| &field.name == block)
+        .map(|field| &field.members)
+    else {
+        return false;
+    };
+    let GrammarProperty::Known(keys) = &weight.fixed_keys else {
+        return false;
+    };
+    let Some(key) = keys.iter().find(|candidate| &candidate.name == key) else {
+        return false;
+    };
+    let storage_known = |numeric: &GrammarProperty<Option<pdx_native::NumericConversion>>| {
+        matches!(numeric, GrammarProperty::Partial(Some(conversion))
+            if matches!(conversion.representation, GrammarProperty::Known(_))
+                && matches!(conversion.width_bits, GrammarProperty::Known(_))
+                && matches!(conversion.signedness, GrammarProperty::Known(_))
+                && matches!(conversion.scale, GrammarProperty::Known(_)))
+    };
+
+    gap.kind == GapKind::NumericConversion
+        && block == "ai_weight"
+        && ["days", "months", "years", "factor"].contains(&key.name.as_str())
+        && !key.read.is_empty()
+        && key.read.iter().all(|alternative| {
+            matches!(&alternative.outcome, FieldReadOutcome::Read { reader, .. }
+                if storage_known(&reader.numeric))
+        })
+}
+
 #[test]
 fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
     use pdx_native::Gap;
@@ -1982,7 +2027,7 @@ fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
 /// The Milestone 4 council agenda acceptance test (SDK-600; `docs/roadmap.md`, "Milestone 4
 /// acceptance"). Every required fact is checked on the answer's value, so a missing field, an
 /// unresolved context or an `OutsideMethod` exclusion cannot satisfy it; the answer must also
-/// have no typed gap other than [`is_accepted_ai_weight_gap`]. The test reports every missing
+/// have no typed gap other than [`is_accepted_ai_weight_gap`] and [`is_accepted_weight_range_gap`]. The test reports every missing
 /// fact at once.
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
@@ -2035,7 +2080,11 @@ fn council_agenda_fields_are_complete_with_every_milestone_4_fact() {
     let typed_gaps: Vec<_> = answer
         .gaps
         .iter()
-        .filter(|gap| gap.kind != GapKind::OutsideMethod && !is_accepted_ai_weight_gap(gap))
+        .filter(|gap| {
+            gap.kind != GapKind::OutsideMethod
+                && !is_accepted_ai_weight_gap(gap)
+                && !is_accepted_weight_range_gap(gap, &answer.value)
+        })
         .map(|gap| format!("  {:?} {:?}: {}", gap.kind, gap.subject, gap.detail))
         .collect();
     require(

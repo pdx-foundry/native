@@ -40,11 +40,33 @@ pub(in crate::binding) fn read(
             ))
         })
         .collect();
+    let fixed_point_text =
+        decode_unique_symbol_or_empty(&text, image.symbols, "StringToFixedPoint(char const*)")?;
+    let token_values = ["CToken::GetInt() const", "CToken::GetFloat() const"]
+        .into_iter()
+        .map(|name| {
+            let body = decode_unique_symbol_or_empty(&text, image.symbols, name)?;
+            let aliases = [
+                ("_atoi", "decimal_int"),
+                ("_atoll", "decimal_integer"),
+                ("StringToFixedPoint(char const*)", "fixed_point_text"),
+            ];
+            let names = referenced_names(&[&body, &fixed_point_text], &names, &aliases);
+            let input = TokenInput {
+                body,
+                names,
+                token_text_offset: recipe.token_text_offset,
+            };
+            Ok((name.to_owned(), input))
+        })
+        .collect::<Result<_, AnalysisError>>()?;
     let lexer = lexer_input(&text, image, &names)?;
     Ok(NumericInput {
         readers,
         modifier,
         token_readers,
+        token_values,
+        fixed_point_text,
         lexer,
     })
 }

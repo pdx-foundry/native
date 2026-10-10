@@ -9,5 +9,7 @@
   "CReader::Read(unsigned char&)": [{"Known":"Integer"},{"Known":8},"Unresolved",{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]],
   "CReader::Read(unsigned int&)": [{"Known":"Integer"},{"Known":32},{"Known":"Unsigned"},{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]],
   "CReader::Read(unsigned long long&)": [{"Known":"Integer"},{"Known":64},{"Known":"Unsigned"},{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]],
-  "CReader::Read(unsigned short&)": [{"Known":"Integer"},{"Known":16},"Unresolved",{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]]
+  "CReader::Read(unsigned short&)": [{"Known":"Integer"},{"Known":16},"Unresolved",{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]],
+  "CToken::GetFloat() const": [{"Known":"Integer"},{"Known":64},{"Known":"Signed"},{"Known":100000},{"Partial":["DecimalInteger","DecimalFraction"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]],
+  "CToken::GetInt() const": [{"Known":"Integer"},{"Known":32},{"Known":"Signed"},{"Known":1},{"Partial":["DecimalInteger"]},"Unresolved",[],["numeric-overflow","numeric-trailing-text","numeric-external-library-conversion"]]
 }

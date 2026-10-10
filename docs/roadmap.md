@@ -81,10 +81,13 @@ Milestone 4 completes only when all of these hold:
    `council_agenda_fields_are_complete_with_every_milestone_4_fact` in `tests/static_questions.rs`
    (`cargo parity council_agenda`). It checks each fact on the answer's value and requires
    `Complete`: a typed gap fails it, and neither a missing observation nor an `OutsideMethod`
-   exclusion can satisfy it. It reports every missing fact in one run. One typed gap is accepted:
-   the `UnresolvedPath` entry gap of `ai_weight`, which a template helper evaluates on an array
-   element. No Atlas `replace_scopes` claim needs those contexts (Jackson, 2026-10-08: the gate is
-   for Atlas's sake; it should not go red for something Atlas does not need).
+   exclusion can satisfy it. It reports every missing fact in one run. Two typed gaps are accepted,
+   by the rule that the gate is for Atlas's sake and should not go red for something Atlas does
+   not need (Jackson, 2026-10-08). The `UnresolvedPath` entry gap of `ai_weight`: a template
+   helper evaluates it on an array element, and no Atlas `replace_scopes` claim needs those
+   contexts. The `NumericConversion` range gap of `ai_weight` `days`, `months`, `years` and
+   `factor` (SDK-739): their storage must be known, but no live fixture reaches a weight key, and
+   the config gives these keys no range.
 2. **Fixture criteria:** the dated 2026-10-02 amendments on the Linear tickets govern SDK-541 to
    SDK-550. SDK-544 retains numeric storage controls. SDK-545 checks weight parsing and
    source-located diagnostics; SDK-549 checks read entry scope (`this`) with a fixture diagnostic;
