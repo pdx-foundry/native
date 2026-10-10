@@ -110,6 +110,15 @@ impl State {
         }
     }
 
+    /// Independent identities at a local proof boundary; none implies an owner or memory value.
+    fn independent_registers() -> Self {
+        let mut state = Self::unknown();
+        for register in 0..31 {
+            state.set(register, single(Fact::Argument(register, 0)));
+        }
+        state
+    }
+
     /// The facts of general register `index`.
     pub(super) fn register(&self, index: usize) -> &Value {
         &self.registers[index]
@@ -373,7 +382,7 @@ pub(super) fn each_state(
 }
 
 /// Basic blocks of one function, by the position of their first instruction.
-struct Blocks {
+pub(super) struct Blocks {
     /// Block start → the position after its last instruction.
     starts: BTreeMap<usize, usize>,
     /// Block start → the starts of the blocks that can run next.
@@ -381,7 +390,7 @@ struct Blocks {
 }
 
 impl Blocks {
-    fn new(rows: &[Instruction]) -> Self {
+    pub(super) fn new(rows: &[Instruction]) -> Self {
         let index: BTreeMap<u64, usize> = rows
             .iter()
             .enumerate()
@@ -415,17 +424,46 @@ impl Blocks {
         Self { starts, next }
     }
 
-    fn range(&self, block: usize) -> std::ops::Range<usize> {
+    pub(super) fn range(&self, block: usize) -> std::ops::Range<usize> {
         block..self.starts[&block]
     }
 
-    fn successors(&self, block: usize) -> Vec<usize> {
+    pub(super) fn successors(&self, block: usize) -> Vec<usize> {
         self.next[&block].clone()
     }
 
     fn jumps_through_register(&self, rows: &[Instruction], block: usize) -> bool {
         rows[self.starts[&block] - 1].operation == "br"
     }
+}
+
+/// The state at `site` within its straight-line block, with independent symbolic registers at
+/// the block's start. Calls and stores break the proof: memory loaded before one need not still
+/// be the receiver's vtable afterwards. Narrow writes also break the proof because they
+/// truncate pointer identities.
+pub(super) fn local_state(rows: &[Instruction], site: u64) -> Option<State> {
+    let position = rows.iter().position(|row| row.address == site)?;
+    let blocks = Blocks::new(rows);
+    let (&start, _) = blocks.starts.range(..=position).next_back()?;
+    let mut state = State::independent_registers();
+    for row in &rows[start..position] {
+        let supported = match row.operation.as_str() {
+            "mov" | "add" | "sub" | "ldr" | "ldp" => !row.operands.starts_with('w'),
+            "nop" | "cmp" | "cmn" | "tst" => true,
+            _ => false,
+        };
+        if !supported {
+            state = State::independent_registers();
+            continue;
+        }
+        step(
+            row,
+            &StringFunctions::default(),
+            &BTreeMap::new(),
+            &mut state,
+        );
+    }
+    Some(state)
 }
 
 /// Positions that can run after the instruction at `position` by direct control flow, when the

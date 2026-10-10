@@ -25,6 +25,13 @@
 //! - The **context pass** runs each entry's function to the entry call, then through it. Every
 //!   wrapper on the way runs inline, with its caller's arguments and memory, so the context of
 //!   each evaluation that the entry reaches is read from the scope that its caller built.
+//! - When strict naming fails, a separate bounded search keeps possible positive offsets of an
+//!   owner method's receiver through moves, immediate arithmetic and conditional selections.
+//!   A direct evaluator, or a same-receiver vtable slot proved within the final straight-line
+//!   block, supplies the family. These are candidates only: a context run reserves unknown
+//!   memory for the receiver and reads the selected block pointer and scope together. Unknown
+//!   identities retain a gap, even beside a readable context. Array elements, receiver spills,
+//!   caller-supplied scopes and dispatch not proved locally remain outside this fallback.
 //!
 //! A tooltip call, to a tooltip builder or through a tooltip slot of a block's vtable, names that
 //! block but evaluates nothing; the method records the block, so that a block that only tooltip
@@ -49,7 +56,9 @@ use super::{CallbackLayout, Context, Findings};
 use crate::BlockFamily;
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::evaluate::ReadOnlyData;
-use crate::engine::analysis::stop::Unresolved;
+use crate::engine::analysis::stop::{Obstacle, Unknown, Unresolved, sort_and_dedup};
+
+mod selections;
 
 /// How many calls away from the decoded functions the binding decodes functions that receive a
 /// scope.
@@ -220,23 +229,22 @@ pub fn analyze_blocks(input: &BlockInput) -> BlockEntries {
         offset_getters: &input.offset_getters,
     };
     let mut result = BlockEntries::default();
-    let Attribution {
-        evaluations,
-        mut entries,
-        wrappers,
-        helpers,
-    } = attribute_sites(input, &mut result);
-    let climb = climb::climb(&decoded, wrappers);
+    let mut attribution = attribute_sites(input, &mut result);
+    let climb = climb::climb(&decoded, std::mem::take(&mut attribution.wrappers));
     for (block, reason) in climb.charges {
         charge(&mut result, &BTreeSet::from([block]), reason);
     }
-    entries.extend(climb.entries);
-    let helper_calls = helper_calls(&decoded, &input.type_pointers, &helpers, &mut result);
+    attribution.entries.extend(climb.entries);
+    let helper_calls = helper_calls(
+        &decoded,
+        &input.type_pointers,
+        &attribution.helpers,
+        &mut result,
+    );
     collect_contexts(
         input,
         &decoded,
-        &evaluations,
-        entries,
+        attribution,
         helper_calls,
         &climb.wrappers,
         &mut result,
@@ -254,6 +262,8 @@ struct Attribution {
     wrappers: BTreeMap<Wrapper, BTreeSet<Block>>,
     /// Each helper's evaluations of the block that it receives, by the helper's start.
     helpers: BTreeMap<u64, Vec<PassedBlock>>,
+    /// Possible owner-receiver blocks whose identities must be checked on each context path.
+    selections: Vec<selections::Selection>,
 }
 
 /// A helper's evaluation of the block that it receives as a parameter.
@@ -268,19 +278,20 @@ struct PassedBlock {
     scope_is_parameter: bool,
 }
 
-/// The functions whose sites the name pass names a block at, or evaluate a block parameter at.
+/// Functions with named blocks, block parameters, or candidate owner-block evaluations that the
+/// context pass must confirm.
 #[derive(Debug, Clone, Default)]
 pub struct NamedFunctions {
-    /// The functions that hold an evaluation of a named block, and the helpers, whose evaluation's
-    /// block a caller names. The binding gives these functions' callers and the functions that
-    /// they pass a scope to.
+    /// Functions that hold a named block evaluation, a helper's evaluation of its block parameter,
+    /// or a candidate owner-block evaluation whose identity the context pass must confirm. The
+    /// binding decodes their callers and the functions that they pass a scope to.
     pub evaluating: BTreeSet<u64>,
     /// The functions that hold a tooltip call on a named block.
     pub tooltips: BTreeSet<u64>,
 }
 
-/// The functions that hold a site that the name pass names a block at, or that evaluates the
-/// block that a helper receives.
+/// Functions to retain for context decoding: named evaluations, helpers, and candidate owner
+/// selections. Candidate identities remain unconfirmed until the context pass reads each path.
 pub fn named_functions(
     sites: &[EvaluationSite],
     functions: &BTreeMap<u64, Vec<Instruction>>,
@@ -311,6 +322,9 @@ pub fn named_functions(
             }
             Named::Nothing => {}
         }
+    }
+    for selection in selections::discover(sites, functions, type_pointers, &states, evaluation) {
+        named.evaluating.insert(selection.site.function);
     }
     named
 }
@@ -441,6 +455,13 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
         entries: Vec::new(),
         wrappers: BTreeMap::new(),
         helpers: BTreeMap::new(),
+        selections: selections::discover(
+            &input.sites,
+            &input.functions,
+            &input.type_pointers,
+            &states,
+            &evaluation,
+        ),
     };
 
     for site in &input.sites {
@@ -477,6 +498,10 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
             }
             Named::Nothing => {
                 if site.calls_evaluator(&input.evaluators)
+                    && !attribution
+                        .selections
+                        .iter()
+                        .any(|selection| selection.site.address == site.address)
                     && let Some(owner) = &pointers.method_of
                 {
                     *result.unattributed.entry(owner.clone()).or_default() += 1;
@@ -615,12 +640,17 @@ fn passed_block(
 fn collect_contexts(
     input: &BlockInput,
     decoded: &Decoded<'_>,
-    evaluations: &BTreeMap<u64, Block>,
-    entries: Vec<Entry<Block>>,
+    attribution: Attribution,
     helper_calls: Vec<HelperCall>,
     wrappers: &BTreeSet<u64>,
     result: &mut BlockEntries,
 ) {
+    let Attribution {
+        evaluations,
+        entries,
+        selections,
+        ..
+    } = attribution;
     let data = instances::with_objects(&input.data, &input.instances);
     let runner = Runner {
         scope_code: &input.scope_code,
@@ -665,9 +695,31 @@ fn collect_contexts(
         }
     };
 
-    let shared_reads = reads(evaluations);
+    let shared_reads = reads(&evaluations);
     for entry in entries {
-        record(result, run(entry, &entered, evaluations, &shared_reads));
+        record(result, run(entry, &entered, &evaluations, &shared_reads));
+    }
+    for selection in selections {
+        if selection.scope_parameter {
+            charge(
+                result,
+                &selection.blocks,
+                "selected-block-scope-from-caller",
+            );
+            continue;
+        }
+        let Some(code) = climb::entry_code(decoded, &entered, selection.site.function) else {
+            charge(result, &selection.blocks, "site-not-decoded");
+            continue;
+        };
+        let (receiver, found) = runner.read_receiver_call(
+            &code,
+            selection.site.function,
+            selection.site.address,
+            &calls,
+            selections::RECEIVER_BYTES,
+        );
+        record(result, selected_run(selection, receiver, found));
     }
     // A helper runs only as the selected call of a call that passes it a block, so it is not a
     // wrapper that other runs enter. Its evaluations read as the blocks that this call passes.
@@ -688,6 +740,55 @@ fn collect_contexts(
             result,
             run(entry, &entered, &evaluations, &reads(&evaluations)),
         );
+    }
+}
+
+/// Match each arriving receiver to its candidate block before giving it the path's context.
+/// An unknown identity remains a gap even if another arrival gives a readable context.
+fn selected_run(selection: selections::Selection, receiver: u64, found: CallReads) -> EntryRun {
+    let mut reached = BTreeSet::new();
+    let mut unresolved = found.unresolved;
+    for (site, pointer, context) in found.reached {
+        match pointer {
+            Some(pointer) => {
+                let block = selection
+                    .blocks
+                    .iter()
+                    .find(|block| receiver.checked_add_signed(block.offset) == Some(pointer));
+                if let Some(block) = block {
+                    reached.insert((site, block.clone(), context));
+                } else if (receiver..receiver + selections::RECEIVER_BYTES).contains(&pointer) {
+                    unresolved.push(Unresolved::new("selected-block-offset"));
+                }
+            }
+            None => unresolved.push(Unresolved::at(
+                "selected-block-identity",
+                site,
+                selection.site.function,
+                Obstacle::Unknown(Unknown::Register(EVALUATED_BLOCK as u8)),
+            )),
+        }
+    }
+    for block in &selection.blocks {
+        if !reached.iter().any(|(_, selected, _)| selected == block) {
+            unresolved.push(Unresolved::new("selected-block-not-reached"));
+            break;
+        }
+    }
+    sort_and_dedup(&mut unresolved);
+    let contradicted = !unresolved.is_empty()
+        || reached
+            .iter()
+            .any(|(_, _, context)| !context.is_established());
+    EntryRun {
+        function: selection.site.function,
+        site: selection.site.address,
+        wrapper: None,
+        blocks: selection.blocks,
+        reached,
+        unresolved,
+        bounded: found.bounded,
+        contradicted,
     }
 }
 

@@ -413,7 +413,7 @@ fn a_block_that_is_not_this_plus_an_offset_is_unattributed() {
 }
 
 #[test]
-fn two_branches_that_select_different_blocks_are_unattributed() {
+fn two_branches_that_select_different_blocks_receive_their_contexts() {
     let mut lines = builds_a(0x1000, COUNTRY_TYPE);
     lines.extend([
         (0x1018, "cbz", "x2,#0x1024"),
@@ -426,8 +426,9 @@ fn two_branches_that_select_different_blocks_are_unattributed() {
     ]);
     let result = Program::new().method(&lines).analyze();
 
-    assert!(result.blocks.is_empty());
-    assert_eq!(result.unattributed, BTreeMap::from([(OWNER.into(), 1)]));
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+    assert_eq!(contexts(&result, ALLOW), [fresh(COUNTRY)]);
+    assert!(result.unattributed.is_empty());
 }
 
 #[test]
@@ -1807,4 +1808,220 @@ fn a_pre_index_load_of_the_vtable_names_the_block_at_its_offset() {
         .analyze();
 
     assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
+}
+
+fn authored_selection(bytes: &[u8]) -> Program {
+    use crate::engine::analysis::decode::decode_arm64;
+    let mut program = Program::new();
+    program
+        .functions
+        .insert(0x1000, decode_arm64(bytes, 0x1000).unwrap());
+    program.type_pointers.insert(
+        0x1000,
+        TypePointers {
+            method_of: Some(OWNER.into()),
+            registers: BTreeMap::from([(0, OWNER.into())]),
+            members: BTreeMap::new(),
+        },
+    );
+    program
+}
+
+#[test]
+fn a_conditional_selection_keeps_each_blocks_country_or_planet_context() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x0, sp, #0x180;
+        bl extern FRESH as usize;
+        mov w9, #2; // planet type bit 1
+        str x9, [sp, #0x188];
+        cbz x2, >planet;
+        mov w20, #0;
+        b >select;
+        planet:;
+        mov w20, #1;
+        select:;
+        cmp w20, #0;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        csel x0, x8, x9, eq;
+        add x8, sp, #0x100;
+        add x9, sp, #0x180;
+        csel x1, x8, x9, eq;
+        ldr x8, [x0];
+        ldr x8, [x8, #0x10];
+        blr x8;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+    assert_eq!(contexts(&result, ALLOW), [fresh(Slot::Scope(1))]);
+    assert!(
+        result
+            .blocks
+            .values()
+            .all(|finding| finding.unresolved.is_empty())
+    );
+}
+
+#[test]
+fn an_unknown_alternative_keeps_the_known_block_and_an_identity_gap() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x8, x21, #0x40;
+        ldr x9, [x21, #0x80]; // unknown swap
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        ldr x8, [x0];
+        ldr x8, [x8, #0x10];
+        blr x8;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [fresh(COUNTRY)]);
+    assert!(
+        result.blocks[&block(POTENTIAL)]
+            .unresolved
+            .contains("selected-block-identity")
+    );
+}
+
+#[test]
+fn crossed_virtual_targets_do_not_attribute_selected_blocks() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        csel x10, x9, x8, eq;
+        ldr x8, [x10];
+        ldr x8, [x8, #0x10];
+        add x1, sp, #0x100;
+        blr x8;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert!(result.blocks.is_empty());
+}
+
+#[test]
+fn a_scope_stored_in_the_seeded_receiver_escapes_at_an_opaque_call() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x8, sp, #0x100;
+        str x8, [x21, #0x100];
+        mov x0, x21;
+        bl extern 0x9900;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        bl extern EVALUATE as usize;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [unreadable()]);
+    assert_eq!(contexts(&result, ALLOW), [unreadable()]);
+}
+
+#[test]
+fn a_selected_blocks_parameter_scope_keeps_a_narrow_gap() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        add x8, x0, #0x40;
+        add x9, x0, #0x48;
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        bl extern EVALUATE as usize;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert_eq!(result.blocks.len(), 2);
+    for finding in result.blocks.values() {
+        assert!(finding.contexts.is_empty());
+        assert_eq!(
+            finding.unresolved,
+            BTreeSet::from(["selected-block-scope-from-caller"])
+        );
+    }
+}
+
+#[test]
+fn a_selected_virtual_blocks_slot_supplies_only_its_own_family() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        ldr x8, [x0];
+        ldr x8, [x8, #0x48]; // effect Execute, not a trigger evaluation
+        blr x8;
+        ret
+    );
+    let result = authored_selection(&bytes).analyze();
+    assert_eq!(
+        block_contexts(&result, &effect(POTENTIAL)),
+        [fresh(COUNTRY)]
+    );
+    assert!(contexts(&result, POTENTIAL).is_empty());
+    assert!(contexts(&result, ALLOW).is_empty());
+}
+
+#[test]
+fn a_truncated_virtual_target_does_not_prove_a_selected_blocks_evaluation() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x0, sp, #0x100;
+        bl extern SET_COUNTRY as usize;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        cmp x2, #0;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        ldr x8, [x0];
+        mov w8, w8; // loses the upper half of the vtable address
+        ldr x8, [x8, #0x48];
+        blr x8;
+        ret
+    );
+    assert!(authored_selection(&bytes).analyze().blocks.is_empty());
 }

@@ -107,6 +107,8 @@ pub(super) enum Subject {
     String(usize),
     /// A list that a lookup returned, in this register.
     List(usize),
+    /// The pointer in this register, for path-sensitive block identity.
+    Pointer(usize),
     /// Nothing that the path names, such as a game rule.
     None,
 }
@@ -246,6 +248,42 @@ impl Runner<'_> {
         reads: &BTreeMap<u64, Read>,
     ) -> CallReads {
         let machine = Machine::new(code, self.data);
+        self.read_calls_from(machine, entry, site, selected, calls, reads)
+    }
+
+    /// Read an owner method's selected block and scope together. Only its non-null receiver is
+    /// seeded; reserved bytes remain unknown and ordinary escape rules still apply to stores.
+    pub fn read_receiver_call(
+        &self,
+        code: &Code,
+        entry: u64,
+        site: u64,
+        calls: &EntryCalls<'_>,
+        receiver_bytes: u64,
+    ) -> (u64, CallReads) {
+        let mut machine = Machine::new(code, self.data);
+        let receiver = machine.reserve(receiver_bytes);
+        machine.set_register(0, receiver);
+        let reads = BTreeMap::from([(
+            site,
+            Read {
+                scope: EVALUATED_SCOPE,
+                subject: Subject::Pointer(0),
+            },
+        )]);
+        let found = self.read_calls_from(machine, entry, site, Selected::Evaluator, calls, &reads);
+        (receiver, found)
+    }
+
+    fn read_calls_from(
+        &self,
+        machine: Machine<'_>,
+        entry: u64,
+        site: u64,
+        selected: Selected,
+        calls: &EntryCalls<'_>,
+        reads: &BTreeMap<u64, Read>,
+    ) -> CallReads {
         let prefix = machine.run_paths_to(entry, site, &mut |target, machine| {
             Ok(self.entry_call(target, machine, calls))
         });
@@ -740,6 +778,7 @@ impl Runner<'_> {
             Subject::List(register) => machine
                 .register(register)
                 .and_then(|list| machine.labelled(LIST | list)),
+            Subject::Pointer(register) => machine.register(register),
             Subject::None => None,
         };
         let context = self.read(machine, machine.register(read.scope));

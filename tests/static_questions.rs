@@ -1224,14 +1224,23 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
             ]
         )
     );
-    // CTraditionType::OnEnabled runs the swap's or its own effect through a virtual call on a
-    // `csel` of the two, which names no one block.
-    let (entries, gaps) = field("common/traditions", "on_enabled");
-    assert!(entries.is_empty());
-    assert_eq!(
-        gaps,
-        ["no evaluation that the method attributes evaluates this block"]
-    );
+    // Both registries use CTraditionType. OnEnabled and OnDisabled select the swap's or
+    // the owner's effect. The owner paths build country scopes; unknown swap identities keep
+    // an explicit gap and make the path bound relevant.
+    for registry in ["common/traditions", "common/ascension_perks"] {
+        for name in ["on_enabled", "on_disabled"] {
+            let (entries, gaps) = field(registry, name);
+            assert_eq!(entries, [country], "{registry}/{name}");
+            assert_eq!(
+                gaps,
+                [
+                    "a call site has more paths than the method follows (path-limit)",
+                    "a path to a call site could not be followed (selected-block-identity)",
+                ],
+                "{registry}/{name}"
+            );
+        }
+    }
 }
 
 #[test]
