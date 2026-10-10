@@ -1,5 +1,5 @@
-//! Read every reference reader and owner initializer, the functions that their lookups reach, and
-//! each named database's content directory.
+//! Read every reference reader, the trigger lookup and every owner initializer, the functions that
+//! their lookups reach, and each named database's content directory.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -7,6 +7,7 @@ use crate::binding::analysis::NamedCandidate;
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use crate::engine::analysis::directories::{self, Constructor, Directory};
 use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::readers::TRIGGER_LOOKUP;
 use crate::engine::analysis::references::{
     ReferenceInput, initialization, lambda_operator, reader,
     shapes::{Line, canonical},
@@ -87,7 +88,9 @@ pub(in crate::binding) fn read(
     };
     let readers = named(|name| reader(name).is_some());
     let initializers = named(|name| name.ends_with(INITIALIZER));
-    let mut functions = reachable_functions(&text, image.symbols, &names, &readers, |_| true);
+    let mut lookups = readers.clone();
+    lookups.insert(TRIGGER_LOOKUP.to_owned());
+    let mut functions = reachable_functions(&text, image.symbols, &names, &lookups, |_| true);
     let initializer_functions =
         reachable_functions(&text, image.symbols, &names, &initializers, |callee| {
             callee.ends_with(KEY_SEARCH)

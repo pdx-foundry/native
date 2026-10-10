@@ -5,7 +5,7 @@ use crate::engine::analysis::fields::{
 };
 use crate::engine::analysis::readers;
 use crate::engine::analysis::references::{
-    self, Lookup, ReferenceFacts, initialization::InitializationLookup,
+    self, Lookup, Missing, ReferenceFacts, initialization::InitializationLookup,
 };
 use crate::{
     AcceptedCategories, BlockFamily, EmptyKey, Field, FieldCondition, FieldDomain, FieldMembers,
@@ -162,7 +162,7 @@ fn stores_last_deferred_key(callee: &str, references: &ReferenceFacts) -> bool {
             &fact.lookup,
             Ok(Lookup {
                 stage: references::Stage::Deferred,
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
                 ..
             })
         )
@@ -461,9 +461,10 @@ pub(super) fn reference_lookup(
             Some(false) => EmptyKey::NotLookedUp,
             None => EmptyKey::Unresolved,
         },
-        on_missing: match lookup.missing_yields_null {
-            Some(true) => MissingResult::NullObject,
-            _ => MissingResult::Unresolved,
+        on_missing: match lookup.on_missing {
+            Some(Missing::NullObject) => MissingResult::NullObject,
+            Some(Missing::ScriptedTriggerPlaceholder) => MissingResult::ScriptedTriggerPlaceholder,
+            None => MissingResult::Unresolved,
         },
     }
 }
@@ -910,7 +911,7 @@ mod tests {
                             stage: Stage::Deferred,
                             key_match: None,
                             empty_key_looked_up: Some(true),
-                            missing_yields_null: Some(true),
+                            on_missing: Some(Missing::NullObject),
                         }),
                     },
                 ),
@@ -1074,7 +1075,7 @@ mod tests {
                 stage: Stage::Deferred,
                 key_match: None,
                 empty_key_looked_up: Some(true),
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
             }),
         };
         let references = ReferenceFacts {
@@ -1089,6 +1090,7 @@ mod tests {
                 ),
             ]),
             initializers: BTreeMap::new(),
+            ..Default::default()
         };
         let fields = [flag, target];
         let field = ordinary_field(&fields[1], &fields, &paths, &BTreeMap::new(), &references);
@@ -1155,7 +1157,7 @@ mod tests {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(references::KeyMatch::Equal),
                 empty_key_looked_up: Some(false),
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
             },
         }
     }
@@ -1210,10 +1212,7 @@ mod tests {
             path(true, string_read(0xa8, true)),
             path(false, string_read(0xb0, true)),
         ];
-        let references = ReferenceFacts {
-            readers: BTreeMap::new(),
-            initializers: BTreeMap::new(),
-        };
+        let references = ReferenceFacts::default();
 
         let fields = grammar_fields(
             &[flag, size],
@@ -1261,10 +1260,7 @@ mod tests {
             readers: vec![join],
         };
         let fields = [field.clone()];
-        let references = ReferenceFacts {
-            readers: BTreeMap::new(),
-            initializers: BTreeMap::new(),
-        };
+        let references = ReferenceFacts::default();
         let normalize = |wide: PathOutcome| {
             let paths = [path([7, 7], vec![], read(12)), path([6, 8], vec![], wide)];
             ordinary_field(&field, &fields, &paths, &BTreeMap::new(), &references)
@@ -1379,11 +1375,12 @@ mod tests {
                         stage: Stage::Deferred,
                         key_match: None,
                         empty_key_looked_up: Some(true),
-                        missing_yields_null: Some(true),
+                        on_missing: Some(Missing::NullObject),
                     }),
                 },
             )]),
             initializers: BTreeMap::new(),
+            ..Default::default()
         };
 
         let mut normalized = field(&parent, &registry, &references);

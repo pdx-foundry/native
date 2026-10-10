@@ -9,7 +9,7 @@
 //! element type, reject the lookup. An initializer that names more than one database is not
 //! split into fragments.
 use super::shapes::{Bindings, Line, Shape};
-use super::{KeyMatch, Lookup, Method, Stage, null_object, offset, string_layout};
+use super::{KeyMatch, Lookup, Method, Missing, Stage, null_object, offset, string_layout};
 use crate::engine::analysis::stop::Unresolved;
 use std::collections::BTreeSet;
 use std::sync::LazyLock;
@@ -143,7 +143,7 @@ impl Method<'_> {
                     stage: Stage::OwnerInitialization,
                     key_match: found.key_match,
                     empty_key_looked_up: Some(found.empty_key_looked_up),
-                    missing_yields_null: Some(true),
+                    on_missing: Some(Missing::NullObject),
                 },
             }),
             Err(stop) => Initialization::Unresolved(stop),

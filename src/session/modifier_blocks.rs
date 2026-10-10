@@ -194,10 +194,7 @@ mod tests {
             entries: GrammarProperty::Known(vec![]),
             stops: vec![],
         };
-        let references = ReferenceFacts {
-            readers: Default::default(),
-            initializers: Default::default(),
-        };
+        let references = ReferenceFacts::default();
 
         let block = normalize(&variant, &references, "modifier");
 

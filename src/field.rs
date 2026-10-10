@@ -324,6 +324,9 @@ pub enum MissingResult {
     /// A typed placeholder object, not a null pointer or the previous value. Its type is not
     /// established to be the target registry's item type.
     NullObject,
+    /// A name that no trigger command has is accepted as a scripted trigger. The lookup does not
+    /// check that a scripted trigger has the name.
+    ScriptedTriggerPlaceholder,
     /// Not established.
     Unresolved,
 }

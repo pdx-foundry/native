@@ -1602,7 +1602,9 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
    "id": "1c2988588f7e8eaa",
    "kind": "Block",

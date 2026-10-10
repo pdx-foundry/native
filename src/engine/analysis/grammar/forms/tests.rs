@@ -367,7 +367,7 @@ fn lookup() -> InitializationLookup {
             stage: LookupStage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
         },
     }
 }

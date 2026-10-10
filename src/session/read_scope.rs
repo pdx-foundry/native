@@ -78,6 +78,11 @@ fn fields(
         if matches!(field.members, crate::FieldMembers::WeightBlock(_)) {
             continue;
         }
+        // A modifier block's reader takes no scope, and its entries are not read in one.
+        if matches!(field.members, crate::FieldMembers::ModifierBlock(_)) {
+            field.read_scope = GrammarProperty::Known(vec![]);
+            continue;
+        }
         let Some(root) = roots.iter().find(|root| root.name == field.name) else {
             continue;
         };
@@ -329,6 +334,74 @@ mod tests {
             assert_eq!(gaps.len(), 1);
         }
         assert!(matches!(scopes(vec![]).0, GrammarProperty::Unresolved));
+    }
+
+    #[test]
+    fn a_modifier_block_is_read_in_no_scope_beside_a_trigger_block_that_keeps_its_scope() {
+        use crate::engine::analysis::fields::ReaderJoin;
+        use serde_json::json;
+
+        let field = |name: &str, members: serde_json::Value| -> Field {
+            serde_json::from_value(json!({
+                "name": name,
+                "reader": { "id": null, "kind": "Block", "family": "Unknown",
+                    "numeric": "Unresolved", "scoped_operand": "Unresolved" },
+                "shape": { "value": "Unknown", "repeat": "Unknown" }, "read": [],
+                "members": members, "domain": "Unknown", "uses": [],
+                "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
+                "accepted_categories": "NotApplicable"
+            }))
+            .unwrap()
+        };
+        let root = |name: &str, callee: &str, arguments: Vec<(&str, Value)>| RootField {
+            name: name.into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: callee.into(),
+                arguments: arguments
+                    .into_iter()
+                    .map(|(register, value)| (register.to_owned(), value))
+                    .collect(),
+                tail: true,
+            }],
+        };
+        let modifier_block = json!({ "ModifierBlock": {
+            "fixed_keys": { "Known": [] }, "entries": { "Known": [] } } });
+        let mut values = [
+            field("modifier", modifier_block),
+            field("potential", json!("Unresolved")),
+        ];
+        let roots = [
+            root(
+                "modifier",
+                "CReader::Read(CPersistent&)",
+                vec![("x0", Value::Reader(0)), ("x1", Value::Owner(0x40))],
+            ),
+            root(
+                "potential",
+                "void NParserUtil::ReadTrigger<CRootTrigger>(CReader&, CRootTrigger&, EScopeType)",
+                vec![
+                    ("x0", Value::Reader(0)),
+                    ("x1", Value::Owner(0x80)),
+                    ("x2", Value::Constant(4)),
+                ],
+            ),
+        ];
+        let names = ["none", "planet", "country"].map(String::from);
+        let mut gaps = Vec::new();
+
+        fields(&mut values, &roots, &[], Some(&names), &mut gaps);
+
+        assert_eq!(values[0].read_scope, GrammarProperty::Known(vec![]));
+        let GrammarProperty::Known(scopes) = &values[1].read_scope else {
+            panic!("{:?}", values[1].read_scope);
+        };
+        assert!(
+            matches!(scopes.as_slice(), [ReadScope::Types(types)] if types.len() == 1 && types[0].name == "country")
+        );
+        assert!(gaps.is_empty(), "{gaps:?}");
     }
 
     #[test]

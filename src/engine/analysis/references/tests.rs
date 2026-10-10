@@ -154,6 +154,8 @@ pub(super) fn shape(name: &str) -> &'static str {
         "lambda_getter" => include_str!("shapes/lambda_getter.shape"),
         "getter_scan" => include_str!("shapes/getter_scan.shape"),
         "map_find" => include_str!("shapes/map_find.shape"),
+        "trigger_token" => include_str!("shapes/trigger_token.shape"),
+        "trigger_map" => include_str!("shapes/trigger_map.shape"),
         _ => unreachable!("{name}"),
     }
 }
@@ -243,7 +245,7 @@ fn a_deferred_reader_with_a_forwarded_scan_is_a_deferred_first_equal_lookup() {
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
         })
     );
 }
@@ -376,7 +378,7 @@ fn an_immediate_reader_looks_up_while_reading_and_names_its_own_clone() {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
         })
     );
 
@@ -469,4 +471,58 @@ fn assembled_code_canonicalizes_to_the_lambda_getter_shape() {
 
     assert_eq!(bindings["database"], "CShipDatabase::_pInstance");
     assert_eq!(bindings["getter"], GETTER);
+}
+
+const TRIGGER_SEARCH: &str = "CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(int, CString const&, CString const&) const";
+
+/// The trigger lookup's facts when its token overload forwards to `search`, built from `body`.
+fn trigger_lookup(search: &str, body: &str) -> Result<Lookup, Unresolved> {
+    let mut image = Image::default();
+    image
+        .add(
+            crate::engine::analysis::readers::TRIGGER_LOOKUP,
+            shape("trigger_token"),
+            &[("search", search)],
+        )
+        .add(TRIGGER_SEARCH, body, &[]);
+
+    analyze(&image.input(&[], &[])).trigger_lookup
+}
+
+#[test]
+fn the_trigger_lookup_runs_while_reading_and_makes_a_placeholder_on_a_miss() {
+    assert_eq!(
+        trigger_lookup(TRIGGER_SEARCH, shape("trigger_map")),
+        Ok(Lookup {
+            stage: Stage::WhileReading,
+            key_match: None,
+            empty_key_looked_up: Some(true),
+            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
+        })
+    );
+}
+
+#[test]
+fn a_changed_trigger_search_is_not_a_trigger_lookup() {
+    let other_miss = shape("trigger_map").replace(
+        "CScriptedTrigger::CScriptedTrigger(CString const&)",
+        "CTrigger::CTrigger()",
+    );
+    let other_branch = shape("trigger_map").replacen("b.gt @+7", "b.lt @+7", 1);
+    for body in [other_miss, other_branch] {
+        assert_ne!(body, shape("trigger_map"));
+
+        assert_eq!(
+            trigger_lookup(TRIGGER_SEARCH, &body).unwrap_err().reason,
+            "trigger-search-shape"
+        );
+    }
+
+    let other_search = "CTriggerDatabase::GetTrigger(int) const";
+    assert_eq!(
+        trigger_lookup(other_search, shape("trigger_map"))
+            .unwrap_err()
+            .reason,
+        "trigger-search-body"
+    );
 }

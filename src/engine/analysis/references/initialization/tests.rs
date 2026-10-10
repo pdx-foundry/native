@@ -156,7 +156,7 @@ fn control_01_ship_map_skips_an_empty_key_and_selects_the_null_object() {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::Equal),
                 empty_key_looked_up: Some(false),
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
             },
         }
     );
@@ -175,7 +175,7 @@ fn control_02_district_scan_selects_the_first_equal_item() {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
                 empty_key_looked_up: Some(true),
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
             },
         }
     );
@@ -197,7 +197,7 @@ fn control_03_planet_getter_is_an_equal_hash_search_with_a_null_substitute() {
             stage: Stage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
             empty_key_looked_up: Some(true),
-            missing_yields_null: Some(true),
+            on_missing: Some(Missing::NullObject),
         }
     );
 }

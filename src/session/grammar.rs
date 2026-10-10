@@ -685,6 +685,7 @@ mod tests {
         ReferenceFacts {
             readers: Default::default(),
             initializers: [(INITIALIZER.to_owned(), initialization)].into(),
+            ..Default::default()
         }
     }
 
@@ -751,7 +752,7 @@ mod tests {
 
     /// An initialization lookup of the key string at `this+key_offset`.
     fn scan_at(key_offset: i64) -> Initialization {
-        use crate::engine::analysis::references::{KeyMatch, Lookup, Stage};
+        use crate::engine::analysis::references::{KeyMatch, Lookup, Missing, Stage};
 
         Initialization::Lookup(InitializationLookup {
             database: "CDistrictTypeDatabase".into(),
@@ -762,7 +763,7 @@ mod tests {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
                 empty_key_looked_up: Some(true),
-                missing_yields_null: Some(true),
+                on_missing: Some(Missing::NullObject),
             },
         })
     }

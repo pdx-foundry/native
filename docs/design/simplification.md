@@ -103,3 +103,23 @@ Linear.
 - **Decision 9, one game per host.** Keep the host-wide lock and its one-time setup. A per-account
   lock loses only the case of two accounts that launch in the same instant. Revisit only if a second
   account becomes a real need.
+
+## Decisions of 2026-10-07
+
+The council agenda gate plan (SDK-600) settled the last weight-entry and modifier gaps (SDK-722).
+D3 and D4 are in the specification and on the [weight blocks](../native/weight-blocks.md) page.
+
+- **Decision D5(a), zero-mask weight entries. A recorded exception.**
+  - *Claim.* The read scope of `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its
+    `potential` stays `Unresolved`, with an `OutsideMethod` gap instead of an `UnresolvedPath` gap.
+  - *Conditions.* The exact M452 build. The member reader passes a literal scope mask 0 when it
+    reads the block. A stored scope that resolves to 0, such as the owner scope of building weight
+    fields, is not covered and keeps its `UnresolvedPath` gap.
+  - *Obstacle.* The engine checks these blocks later: `CScaledMTTHModifier::ValidateScope` checks
+    `limit` in the scope type of the `scope` target, and `CComplexTriggerMTTHModifier::ValidateScope`
+    checks `potential` in the received scope. The method does not read the validate functions.
+  - *Removal route.* Read the validate functions and report the scope that each one checks.
+  - *Stated limit.* A planet trigger inside `limit` under `scope = owner` (a country) is valid in
+    the engine, but a compiler that types `limit` in the enclosing scope rejects it. In the installed
+    game, all 10 `scaled_modifier` uses (in `common/special_projects`) state `scope = this`, so
+    vanilla content has no false error.

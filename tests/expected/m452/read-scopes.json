@@ -15,7 +15,9 @@
             }
           ]
         },
-        "modifier": "Unresolved",
+        "modifier": {
+          "Known": []
+        },
         "on_disabled": {
           "Known": [
             {
@@ -83,63 +85,6 @@
           "detail": "read-scope: scope-argument",
           "kind": "UnresolvedPath",
           "subject": {
-            "kind": "key_path",
-            "path": [
-              "triggered_modifier",
-              "modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "scaled_modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "scaled_modifier",
-              "limit"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "complex_trigger_modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "complex_trigger_modifier",
-              "potential"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
             "kind": "field",
             "name": "triggered_modifier"
           }
@@ -150,14 +95,6 @@
           "subject": {
             "kind": "field",
             "name": "tradition_swap"
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "field",
-            "name": "modifier"
           }
         },
         {
@@ -227,52 +164,6 @@
         "traditions": "Unresolved"
       },
       "gaps": [
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "scaled_modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "scaled_modifier",
-              "limit"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "complex_trigger_modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: zero-mask: the engine reads this block with scope mask 0.",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "ai_weight",
-              "complex_trigger_modifier",
-              "potential"
-            ]
-          }
-        },
         {
           "detail": "read-scope: scope-argument",
           "kind": "UnresolvedPath",

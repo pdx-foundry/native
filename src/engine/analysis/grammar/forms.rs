@@ -12,7 +12,7 @@ use crate::engine::analysis::{
     evaluate::{Call, Code, Decision, Exit, Machine, Path},
     fields::{ReaderJoin, Value},
     readers,
-    references::initialization::InitializationLookup,
+    references::{Missing, initialization::InitializationLookup},
     stop::Unresolved,
 };
 
@@ -788,7 +788,7 @@ fn stages<'a>(
                     Some(Initializer::Lookup {
                         lookup,
                         execution: LookupExecution::Inline { always: true, null },
-                    }) if (!missing || lookup.lookup.missing_yields_null == Some(true))
+                    }) if (!missing || lookup.lookup.on_missing == Some(Missing::NullObject))
                         && value.is_some_and(|value| {
                             value.destination == u64::try_from(lookup.key_offset).ok()
                         }) =>

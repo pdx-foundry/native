@@ -122,8 +122,10 @@ for contexts and scope types.
   `UnresolvedStorage` gap. See [registry fields](../native/registry-fields.md#repeat-behavior).
 - `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
-  means equality with the parent's scope, never `Any`. A known empty list means the field does
-  not read a block. Zero masks and unknown arguments remain unresolved. This is separate from
+  means equality with the parent's scope, never `Any`. A known empty list means that no scope is
+  used to read the field's value or the block's children, as for a scalar or a modifier block.
+  Zero masks and unknown arguments remain unresolved; a weight entry that the engine reads with
+  mask 0 and checks later has an `OutsideMethod` gap (D5a). This is separate from
   evaluation `entry_contexts` and does not prove runtime availability.
 - Atlas uses `read_scope` for a registry block's `replace_scopes.this` comparison, and
   `child_scopes` or a named child's `read_scope` for command `push_scope`. It uses evaluation
@@ -190,8 +192,11 @@ for contexts and scope types.
   `Known(None)`. `Field.domain` gives the accepted names when it is established; until then a
   `ReaderSemantics` gap says the domain is unknown.
 - `ReferenceTarget::Triggers` is the collection of trigger commands that `declarations` lists for
-  `DeclarationKind::Trigger`. A lookup in it can name its other facts as unresolved; a gap then says
-  what a name that is no trigger command yields.
+  `DeclarationKind::Trigger`. A name that is no trigger command yields
+  `MissingResult::ScriptedTriggerPlaceholder`: the engine accepts it as a scripted trigger and the
+  lookup does not check that one has the name. The weight `trigger` lookup's key match is the
+  lexer's token number, so it stays `Unresolved` with an `OutsideMethod` gap. A fact that the
+  method does not establish stays unresolved with a gap.
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - `ScriptExpansion.stage` says whether a tool checks a use's written text (`Lex` and `Read` expand
