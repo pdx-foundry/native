@@ -25,6 +25,7 @@ const MAKE_TARGET: u64 = 0x3600;
 const ASSIGN_TARGET: u64 = 0x3700;
 const LOOKUP: u64 = 0x3800;
 const MALFORMED: u64 = 0x3900;
+const POST_READ: u64 = 0x3a00;
 const READ: u64 = 0x6000;
 const VARIANT: u64 = 0x7000;
 const VTABLE: u64 = 0x9010;
@@ -303,6 +304,20 @@ fn modifier(variation: Variation) -> Vec<u8> {
     code.bytes()
 }
 
+/// The modifier's post-read hook: it reports a stored `round` and replaces it with `add`.
+fn post_read() -> Vec<u8> {
+    arm64!(at POST_READ;
+        ldr w8, [x0, #0x2e0];
+        cmp w8, #3; b.ne >done;
+        mov x19, x0;
+        bl extern LOG as usize;
+        mov w8, #1;
+        str w8, [x19, #0x2e0];
+        done:;
+        ret
+    )
+}
+
 /// The modifier's read entry: it records its location in the owner, then reads its persistent
 /// base as a block.
 fn modifier_read() -> Vec<u8> {
@@ -500,14 +515,19 @@ fn analyze_member(variation: Variation, member_name: &str) -> Grammar {
         .unwrap()
 }
 
+fn modifier_input() -> WeightBlockInput {
+    input(
+        "Modifier::Read(CReader&)",
+        "Modifier::ReadMember(CReader&, int)",
+    )
+}
+
 fn modifier_grammar(variation: Variation) -> Grammar {
     let bodies = bodies(variation, ReadVariation::default());
     let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
-    let input = input(
-        "Modifier::Read(CReader&)",
-        "Modifier::ReadMember(CReader&, int)",
-    );
-    analyze(&input, &body).points[&POINT].clone().unwrap()
+    analyze(&modifier_input(), &body).points[&POINT]
+        .clone()
+        .unwrap()
 }
 
 fn stored(callee: &str, kind: ReaderKind, destination: i64) -> ReaderJoin {
@@ -769,6 +789,28 @@ fn a_value_compared_with_fixed_names_is_a_keyword() {
             0x298
         )]
     );
+    // Every other value reports a malformed value.
+    assert_eq!(grammar.keyword_domains["calc"], ["add", "always"]);
+}
+
+#[test]
+fn a_recognized_value_without_one_literal_name_leaves_the_domain_unknown() {
+    let mut input = modifier_input();
+    input.tokens.get_mut(&22).unwrap().ambiguous = true;
+    let bodies = bodies(Variation::default(), ReadVariation::default());
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+
+    let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
+
+    assert_eq!(
+        key(&grammar, "calc").readers,
+        [stored(
+            "Modifier::ReadMember(CReader&, int)",
+            ReaderKind::Keyword,
+            0x298
+        )]
+    );
+    assert!(!grammar.keyword_domains.contains_key("calc"));
 }
 
 #[test]
@@ -796,6 +838,25 @@ fn a_value_mapped_through_the_switch_is_a_keyword_and_never_an_operation() {
         )]
     );
     assert!(grammar.operations.is_empty(), "{:?}", grammar.operations);
+    // The fallback 16 is stored silently, but it is not a recognized name.
+    assert_eq!(grammar.keyword_domains["mode"], ["add", "round"]);
+}
+
+#[test]
+fn a_value_that_the_post_read_hook_reports_and_replaces_is_not_in_the_domain() {
+    let mut input = modifier_input();
+    input.symbols.push(Symbol {
+        name: "Modifier::InitPostRead()".into(),
+        address: POST_READ,
+    });
+    let mut bodies = bodies(Variation::default(), ReadVariation::default());
+    bodies.insert(POST_READ, post_read());
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+
+    let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
+
+    assert_eq!(grammar.keyword_domains["mode"], ["add"]);
+    assert_eq!(grammar.keyword_domains["calc"], ["add", "always"]);
 }
 
 #[test]

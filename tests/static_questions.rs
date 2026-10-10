@@ -10,9 +10,9 @@ use pdx_native::internals::{
 };
 use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
-    EntryScope, Error, FieldReference, GapKind, GapSubject, KeptCategories, KeyMatch, LinkData,
-    LocalizationContextReference, LocalizationDeclarations, LocalizationOutput, LookupStage,
-    Native, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
+    EntryScope, Error, FieldDomain, FieldReference, GapKind, GapSubject, KeptCategories, KeyMatch,
+    LinkData, LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
+    LookupStage, Native, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -223,6 +223,11 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
             .find(|key| key.name == name)
             .map(|key| key.reader.kind)
     };
+    let domain = |keys: &[Field], name: &str| {
+        keys.iter()
+            .find(|key| key.name == name)
+            .map(|key| key.domain.clone())
+    };
     let top = keys(block);
     assert_eq!(kind(&top, "base"), Some(ReaderKind::FixedPoint));
     assert_eq!(kind(&top, "days"), Some(ReaderKind::Integer));
@@ -304,9 +309,29 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     let scaled = entry_keys("scaled_modifier");
     assert_eq!(kind(&scaled, "scope"), Some(ReaderKind::Target));
     assert_eq!(kind(&scaled, "calc"), Some(ReaderKind::Keyword));
+    assert_eq!(
+        domain(&scaled, "calc"),
+        Some(FieldDomain::Listed(vec![
+            "planet_distance_empire".into(),
+            "planets_in_country".into(),
+            "pop_amount".into(),
+            "pop_happiness".into(),
+        ]))
+    );
     let complex = entry_keys("complex_trigger_modifier");
     assert_eq!(kind(&complex, "trigger_scope"), Some(ReaderKind::Target));
     assert_eq!(kind(&complex, "mode"), Some(ReaderKind::Keyword));
+    // `mode` reads the operation switch, and `InitPostRead` reports and replaces an operation
+    // without an operand.
+    assert_eq!(
+        domain(&complex, "mode"),
+        Some(FieldDomain::Listed(
+            spellings
+                .difference(&simple)
+                .map(|&spelling| spelling.into())
+                .collect()
+        ))
+    );
     let trigger = complex.iter().find(|key| key.name == "trigger").unwrap();
     assert_eq!(trigger.reader.kind, ReaderKind::Reference);
     assert_eq!(
