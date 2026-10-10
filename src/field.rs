@@ -223,6 +223,8 @@ pub enum WeightOtherKeys {
 pub enum FieldDomain {
     /// The accepted domain is not established.
     Unknown,
+    /// The accepted spellings, sorted by name.
+    Listed(Vec<String>),
 }
 
 /// The lookups that the engine makes with a field's value.

@@ -27,7 +27,10 @@
 //! unknown, so such a key has no accepted shape; the method then runs the key again for every
 //! value token of the token domain. The key is a keyword when every value either writes the same
 //! owner words without a diagnostic, or writes nothing and emits one. The value pass never makes
-//! an operation, even when a value equals the key token.
+//! an operation, even when a value equals the key token. The keyword's domain is the values it
+//! recognizes and keeps, not every value it stores: a switch may store a fallback for a name it
+//! does not know, and the member class's `InitPostRead()` may report a stored value and replace
+//! it. Neither is an accepted name.
 //!
 //! A key whose paths branch through a function pointer of an object loaded from an owner word,
 //! with the reader as the argument, is read by whatever object another key stored there. The
@@ -132,6 +135,8 @@ pub(crate) struct Grammar {
     pub stops: Vec<(Option<String>, Unresolved)>,
     /// Keys read by the object that another key stores, with that other key.
     pub dependent_readers: BTreeMap<String, String>,
+    /// The accepted names of each keyword key, sorted, when they are established.
+    pub keyword_domains: BTreeMap<String, Vec<String>>,
     /// Whether some named token stopped before the method knew if it is a fixed key or an
     /// operation, so neither list is complete.
     pub undetermined_keys: bool,
@@ -359,6 +364,7 @@ impl<'a> Context<'a> {
             key_scopes: BTreeMap::new(),
             stops: Vec::new(),
             dependent_readers: BTreeMap::new(),
+            keyword_domains: BTreeMap::new(),
             undetermined_keys: false,
         };
         if let OtherKeys::Unresolved(stop) = &grammar.other_keys {
@@ -410,8 +416,11 @@ impl<'a> Context<'a> {
                     self.push_field(&mut grammar, token as u64, literal, &ends);
                 }
                 Key::Unresolved(stop) => match self.keyword(&member, token as u64, &stop) {
-                    Some(keyword) => {
-                        self.push_field(&mut grammar, token as u64, literal, &[keyword])
+                    Some((keyword, domain)) => {
+                        self.push_field(&mut grammar, token as u64, literal, &[keyword]);
+                        if let Some(domain) = domain {
+                            grammar.keyword_domains.insert(literal.name.clone(), domain);
+                        }
                     }
                     None => {
                         grammar.stops.push((Some(literal.name.clone()), stop));
@@ -446,18 +455,29 @@ impl<'a> Context<'a> {
     }
 
     /// The keyword that the key `token` reads, when its key pass stopped at `stop` for want of the
-    /// value token. Every value token must either write the same owner words without a diagnostic
-    /// or write nothing and emit one, and at least one value must be accepted.
-    fn keyword(&self, member: &Member, token: u64, stop: &Unresolved) -> Option<End> {
+    /// value token, with the names it accepts when they are established. Every value token must
+    /// either write the same owner words without a diagnostic or write nothing and emit one, and
+    /// at least one value must be accepted. A stored value that the entry's post-read hook reports
+    /// and replaces is a recovery, not an accepted name.
+    fn keyword(
+        &self,
+        member: &Member,
+        token: u64,
+        stop: &Unresolved,
+    ) -> Option<(End, Option<Vec<String>>)> {
         if !matches!(stop.reason, "weight-acceptance" | "weight-enum-argument") {
             return None;
         }
 
+        let post_read = self.post_read(member);
         let mut stores = BTreeSet::new();
+        let mut accepted = BTreeMap::new();
         let mut terminal = None;
         for value in self.token_domain() {
             let (seeds, paths) = self.run(member, token, Some(value));
             let mut outcomes = BTreeSet::new();
+            let mut results = BTreeSet::new();
+            let mut recovered = false;
             for path in &paths {
                 let machine = &path.machine;
                 let shaped = KEY_SHAPES
@@ -480,27 +500,118 @@ impl<'a> Context<'a> {
                     (false, false) => {
                         let switch = machine.labelled(KEYWORD_SWITCH);
                         outcomes.insert(Some((written, switch)));
+                        results.insert(machine.labelled(KEYWORD_VALUE));
                         terminal.get_or_insert(machine.pc());
+                        if let Ok(Some(hook)) = &post_read {
+                            recovered |= self.recovers(hook, &owner_bytes(machine, seeds.owner));
+                        }
                     }
                     _ => return None,
                 }
             }
 
             let [outcome] = <[_; 1]>::try_from(outcomes.into_iter().collect::<Vec<_>>()).ok()?;
-            stores.extend(outcome);
+            if let Some(store) = outcome {
+                stores.insert(store);
+                if !recovered {
+                    accepted.insert(value, results);
+                }
+            }
         }
 
         let [(written, switch)] =
             <[_; 1]>::try_from(stores.into_iter().collect::<Vec<_>>()).ok()?;
         let callee = switch.map_or(member.name.as_str(), |switch| self.name(switch));
-        Some(End::stored(
+        let keyword = End::stored(
             Shape::Stored {
                 callee: callee.into(),
                 kind: ReaderKind::Keyword,
                 destination: *written.first()? as i64,
             },
             terminal?,
-        ))
+        );
+
+        let domain = post_read.ok().and_then(|_| self.keyword_domain(&accepted));
+
+        Some((keyword, domain))
+    }
+
+    /// The code of the member's own `InitPostRead()`, which the engine runs after it reads the
+    /// block, or `None` when the member's class has none.
+    fn post_read(&self, member: &Member) -> Result<Option<(u64, Code)>, Unresolved> {
+        let Some((class, _)) = member.name.split_once("::ReadMember(") else {
+            return Ok(None);
+        };
+        let Ok(entry) = self.entry(&format!("{class}::InitPostRead()")) else {
+            return Ok(None);
+        };
+
+        let rows = decode_arm64(self.body(entry)?, entry)
+            .map_err(|_| Unresolved::new("weight-post-read-code"))?;
+        Ok(Some((entry, Code::from_rows(rows))))
+    }
+
+    /// Whether the post-read hook reports a value and then overwrites it, on some path. `stored`
+    /// gives the owner bytes that the read wrote; every other owner byte is unknown. This is a
+    /// validated rule, not a proof that the report concerns the overwritten value.
+    fn recovers(&self, (entry, code): &(u64, Code), stored: &[(u64, u8)]) -> bool {
+        let mut machine = Machine::new(code, &self.input.data);
+        let owner = machine.reserve(SPAN);
+        for &(offset, byte) in stored {
+            machine.write(owner + offset, 1, u64::from(byte));
+        }
+        machine.set_register(0, owner);
+
+        let paths = machine.run_paths(*entry, &mut |target, machine| {
+            let Some(target) = target else {
+                return Err(Unresolved::new("weight-post-read-call"));
+            };
+            if EMISSIONS.contains(&self.name(target)) {
+                machine.label(EMITTED, 1);
+            }
+            Ok(Call::Return(None))
+        });
+        paths.iter().any(|path| {
+            let overwritten = stored.iter().any(|&(offset, byte)| {
+                path.machine.read(owner + offset, 1) != Some(u64::from(byte))
+            });
+            path.machine.labelled(EMITTED).is_some() && overwritten
+        })
+    }
+
+    /// The names of the values that a keyword recognizes, from the switch results of each value
+    /// that it stores. The run-time token stands for a name that the engine does not know. When
+    /// that token is rejected, every stored value is recognized. When a switch maps it to a
+    /// fallback, the values that the switch maps to another result are recognized; this assumes
+    /// that the switch maps no known name to its fallback. Any other fallback, or a recognized
+    /// value without one unambiguous literal name, leaves the domain unknown.
+    fn keyword_domain(
+        &self,
+        accepted: &BTreeMap<u64, BTreeSet<Option<u64>>>,
+    ) -> Option<Vec<String>> {
+        let fallback = match accepted.get(&(self.last_token + 1)) {
+            None => None,
+            Some(results) => {
+                match <[_; 1]>::try_from(results.iter().copied().collect::<Vec<_>>()) {
+                    Ok([Some(result)]) => Some(result),
+                    _ => return None,
+                }
+            }
+        };
+
+        let mut names = accepted
+            .iter()
+            .filter(|(_, results)| {
+                fallback.is_none_or(|fallback| !results.contains(&Some(fallback)))
+            })
+            .map(|(value, results)| {
+                let literal = self.input.tokens.get(&(*value as i64))?;
+                (results.len() == 1 && !literal.ambiguous).then(|| literal.name.clone())
+            })
+            .collect::<Option<Vec<_>>>()?;
+        names.sort();
+
+        (!names.is_empty()).then_some(names)
     }
 
     fn cached(
@@ -793,6 +904,7 @@ impl<'a> Context<'a> {
                 Some(value) => {
                     let result = self.enum_value(code, target, value, machine)?;
                     machine.label(KEYWORD_SWITCH, target);
+                    machine.label(KEYWORD_VALUE, result);
                     Ok(Call::Return(Some(result)))
                 }
                 None => {
@@ -1355,6 +1467,7 @@ const COPIED_TOKEN: u64 = 12;
 const TARGET: u64 = 13;
 const TARGET_STORED: u64 = 14;
 const KEYWORD_SWITCH: u64 = 15;
+const KEYWORD_VALUE: u64 = 16;
 /// Labels of the shapes that the key pass recognizes, which a keyword path must not have.
 const KEY_SHAPES: [u64; 6] = [
     ENUM,
@@ -1395,6 +1508,16 @@ fn written_since(machine: &Machine<'_>, tag: u64, owner: u64) -> Option<i64> {
         [first] | [first, _] if after.last()? - first <= 4 => Some((first - owner) as i64),
         _ => None,
     }
+}
+
+/// The known owner bytes that a path wrote, by owner offset.
+fn owner_bytes(machine: &Machine<'_>, owner: u64) -> Vec<(u64, u8)> {
+    machine
+        .written_words(owner, owner + SPAN)
+        .into_iter()
+        .flat_map(|word| word..word + 4)
+        .filter_map(|address| Some((address - owner, machine.read(address, 1)? as u8)))
+        .collect()
 }
 
 /// The allocation that holds `address`, as its start and size.

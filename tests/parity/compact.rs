@@ -224,7 +224,8 @@ fn compact_weight(
                 field.reader.kind,
                 field.shape.repeat,
                 field.read_scope,
-                members
+                members,
+                field.domain
             ]));
         }
     }

@@ -3,12 +3,12 @@
     "block": {
       "fixed_keys": {
         "Known": [
-          ["scope", "Target", "Replace", {"Known": []}, null],
-          ["add", "FixedPoint", "Replace", {"Known": []}, null],
-          ["calc", "Keyword", "Replace", {"Known": []}, null],
-          ["mul", "FixedPoint", "Unknown", {"Known": []}, null],
-          ["div", "FixedPoint", "Unknown", {"Known": []}, null],
-          ["limit", "Block", "Unknown", "Unresolved", "Unresolved"]
+          ["scope", "Target", "Replace", {"Known": []}, null, "Unknown"],
+          ["add", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["calc", "Keyword", "Replace", {"Known": []}, null, {"Listed": ["planet_distance_empire", "planets_in_country", "pop_amount", "pop_happiness"]}],
+          ["mul", "FixedPoint", "Unknown", {"Known": []}, null, "Unknown"],
+          ["div", "FixedPoint", "Unknown", {"Known": []}, null, "Unknown"],
+          ["limit", "Block", "Unknown", "Unresolved", "Unresolved", "Unknown"]
         ]
       },
       "operation_repeat": "Unknown",
@@ -29,8 +29,8 @@
     "block": {
       "fixed_keys": {
         "Known": [
-          ["id", "String", "Unknown", {"Known": []}, null],
-          ["desc", "String", "Unknown", {"Known": []}, null]
+          ["id", "String", "Unknown", {"Known": []}, null, "Unknown"],
+          ["desc", "String", "Unknown", {"Known": []}, null, "Unknown"]
         ]
       },
       "operation_repeat": "Replace",
@@ -75,16 +75,16 @@
     "block": {
       "fixed_keys": {
         "Known": [
-          ["desc", "String", "Replace", {"Known": []}, null],
-          ["trigger", "Reference", "Replace", {"Known": []}, null],
-          ["potential", "Block", "Replace", "Unresolved", "Unresolved"],
-          ["multiplier", "FixedPoint", "Replace", {"Known": []}, null],
-          ["min_value", "FixedPoint", "Replace", {"Known": []}, null],
-          ["max_value", "FixedPoint", "Replace", {"Known": []}, null],
-          ["parameters", "Unknown", "Unknown", "Unresolved", "Unresolved"],
-          ["trigger_scope", "Target", "Replace", {"Known": []}, null],
-          ["mode", "Keyword", "Replace", {"Known": []}, null],
-          ["mult", "FixedPoint", "Replace", {"Known": []}, null]
+          ["desc", "String", "Replace", {"Known": []}, null, "Unknown"],
+          ["trigger", "Reference", "Replace", {"Known": []}, null, "Unknown"],
+          ["potential", "Block", "Replace", "Unresolved", "Unresolved", "Unknown"],
+          ["multiplier", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["min_value", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["max_value", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["parameters", "Unknown", "Unknown", "Unresolved", "Unresolved", "Unknown"],
+          ["trigger_scope", "Target", "Replace", {"Known": []}, null, "Unknown"],
+          ["mode", "Keyword", "Replace", {"Known": []}, null, {"Listed": ["add", "divide", "factor", "max", "min", "modulo", "mult", "multiply", "pow", "round_to", "set", "subtract", "weight"]}],
+          ["mult", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"]
         ]
       },
       "operation_repeat": "Unknown",
@@ -105,14 +105,14 @@
     "block": {
       "fixed_keys": {
         "Known": [
-          ["days", "Integer", "Replace", {"Known": []}, null],
-          ["months", "Integer", "Replace", {"Known": []}, null],
-          ["years", "Integer", "Replace", {"Known": []}, null],
-          ["factor", "FixedPoint", "Replace", {"Known": []}, null],
-          ["base", "FixedPoint", "Replace", {"Known": []}, null],
-          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}],
-          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}],
-          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}]
+          ["days", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["months", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["years", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["factor", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["base", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}, "Unknown"],
+          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}, "Unknown"],
+          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}, "Unknown"]
         ]
       },
       "operation_repeat": "Accumulate",
@@ -361,14 +361,6 @@
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "ReaderSemantics",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "scaled_modifier", "calc"]
-        },
-        "The keyword domain is not established."
-      ],
-      [
         "OutsideMethod",
         {
           "kind": "key_path",
@@ -455,14 +447,6 @@
           "path": ["ai_weight", "complex_trigger_modifier", "potential"]
         },
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
-      ],
-      [
-        "ReaderSemantics",
-        {
-          "kind": "key_path",
-          "path": ["ai_weight", "complex_trigger_modifier", "mode"]
-        },
-        "The keyword domain is not established."
       ],
       [
         "OutsideMethod",
@@ -849,14 +833,14 @@
     "block": {
       "fixed_keys": {
         "Known": [
-          ["days", "Integer", "Replace", {"Known": []}, null],
-          ["months", "Integer", "Replace", {"Known": []}, null],
-          ["years", "Integer", "Replace", {"Known": []}, null],
-          ["factor", "FixedPoint", "Replace", {"Known": []}, null],
-          ["base", "FixedPoint", "Replace", {"Known": []}, null],
-          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}],
-          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}],
-          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}]
+          ["days", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["months", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["years", "Integer", "Replace", {"Known": []}, null, "Unknown"],
+          ["factor", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["base", "FixedPoint", "Replace", {"Known": []}, null, "Unknown"],
+          ["modifier", "Block", "Accumulate", {"Known": ["Enclosing"]}, {"WeightBlock": "6b0f3fb0d6febd07"}, "Unknown"],
+          ["scaled_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "18ca47a52b4ceff7"}, "Unknown"],
+          ["complex_trigger_modifier", "Block", "Accumulate", "Unresolved", {"WeightBlock": "7b0a790da1cbdc65"}, "Unknown"]
         ]
       },
       "operation_repeat": "Accumulate",
@@ -1105,14 +1089,6 @@
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
       ],
       [
-        "ReaderSemantics",
-        {
-          "kind": "key_path",
-          "path": ["weight", "scaled_modifier", "calc"]
-        },
-        "The keyword domain is not established."
-      ],
-      [
         "OutsideMethod",
         {
           "kind": "key_path",
@@ -1199,14 +1175,6 @@
           "path": ["weight", "complex_trigger_modifier", "potential"]
         },
         "Read with scope mask 0; the engine checks the scope later, when it validates the block, which the method does not report."
-      ],
-      [
-        "ReaderSemantics",
-        {
-          "kind": "key_path",
-          "path": ["weight", "complex_trigger_modifier", "mode"]
-        },
-        "The keyword domain is not established."
       ],
       [
         "OutsideMethod",

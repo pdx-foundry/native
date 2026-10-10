@@ -8,9 +8,9 @@ use crate::engine::analysis::{
     weight_blocks::{Grammar, Nested, Operand, OtherKeys, WeightBlockFacts},
 };
 use crate::{
-    BlockFamily, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference, Gap,
-    GapKind, GapSubject, GrammarProperty, ReadScope, Reader, ReaderKind, ReferenceLookup,
-    ReferenceTarget, ValueShape, WeightBlock, WeightOperation, WeightOtherKeys,
+    BlockFamily, Field, FieldCondition, FieldDomain, FieldMembers, FieldReadOutcome,
+    FieldReference, Gap, GapKind, GapSubject, GrammarProperty, ReadScope, Reader, ReaderKind,
+    ReferenceLookup, ReferenceTarget, ValueShape, WeightBlock, WeightOperation, WeightOtherKeys,
 };
 use std::collections::BTreeSet;
 
@@ -366,12 +366,15 @@ impl Block<'_> {
                 clear_identity(key);
             }
             if key.reader.kind == ReaderKind::Keyword {
-                push(
-                    gaps,
-                    GapKind::ReaderSemantics,
-                    subject.clone(),
-                    "The keyword domain is not established.".into(),
-                );
+                match grammar.keyword_domains.get(&key.name) {
+                    Some(names) => key.domain = FieldDomain::Listed(names.clone()),
+                    None => push(
+                        gaps,
+                        GapKind::ReaderSemantics,
+                        subject.clone(),
+                        "The keyword domain is not established.".into(),
+                    ),
+                }
             }
             if root.is_some_and(looks_up_trigger) {
                 key.reference = self.trigger_lookup(subject.clone(), gaps);
@@ -555,7 +558,7 @@ fn push(gaps: &mut Vec<Gap>, kind: GapKind, subject: GapSubject, detail: String)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FieldDomain, FieldReadAlternative, FieldShape, ReaderId, RepeatBehavior};
+    use crate::{FieldReadAlternative, FieldShape, ReaderId, RepeatBehavior};
 
     fn reader(kind: ReaderKind, callee: &str) -> Reader {
         Reader {

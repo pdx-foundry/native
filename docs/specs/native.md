@@ -194,8 +194,10 @@ for contexts and scope types.
   selected object, which the `OutsideMethod` gap states.
 - `ReaderKind::Keyword` identifies a value from a fixed set of engine names that the reader stores
   as the engine's own value, such as `calc` or `mode` in a weight modifier. Its `numeric` is
-  `Known(None)`. `Field.domain` gives the accepted names when it is established; until then a
-  `ReaderSemantics` gap says the domain is unknown.
+  `Known(None)`. `Field.domain` is `Listed` with the accepted names, sorted, when they are
+  established; until then a `ReaderSemantics` gap says the domain is unknown. A name is accepted
+  when the engine recognizes it and keeps it. A fallback that the engine stores for an unknown
+  name, or a value that a post-read check reports and replaces, is not an accepted name.
 - `ReferenceTarget::Triggers` is the collection of trigger commands that `declarations` lists for
   `DeclarationKind::Trigger`. A name that is no trigger command yields
   `MissingResult::ScriptedTriggerPlaceholder`: the engine accepts it as a scripted trigger and the

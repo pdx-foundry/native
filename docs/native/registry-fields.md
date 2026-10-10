@@ -4,7 +4,8 @@
 alternatives, nested object fields and local stored-value selections; `Native::registries()`
 gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
-ever established; Git `d8f9d8a`); SDK-627 owns enum domains and required fields.
+ever established; Git `d8f9d8a`); SDK-627 owns enum domains and required fields, except the
+weight keyword domains, which the [weight blocks](weight-blocks.md) method establishes (SDK-725).
 
 ## What complete means
 
@@ -18,7 +19,7 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v27`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v28`) holds
 the baseline: **164 registries, 12 complete, 152 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -26,8 +27,8 @@ authoring](method-authoring.md#run-over-the-whole-population)).
 
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
   uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
-  ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, but it
-  stays partial for the keyword-domain gaps and for `days`, `months`, `years` and one `factor`
+  ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, and
+  `calc` and `mode` list their accepted names. It stays partial for `days`, `months`, `years` and one `factor`
   alternative, whose `CToken::GetInt()` and `GetFloat()` readers have established storage but
   no faithful-storage range ([token value methods](numeric-conversion.md#token-value-methods)). The
   scanner, zero-mask, `trigger` lookup and `parameters` limits are `OutsideMethod`. `CPersistent` block classification of `modifier` does not

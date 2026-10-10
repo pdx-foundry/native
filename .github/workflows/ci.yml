@@ -1,6 +1,5 @@
 name: Native checks
 on:
-  push:
   pull_request:
 jobs:
   checks:
