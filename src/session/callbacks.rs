@@ -127,11 +127,15 @@ pub(crate) fn normalized_game_rules(
 ) -> Answer<Vec<GameRule>> {
     let mut gaps = Vec::new();
     let scopes = Scopes::new(scope_names, &mut gaps);
-    if let Some(reason) = result.rule_tables_missing {
+    for (family, reason) in &result.rules_unread {
+        let kind = match family {
+            RuleFamily::Scripted => "scripted",
+            RuleFamily::Weighted => "weighted",
+        };
         gaps.push(gap(
             GapKind::UnreadableInput,
             None,
-            format!("the rule declarations could not be read ({reason})"),
+            format!("the {kind} rule declarations could not all be read ({reason})"),
         ));
     }
     let value = result
@@ -307,6 +311,7 @@ pub(super) fn describe(reason: &str) -> String {
         "no-site" => "the engine declares this rule, but no followed call site evaluates it",
         "name-not-a-literal" => "the name is not a text literal, such as a name built at run time",
         "name-not-readable" => "the name is a text literal, but its text could not be read",
+        "rule-token" => "the rule is declared, but its token has no known name",
         "name-not-proved" => "no path proves which name the call site passes",
         "list-unknown" | "cached-list-unknown" => "the list that a call site fires is not known",
         "rule-outside-the-rule-set" => "a rule object outside the engine's rule set",
@@ -493,6 +498,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_family_with_unread_declarations_has_a_gap_beside_the_other_rules() {
+        let mut result = CallbacksResult::default();
+        result.rules.insert(
+            ("can_a".into(), RuleFamily::Scripted),
+            Findings {
+                contexts: BTreeSet::from([Context {
+                    this: Slot::Scope(2),
+                    root: Slot::SelfLink,
+                    from: vec![Slot::SelfLink],
+                    prev: vec![Slot::SelfLink],
+                }]),
+                unresolved: BTreeSet::new(),
+            },
+        );
+        result
+            .rules_unread
+            .insert(RuleFamily::Weighted, "rule-token");
+
+        let answer = normalized_game_rules(&result, &names(), build());
+
+        assert_eq!(answer.value.len(), 1);
+        assert_eq!(answer.value[0].name, "can_a");
+        assert_eq!(answer.completeness, Completeness::Partial);
+        let unreadable: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnreadableInput && gap.subject.is_none())
+            .map(|gap| gap.detail.as_str())
+            .collect();
+        assert_eq!(
+            unreadable,
+            ["the weighted rule declarations could not all be read (rule-token)"]
+        );
+    }
+
     /// The text of `describe` without its reason code, which stays at the end.
     fn sentence(reason: &str) -> String {
         describe(reason)
@@ -527,6 +568,7 @@ mod tests {
             "rule-offset",
             "rule-not-constant",
             "rule-not-declared",
+            "rule-token",
             "forwarder-not-verified",
             "site-not-decoded",
             "no-caller",

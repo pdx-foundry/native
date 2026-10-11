@@ -112,10 +112,44 @@ pub struct Context {
     pub value: u64,
     /// The engine's display name, when the name function could be followed.
     pub name: Option<String>,
-    /// Command names in row order, or why the rows could not be read.
-    pub commands: Result<Vec<String>, &'static str>,
-    /// Link names in row order with their outputs, or why the rows could not be read.
-    pub links: Result<Vec<(String, Output)>, &'static str>,
+    /// Command names in row order.
+    pub commands: RowTable<String>,
+    /// Link names in row order with their outputs.
+    pub links: RowTable<(String, Output)>,
+}
+
+/// The rows that one getter declares, as far as they could be read. Every row is a record of
+/// fixed size and the count is known, so an unreadable row costs only that row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowTable<T> {
+    /// The rows that could be read, in row order.
+    pub rows: Vec<T>,
+    /// Why the table is not read in full: the first row that could not be read, or the whole
+    /// table. `None` when every row was read.
+    pub unread: Option<&'static str>,
+}
+
+impl<T> RowTable<T> {
+    fn empty() -> Self {
+        Self {
+            rows: Vec::new(),
+            unread: None,
+        }
+    }
+
+    fn failed(reason: &'static str) -> Self {
+        Self {
+            rows: Vec::new(),
+            unread: Some(reason),
+        }
+    }
+
+    fn map<U>(self, convert: impl FnMut(T) -> U) -> RowTable<U> {
+        RowTable {
+            rows: self.rows.into_iter().map(convert).collect(),
+            unread: self.unread,
+        }
+    }
 }
 
 /// The context that a link changes to.
@@ -173,8 +207,8 @@ pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputErr
         contexts.push(Context {
             value,
             name: context_name(input, value),
-            commands: Ok(Vec::new()),
-            links: Ok(Vec::new()),
+            commands: RowTable::empty(),
+            links: RowTable::empty(),
         });
     }
     contexts.sort_by_key(|context| context.value);
@@ -192,11 +226,8 @@ pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputErr
 fn selected_without_tables(contexts: &[Context], joins: &[(ScopeType, Join)]) -> BTreeSet<u64> {
     let mut selected = BTreeSet::new();
 
-    for links in contexts
-        .iter()
-        .filter_map(|context| context.links.as_ref().ok())
-    {
-        for (_, output) in links {
+    for context in contexts {
+        for (_, output) in &context.links.rows {
             if let Output::Contexts(values) = output {
                 selected.extend(values.iter().copied());
             }
@@ -241,39 +272,61 @@ fn tables(input: &LocalizationInput) -> Result<Vec<(u64, Entries)>, InputError> 
 }
 
 fn context(input: &LocalizationInput, value: u64, entries: Entries) -> Context {
-    let commands = rows(input, entries.property_targets)
-        .map(|rows| rows.into_iter().map(|(name, _)| name).collect());
-    let links = rows(input, entries.promotion_targets).and_then(|rows| {
-        if rows.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let promote = match entries.promote {
-            Some(0) | None => return Err("link-function"),
-            Some(promote) => promote,
-        };
-        Ok(rows
-            .into_iter()
-            .map(|(name, index)| (name, output(input, promote, index)))
-            .collect())
-    });
-
     Context {
         value,
         name: context_name(input, value),
-        commands,
-        links,
+        commands: rows(input, entries.property_targets).map(|(name, _)| name),
+        links: links(input, entries),
     }
 }
 
-/// Run a row getter and read its rows as names and indexes.
-fn rows(
+/// The link rows of a context, each with the output of its link. The outputs need the link
+/// function, so a context that has link rows but no link function has none of them.
+fn links(input: &LocalizationInput, entries: Entries) -> RowTable<(String, Output)> {
+    let table = rows(input, entries.promotion_targets);
+    let Some(promote) = entries.promote.filter(|promote| *promote != 0) else {
+        let missing = (!table.rows.is_empty()).then_some("link-function");
+
+        return RowTable {
+            rows: Vec::new(),
+            unread: table.unread.or(missing),
+        };
+    };
+
+    table.map(|(name, index)| (name, output(input, promote, index)))
+}
+
+/// Run a row getter and read its rows as names and indexes. A row whose name or index cannot be
+/// read is skipped.
+fn rows(input: &LocalizationInput, getter: Option<u64>) -> RowTable<(String, u64)> {
+    let (array, count) = match run_getter(input, getter) {
+        Ok(Some(declared)) => declared,
+        Ok(None) => return RowTable::empty(),
+        Err(reason) => return RowTable::failed(reason),
+    };
+
+    let mut table = RowTable::empty();
+    for index in 0..count {
+        match row(input, array + index * ROW_SIZE) {
+            Ok(row) => table.rows.push(row),
+            Err(reason) => {
+                table.unread.get_or_insert(reason);
+            }
+        }
+    }
+
+    table
+}
+
+/// Run a row getter, and give the address of its rows and their count. `None` for a table entry
+/// that is empty.
+fn run_getter(
     input: &LocalizationInput,
     getter: Option<u64>,
-) -> Result<Vec<(String, u64)>, &'static str> {
+) -> Result<Option<(u64, u64)>, &'static str> {
     let getter = match getter {
         None => return Err("table-entry"),
-        Some(0) => return Ok(Vec::new()),
+        Some(0) => return Ok(None),
         Some(getter) => getter,
     };
 
@@ -293,18 +346,19 @@ fn rows(
         return Err("row-count");
     }
 
-    (0..count)
-        .map(|index| {
-            let row = array + index * ROW_SIZE;
-            let name = input
-                .rows
-                .read(row, 8)
-                .and_then(|pointer| input.data.string(pointer))
-                .ok_or("row-name")?;
-            let index = input.rows.read(row + 8, 4).ok_or("row-index")?;
-            Ok((name, index))
-        })
-        .collect()
+    Ok(Some((array, count)))
+}
+
+/// The name and index of the row at `address`.
+fn row(input: &LocalizationInput, address: u64) -> Result<(String, u64), &'static str> {
+    let name = input
+        .rows
+        .read(address, 8)
+        .and_then(|pointer| input.data.string(pointer))
+        .ok_or("row-name")?;
+    let index = input.rows.read(address + 8, 4).ok_or("row-index")?;
+
+    Ok((name, index))
 }
 
 /// Follow the name function to the C string that it passes to the string constructor.
@@ -487,6 +541,8 @@ fn path_context(path: &Path<'_>, field: u64, scope_object: u64) -> Result<PathCo
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::engine::analysis::decode::Instruction;
 
@@ -713,6 +769,10 @@ mod tests {
         }
     }
 
+    fn read_rows<T>(rows: Vec<T>) -> RowTable<T> {
+        RowTable { rows, unread: None }
+    }
+
     fn context(result: &LocalizationResult, value: u64) -> &Context {
         result
             .contexts
@@ -722,8 +782,9 @@ mod tests {
     }
 
     fn link<'a>(context: &'a Context, name: &str) -> &'a Output {
-        let links = context.links.as_ref().expect("links are readable");
-        &links
+        &context
+            .links
+            .rows
             .iter()
             .find(|(link, _)| link == name)
             .expect("link is present")
@@ -742,11 +803,14 @@ mod tests {
         assert_eq!(values, [0, 1, 2, 5]);
         assert_eq!(context(&result, 0).name.as_deref(), Some("Base Scope"));
         assert_eq!(context(&result, 1).name.as_deref(), Some("Country"));
-        assert_eq!(context(&result, 0).commands, Ok(vec!["GetYear".into()]));
-        assert_eq!(context(&result, 0).links, Ok(Vec::new()));
+        assert_eq!(
+            context(&result, 0).commands,
+            read_rows(vec!["GetYear".into()])
+        );
+        assert_eq!(context(&result, 0).links, RowTable::empty());
         assert_eq!(
             context(&result, 1).commands,
-            Ok(vec!["GetName".into(), "GetAdj".into()])
+            read_rows(vec!["GetName".into(), "GetAdj".into()])
         );
     }
 
@@ -794,7 +858,62 @@ mod tests {
         let unnamed = context(&result, 2);
 
         assert_eq!(unnamed.name, None);
-        assert_eq!(unnamed.commands, Err("row-name"));
+        assert_eq!(unnamed.commands, RowTable::failed("row-name"));
+    }
+
+    #[test]
+    fn an_unreadable_link_row_is_skipped_and_the_others_keep_their_outputs() {
+        let mut input = input();
+        // The name pointer of `Root`, the second of the seven link rows of context 1.
+        input.rows = input.rows.with_words(&BTreeMap::from([(0x5210, 0xdead0)]));
+
+        let result = analyze(&input).unwrap();
+        let country = context(&result, 1);
+        let names: Vec<_> = country
+            .links
+            .rows
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+
+        assert_eq!(
+            names,
+            ["Capital", "Broken", "Indirect", "Lost", "Owner", "Mixed"]
+        );
+        assert_eq!(country.links.unread, Some("row-name"));
+        assert_eq!(
+            link(country, "Capital"),
+            &Output::Contexts(BTreeSet::from([1]))
+        );
+        assert_eq!(
+            link(country, "Owner"),
+            &Output::Contexts(BTreeSet::from([1]))
+        );
+        assert_eq!(
+            country.commands,
+            read_rows(vec!["GetName".into(), "GetAdj".into()]),
+            "the other table of the context is not affected"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_command_row_is_skipped_and_the_others_stay() {
+        let mut input = input();
+        // The name pointer of `GetName`, the first of the two command rows of context 1.
+        input.rows = input.rows.with_words(&BTreeMap::from([(0x5100, 0xdead0)]));
+
+        let result = analyze(&input).unwrap();
+        let country = context(&result, 1);
+
+        assert_eq!(
+            country.commands,
+            RowTable {
+                rows: vec!["GetAdj".into()],
+                unread: Some("row-name"),
+            }
+        );
+        assert_eq!(country.links.unread, None);
+        assert_eq!(country.links.rows.len(), 7);
     }
 
     #[test]
@@ -821,7 +940,7 @@ mod tests {
         let hidden = context(&result, 5);
         assert_eq!(
             (&hidden.commands, &hidden.links),
-            (&Ok(Vec::new()), &Ok(Vec::new())),
+            (&RowTable::empty(), &RowTable::empty()),
             "a selected context without table entries is still a context of the result"
         );
         assert!(!result.scope_table_missing);
@@ -847,7 +966,7 @@ mod tests {
 
         let result = analyze(&input).unwrap();
         assert_eq!(context(&result, 1).name, None);
-        assert_eq!(context(&result, 1).commands, Err("row-name"));
+        assert_eq!(context(&result, 1).commands, RowTable::failed("row-name"));
     }
 
     #[test]

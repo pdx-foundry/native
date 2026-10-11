@@ -289,8 +289,10 @@ pub struct CallbacksResult {
     pub rules: BTreeMap<(String, RuleFamily), Findings>,
     pub unnamed: Vec<Unnamed>,
     pub script_fired_sites: usize,
-    /// Why the rule tables could not be read.
-    pub rule_tables_missing: Option<&'static str>,
+    /// Why the declarations of a rule family could not be read in full, by family. A reason of
+    /// `rule-token` means that the family's rules with a named token are in `rules`; any other
+    /// reason means that none of the family's rules are.
+    pub rules_unread: BTreeMap<RuleFamily, &'static str>,
 }
 
 impl SiteCall {
@@ -365,19 +367,16 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         NO_OFFSET_GETTERS,
         input.sites.iter().map(|site| (site.function, site.address)),
     );
-    let rule_names = match family {
-        Family::GameRule => rule_names(input),
-        Family::OnAction => Ok(BTreeMap::new()),
+    let declared = match family {
+        Family::GameRule => declared_rules(input),
+        Family::OnAction => DeclaredRules::default(),
     };
     let pulse = match family {
         Family::OnAction => pulse_names(input),
         Family::GameRule => BTreeMap::new(),
     };
     let mut assembly = Assembly::default();
-    if let Err(reason) = rule_names {
-        assembly.result.rule_tables_missing = Some(reason);
-    }
-    let rule_names = rule_names.unwrap_or_default();
+    assembly.result.rules_unread = declared.unread.clone();
 
     let forwarders: BTreeMap<u64, usize> = input
         .forwarders
@@ -409,7 +408,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         .collect();
     let sources = NameSources {
         pulse: &pulse,
-        rule_names: &rule_names,
+        declared: &declared,
         lookup_uses: &lookup_uses,
         lookup_names: &lookup_names,
     };
@@ -435,11 +434,14 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         }
     }
 
-    for ((family, _), name) in &rule_names {
+    for (&(family, _), rule) in &declared.rules {
+        let Ok(name) = rule else {
+            continue;
+        };
         let findings = assembly
             .result
             .rules
-            .entry((name.clone(), *family))
+            .entry((name.clone(), family))
             .or_default();
         if findings.contexts.is_empty() && findings.unresolved.is_empty() {
             findings.unresolved.insert("no-site");
@@ -619,7 +621,7 @@ struct NameSources<'a> {
     /// The on_action database's cached pulse lists.
     pulse: &'a BTreeMap<i64, u64>,
     /// The declared rules by family and offset in the rule set.
-    rule_names: &'a BTreeMap<(RuleFamily, u64), String>,
+    declared: &'a DeclaredRules,
     /// Lookup calls whose list a firing site in the same function uses.
     lookup_uses: &'a BTreeSet<u64>,
     /// The names that each lookup call is given.
@@ -717,7 +719,7 @@ fn site_finding(
             SiteFinding::OnActionContexts { names, found }
         }
         SiteCall::Rule { family, rule, .. } => {
-            let name = rule_name(input, site, state, family, rule, sources.rule_names);
+            let name = rule_name(input, site, state, family, rule, sources.declared);
             let found = arrival.contexts(site, name.is_ok());
             SiteFinding::Rule {
                 family,
@@ -753,11 +755,7 @@ fn site_finding(
                     enumeration,
                 } => {
                     let name = match constant(state.register(enumeration)) {
-                        Some(value) => sources
-                            .rule_names
-                            .get(&(family, value))
-                            .cloned()
-                            .ok_or("rule-not-declared"),
+                        Some(value) => sources.declared.name(family, value),
                         None => Err("rule-not-constant"),
                     };
                     SiteFinding::Rule {
@@ -980,7 +978,7 @@ fn rule_name(
     state: &State,
     family: RuleFamily,
     rule: usize,
-    names: &BTreeMap<(RuleFamily, u64), String>,
+    declared: &DeclaredRules,
 ) -> Result<String, &'static str> {
     if !input.rule_owners.contains(&site.function) {
         return Err("rule-outside-the-rule-set");
@@ -989,10 +987,7 @@ fn rule_name(
         return Err("rule-unknown");
     };
     let enumeration = enumeration(input.layout, family, offset).ok_or("rule-offset")?;
-    names
-        .get(&(family, enumeration))
-        .cloned()
-        .ok_or("rule-not-declared")
+    declared.name(family, enumeration)
 }
 
 fn enumeration(layout: CallbackLayout, family: RuleFamily, offset: i64) -> Option<u64> {
@@ -1090,51 +1085,116 @@ fn without_subject(inner: &SiteContexts) -> SiteContexts {
     }
 }
 
+/// The rules that the rule declarations give, by family and enumeration.
+#[derive(Default)]
+struct DeclaredRules {
+    /// Each declared rule: its name, or `rule-token` when its token has no name.
+    rules: BTreeMap<(RuleFamily, u64), Result<String, &'static str>>,
+    /// Why the declarations of a family could not be read in full, as in
+    /// [`CallbacksResult::rules_unread`].
+    unread: BTreeMap<RuleFamily, &'static str>,
+}
+
+impl DeclaredRules {
+    /// The name of the rule of `family` at `enumeration`, or why the declarations give none.
+    fn name(&self, family: RuleFamily, enumeration: u64) -> Result<String, &'static str> {
+        self.rules
+            .get(&(family, enumeration))
+            .cloned()
+            .unwrap_or(Err("rule-not-declared"))
+    }
+}
+
 /// Run the rule initializer, then each family's lookup for each enumeration until the table
-/// ends, and name each rule by its token.
-fn rule_names(input: &CallbacksInput) -> Result<BTreeMap<(RuleFamily, u64), String>, &'static str> {
+/// ends, and name each rule by its token. A rule whose token has no name is skipped, and a
+/// family whose lookup fails is read no further; neither stops the other rules or family.
+fn declared_rules(input: &CallbacksInput) -> DeclaredRules {
     let tables = &input.rule_tables;
     let code = Code::from_rows(tables.code.iter().cloned());
-    let mut filled = Machine::new(&code, &input.data);
-    let exit = filled
-        .run(tables.initializer, &mut |_, _| Ok(Call::Return(None)))
+    let mut declared = DeclaredRules::default();
+    let filled = match initialized(input, &code) {
+        Ok(filled) => filled,
+        Err(reason) => {
+            declared
+                .unread
+                .extend(tables.finders.iter().map(|&(family, _)| (family, reason)));
+
+            return declared;
+        }
+    };
+
+    for &(family, finder) in &tables.finders {
+        match family_rules(input, &filled, finder) {
+            Ok(rules) => {
+                if rules.values().any(Result::is_err) {
+                    declared.unread.insert(family, "rule-token");
+                }
+                declared.rules.extend(
+                    rules
+                        .into_iter()
+                        .map(|(enumeration, rule)| ((family, enumeration), rule)),
+                );
+            }
+            Err(reason) => {
+                declared.unread.insert(family, reason);
+            }
+        }
+    }
+
+    declared
+}
+
+/// The machine after the rule initializer ran: the rule declarations are in its memory.
+fn initialized<'a>(input: &'a CallbacksInput, code: &'a Code) -> Result<Machine<'a>, &'static str> {
+    let mut machine = Machine::new(code, &input.data);
+    let exit = machine
+        .run(input.rule_tables.initializer, &mut |_, _| {
+            Ok(Call::Return(None))
+        })
         .map_err(|_| "rule-initializer")?;
     if exit != Exit::Returned {
         return Err("rule-initializer");
     }
 
-    let mut names = BTreeMap::new();
-    for &(family, finder) in &tables.finders {
-        let row = |enumeration: u64| -> Result<u64, &'static str> {
-            let mut machine = filled.clone();
-            machine.set_register(0, enumeration);
-            machine
-                .run(finder, &mut |_, _| Ok(Call::Return(None)))
-                .map_err(|_| "rule-lookup")?;
-            machine.register(0).ok_or("rule-lookup")
-        };
-        let missing = row(u64::from(u32::MAX))?;
-        let mut misses = 0;
-        let mut enumeration = 0;
-        while misses < TABLE_MISSES {
-            let found = row(enumeration)?;
-            if found == missing {
-                misses += 1;
-            } else {
-                misses = 0;
-                let token = filled
-                    .read(found + input.layout.declaration_token_offset, 4)
-                    .ok_or("rule-token")?;
-                let name = input.tokens.get(&token).ok_or("rule-token")?;
-                names.insert((family, enumeration), name.clone());
-            }
-            enumeration += 1;
+    Ok(machine)
+}
+
+/// The rules that the lookup `finder` declares, by enumeration, until the table ends.
+fn family_rules(
+    input: &CallbacksInput,
+    filled: &Machine<'_>,
+    finder: u64,
+) -> Result<BTreeMap<u64, Result<String, &'static str>>, &'static str> {
+    let row = |enumeration: u64| -> Result<u64, &'static str> {
+        let mut machine = filled.clone();
+        machine.set_register(0, enumeration);
+        machine
+            .run(finder, &mut |_, _| Ok(Call::Return(None)))
+            .map_err(|_| "rule-lookup")?;
+        machine.register(0).ok_or("rule-lookup")
+    };
+    let missing = row(u64::from(u32::MAX))?;
+
+    let mut rules = BTreeMap::new();
+    let mut misses = 0;
+    let mut enumeration = 0;
+    while misses < TABLE_MISSES {
+        let found = row(enumeration)?;
+        if found == missing {
+            misses += 1;
+        } else {
+            misses = 0;
+            let token = filled.read(found + input.layout.declaration_token_offset, 4);
+            let name = token.and_then(|token| input.tokens.get(&token));
+            rules.insert(enumeration, name.cloned().ok_or("rule-token"));
         }
+        enumeration += 1;
     }
-    if names.is_empty() {
+    if rules.is_empty() {
         return Err("rule-table-empty");
     }
-    Ok(names)
+
+    Ok(rules)
 }
 
 /// The cached lists of the on_action database: in its load function, each comparison of a list
