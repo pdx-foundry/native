@@ -1,4 +1,5 @@
 //! Apply one cached conversion fact to each occurrence of a shared reader.
+use super::push_once;
 use crate::engine::analysis::numeric::{
     BINARY_INPUT_BOUNDARY, FLOAT_BOUND_REPRESENTATION_GAP, NumericFacts, NumericReader,
 };
@@ -113,14 +114,7 @@ pub(super) fn fields(
                 limits.include(attach_reader_facts(value, facts));
             }
         }
-        let subject = if path.len() == 1 {
-            GapSubject::Field {
-                name: path[0].clone(),
-            }
-        } else {
-            GapSubject::KeyPath { path: path.clone() }
-        };
-        push_gaps(gaps, subject, &limits);
+        push_gaps(gaps, GapSubject::path(&path), &limits);
         match &mut field.members {
             FieldMembers::Fields(children) => fields(children, facts, &path, gaps),
             FieldMembers::ModifierBlock(block) => modifier_block(block, facts, &path, gaps),
@@ -148,12 +142,7 @@ pub(super) fn modifier_block(
     for entry in entries {
         if let crate::ModifierEntry::Numeric { value } = entry {
             let limits = attach_reader_facts(value, facts);
-            let subject = if path.len() == 1 {
-                GapSubject::field(&path[0])
-            } else {
-                GapSubject::key_path(path.to_vec())
-            };
-            push_gaps(gaps, subject, &limits);
+            push_gaps(gaps, GapSubject::path(path), &limits);
         }
     }
 }
@@ -211,9 +200,7 @@ pub(super) fn grammar(
         }
         for mut child_gap in child_gaps {
             child_gap.subject = Some(GapSubject::answer_item(name));
-            if !gaps.contains(&child_gap) {
-                gaps.push(child_gap);
-            }
+            push_once(gaps, child_gap);
         }
     }
 }
@@ -236,9 +223,7 @@ pub(super) fn push_gaps(gaps: &mut Vec<Gap>, subject: GapSubject, limits: &Reade
             subject: Some(subject.clone()),
             detail: detail.into(),
         };
-        if !gaps.contains(&gap) {
-            gaps.push(gap);
-        }
+        push_once(gaps, gap);
     }
 }
 

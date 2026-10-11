@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use super::Native;
-use super::language::{gap, gap_for_subject};
 use super::questions::{error, scope_id};
+use super::{gap, gap_for_subject};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, EntryContext, EntryScope, Error, GameRule, Gap, GapKind,
     GapSubject, OnAction, Operation, RuleKind, ScopeReference, Source,

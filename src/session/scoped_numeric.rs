@@ -1,4 +1,5 @@
 //! Attach one shared proof and a constructor-selected subtype to each public reader occurrence.
+use super::push_once;
 use crate::engine::analysis::{
     fields::{PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath},
     grammar::{GrammarResult, forms::Verdict},
@@ -42,7 +43,7 @@ fn fields_at_path(
     for (value, root) in values.iter_mut().zip(&result.fields) {
         let mut path = parent.to_vec();
         path.push(value.name.clone());
-        let subject = field_subject(&path);
+        let subject = GapSubject::path(&path);
         attach_field(
             value,
             root,
@@ -63,14 +64,6 @@ fn fields_at_path(
         {
             fields_at_path(children, &collection.fields, facts, numeric, &path, gaps);
         }
-    }
-}
-
-fn field_subject(path: &[String]) -> GapSubject {
-    if path.len() == 1 {
-        GapSubject::field(&path[0])
-    } else {
-        GapSubject::key_path(path.to_vec())
     }
 }
 
@@ -263,7 +256,7 @@ fn grammar_fields(
     for (value, root) in values.iter_mut().zip(&result.fields.fields) {
         let mut path = parent.to_vec();
         path.push(value.name.clone());
-        let subject = field_subject(&path);
+        let subject = GapSubject::path(&path);
         attach_field(
             value,
             root,
@@ -377,9 +370,8 @@ fn gap(gaps: &mut Vec<Gap>, kind: GapKind, subject: &GapSubject, detail: &str) {
         subject: Some(subject.clone()),
         detail: detail.into(),
     };
-    if !gaps.contains(&gap) {
-        gaps.push(gap);
-    }
+
+    push_once(gaps, gap);
 }
 
 #[cfg(test)]

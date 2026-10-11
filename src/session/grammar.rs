@@ -1,5 +1,5 @@
 //! Normalize command grammar without promoting a partial property to a complete grammar.
-use super::{Native, questions::error};
+use super::{Native, push_once, questions::error};
 use crate::engine::analysis::references::{
     ReferenceFacts,
     initialization::{Initialization, InitializationLookup},
@@ -183,14 +183,15 @@ pub(crate) fn normalize(
     let mut gaps = Vec::new();
     let mut key_gaps = Vec::new();
     let mut gap = |kind, detail: String| {
-        let gap = Gap {
-            kind,
-            subject: Some(GapSubject::answer_item(name)),
-            detail,
-        };
-        if !gaps.contains(&gap) {
-            gaps.push(gap);
-        }
+        let subject = Some(GapSubject::answer_item(name));
+        push_once(
+            &mut gaps,
+            Gap {
+                kind,
+                subject,
+                detail,
+            },
+        );
     };
     match result {
         Err(stop) => gap(GapKind::UnresolvedReader, stop.reason.into()),
@@ -289,8 +290,7 @@ pub(crate) fn normalize(
                 for (path, stop) in &coverage.gaps {
                     let subject = match path.as_slice() {
                         [] => GapSubject::answer_item(name),
-                        [key] => GapSubject::field(key.clone()),
-                        _ => GapSubject::key_path(path.clone()),
+                        path => GapSubject::path(path),
                     };
                     key_gaps.push(Gap {
                         kind: GapKind::UnresolvedPath,
@@ -379,10 +379,7 @@ pub(crate) fn normalize(
                     if let Some(cause) = target.cause {
                         let subject = match &target.path {
                             crate::ArgumentPath::Value => GapSubject::answer_item(name),
-                            crate::ArgumentPath::Key(path) if path.len() == 1 => {
-                                GapSubject::field(path[0].clone())
-                            }
-                            crate::ArgumentPath::Key(path) => GapSubject::key_path(path.clone()),
+                            crate::ArgumentPath::Key(path) => GapSubject::path(path),
                         };
                         key_gaps.push(Gap {
                             kind: GapKind::UnresolvedPath,
@@ -427,9 +424,7 @@ pub(crate) fn normalize(
     }
     gap(GapKind::OutsideMethod, "Required keys, key combinations, defaults, value domains, occurrence limits, operators, numeric grammar, weights and runtime meaning are outside this method.".into());
     for key_gap in key_gaps {
-        if !gaps.contains(&key_gap) {
-            gaps.push(key_gap);
-        }
+        push_once(&mut gaps, key_gap);
     }
     Answer {
         value,
@@ -494,10 +489,7 @@ fn nested_reference_gaps(
         if let Some((kind, detail)) = initialization_gap(child, initialization) {
             gaps.push(Gap {
                 kind,
-                subject: Some(match path.as_slice() {
-                    [key] => GapSubject::field(key.clone()),
-                    _ => GapSubject::key_path(path.clone()),
-                }),
+                subject: Some(GapSubject::path(&path)),
                 detail,
             });
         }

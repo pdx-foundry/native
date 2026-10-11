@@ -2,8 +2,8 @@
 //! field.
 use super::Native;
 use super::families::{not_established, public_parts, template};
-use super::language::{gap_for_subject, registry_gap};
 use super::questions::error;
+use super::{gap_for_subject, registry_gap};
 use crate::engine::analysis::families::Part;
 use crate::engine::analysis::names::{
     self, Condition, METHOD, Miss, Name, NameResult, Stage, Term,

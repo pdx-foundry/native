@@ -1,7 +1,7 @@
 //! Static script expansion rules: inline scripts, scripted effects and triggers, script values and
 //! scripted variables.
 use super::Native;
-use super::language::gap;
+use super::gap;
 use super::questions::error;
 use crate::answer::{Answer, Basis, BuildId, Completeness, Error, Gap, GapKind, Operation, Source};
 use crate::engine::analysis::expansions::{self, ExpansionGap, ExpansionResult, Property};

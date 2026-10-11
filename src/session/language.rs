@@ -1,12 +1,12 @@
 //! Static language questions: modifiers, modifier categories, scopes and scope links.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::Native;
 use super::questions::{error, scope_id, scope_references};
+use super::{Native, gap};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredScopes, DeclaredTags, Error, Gap, GapKind,
-    GapSubject, LinkData, ModifierCategory, ModifierCategoryKey, ModifierDeclaration, Operation,
-    OutputScope, ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source,
+    LinkData, ModifierCategory, ModifierCategoryKey, ModifierDeclaration, Operation, OutputScope,
+    ScopeDeclaration, ScopeGroup, ScopeInventory, ScopeLink, Source,
 };
 use crate::engine::analysis::{
     category_keys::{self, CategoryKeyResult},
@@ -104,30 +104,6 @@ impl Native {
             .modifier_input()
             .map_err(|failure| error(operation, failure))?;
         modifiers::analyze(&input).map_err(|error| Error::Method(error.to_string()))
-    }
-}
-
-pub(super) fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
-    gap_for_subject(kind, subject.map(GapSubject::answer_item), detail)
-}
-
-pub(super) fn registry_gap(
-    kind: GapKind,
-    registry: Option<&str>,
-    detail: impl Into<String>,
-) -> Gap {
-    gap_for_subject(kind, registry.map(GapSubject::registry), detail)
-}
-
-pub(super) fn gap_for_subject(
-    kind: GapKind,
-    subject: Option<GapSubject>,
-    detail: impl Into<String>,
-) -> Gap {
-    Gap {
-        kind,
-        subject,
-        detail: detail.into(),
     }
 }
 
@@ -536,6 +512,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::GapSubject;
     use crate::engine::analysis::declarations::ScopeType;
 
     fn modifier_registrations(tags: Vec<Tags>) -> Answer<Vec<ModifierDeclaration>> {

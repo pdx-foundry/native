@@ -2,8 +2,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
-use super::language::{declared, gap, gap_for_subject, unread_scope_bits_detail};
+use super::language::{declared, unread_scope_bits_detail};
 use super::questions::{error, scope_id};
+use super::{gap, gap_for_subject};
 use crate::answer::{
     Answer, BuildId, ContextScopes, Error, Gap, GapKind, GapSubject, LocalizationCommand,
     LocalizationContext, LocalizationContextId, LocalizationContextReference,

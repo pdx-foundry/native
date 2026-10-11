@@ -1,6 +1,6 @@
 //! Static modifier node graph from node type symbols and node constructor calls.
 use super::Native;
-use super::language::gap;
+use super::gap;
 use super::questions::error;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Error, Gap, GapKind, KeptCategories, ModifierNode,

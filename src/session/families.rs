@@ -2,8 +2,8 @@
 use std::collections::BTreeMap;
 
 use super::Native;
-use super::language::registry_gap;
 use super::questions::error;
+use super::registry_gap;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredTags, Error, GapKind, GenerationCondition,
     ModifierFamily, NamePart, Operation, Source,
