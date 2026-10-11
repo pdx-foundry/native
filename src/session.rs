@@ -1,5 +1,5 @@
 //! `Native`: one pinned installation, or one directory of recorded answers.
-use crate::{OpenError, UnavailableReason, binding::Binding};
+use crate::{AnalysisError, OpenError, UnavailableReason, binding::Binding};
 use std::sync::{Arc, Mutex};
 
 pub(crate) use loaded_modifiers::ModifierJoin;
@@ -161,20 +161,18 @@ impl Native {
         } else {
             self.blocking_reasons(binding)
         };
-        if reasons.contains(&UnavailableReason::TargetChanged) {
-            return Err(Error::BuildChanged);
-        }
         if !reasons.is_empty() {
-            return Err(Error::Unsupported {
-                operation: if options.loaded_modifiers {
-                    Operation::LoadedModifiers
-                } else if options.fixture.is_some() {
-                    Operation::ObserveFixture
-                } else {
-                    Operation::Registries
-                },
-                reason: format!("{reasons:?}"),
-            });
+            let operation = if options.loaded_modifiers {
+                Operation::LoadedModifiers
+            } else if options.fixture.is_some() {
+                Operation::ObserveFixture
+            } else {
+                Operation::Registries
+            };
+            return Err(questions::error(
+                operation,
+                AnalysisError::Unavailable { reasons },
+            ));
         }
         if options.loaded_modifiers
             && binding.has_script_check_method()

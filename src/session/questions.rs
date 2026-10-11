@@ -136,7 +136,9 @@ impl Native {
             Operation::ObserveFixture | Operation::LoadedModifiers | Operation::CheckScript => {
                 match self.selected_blocking_reasons(binding) {
                     reasons if reasons.is_empty() => Support::Supported,
-                    reasons => Support::Unsupported(format!("{reasons:?}")),
+                    reasons => Support::Unsupported(
+                        error(operation, AnalysisError::Unavailable { reasons }).to_string(),
+                    ),
                 }
             }
         }

@@ -117,6 +117,23 @@ fn executable_replacement_permanently_invalidates_the_context() {
 }
 
 #[test]
+fn a_live_operation_reports_a_changed_executable_as_the_build_changing() {
+    use crate::{Native, Operation, Support};
+    let (directory, mut binding) = installation();
+    binding.operation = Some(super::compose::synthetic_variation());
+    let native = Native::from_binding(binding);
+    fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
+
+    for operation in [Operation::ObserveFixture, Operation::CheckScript] {
+        assert_eq!(
+            native.supports(operation),
+            Support::Unsupported("the executable changed after it was opened".into()),
+            "{operation}"
+        );
+    }
+}
+
+#[test]
 fn content_additions_deletions_and_edits_invalidate_the_bound_snapshot() {
     for mutation in ["add", "binary-extension", "delete", "edit"] {
         let (directory, binding) = installation();
