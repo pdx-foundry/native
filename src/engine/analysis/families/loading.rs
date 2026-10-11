@@ -348,10 +348,11 @@ enum Ending {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{DatabaseLayout, StringFunctions, StringLayout};
+    use super::super::DatabaseLayout;
     use super::*;
     use crate::engine::analysis::decode::Instruction;
     use crate::engine::analysis::evaluate::ReadOnlyData;
+    use crate::engine::analysis::strings::{StringFunctions, StringLayout};
 
     const DATABASE_CONSTRUCTOR: u64 = 0x100;
     const LOADER: u64 = 0x200;

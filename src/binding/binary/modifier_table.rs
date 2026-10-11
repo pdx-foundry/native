@@ -5,7 +5,7 @@ use super::{
 };
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::decode_arm64, discovery::Symbol, families::StringLayout, modifier_table::Input,
+    decode::decode_arm64, discovery::Symbol, modifier_table::Input, strings::StringLayout,
 };
 use std::collections::BTreeMap;
 

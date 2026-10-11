@@ -4,8 +4,8 @@
 registry's code registers for each item. `Game::loaded_modifiers` (`loaded-modifiers/v1`) gives
 the modifier table after all content loads, and joins each entry to a declaration or a family.
 The module comments of `engine/analysis/families.rs`, `families/joins.rs`, `families/loading.rs`,
-`families/strings.rs` and `session/loaded_modifiers.rs` describe the methods. This page holds the
-engine facts, the M45-release result, the gaps and the pitfalls. The
+`engine/analysis/strings.rs` and `session/loaded_modifiers.rs` describe the methods. This page
+holds the engine facts, the M45-release result, the gaps and the pitfalls. The
 [engine knowledge index](../engine-knowledge.md) lists the other pages.
 
 ## Engine code (M45-release)

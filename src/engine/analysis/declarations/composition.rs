@@ -23,8 +23,8 @@ use super::{DeclarationInput, Function, Site, decode, scopes, split_documentatio
 use crate::engine::analysis::{
     decode::Instruction,
     evaluate::{Call, Code, Exit, Machine, PATH_LIMIT, ReadOnlyData},
-    families::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
     stop::Unresolved,
+    strings::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
 };
 
 /// The most callers that the method follows above the function that contains a registration call.

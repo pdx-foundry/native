@@ -3,8 +3,8 @@ use super::*;
 use crate::engine::analysis::{
     assembler::{Arm64, arm64},
     evaluate::{ReadOnlyData, trace_causes},
-    families::{StringFunctions, StringLayout},
     stop::CauseKind,
+    strings::{StringFunctions, StringLayout},
 };
 
 const REGISTER: u64 = 0x9000;

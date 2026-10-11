@@ -1,7 +1,7 @@
 //! Modifier families: the modifier names that a registry's code registers for each of its items.
 //!
 //! The method runs each root of the registry (`joins`) for one item whose memory is unknown
-//! except its key, and follows each composed text with the string model (`strings`). A root
+//! except its key, and follows each composed text with the string model (`strings.rs`). A root
 //! that loops over the database gets a database that holds that one item; an item root gets the
 //! item. The run enters the functions between a root and a registration call, and the composers
 //! that only call string functions, so a name that a helper composes from its caller's arguments
@@ -41,16 +41,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
+use super::strings::{
+    ASSUMED_TEXT, Arena, Effect, ITEM_KEY, Model, Node, Part, Sources, StringFunctions,
+    StringLayout,
+};
 
 pub mod joins;
 pub mod loading;
-mod strings;
 
 pub use joins::Receiver;
 pub use loading::{Loading, NotEstablished};
-pub(super) use strings::{ASSUMED_TEXT, ITEM_KEY};
-pub(super) use strings::{Arena, Effect, Model, Node, Sources};
-pub use strings::{Part, StringFunctions, StringLayout};
 
 /// Name and revision of the modifier-family method.
 pub const METHOD: &str = "modifier-families/v3";

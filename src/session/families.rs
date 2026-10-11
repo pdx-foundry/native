@@ -10,10 +10,11 @@ use crate::answer::{
 };
 use crate::engine::analysis::{
     families::{
-        self, Condition, Family, FamilyResult, METHOD, NotEstablished, Part,
+        self, Condition, Family, FamilyResult, METHOD, NotEstablished,
         joins::{Joins, Reason, SiteJoin},
     },
     modifiers::{self, CategoryNames, Tags},
+    strings::Part,
 };
 
 impl Native {

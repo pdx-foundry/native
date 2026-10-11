@@ -49,12 +49,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::evaluate::{Call, Code, Machine, Path};
 use super::families::{
-    ASSUMED_TEXT, Arena, Effect, Ending, FamilyInput, ITEM_KEY, ITEM_SPAN, KeyForm, Loading, Model,
-    Node, NotEstablished, Part, Sources, StringFunctions, StringLayout, ending,
-    every_returned_path, key_storage, loading, write_source,
+    Ending, FamilyInput, ITEM_SPAN, KeyForm, Loading, NotEstablished, ending, every_returned_path,
+    key_storage, loading, write_source,
 };
 use super::fields::{ReaderJoin, RegistryFieldResult, RootField, StorageSelection, storage_offset};
 use super::stop::Unresolved;
+use super::strings::{
+    ASSUMED_TEXT, Arena, Effect, ITEM_KEY, Model, Node, Part, Sources, StringFunctions,
+    StringLayout,
+};
 use crate::NameLookup;
 
 #[cfg(test)]

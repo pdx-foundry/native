@@ -709,7 +709,7 @@ mod tests {
         assembler::{Arm64, arm64},
         declarations::{Composition, Function as Body, ParserSlots, ScopeSlots},
         evaluate::ReadOnlyData,
-        families::{StringFunctions, StringLayout},
+        strings::{StringFunctions, StringLayout},
     };
     const FACTORY: u64 = 0x10000;
     const VTABLE: u64 = 0x11000;

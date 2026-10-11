@@ -8,8 +8,8 @@ use crate::engine::analysis::{
     decode::{Instruction, blr_register, call_or_jump_target, call_target, decode_arm64},
     discovery::Symbol,
     evaluate::ReadOnlyData,
-    families::StringLayout,
     fields::{DataSection, Token, recover_decoded},
+    strings::StringLayout,
 };
 use crate::{AnalysisError, DeclarationKind};
 
