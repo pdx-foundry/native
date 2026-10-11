@@ -111,19 +111,35 @@ class ProtocolTests(unittest.TestCase):
             line=3, definition='sample', parent_field='requirements', field='number', occurrence=1))
         self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
 
-    def test_every_reader_kind_round_trips_in_fixture_events(self):
-        schema_values = {variant['const'] for variant in wire.SCHEMAS['reader_kind']['oneOf']}
-        self.assertEqual(set(wire.READER_KIND.values()), schema_values)
-        for kind in wire.READER_KIND.values():
-            with self.subTest(kind=kind):
-                self.assertEqual(wire.decode('reader_kind', wire.encode('reader_kind', kind)), kind)
-                event = dict(kind='field-authority', question=0, reader_id=None,
-                             reader_kind=kind, reader_family='Unknown', storage_decoder=None, unavailable='unsupported')
-                row = dict(run='a', seq=1, thread=7, kind='fixture', event=event)
-                self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
-        for kind in ['string', 'Unsupported', 1, None]:
-            with self.subTest(kind=kind), self.assertRaises(ValueError):
-                wire.encode('reader_kind', kind)
+    def test_a_question_storage_is_a_destination_or_one_reason(self):
+        root = wire.SCHEMAS['request']
+        schema = root['$defs']['FixtureQuestionSetup']
+        question = dict(index=0, definition='sample', field='number', nested=None, parent_field=None,
+                        parsing=False, diagnostics=False, token=None)
+        bound = dict(bound=dict(offset=8, decoder='String'))
+        for storage in [bound, dict(unbound='no decoder'), {'unresolved-reader': 'no identity'}]:
+            with self.subTest(storage=storage):
+                wire.validate(dict(question, storage=storage), schema, root)
+        for storage in [{}, dict(bound, unbound='both'), dict(unbound=None), dict(bound=dict(offset=8)),
+                        'unbound', None]:
+            with self.subTest(storage=storage), self.assertRaises(ValueError):
+                wire.validate(dict(question, storage=storage), schema, root)
+        for legacy in [dict(reader_id=None), dict(reader_kind='String'), dict(reader_family='Unknown'),
+                       dict(storage_unavailable=None)]:
+            with self.subTest(legacy=legacy), self.assertRaises(ValueError):
+                wire.validate(dict(question, storage=bound, **legacy), schema, root)
+
+    def test_fixture_events_carry_no_reader_authority(self):
+        terminal = dict(kind='field-terminal', question=0, owner=None, definition_line=None,
+                        final_value=None, unavailable='no decoder')
+        row = dict(run='a', seq=1, thread=7, kind='fixture', event=terminal)
+        self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
+        for extra in [dict(reader_id=None), dict(reader_kind='String'), dict(reader_family='Unknown')]:
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                wire.encode('record', dict(row, event=dict(terminal, **extra)))
+        authority = dict(kind='field-authority', question=0, storage_decoder=None, unavailable='no decoder')
+        with self.assertRaises(ValueError):
+            wire.encode('record', dict(row, event=authority))
 
     def test_fault_wire_has_one_target_and_kind(self):
         request = dict(attempt='a', game=1, executable='/game', target='build',

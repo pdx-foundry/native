@@ -354,8 +354,7 @@ class ParserObservationTests(unittest.TestCase):
         worker.breakpoints.clear()
         self.file = 'common/traditions/example.txt'
         question = dict(index=0, definition='one', field='potential', token=1,
-                        parsing=True, diagnostics=True, reader_id='block', reader_family='Trigger',
-                        reader_kind='Block', storage=None, storage_unavailable='No storage decoder')
+                        parsing=True, diagnostics=True, storage=dict(unbound='No storage decoder'))
         registry = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
             reader_return=40, inline=None)
         self.observer = worker.FixtureObserver(dict(validation_complete_entry=None, file=self.file,
@@ -427,6 +426,15 @@ class ParserObservationTests(unittest.TestCase):
         for name in retained:
             worker.breakpoints[name].SetEnabled.assert_not_called()
         worker.breakpoints[parser_entry].SetEnabled.assert_called_once_with(False)
+
+    def test_a_question_with_no_bound_storage_ends_with_its_reason_and_no_reader(self):
+        self.observer.finish_questions(Mock(), 7)
+        terminal = next(call for call in self.observer.emit.call_args_list
+                        if call.args[0] == 'field-terminal')
+        self.assertEqual(terminal.kwargs, dict(question=0, owner=None, definition_line=None,
+                                               final_value=None, unavailable='No storage decoder'))
+        event = dict(kind='field-terminal', **terminal.kwargs)
+        protocol.encode('record', dict(run='a', seq=1, thread=7, kind='fixture', event=event))
 
     def test_unbound_parser_does_not_report_a_complete_empty_observation(self):
         self.observer.questions[0]['token'] = None
@@ -699,8 +707,7 @@ class NestedFixtureTests(unittest.TestCase):
         worker.breakpoints.clear()
         self.question = dict(index=0, definition='late_key', field='number', parent_field='block',
             nested=dict(parent_token=7, owner_offset=64, member_entry=900), token=8,
-            storage=dict(offset=80, decoder={'FixedPoint': {'scale': 32768}}),
-            storage_unavailable=None, reader_id='reader', reader_kind='FixedPoint', reader_family='NotApplicable',
+            storage=dict(bound=dict(offset=80, decoder={'FixedPoint': {'scale': 32768}})),
             parsing=True, diagnostics=True)
         binding = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
             reader_return=40, inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
@@ -758,6 +765,9 @@ class NestedFixtureTests(unittest.TestCase):
         self.observer.finish_questions(None, 7)
         terminal = next(call for call in self.observer.emit.call_args_list if call.args[0] == 'field-terminal')
         self.assertEqual(terminal.kwargs['final_value']['FixedPoint']['scale'], 32768)
+        event = dict(kind='field-terminal', **terminal.kwargs)
+        protocol.encode('record', dict(run='a', seq=1, thread=7, kind='fixture', event=event))
+        self.assertTrue({'reader_id', 'reader_kind', 'reader_family'}.isdisjoint(event))
 
     def test_shared_return_address_is_restricted_to_each_call_stack(self):
         worker.request['machine']['registers']['return'] = 'x30'
@@ -791,7 +801,7 @@ class NestedFixtureTests(unittest.TestCase):
                 self.assertTrue(self.observer.root_unavailable)
         self.finish_parent()
         self.observer.finish_root(None, 7)
-        self.assertIsNotNone(self.question['storage_unavailable'])
+        self.assertIsNotNone(worker.storage_reason(self.question))
         self.assertFalse(any(call.args[0] == 'field-storage' for call in self.observer.emit.call_args_list))
         self.observer.finish_questions(None, 7)
         terminal = next(call for call in self.observer.emit.call_args_list if call.args[0] == 'parsing-terminal')

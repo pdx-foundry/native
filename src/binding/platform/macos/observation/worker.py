@@ -111,6 +111,17 @@ def item_key_offset(registry):
     return storage['offset']
 
 
+def storage_binding(question):
+    """The destination and decoder that the setup bound for the question, or None."""
+    return question['storage'].get('bound')
+
+
+def storage_reason(question):
+    """Why the question has no storage to read, or None."""
+    storage = question['storage']
+    return storage.get('unbound') or storage.get('unresolved-reader')
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -420,21 +431,18 @@ class FixtureObserver:
 
     def finish_questions(self, process, thread):
         for index, question in self.questions.items():
-            unavailable = question['storage_unavailable']
+            unavailable = storage_reason(question)
             owner = self.definitions.get(question['definition'])
             if unavailable:
                 self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
-                    reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                     final_value=None, unavailable=unavailable)
             elif owner is None:
                 self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
-                    reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                     final_value=None, unavailable='Requested definition constructor was not observed')
             else:
-                value = self.stored_value(process, owner['owner'], question['storage'])
+                value = self.stored_value(process, owner['owner'], storage_binding(question))
                 self.emit('field-terminal', thread, question=index, owner=hex(owner['owner']),
-                    definition_line=owner['line'], reader_id=question['reader_id'],
-                    reader_kind=question['reader_kind'], reader_family=question['reader_family'], final_value=value, unavailable=None)
+                    definition_line=owner['line'], final_value=value, unavailable=None)
             if question['parsing']:
                 parsing_unavailable = None
                 if question['token'] is None:
@@ -458,12 +466,6 @@ class FixtureObserver:
             raise RuntimeError('fixture loader entered more than once')
         self.loading = True
         self.emit('load-start', thread, file=file)
-        for index, question in self.questions.items():
-            storage = question['storage']
-            decoder = storage['decoder'] if storage and question['storage_unavailable'] is None else None
-            self.emit('field-authority', thread, question=index,
-                reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
-                storage_decoder=decoder, unavailable=question['storage_unavailable'])
         if self.questions:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
@@ -521,7 +523,7 @@ class FixtureObserver:
         question = self.question_by_token.get((definition, token))
         if question is None:
             return False
-        if not question['parsing'] and question['storage_unavailable'] is not None:
+        if not question['parsing'] and storage_reason(question) is not None:
             return False
         index = question['index']
         self.occurrences[index] += 1
@@ -559,9 +561,9 @@ class FixtureObserver:
             self.emit('field-parse', thread, question=pending['question'], file=self.config['file'], line=line,
                 definition=pending['definition'], field=pending['field'], owner=hex(pending['owner']),
                 occurrence=pending['occurrence'], returned=True)
-        if question['storage_unavailable'] is not None:
+        if storage_reason(question) is not None:
             return False
-        value = self.stored_value(process, pending['owner'], question['storage'])
+        value = self.stored_value(process, pending['owner'], storage_binding(question))
         self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
             line=pending['line'], definition=pending['definition'], field=pending['field'],
             owner=hex(pending['owner']), occurrence=pending['occurrence'], value=value)
@@ -766,12 +768,6 @@ class InlineFixtureObserver(FixtureObserver):
         self.thread = thread
         self.active_reader = register(frame, 'x0')
         self.emit('load-start', thread, file=file)
-        for index, question in self.questions.items():
-            storage = question['storage']
-            self.emit('field-authority', thread, question=index,
-                reader_id=question['reader_id'], reader_kind=question['reader_kind'],
-                reader_family=question['reader_family'], storage_decoder=storage['decoder'] if storage else None,
-                unavailable=question['storage_unavailable'])
         if self.control == protocol.CONTROL['access_failure']:
             uint(process, 0)
             raise RuntimeError('access failure unexpectedly read zero')
@@ -866,7 +862,7 @@ class InlineFixtureObserver(FixtureObserver):
             self.root_unavailable[self.leaf['selector']] = 'Nested member return source differs from selected file'
         else:
             question = self.selectors[self.leaf['selector']][0]
-            value = self.stored_value(process, self.root['owner'], question['storage'])
+            value = self.stored_value(process, self.root['owner'], storage_binding(question))
             self.buffer.append(('parse', dict(self.leaf, line=line, returned=True)))
             self.buffer.append(('storage', dict(self.leaf, value=value)))
         self.leaf = None
@@ -888,7 +884,8 @@ class InlineFixtureObserver(FixtureObserver):
         for selector, reason in self.root_unavailable.items():
             for question in self.selectors[selector]:
                 if question['definition'] == key:
-                    question['storage_unavailable'] = reason
+                    # The walk found this read unusable, so the question has no storage to read.
+                    question['storage'] = dict(unbound=reason)
         for kind, event in self.buffer:
             selector = event.get('selector')
             question = next((question for question in self.selectors.get(selector, []) if question['definition'] == key), None)

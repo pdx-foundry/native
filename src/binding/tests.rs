@@ -452,7 +452,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         }),
     };
     let error = plan
-        .observer(&request.work_directory, "test", &request, &registries)
+        .observer(&request.work_directory, "test", &request, None, &registries)
         .err()
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");

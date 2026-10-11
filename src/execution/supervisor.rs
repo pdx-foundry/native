@@ -192,8 +192,18 @@ fn run(
         files::write_json(&work.join("request.json"), &request)?;
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
-        let observer =
-            observer.insert(plan.observer(&work, &report.attempt, &request, &registries)?);
+        let fixture_setup = request
+            .fixture
+            .as_ref()
+            .map(|fixture| plan.fixture_setup(fixture))
+            .transpose()?;
+        let observer = observer.insert(plan.observer(
+            &work,
+            &report.attempt,
+            &request,
+            fixture_setup.clone(),
+            &registries,
+        )?);
         match input.try_recv() {
             Ok(event) => return Ok(interruption(event)),
             Err(mpsc::TryRecvError::Disconnected) => return Ok(SessionOutcome::CallerLost),
@@ -231,7 +241,7 @@ fn run(
                 work_directory: &work,
                 attempt: &report.attempt,
                 registries: request.registries.clone(),
-                fixture: request.fixture.as_ref(),
+                fixture: request.fixture.as_ref().zip(fixture_setup.as_ref()),
                 loaded_modifiers: request.loaded_modifiers.as_deref(),
                 build: crate::BuildId(request.build.clone()),
                 startup: Duration::from_secs(request.startup_seconds),
@@ -317,7 +327,11 @@ struct Session<'a> {
     attempt: &'a str,
     /// Content directories of the registries that the session observes.
     registries: Vec<String>,
-    fixture: Option<&'a crate::FixtureRequest>,
+    /// The fixture request, and the setup that the supervisor resolved for it.
+    fixture: Option<(
+        &'a crate::FixtureRequest,
+        &'a crate::protocol::observation::FixtureSetup,
+    )>,
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
     build: crate::BuildId,
@@ -420,9 +434,10 @@ fn observe_session(
                         (name.clone(), items)
                     })
                     .collect();
-                let fixture = session.fixture.map(|request| {
+                let fixture = session.fixture.map(|(request, setup)| {
                     crate::engine::operations::fixture::reduce(
                         request,
+                        &setup.questions,
                         &records,
                         events.all(),
                         session.build.clone(),
