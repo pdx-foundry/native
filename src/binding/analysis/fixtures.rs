@@ -211,18 +211,16 @@ impl VerifiedAnalysis<'_> {
         owner: &str,
         recipe: &super::super::targets::InlineFixtureRecipe,
     ) -> Result<FieldInput, String> {
+        let (class, _) = recipe
+            .loader
+            .split_once("::")
+            .ok_or("Loader has no class")?;
         let selection = CandidateRecord {
-            database: recipe
-                .loader
-                .split_once("::")
-                .ok_or("Loader has no class")?
-                .0
-                .into(),
+            database: class.into(),
             owner_candidate: owner.into(),
-            loader: recipe.loader.into(),
-            address: format!("{:#x}", self.symbol(recipe.loader)?),
+            loader_class: class.into(),
+            address: self.symbol(recipe.loader)?,
             initial_loader: None,
-            has_named_member_reader: true,
         };
         binary::fields::read(&self.image(), selection, self.persistent)
             .map_err(|error| error.to_string())
@@ -315,7 +313,7 @@ mod tests {
 
     fn input(code: Vec<u8>) -> FieldInput {
         FieldInput {
-            selection: CandidateRecord { database: "Database".into(), owner_candidate: "Owner".into(), loader: "Database::Init()".into(), address: "0x1000".into(), initial_loader: None, has_named_member_reader: true },
+            selection: CandidateRecord { database: "Database".into(), owner_candidate: "Owner".into(), loader_class: "Database".into(), address: 0x1000, initial_loader: None },
             symbols: vec![
                 Symbol { address: 0x2000, name: "CCompareOperator::Read(CReader&)".into() },
                 Symbol { address: 0x3000, name: "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)".into() },

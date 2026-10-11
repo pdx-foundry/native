@@ -51,7 +51,6 @@ const GLOBAL_VARIABLES: &str =
 const GAME_INIT: &str = "CGameApplication::InitGame()";
 
 const LOAD_FROM_READER: &str = "::LoadFromReader(CReader&, bool)";
-const LOAD_FILE: &str = "::LoadFile(char const*, bool)";
 const OPERATOR_NEW: &str = "operator new(unsigned long)";
 
 /// Functions that log a message, or build its text, from a literal in `x1`.
@@ -416,8 +415,8 @@ impl<'a> Image<'a> {
                 let Directory::Named(directory) = &candidate.directory else {
                     return None;
                 };
-                let database = candidate.record.loader.strip_suffix(LOAD_FILE)?;
-                Some((format!("{database}{LOAD_FROM_READER}"), directory.clone()))
+                let class = &candidate.record.loader_class;
+                Some((format!("{class}{LOAD_FROM_READER}"), directory.clone()))
             })
             .collect();
         let registry_databases = candidates

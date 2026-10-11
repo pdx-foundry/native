@@ -31,12 +31,10 @@ pub struct CandidateRecord {
     pub database: String,
     /// Owner type argument; not an established owner until joined.
     pub owner_candidate: String,
-    /// Loader symbol.
-    pub loader: String,
-    /// File address of the loader, in hexadecimal.
-    pub address: String,
+    /// The class that holds the loader, such as `TSingleObjectGameDatabase<Database, Owner, false>`.
+    pub loader_class: String,
+    /// File address of the loader.
+    pub address: u64,
     /// File address of the matching initial-load entry, when exactly one exists.
-    pub initial_loader: Option<String>,
-    /// Named reader symbol exists.
-    pub has_named_member_reader: bool,
+    pub initial_loader: Option<u64>,
 }

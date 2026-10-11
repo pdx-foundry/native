@@ -147,11 +147,15 @@ impl VerifiedAnalysis<'_> {
     /// loader address where the reader returns.
     fn loader_reader_call(
         &self,
-        load_entry: u64,
         record: &crate::engine::analysis::discovery::CandidateRecord,
     ) -> Result<Option<(u64, u64)>, AnalysisError> {
-        let code = binary::code_range(&self.executable, load_entry, 256)?;
-        fixture_reader_boundary(&code, load_entry, &record.loader, &self.catalog.symbols)
+        let code = binary::code_range(&self.executable, record.address, 256)?;
+        fixture_reader_boundary(
+            &code,
+            record.address,
+            &record.loader_class,
+            &self.catalog.symbols,
+        )
     }
 
     /// Join the owner's constructor directly, or through the matching template's new-entry reader.
@@ -400,16 +404,8 @@ impl BoundAnalysis {
         let Some(selected) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(None);
         };
-        let Some(load_entry) = selected
-            .record
-            .address
-            .strip_prefix("0x")
-            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
-        else {
-            return Ok(None);
-        };
-        let Some((reader_entry, reader_return)) =
-            verified.loader_reader_call(load_entry, &selected.record)?
+        let load_entry = selected.record.address;
+        let Some((reader_entry, reader_return)) = verified.loader_reader_call(&selected.record)?
         else {
             return Ok(None);
         };
@@ -578,13 +574,10 @@ fn fixture_constructor_route(
 fn fixture_reader_boundary(
     code: &[u8],
     load_entry: u64,
-    loader: &str,
+    loader_class: &str,
     symbols: &[Symbol],
 ) -> Result<Option<(u64, u64)>, AnalysisError> {
-    let Some(database) = loader.strip_suffix("::LoadFile(char const*, bool)") else {
-        return Ok(None);
-    };
-    let expected_reader = format!("{database}::LoadFromReader(CReader&, bool)");
+    let expected_reader = format!("{loader_class}::LoadFromReader(CReader&, bool)");
     let rows = decode_arm64(code, load_entry).map_err(|_| AnalysisError::InvalidRange)?;
     let matches: Vec<_> = rows
         .windows(3)

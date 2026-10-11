@@ -7,11 +7,10 @@ mod records;
 
 pub use records::*;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Enumerate exact template LoadFile candidates independently of named member readers.
 pub fn candidates(symbols: &[Symbol]) -> Vec<CandidateRecord> {
-    let names: BTreeSet<_> = symbols.iter().map(|s| s.name.as_str()).collect();
     let mut entries: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     for symbol in symbols {
         if symbol.name.ends_with("::Init()") {
@@ -41,21 +40,20 @@ pub fn candidates(symbols: &[Symbol]) -> Vec<CandidateRecord> {
         {
             continue;
         }
+        let loader_class =
+            format!("TSingleObjectGameDatabase<{database}, {owner_candidate}, {template_flag}>");
+        let initial_loader = entries
+            .get(format!("{loader_class}::Init()").as_str())
+            .and_then(|addresses| match addresses[..] {
+                [address] => Some(address),
+                _ => None,
+            });
         result.push(CandidateRecord {
             database: database.into(),
             owner_candidate: owner_candidate.into(),
-            loader: symbol.name.clone(),
-            address: format!("{:#x}", symbol.address),
-            initial_loader: {
-                let init = format!(
-                    "TSingleObjectGameDatabase<{database}, {owner_candidate}, {template_flag}>::Init()"
-                );
-                entries.get(init.as_str()).and_then(|addresses| {
-                    (addresses.len() == 1).then(|| format!("{:#x}", addresses[0]))
-                })
-            },
-            has_named_member_reader: names
-                .contains(format!("{owner_candidate}::ReadMember(CReader&, int)").as_str()),
+            loader_class,
+            address: symbol.address,
+            initial_loader,
         });
     }
     result.sort_by(|a, b| a.database.cmp(&b.database).then(a.address.cmp(&b.address)));

@@ -5,18 +5,17 @@ use tempfile::{TempDir, tempdir};
 
 #[test]
 fn initial_loader_requires_one_named_candidate_with_an_address() {
-    let candidate = |directory: &str, initial_loader: Option<&str>| super::NamedCandidate {
+    let candidate = |directory: &str, initial_loader: Option<u64>| super::NamedCandidate {
         record: crate::engine::analysis::discovery::CandidateRecord {
             database: "CTestDatabase".into(),
             owner_candidate: "CTestOwner".into(),
-            loader: "loader".into(),
-            address: "0x1000".into(),
-            initial_loader: initial_loader.map(str::to_owned),
-            has_named_member_reader: false,
+            loader_class: "loader".into(),
+            address: 0x1000,
+            initial_loader,
         },
         directory: crate::engine::analysis::directories::Directory::Named(directory.into()),
     };
-    let known = candidate("common/traditions", Some("0x1234"));
+    let known = candidate("common/traditions", Some(0x1234));
     assert_eq!(
         super::initial_loader(
             super::named_candidate(std::slice::from_ref(&known), "common/traditions").unwrap(),
@@ -28,13 +27,6 @@ fn initial_loader_requires_one_named_candidate_with_an_address() {
     assert!(super::named_candidate(&[known.clone(), known], "common/traditions").is_err());
     assert!(
         super::initial_loader(&candidate("common/traditions", None), "common/traditions").is_err()
-    );
-    assert!(
-        super::initial_loader(
-            &candidate("common/traditions", Some("invalid")),
-            "common/traditions"
-        )
-        .is_err()
     );
 }
 

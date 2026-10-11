@@ -89,10 +89,9 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
             record: CandidateRecord {
                 database: "CSyntheticDatabase".into(),
                 owner_candidate: "CSyntheticOwner".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: false,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named(name.clone()),
         })
@@ -162,10 +161,9 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
             record: CandidateRecord {
                 database: "CTraditionDatabase".into(),
                 owner_candidate: "CTraditionType".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: true,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named("common/traditions".into()),
         }],
@@ -212,10 +210,9 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
             record: CandidateRecord {
                 database: "CTraditionDatabase".into(),
                 owner_candidate: "CTraditionType".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: true,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named("common/traditions".into()),
         }],
@@ -1418,12 +1415,11 @@ fn m452_float_and_short_fixture_storage_bindings() {
 fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanup() {
     use crate::engine::analysis::assembler::arm64;
     for specialization in ["true", "false"] {
-        let database = format!("TSingleObjectGameDatabase<Database, Owner, {specialization}>");
-        let loader = format!("{database}::LoadFile(char const*, bool)");
+        let loader_class = format!("TSingleObjectGameDatabase<Database, Owner, {specialization}>");
         let symbols = vec![
             Symbol {
                 address: 0x2000,
-                name: format!("{database}::LoadFromReader(CReader&, bool)"),
+                name: format!("{loader_class}::LoadFromReader(CReader&, bool)"),
             },
             Symbol {
                 address: 0x3000,
@@ -1432,11 +1428,11 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
         ];
         let code = arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret);
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols).unwrap(),
             Some((0x2000, 0x1004))
         );
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &loader, &symbols[..1]).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols[..1]).unwrap(),
             None
         );
         for code in [
@@ -1446,7 +1442,7 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
             arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret),
         ] {
             assert_eq!(
-                fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+                fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols).unwrap(),
                 None
             );
         }
@@ -1455,9 +1451,9 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
         } else {
             "true"
         };
-        let wrong_loader = loader.replace(specialization, opposite);
+        let wrong_class = loader_class.replace(specialization, opposite);
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &wrong_loader, &symbols).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &wrong_class, &symbols).unwrap(),
             None
         );
     }

@@ -51,9 +51,6 @@ fn initial_loader(candidate: &NamedCandidate, directory: &str) -> Result<u64, St
     candidate
         .record
         .initial_loader
-        .as_ref()
-        .and_then(|address| address.strip_prefix("0x"))
-        .and_then(|address| u64::from_str_radix(address, 16).ok())
         .ok_or_else(|| format!("{directory}: initial loader entry is unavailable"))
 }
 
