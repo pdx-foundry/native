@@ -355,14 +355,14 @@ fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, Supervi
 fn worker_exit_result(
     records: &[event_stream::WorkerRecord],
 ) -> Result<SessionOutcome, SupervisorError> {
-    for record in records {
-        if let event_stream::WorkerEvent::CapabilityUnavailable { reason }
-        | event_stream::WorkerEvent::NativeException { reason } = &record.event
-        {
-            return Err(SupervisorError(reason.clone()));
-        }
+    let cause = records
+        .iter()
+        .find_map(|record| record.event.failure_reason());
+
+    match cause {
+        Some(reason) => Err(SupervisorError(reason.into())),
+        None => Ok(SessionOutcome::WorkerLost),
     }
-    Ok(SessionOutcome::WorkerLost)
 }
 
 /// Wait for the pause, reduce the worker's stream once, send the answers, then serve controls
@@ -1157,6 +1157,31 @@ exec sleep 30
         assert_eq!(session.report.disposal, Disposal::Confirmed);
         assert!(session.report.reservation_resolved);
         assert!(binding::process_identity(session.game_pid).is_err());
+    }
+
+    #[test]
+    fn every_failure_the_worker_names_ends_the_session_as_failed_with_its_cause() {
+        for (row, cause) in [
+            (
+                serde_json::json!({"kind":"early-activation-unavailable","reason":"loader entry not established"}),
+                "loader entry not established",
+            ),
+            (
+                serde_json::json!({"kind":"callback-error","error":"hook callback failed"}),
+                "hook callback failed",
+            ),
+        ] {
+            let session = FakeSession::run(&[row], "exit 1");
+
+            assert_eq!(
+                session.report.outcome,
+                SessionOutcome::Failed(cause.into()),
+                "{cause}"
+            );
+            assert_eq!(session.report.disposal, Disposal::Confirmed, "{cause}");
+            assert!(session.report.reservation_resolved, "{cause}");
+            assert!(binding::process_identity(session.game_pid).is_err());
+        }
     }
 
     #[test]
