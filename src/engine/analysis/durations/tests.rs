@@ -555,6 +555,7 @@ fn register_only_instructions_do_not_hide_a_factor() {
         mov w8, #30;
         str w8, [x19, #0x2b0];
         str x9, [sp, #0x10];
+        ldp d9, d8, [sp], #0x70;
         ret
     );
     let member = Member::new(code).key("months", 0x1004, 0x1008, ASSIGN, false);
@@ -564,6 +565,34 @@ fn register_only_instructions_do_not_hide_a_factor() {
         .unwrap();
 
     assert_eq!(factors(&group), [("months", Ok(Some(30)))]);
+}
+
+#[test]
+fn a_pair_load_from_owner_storage_clears_both_registers() {
+    let mut code = Arm64::at(START);
+    arm64!(code;
+        mov x19, x0;
+        add x1, x19, #0xa8;
+        bl extern 0x9000;
+        mov w9, #30;
+        ldp x8, x9, [x20];
+        str w9, [x19, #0x2b0];
+        ret;
+        add x1, x19, #0xa8;
+        bl extern 0x9000;
+        mov w8, #360;
+        str w8, [x19, #0x2b0];
+        ret
+    );
+    let member = Member::new(code)
+        .key("months", 0x1004, 0x1008, READ_INT, false)
+        .key("years", 0x101c, 0x1020, READ_INT, false);
+    let [group] = member.groups(None).try_into().unwrap();
+
+    assert_eq!(
+        factors(&group)[0],
+        ("months", Err(Unresolved::new("duration-post-read")))
+    );
 }
 
 /// The exact-build bodies, each mutated so that its proof must fail.

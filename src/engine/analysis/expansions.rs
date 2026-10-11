@@ -27,7 +27,7 @@
 use std::collections::BTreeSet;
 
 use super::declarations::number;
-use super::decode::{Instruction, is_control_transfer};
+use super::decode::{Instruction, general_register, is_control_transfer, written_registers};
 use super::directories::Directory;
 use super::stop::Unresolved;
 use crate::{
@@ -293,8 +293,8 @@ fn hosts(
 }
 
 /// Whether the last call in `rows`, a constructor, receives in `x0` the object that the nearest
-/// earlier call of `operator new` returned. The scan follows register moves; any other call
-/// clears the caller-saved registers, and any other write clears its destination.
+/// earlier call of `operator new` returned. The scan follows register moves and clears every
+/// other register that an instruction writes.
 fn constructs_new_object(rows: &[Instruction], allocations: &BTreeSet<u64>) -> bool {
     let Some((constructor, before)) = rows.split_last() else {
         return false;
@@ -303,52 +303,26 @@ fn constructs_new_object(rows: &[Instruction], allocations: &BTreeSet<u64>) -> b
         return false;
     }
 
-    let mut holding: BTreeSet<String> = BTreeSet::new();
+    let mut holding: BTreeSet<usize> = BTreeSet::new();
     for row in before {
-        let operands: Vec<String> = row.operands.split(',').map(register).collect();
+        let operands: Vec<Option<usize>> = row.operands.split(',').map(general_register).collect();
 
-        match row.operation.as_str() {
-            "bl" if number(&row.operands).is_some_and(|to| allocations.contains(&to)) => {
-                holding = BTreeSet::from(["x0".to_owned()]);
+        match (row.operation.as_str(), operands.as_slice()) {
+            ("bl", _) if number(&row.operands).is_some_and(|to| allocations.contains(&to)) => {
+                holding = BTreeSet::from([0]);
             }
-            "bl" | "blr" => holding.retain(|name| callee_saved(name)),
-            "mov" if operands.len() == 2 && holding.contains(&operands[1]) => {
-                holding.insert(operands[0].clone());
+            ("mov", [Some(destination), Some(source)]) if holding.contains(source) => {
+                holding.insert(*destination);
             }
-            operation if writes_first_operand(operation) => {
-                if let Some(written) = operands.first() {
-                    holding.remove(written);
+            (operation, _) => {
+                for written in written_registers(operation, &row.operands) {
+                    holding.remove(&written);
                 }
             }
-            _ => {}
         }
     }
 
-    holding.contains("x0")
-}
-
-/// The 64-bit name of a general register operand, so that `w0` and `x0` are one register.
-fn register(operand: &str) -> String {
-    match operand.strip_prefix('w') {
-        Some(number) if number.parse::<u32>().is_ok() => format!("x{number}"),
-        _ => operand.to_owned(),
-    }
-}
-
-/// Whether an instruction writes its first operand. Stores, compares, tests and branches only
-/// read it.
-fn writes_first_operand(operation: &str) -> bool {
-    !operation.starts_with("st")
-        && !is_control_transfer(operation)
-        && !matches!(operation, "cmp" | "cmn" | "tst" | "ccmp" | "ccmn")
-}
-
-/// Whether a call keeps `register`: `x19` to `x28`.
-fn callee_saved(register: &str) -> bool {
-    register
-        .strip_prefix('x')
-        .and_then(|number| number.parse::<u32>().ok())
-        .is_some_and(|number| (19..=28).contains(&number))
+    holding.contains(&0)
 }
 
 fn stage(
@@ -440,8 +414,7 @@ fn logs(site: &MessageSite, message_functions: &BTreeSet<u64>) -> bool {
         if row.operation == "bl" {
             return number(&row.operands).is_some_and(|to| message_functions.contains(&to));
         }
-        let first = row.operands.split(',').next().map(register);
-        let writes_x1 = writes_first_operand(&row.operation) && first.as_deref() == Some("x1");
+        let writes_x1 = written_registers(&row.operation, &row.operands).contains(&1);
         if writes_x1 || is_control_transfer(&row.operation) {
             return false;
         }

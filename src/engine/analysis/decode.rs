@@ -310,6 +310,12 @@ pub fn general_register(name: &str) -> Option<usize> {
     (number <= 30).then_some(number)
 }
 
+/// The number of 64-bit general register `name`, from `x0` to `x30`. A write to a 32-bit `w`
+/// register keeps only the low half, so only an `x` register can form or hold an address.
+pub fn wide_register(name: &str) -> Option<usize> {
+    name.starts_with('x').then(|| general_register(name))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

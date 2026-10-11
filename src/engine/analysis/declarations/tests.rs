@@ -515,6 +515,20 @@ fn a_vtable_stored_through_a_copy_of_the_command_register_is_followed() {
 }
 
 #[test]
+fn a_32_bit_add_forms_no_address() {
+    let bytes = arm64!(at 0x1000;
+        adrp x8, extern 0x20000;
+        add w9, w8, #0x100;
+        add x10, x8, #0x100;
+        str w9, [x19]
+    );
+    let values = register_values(&decode_arm64(&bytes, 0x1000).unwrap());
+
+    assert_eq!(values.get(&9), None);
+    assert_eq!(values.get(&10), Some(&HELPER_DOCUMENTATION));
+}
+
+#[test]
 fn documentation_split_preserves_usage_without_terminal_newline() {
     assert_eq!(
         split_documentation("desc\nl1\nl2\n"),

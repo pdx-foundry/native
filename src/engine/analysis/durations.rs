@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declarations::number;
-use super::decode::{Instruction, decode_arm64};
+use super::decode::{Instruction, decode_arm64, general_register, written_registers};
 use super::fields::{ReaderJoin, RootField, TokenPath, Value};
 use super::references::shapes::{Bindings, Shape, canonical, split_operands};
 use super::stop::Unresolved;
@@ -366,23 +366,14 @@ fn prefix_stores(
                 };
                 set(&mut registers, to, value);
             }
-            ("bl" | "blr", _) => {
-                registers.retain(|name, _| callee_preserves(name));
-            }
-            ("ldp", [first, second, ..]) => {
-                set(&mut registers, first, None);
-                set(&mut registers, second, None);
-                if let Some(base) = written_back_base(&operands) {
+            (operation, _) => {
+                clear_written(&mut registers, &row);
+                if !operation.starts_with("st")
+                    && let Some(base) = written_back_base(&operands)
+                {
                     set(&mut registers, base, None);
                 }
             }
-            (operation, [to, ..]) if writes_register_only(operation, to) => {
-                set(&mut registers, to, None);
-                if let Some(base) = written_back_base(&operands) {
-                    set(&mut registers, base, None);
-                }
-            }
-            _ => {}
         }
     }
 
@@ -498,14 +489,11 @@ fn continuation(
                 byte_stores.retain(|byte| !(slot..slot + 4).contains(byte));
                 stores.insert(slot, value);
             }
-            ("ldp", [first, second, memory, ..])
-                if memory_base(memory).is_some_and(|base| base == "sp") =>
-            {
-                registers.remove(&index(first));
-                registers.remove(&index(second));
+            ("ldp", [_, _, memory, ..]) if memory_base(memory).is_some_and(is_stack) => {
+                clear_written(&mut registers, &row);
             }
-            (operation, [to, ..]) if writes_register_only(operation, to) => {
-                set(&mut registers, to, None);
+            (operation, [to, ..]) if is_register_instruction(operation, to) => {
+                clear_written(&mut registers, &row);
             }
             _ => return Err(stop("duration-post-read")),
         }
@@ -526,18 +514,22 @@ fn stores_to_frame(operands: &[&str]) -> bool {
         .is_some_and(|base| is_stack(base) || base == "x29")
 }
 
-/// An instruction that only writes its first register operand: not a store, a branch, a call or
-/// a return, which could change owner storage or leave the straight-line code.
-fn writes_register_only(operation: &str, destination: &str) -> bool {
+/// An instruction whose first operand is a general register and that is not a store, a branch, a
+/// call or a return, which could change owner storage or leave the straight-line code.
+fn is_register_instruction(operation: &str, first: &str) -> bool {
     let control = matches!(operation, "b" | "bl" | "blr" | "br" | "ret")
         || ["b.", "bl", "br", "cb", "tb", "ret"]
             .iter()
             .any(|prefix| operation.starts_with(prefix));
-    let register = destination
-        .strip_prefix(['w', 'x'])
-        .is_some_and(|number| number.parse::<u8>().is_ok());
 
-    !control && !operation.starts_with("st") && register
+    !control && !operation.starts_with("st") && general_register(first).is_some()
+}
+
+/// Forget every general register that `row` writes.
+fn clear_written(registers: &mut BTreeMap<String, Term>, row: &Instruction) {
+    for register in written_registers(&row.operation, &row.operands) {
+        registers.remove(&format!("x{register}"));
+    }
 }
 
 /// The base register of a pre- or post-indexed access, which the access also writes.
@@ -546,16 +538,6 @@ fn written_back_base<'a>(operands: &[&'a str]) -> Option<&'a str> {
     let written_back = memory.ends_with('!') || operands.last() != Some(memory);
 
     written_back.then(|| memory_base(memory)).flatten()
-}
-
-/// Whether a call preserves this register's value.
-fn callee_preserves(name: &str) -> bool {
-    name == "sp"
-        || name == "x29"
-        || name
-            .strip_prefix('x')
-            .and_then(|index| index.parse::<u8>().ok())
-            .is_some_and(|index| (19..=28).contains(&index))
 }
 
 /// The owner and stack addresses in preserved registers; a call clobbers the others.
@@ -568,7 +550,10 @@ fn preserved(arguments: &BTreeMap<String, Value>) -> BTreeMap<String, Term> {
                 Value::Stack(offset) => Term::Stack(*offset),
                 _ => return None,
             };
-            callee_preserves(name).then(|| (name.clone(), term))
+            let preserved = is_stack(name)
+                || general_register(name)
+                    .is_some_and(|register| !written_registers("bl", "").contains(&register));
+            preserved.then(|| (name.clone(), term))
         })
         .collect()
 }
@@ -847,10 +832,7 @@ fn is_stack(register: &str) -> bool {
 
 /// The register family: `w8` and `x8` are one register.
 fn index(register: &str) -> String {
-    match register.strip_prefix('w') {
-        Some(number) => format!("x{number}"),
-        None => register.to_string(),
-    }
+    general_register(register).map_or_else(|| register.to_owned(), |number| format!("x{number}"))
 }
 
 fn operand(registers: &BTreeMap<String, Term>, text: &str) -> Option<Term> {

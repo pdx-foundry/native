@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use super::{
     InputError,
-    decode::{Instruction, decode_arm64},
+    decode::{Instruction, decode_arm64, general_register, wide_register, written_registers},
     evaluate::ReadOnlyData,
     receivers::ConstructorImage,
     stop::Unresolved,
@@ -326,7 +326,7 @@ fn helper_site(input: &DeclarationInput, rows: &[Instruction], helper: u64) -> S
         Ok(name) => name,
         Err(site) => return *site,
     };
-    let documentation = register_values(rows).get("x2").copied();
+    let documentation = register_values(rows).get(&2).copied();
     let (Some(factory), Some(documentation)) = (helper_factory(input, helper), documentation)
     else {
         return Site::Unreadable {
@@ -412,7 +412,9 @@ fn helper_factory(input: &DeclarationInput, helper: u64) -> Option<u64> {
             let args: Vec<_> = row.operands.split(',').collect();
             match (row.operation.as_str(), args.as_slice()) {
                 ("stp", [factory, second, "[x0]"]) if documentation.contains(second) => {
-                    register_values(&rows[..index]).get(factory).copied()
+                    register_values(&rows[..index])
+                        .get(&wide_register(factory)?)
+                        .copied()
                 }
                 _ => None,
             }
@@ -441,7 +443,7 @@ fn object_stores(rows: &[Instruction], since: usize) -> Option<(u64, u64)> {
                 }
             }
             ("add", [dst, base, offset]) => {
-                if let Some(value) = added_address(&values, base, offset) {
+                if let Some(value) = added_address(values.get(base), offset) {
                     values.insert(dst, value);
                 }
             }
@@ -459,49 +461,34 @@ fn object_stores(rows: &[Instruction], since: usize) -> Option<(u64, u64)> {
     factory.zip(documentation)
 }
 
-/// The address that each register holds at the end of `rows`, when an `adrp` and `add` pair set
-/// it. Any other write to a register, and a call for the caller-saved registers, forgets its
-/// value.
-fn register_values(rows: &[Instruction]) -> BTreeMap<&str, u64> {
-    let mut values = BTreeMap::<&str, u64>::new();
+/// The address that each general register holds at the end of `rows`, when an `adrp` and `add`
+/// pair set it. Any other write to a register, including a call's, forgets its value.
+fn register_values(rows: &[Instruction]) -> BTreeMap<usize, u64> {
+    let mut values = BTreeMap::new();
     for row in rows {
         let args: Vec<_> = row.operands.split(',').collect();
-        match (row.operation.as_str(), args.as_slice()) {
-            ("adrp", [reg, value]) => match number(value) {
-                Some(value) => {
-                    values.insert(reg, value);
-                }
-                None => {
-                    values.remove(reg);
-                }
-            },
-            ("add", [dst, base, offset]) => {
-                match added_address(&values, base, offset) {
-                    Some(value) => values.insert(dst, value),
-                    None => values.remove(dst),
-                };
+        let address = match (row.operation.as_str(), args.as_slice()) {
+            ("adrp", [destination, page]) => wide_register(destination).zip(number(page)),
+            ("add", [destination, base, offset]) => {
+                let base = wide_register(base).and_then(|base| values.get(&base));
+                wide_register(destination).zip(added_address(base, offset))
             }
-            ("bl" | "blr", _) => values.retain(|reg, _| {
-                !reg.strip_prefix('x')
-                    .and_then(|index| index.parse::<u8>().ok())
-                    .is_some_and(|index| index <= 18)
-            }),
-            (operation, [destination, ..]) if !operation.starts_with("st") => {
-                let register = destination.replacen('w', "x", 1);
-                values.retain(|reg, _| **reg != register);
-            }
-            _ => {}
+            _ => None,
+        };
+
+        for register in written_registers(&row.operation, &row.operands) {
+            values.remove(&register);
         }
+        values.extend(address);
     }
     values
 }
 
-/// The address that `add` forms from the address that `base` holds and an immediate `offset`.
-/// `None` when `base` holds no known address or `offset` is not an immediate. Each caller decides
-/// what `None` does to the destination register.
-fn added_address(values: &BTreeMap<&str, u64>, base: &str, offset: &str) -> Option<u64> {
-    let base = values.get(base)?;
-    base.checked_add(number(offset)?)
+/// The address that `add` forms from the address that its base holds and an immediate `offset`.
+/// `None` when the base holds no known address or `offset` is not an immediate. Each caller
+/// decides what `None` does to the destination register.
+fn added_address(base: Option<&u64>, offset: &str) -> Option<u64> {
+    base?.checked_add(number(offset)?)
 }
 
 /// The vtable that the code stores in the new object: at `[x19]`, or a copy of `x19`, when a
@@ -510,7 +497,7 @@ fn added_address(values: &BTreeMap<&str, u64>, base: &str, offset: &str) -> Opti
 /// global offset table does.
 fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u64> {
     let mut values = BTreeMap::<&str, u64>::new();
-    let mut object_bases = BTreeSet::from(["[x19]".to_owned()]);
+    let mut object_bases = BTreeSet::from([19]);
     let mut x0_object_vtable = None;
     let mut x19_object_vtable = None;
     for row in rows {
@@ -523,13 +510,16 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
         if let Some((first, base, post_indexed)) = stored.filter(|(_, base, _)| base.ends_with(']'))
         {
             let value = values.get(first).copied();
-            if object_bases.contains(base) {
+            let base = base
+                .strip_prefix('[')
+                .and_then(|base| general_register(base.strip_suffix(']')?));
+            if base.is_some_and(|base| object_bases.contains(&base)) {
                 x19_object_vtable = value.or(x19_object_vtable);
-            } else if base == "[x0]" {
+            } else if base == Some(0) {
                 x0_object_vtable = value.or(x0_object_vtable);
             }
-            if post_indexed {
-                object_bases.remove(base);
+            if post_indexed && let Some(base) = base {
+                object_bases.remove(&base);
             }
             continue;
         }
@@ -540,12 +530,12 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
                 }
             }
             ("add", [dst, base, offset]) => {
-                if let Some(value) = added_address(&values, base, offset) {
+                if let Some(value) = added_address(values.get(base), offset) {
                     values.insert(dst, value);
                 }
             }
             ("mov", [dst, "x19"]) => {
-                object_bases.insert(format!("[{dst}]"));
+                object_bases.extend(general_register(dst));
                 continue;
             }
             ("ldr", [reg, base, offset]) if base.starts_with('[') && offset.ends_with(']') => {
@@ -564,23 +554,10 @@ fn vtable_store(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> Option<u
             _ => {}
         }
         // A copy of `x19` stops being the object when the code writes its register.
-        match (row.operation.as_str(), args.first()) {
-            ("bl" | "blr", _) => object_bases.retain(|base| !caller_saved(base)),
-            (_, Some(destination)) if !matches!(*destination, "x19" | "w19") => {
-                object_bases.remove(&format!("[{}]", destination.replacen('w', "x", 1)));
-            }
-            _ => {}
-        }
+        let written = written_registers(&row.operation, &row.operands);
+        object_bases.retain(|base| *base == 19 || !written.contains(base));
     }
     x19_object_vtable.or(x0_object_vtable)
-}
-
-/// Whether `[xN]` names a register that a call can change.
-fn caller_saved(base: &str) -> bool {
-    base.trim_start_matches("[x")
-        .trim_end_matches(']')
-        .parse::<u8>()
-        .is_ok_and(|index| index <= 18)
 }
 
 /// The supported scopes of the command that `factory` creates.

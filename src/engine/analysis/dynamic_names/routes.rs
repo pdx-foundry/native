@@ -21,7 +21,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::{Caller, stand_in_command};
 use crate::engine::analysis::declarations::{Function, number};
-use crate::engine::analysis::decode::{Instruction, decode_arm64};
+use crate::engine::analysis::decode::{
+    Instruction, decode_arm64, wide_register, written_registers,
+};
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use crate::engine::analysis::stop::Unresolved;
 
@@ -238,75 +240,46 @@ fn seed_globals(machine: &mut Machine<'_>, loads: &BTreeSet<u64>, data: &ReadOnl
 /// The fixed addresses that `rows` load a 64-bit value from: an address that `adrp` with `add`
 /// or a load offset forms, or that a loaded pointer slot holds.
 fn global_loads(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSet<u64> {
-    let mut addresses = BTreeMap::<String, u64>::new();
+    let mut addresses = BTreeMap::<usize, u64>::new();
     let mut loads = BTreeSet::new();
     for row in rows {
         let operands: Vec<&str> = row.operands.split(',').collect();
-        let written = operands
-            .first()
-            .map(|register| register.replacen('w', "x", 1));
-        match (row.operation.as_str(), operands.as_slice()) {
-            ("adrp", [destination, page]) => {
-                if let Some(page) = number(page) {
-                    addresses.insert((*destination).to_owned(), page);
-                    continue;
-                }
-            }
+        let formed = match (row.operation.as_str(), operands.as_slice()) {
+            ("adrp", [destination, page]) => wide_register(destination).zip(number(page)),
             ("add", [destination, base, offset]) => {
-                if let Some(address) = offset_from(&addresses, base, offset) {
-                    addresses.insert((*destination).to_owned(), address);
-                    continue;
-                }
+                wide_register(destination).zip(offset_from(&addresses, base, offset))
             }
-            ("ldr", [destination, base, offset]) => {
+            ("ldr", [destination, base, offset]) if destination.starts_with('x') => {
                 let base = base.trim_start_matches('[');
                 let offset = offset.trim_end_matches(']');
-                if let Some(address) = offset_from(&addresses, base, offset)
-                    && destination.starts_with('x')
-                {
+                offset_from(&addresses, base, offset).and_then(|address| {
                     loads.insert(address);
-                    if let Some(&target) = pointers.get(&address) {
-                        addresses.insert((*destination).to_owned(), target);
-                        continue;
-                    }
-                }
+                    wide_register(destination).zip(pointers.get(&address).copied())
+                })
             }
-            ("ldr", [destination, base]) => {
+            ("ldr", [destination, base]) if destination.starts_with('x') => {
                 let base = base.trim_start_matches('[').trim_end_matches(']');
-                if let Some(&address) = addresses.get(base)
-                    && destination.starts_with('x')
-                {
+                let base = wide_register(base).and_then(|base| addresses.get(&base));
+                base.copied().and_then(|address| {
                     loads.insert(address);
-                    if let Some(&target) = pointers.get(&address) {
-                        addresses.insert((*destination).to_owned(), target);
-                        continue;
-                    }
-                }
+                    wide_register(destination).zip(pointers.get(&address).copied())
+                })
             }
-            ("bl" | "blr", _) => {
-                addresses.retain(|register, _| !caller_saved(register));
-                continue;
-            }
-            _ => {}
-        }
-        if let Some(register) = written
-            && !row.operation.starts_with("st")
-        {
+            _ => None,
+        };
+
+        for register in written_registers(&row.operation, &row.operands) {
             addresses.remove(&register);
         }
+        addresses.extend(formed);
     }
 
     loads
 }
 
 /// The address `base` plus the immediate `offset`, when `base` holds a formed address.
-fn offset_from(addresses: &BTreeMap<String, u64>, base: &str, offset: &str) -> Option<u64> {
-    addresses.get(base)?.checked_add(number(offset)?)
-}
-
-fn caller_saved(register: &str) -> bool {
-    register
-        .strip_prefix('x')
-        .and_then(|index| index.parse::<u8>().ok())
-        .is_some_and(|index| index <= 18)
+fn offset_from(addresses: &BTreeMap<usize, u64>, base: &str, offset: &str) -> Option<u64> {
+    addresses
+        .get(&wide_register(base)?)?
+        .checked_add(number(offset)?)
 }
