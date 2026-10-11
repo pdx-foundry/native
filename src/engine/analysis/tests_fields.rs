@@ -2500,6 +2500,62 @@ fn a_collected_container_has_the_mask_that_its_factory_passes() {
     assert_eq!(clause_mask(factory_fixture()), None);
 }
 
+/// The mask of the container that the collection inserts. The root builds `inserted` with
+/// `build`, and also a container with another mask before it and another after it that it never
+/// inserts. Constructor `0x9100` gives its category argument as the mask; `0x9400` gives none.
+fn inserted_container_mask(build: impl Fn(&mut Arm64)) -> Option<Result<u64, &'static str>> {
+    let mut input = nested_fixture();
+    let mut root = Arm64::at(0x1000);
+    arm64!(root;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000;
+        mov w2, #0x100;
+        bl extern 0x9100; // a container that is never inserted
+        bl extern 0x9000;
+        mov x21, x0
+    );
+    build(&mut root);
+    arm64!(root;
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40;
+        mov x2, sp;
+        bl extern 0x9300; // insertion
+        bl extern 0x9000;
+        mov w2, #0x200;
+        bl extern 0x9100; // another container that is never inserted
+        ret
+    );
+    input.functions[0].code = root.bytes();
+    input.objects[0].constructors.push(0x9400);
+    let mut binding = persistent_fixture().persistent.unwrap();
+    binding.containers.category = BTreeSet::from([0x9100]);
+    input.persistent = Some(binding);
+
+    clause_mask(input)
+}
+
+#[test]
+fn an_inserted_container_keeps_its_own_mask_beside_other_containers() {
+    let masked = |code: &mut Arm64| arm64!(code; mov w2, #0x80; bl extern 0x9100);
+    let unmasked = |code: &mut Arm64| arm64!(code; bl extern 0x9400);
+    let masked_then_unmasked =
+        |code: &mut Arm64| arm64!(code; mov w2, #0x80; bl extern 0x9100; bl extern 0x9400);
+
+    assert_eq!(inserted_container_mask(masked), Some(Ok(0x80)));
+    assert_eq!(inserted_container_mask(unmasked), None);
+    assert_eq!(inserted_container_mask(masked_then_unmasked), None);
+}
+
 #[test]
 fn a_mask_behind_a_writable_pointer_slot_is_unresolved() {
     let mut writable = clause_container_fixture(|code| {

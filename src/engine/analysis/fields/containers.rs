@@ -11,7 +11,8 @@ use super::records::ModifierContainers;
 use crate::engine::analysis::{evaluate::Machine, modifiers::EVERY_CATEGORY, stop::Unresolved};
 use std::collections::BTreeSet;
 
-/// The label of a construction's mask on a path. A member walk adds the owner offset.
+/// The label of a construction's mask on a path. A member walk adds the owner offset, and a
+/// collection walk the address of the constructed object.
 pub(super) const LABEL: u64 = 1 << 59;
 
 /// A construction whose category argument is not known on its path.
