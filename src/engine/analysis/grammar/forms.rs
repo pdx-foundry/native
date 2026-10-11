@@ -23,6 +23,12 @@ const ALTERNATIVE: u64 = 4;
 const TOKEN_COPY: u64 = 5;
 const TARGET_TEMP: u64 = 6;
 const STRING_TEMP: u64 = 7;
+/// A target probe's path asked the scope type in `Read`.
+const READ_TARGET_TYPE: u64 = 50;
+/// A target probe's path asked the scope type in a stage after `Read`.
+const STAGE_TARGET_TYPE: u64 = 51;
+/// A target probe's path ended in a trap.
+const PROBE_TRAPPED: u64 = 52;
 /// The cause of a stage that more paths than [`PATH_LIMIT`] leave unfinished.
 const PATH_LIMIT_CAUSE: &str = "path limit";
 const TOKEN_TEXT: u64 = FOUND + 0x30000;
@@ -729,7 +735,7 @@ fn run(
         for (path, chain) in chained {
             result.reads.extend(path.receiver_reads());
             result.paths.push(ReadPath {
-                trapped: path.labelled(52).is_some(),
+                trapped: path.labelled(PROBE_TRAPPED).is_some(),
                 target_touches: target_touches(&path),
                 target_load: probe
                     .is_some_and(|probe| path.accessed(probe.offset, input.forms.target_size)),
@@ -826,7 +832,7 @@ fn stages<'a>(
     ] {
         let mut next = Vec::new();
         for (mut machine, mut stages, stops) in pending {
-            if calls.probe.is_some() && machine.labelled(52).is_some() {
+            if calls.probe.is_some() && machine.labelled(PROBE_TRAPPED).is_some() {
                 next.push((machine, stages, stops));
                 continue;
             }
@@ -920,7 +926,7 @@ fn stages<'a>(
             });
             for mut path in paths {
                 if calls.probe.is_some() && path.end == Ok(Exit::Trapped) {
-                    path.machine.label(52, 1);
+                    path.machine.label(PROBE_TRAPPED, 1);
                 }
                 let mut stages = stages.clone();
                 stages.push(stage_result(&path, stage, stage == Stage::PostValidate));
@@ -1000,7 +1006,7 @@ impl Calls<'_> {
         machine: &mut Machine<'_>,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
-        if let Some(call) = self.target_type(target, machine, 50) {
+        if let Some(call) = self.target_type(target, machine, READ_TARGET_TYPE) {
             return call;
         }
         let binding = &self.input.command_bindings;
@@ -1277,7 +1283,7 @@ impl Calls<'_> {
         selected: u64,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
-        if let Some(call) = self.target_type(target, machine, 51) {
+        if let Some(call) = self.target_type(target, machine, STAGE_TARGET_TYPE) {
             return call;
         }
         if target.is_some_and(|at| self.input.command_bindings.error_logs.contains(&at)) {
@@ -1310,8 +1316,8 @@ mod tests;
 
 fn target_touches(machine: &Machine<'_>) -> [bool; 2] {
     [
-        machine.labelled(50).is_some(),
-        machine.labelled(51).is_some(),
+        machine.labelled(READ_TARGET_TYPE).is_some(),
+        machine.labelled(STAGE_TARGET_TYPE).is_some(),
     ]
 }
 

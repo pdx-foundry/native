@@ -9,6 +9,7 @@ use crate::engine::analysis::{
 };
 
 const SPAN: u64 = 0x10000;
+// The tags are the label keys up to CHILD. Every larger key is an allocation address.
 const DECODED: u64 = 0;
 const VTABLE: u64 = 1;
 const CHILD: u64 = 2;
@@ -109,7 +110,7 @@ fn child_reader(
                 .labels()
                 .iter()
                 .find_map(|(&at, &size)| {
-                    (at > VTABLE && (at..at + size).contains(&receiver)).then_some(at + size)
+                    (at > CHILD && (at..at + size).contains(&receiver)).then_some(at + size)
                 })
                 .ok_or(Unresolved::new("numeric-constructor-allocation"))?;
             crate::engine::analysis::receivers::install_vtables(
