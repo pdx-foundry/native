@@ -358,14 +358,6 @@ impl ExecutionPlan {
                 ))
             })
     }
-    pub fn session_content_unchanged(
-        &self,
-        directories: &[String],
-        expected: &installation::ContentIdentity,
-    ) -> bool {
-        self.installation()
-            .session_content_unchanged(directories, expected)
-    }
     fn operation(&self) -> &compose::ResolvedObservation {
         self.binding
             .operation
@@ -649,7 +641,8 @@ impl ExecutionPlan {
     }
     /// Give the private game profile a mod that replaces the observed registries' directories
     /// with copies of the pinned installed files. The session then observes known content,
-    /// whatever mods the user has.
+    /// whatever mods the user has. The installed content must still be the pinned `content` when
+    /// the profile is ready.
     pub(crate) fn prepare_registry_profile(
         &self,
         work_directory: &std::path::Path,
@@ -704,6 +697,18 @@ impl ExecutionPlan {
         files::write_new(
             &profile.join("dlc_load.json"),
             br#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
-        )
+        )?;
+
+        let directories: Vec<String> = registries.keys().cloned().collect();
+        if !self
+            .installation()
+            .session_content_unchanged(&directories, content)
+        {
+            return Err(SupervisorError(
+                "Registry content changed during profile preparation".into(),
+            ));
+        }
+
+        Ok(())
     }
 }

@@ -199,6 +199,65 @@ fn missing_inputs_never_become_empty_success() {
     );
 }
 
+/// A plan over the authored installation at `root`, and the default registries it observes.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn profile_plan(
+    root: &std::path::Path,
+) -> (
+    super::ExecutionPlan,
+    std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+) {
+    let (installation, _) = Installation::open(root).unwrap();
+    let operation = super::compose::synthetic_variation();
+    let plan = super::ExecutionPlan {
+        binding: authored_binding(
+            installation.with_default_registries(operation.default_registries),
+            Some(operation),
+        ),
+    };
+    let registries = plan
+        .binding
+        .default_registries()
+        .into_iter()
+        .map(|name| {
+            let binding = super::groups::registry_binding(
+                plan.operation().registry_layout.unwrap(),
+                &name,
+                0x5678,
+                Ok(0x10),
+            );
+            (name, binding)
+        })
+        .collect();
+
+    (plan, registries)
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn private_profile_refuses_content_that_changes_while_it_is_prepared() {
+    let (root, _) = installation();
+    let (plan, registries) = profile_plan(root.path());
+    let directories: Vec<String> = registries.keys().cloned().collect();
+    let content = plan.session_content(&directories).unwrap();
+    let work = tempdir().unwrap();
+    fs::create_dir(work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(work.path(), None, &registries, &content)
+        .unwrap();
+
+    // The copy checks each pinned file, so a file added after the snapshot is not seen there.
+    fs::write(root.path().join("common/traditions/late.txt"), "late").unwrap();
+    let next = tempdir().unwrap();
+    fs::create_dir(next.path().join("profile")).unwrap();
+    let error = plan
+        .prepare_registry_profile(next.path(), None, &registries, &content)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Registry content changed during profile preparation"
+    );
+}
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[test]
 fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edits() {
@@ -208,30 +267,9 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     fs::write(root.path().join(modified), "edited before open").unwrap();
     fs::create_dir(root.path().join("common/traditions/nested")).unwrap();
     fs::write(root.path().join(added), "added before open").unwrap();
-    let (installation, _) = Installation::open(root.path()).unwrap();
-    let operation = super::compose::synthetic_variation();
-    let plan = super::ExecutionPlan {
-        binding: authored_binding(
-            installation.with_default_registries(operation.default_registries),
-            Some(operation),
-        ),
-    };
-    let names = plan.binding.default_registries();
-    let registries: std::collections::BTreeMap<_, _> = names
-        .iter()
-        .map(|name| {
-            (
-                name.clone(),
-                super::groups::registry_binding(
-                    plan.operation().registry_layout.unwrap(),
-                    name,
-                    0x5678,
-                    Ok(0x10),
-                ),
-            )
-        })
-        .collect();
-    let content = plan.installation().content.as_ref().unwrap();
+    let (plan, registries) = profile_plan(root.path());
+    let directories: Vec<String> = registries.keys().cloned().collect();
+    let content = &plan.session_content(&directories).unwrap();
     let work = tempdir().unwrap();
     fs::create_dir(work.path().join("profile")).unwrap();
     plan.prepare_registry_profile(work.path(), None, &registries, content)
