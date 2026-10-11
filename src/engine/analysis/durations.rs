@@ -715,7 +715,7 @@ pub(crate) fn scoped_storage(
                 let crate::GrammarProperty::Known(width) = conversion.width_bits else {
                     return Err(Unresolved::new("duration-byte-storage"));
                 };
-                if !matches!(width, 32 | 64) || *literal != layout.literal {
+                if !matches!(width, 32 | 64) {
                     return Err(Unresolved::new("duration-byte-storage"));
                 }
                 let width = u64::from(width / 8);

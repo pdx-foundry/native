@@ -1663,6 +1663,79 @@ mod tests {
     }
 
     #[test]
+    fn a_refused_scoped_subtype_leaves_no_known_duration_count() {
+        use crate::engine::analysis::scoped_numeric::{Facts, Shared, Subtype};
+        use crate::engine::analysis::stop::Unresolved;
+
+        let accepted = Ok(Subtype::Numeric {
+            literal: 0x28,
+            token_reader: "CReader::Read(int&)".into(),
+        });
+        let refused = Err(Unresolved::new("scoped-literal-disagreement"));
+        let scoped = |subtype| Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+
+                selection: Err(Unresolved::new("scoped-body")),
+            },
+            subtypes: [(0x9000, subtype)].into(),
+        };
+        let result = |combination| {
+            let mut result = keyed(Ok(INITIALIZER.into()));
+            let mut group = group(combination);
+            group.initial = (0xa8..0xd4).map(|at| (at, 0)).collect();
+            result.scoped_destinations.insert(0xa8, 0x9000);
+            result.durations.groups.push(group);
+
+            result
+        };
+        let omitted_count = |result: &grammar::GrammarResult, subtype| {
+            let mut answer = normalize(
+                Ok(result),
+                "timed",
+                crate::BuildId("test".into()),
+                &facts(scan_at(0xa8)),
+            );
+
+            super::super::durations::grammar(
+                &mut answer.value,
+                result,
+                &scoped(subtype),
+                &literal_numeric(32),
+                "timed",
+                &mut Vec::new(),
+            );
+
+            let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
+                answer.value.durations
+            else {
+                panic!("no duration groups");
+            };
+
+            groups[0].omitted_count.clone()
+        };
+
+        let scaled = result(Combination::ScaledAtRead);
+        let overlap = |subtype| {
+            super::super::durations::scoped_literal_overlap(
+                &scaled.durations.groups[0],
+                &scaled,
+                &scoped(subtype),
+                &literal_numeric(32),
+            )
+        };
+        assert!(!overlap(accepted.clone()));
+        assert!(overlap(refused.clone()));
+
+        let shared = result(Combination::SharedFactor {
+            factor_slot: 0xb0,
+            initial_factor: 1,
+        });
+        assert_eq!(omitted_count(&shared, accepted), GrammarProperty::Known(0));
+        assert_eq!(omitted_count(&shared, refused), GrammarProperty::Unresolved);
+    }
+
+    #[test]
     fn a_missing_scoped_constructor_does_not_prove_literal_stores_disjoint() {
         use crate::engine::analysis::fields::{ReaderJoin, Value};
         use crate::engine::analysis::scoped_numeric::{Facts, Layout, Shared};

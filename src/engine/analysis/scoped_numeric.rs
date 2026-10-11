@@ -69,6 +69,7 @@ pub(crate) enum Subtype {
 #[derive(Debug, Clone)]
 pub(crate) struct Facts {
     pub shared: Shared,
+    /// A numeric subtype is present only when its literal offset is the selection layout's.
     pub subtypes: BTreeMap<u64, Result<Subtype, Unresolved>>,
 }
 
@@ -121,10 +122,10 @@ pub(crate) fn analyze(input: &Input) -> Facts {
         .points
         .iter()
         .map(|(&point, config)| {
-            (
-                point,
-                subtype(input, point, config, assign.as_ref().map(|(slot, _)| *slot)),
-            )
+            let subtype = subtype(input, point, config, assign.as_ref().map(|(slot, _)| *slot))
+                .and_then(|subtype| agree_with_layout(subtype, &selection));
+
+            (point, subtype)
         })
         .collect();
     Facts {
@@ -185,6 +186,19 @@ fn subtype(
             token_reader: token_reader.clone(),
             literal: offset(&bindings, "literal")?,
         }),
+    }
+}
+
+/// A numeric subtype's literal offset must be the offset that both GetValue bodies read.
+fn agree_with_layout(
+    subtype: Subtype,
+    selection: &Result<Layout, Unresolved>,
+) -> Result<Subtype, Unresolved> {
+    match (&subtype, selection) {
+        (Subtype::Numeric { literal, .. }, Ok(layout)) if *literal != layout.literal => {
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        }
+        _ => Ok(subtype),
     }
 }
 
@@ -409,6 +423,39 @@ mod tests {
         input.bodies.get_mut(name).unwrap()[1].operation = "sub".into();
         assert!(subtype(&input, 0x8000, &config, Ok(0x10)).is_err());
     }
+
+    #[test]
+    fn a_numeric_subtype_must_read_the_literal_offset_of_the_selection_layout() {
+        let numeric = |literal| Subtype::Numeric {
+            token_reader: "CToken::ReadValue(int&) const".into(),
+            literal,
+        };
+        let layout = Ok(Layout {
+            literal: 0x200,
+            location: 0x1d8,
+            trigger: 0x1a0,
+            script_value: 0x1a8,
+            modifier: 0x198,
+            modifier_unset: 0x7fffffff,
+            variable: 0x1b0,
+        });
+
+        assert_eq!(
+            agree_with_layout(numeric(0x200), &layout),
+            Ok(numeric(0x200))
+        );
+        assert_eq!(
+            agree_with_layout(numeric(0x208), &layout),
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        );
+        assert_eq!(agree_with_layout(Subtype::Base, &layout), Ok(Subtype::Base));
+        assert_eq!(
+            agree_with_layout(numeric(0x208), &Err(Unresolved::new("scoped-selection"))),
+            Ok(numeric(0x208)),
+            "without a layout nothing disagrees"
+        );
+    }
+
     #[test]
     fn reader_recordings_require_scoped_operand_facts() {
         assert!(
@@ -508,6 +555,29 @@ mod tests {
         let point = *missing_slot.points.keys().next().unwrap();
         missing_slot.pointers.remove(&(point + 0x10));
         assert!(analyze(&missing_slot).subtypes[&point].is_err());
+
+        let layout_literal = format!("#{:#x}", facts.shared.selection.as_ref().unwrap().literal);
+        let mut moved_literal = input.clone();
+        let (point, config) = moved_literal
+            .points
+            .iter()
+            .find(|(_, config)| config.token_reader.is_some())
+            .map(|(&point, config)| (point, config.clone()))
+            .unwrap();
+        let row = moved_literal
+            .bodies
+            .get_mut(&config.assign_simple)
+            .unwrap()
+            .iter_mut()
+            .find(|row| row.operation == "add" && row.operands.ends_with(&layout_literal))
+            .unwrap();
+        row.operands = row.operands.replace(&layout_literal, "#0x208");
+        let moved = analyze(&moved_literal);
+        assert!(moved.shared.selection.is_ok());
+        assert_eq!(
+            moved.subtypes[&point],
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        );
     }
 
     #[test]

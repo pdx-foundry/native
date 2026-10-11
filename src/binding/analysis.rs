@@ -795,17 +795,10 @@ pub(crate) fn scoped_operand_decoder(
         FixtureStorageDecoder, ScopedLiteralDecoder, ScopedStorageLayout,
     };
     use crate::{GrammarProperty, NumericRepresentation, NumericSignedness};
-    let Subtype::Numeric {
-        token_reader,
-        literal,
-    } = facts.subtypes.get(&point)?.as_ref().ok()?
-    else {
+    let Subtype::Numeric { token_reader, .. } = facts.subtypes.get(&point)?.as_ref().ok()? else {
         return None;
     };
     let layout = facts.shared.selection.as_ref().ok()?;
-    if *literal != layout.literal {
-        return None;
-    }
     let (GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion))) =
         &numeric.token_readers.get(token_reader)?.conversion
     else {
