@@ -8,7 +8,8 @@ Generate and review updates with the commands in
 Update the affected baseline in the same PR that changes method answers. Each subject occupies
 one JSON line. Only comparison inputs are tracked: answers, errors, status and command inventory
 uncertainty. Generate full diagnostic reports under the ignored `.local/population/` directory.
-The command grammar baseline takes about three minutes.
+Two runs of each baseline produced identical bytes and zero changed answers. The command grammar
+baseline takes about three minutes.
 
 `command-fixture-sample.json` is the SDK-548 live fixture sample, fixed before the final
 population run: the ordering rule, the eligible commands of each kind, and the 20 chosen. It was
