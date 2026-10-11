@@ -1611,7 +1611,6 @@ fn scope_from_label(label: u64) -> Option<Value> {
 
 fn is_reader(callee: &str) -> bool {
     readers::classify_callee(callee) != ReaderKind::Unknown
-        || super::references::reader(callee).is_some()
 }
 
 fn is_enum_switch(callee: &str) -> bool {

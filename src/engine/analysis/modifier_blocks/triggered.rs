@@ -99,7 +99,7 @@ fn clause(
     let offsets: BTreeSet<_> = fields
         .iter()
         .flat_map(|field| &field.readers)
-        .filter(|join| reads_embedded_object(join))
+        .filter(|join| readers::reads_embedded_object(join))
         .filter_map(readers::destination)
         .chain(other_keys.iter().map(|(offset, _)| *offset))
         .collect();
@@ -144,16 +144,6 @@ fn clause(
         other_keys,
         stops,
     })
-}
-
-/// Whether a key's reader reads an object that the clause's constructor embeds.
-fn reads_embedded_object(join: &ReaderJoin) -> bool {
-    matches!(join, ReaderJoin::Joined { callee, .. } if matches!(
-        callee.as_str(),
-        "CReader::Read(CPersistent&)"
-            | "CVariableValue::Read(CReader&, EScopeType)"
-            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
-    ))
 }
 
 /// The embedded object and member that read every key the clause does not name. Each default

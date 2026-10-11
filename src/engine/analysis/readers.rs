@@ -172,12 +172,17 @@ pub(crate) const TRIGGER_LOOKUP: &str =
 /// Reads past the reader's current value: one token, or the whole block that it opens.
 pub(crate) const SKIP: &str = "CReader::SkipToken()";
 
+/// The shared reader of an embedded persistent object.
+pub(crate) const PERSISTENT_READ: &str = "CReader::Read(CPersistent&)";
+
+/// Assigns the reader's value token to a scoped numeric operand. `CVariableValue::Read` is the
+/// operand's other reader.
+pub(crate) const SCOPED_ASSIGN: &str =
+    "CVariableValue::Assign(CToken const&, EScopeType, CString const&)";
+
 pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
-        "CVariableValue::Read(CReader&, EScopeType)"
-        | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" => {
-            ReaderKind::ScopedNumeric
-        }
+        "CVariableValue::Read(CReader&, EScopeType)" | SCOPED_ASSIGN => ReaderKind::ScopedNumeric,
         "CReader::Read(bool&)" => ReaderKind::Boolean,
         "CReader::Read(float&)" => ReaderKind::Float,
         "CReader::Read(signed char&)"
@@ -194,7 +199,7 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
         }
         "CReader::Read(CString&, bool)" => ReaderKind::String,
         SKIP => ReaderKind::Skipped,
-        "CReader::Read(CPersistent&)"
+        PERSISTENT_READ
         | "CPersistent::Read(CReader&)"
         | "CTrigger::Read(CReader&, EScopeType)"
         | "CEffect::Read(CReader&, EScopeType)" => ReaderKind::Block,
@@ -206,6 +211,19 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
         _ if references::reader(callee).is_some() => ReaderKind::Reference,
         _ => ReaderKind::Unknown,
     }
+}
+
+/// Whether the join is a shared scoped numeric reader.
+pub(crate) fn reads_scoped_numeric(join: &ReaderJoin) -> bool {
+    matches!(join, ReaderJoin::Joined { callee, .. }
+        if classify_callee(callee) == ReaderKind::ScopedNumeric)
+}
+
+/// Whether the join reads into an object that the owner's constructor embeds: a persistent
+/// object, or a scoped numeric operand.
+pub(crate) fn reads_embedded_object(join: &ReaderJoin) -> bool {
+    matches!(join, ReaderJoin::Joined { callee, .. } if callee == PERSISTENT_READ)
+        || reads_scoped_numeric(join)
 }
 
 /// Whether the reader empties its stored trigger or effect block before it reads into it again.
@@ -240,7 +258,7 @@ fn is_simple_template_argument(argument: &str) -> bool {
 pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
     if callee == SKIP {
         Some(&["x0"])
-    } else if callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+    } else if callee == SCOPED_ASSIGN {
         Some(&["x0", "x1", "x2", "x3"])
     } else if callee == "CVariableValue::Read(CReader&, EScopeType)"
         || callee == "CReader::Read(CString&, bool)"
@@ -280,7 +298,7 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     } else if matches!(
         callee.as_str(),
         "CVariableValue::Read(CReader&, EScopeType)"
-            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            | SCOPED_ASSIGN
             | "CTrigger::Read(CReader&, EScopeType)"
             | "CEffect::Read(CReader&, EScopeType)"
     ) {
@@ -306,7 +324,7 @@ pub(crate) fn arguments_join(
     use crate::engine::analysis::fields::Value;
     let get = |key: &str| arguments.get(key);
     let owner = |value: Option<&Value>| matches!(value, Some(Value::Owner(_)));
-    if name == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+    if name == SCOPED_ASSIGN {
         owner(get("x0"))
             && reader_value_token_offset
                 .is_some_and(|offset| get("x1") == Some(&Value::Reader(offset)))
@@ -327,8 +345,6 @@ pub(crate) fn arguments_join(
         };
         get("x0") == Some(&Value::Reader(0))
             && (owner(get("x1")) || (stack_temporary && matches!(get("x1"), Some(Value::Stack(_)))))
-    } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
-        owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name.starts_with("void NParserUtil::ReadEffect<")
         || name.starts_with("void NParserUtil::ReadTrigger<")
     {
@@ -496,6 +512,24 @@ mod tests {
     }
 
     #[test]
+    fn the_scoped_operand_read_joins_the_owner_and_the_reader() {
+        use crate::engine::analysis::fields::Value;
+
+        let callee = "CVariableValue::Read(CReader&, EScopeType)";
+        let mut arguments = BTreeMap::from([
+            ("x0".into(), Value::Owner(0xa8)),
+            ("x1".into(), Value::Reader(0)),
+        ]);
+        assert!(arguments_join(callee, &arguments, false, None));
+
+        arguments.insert("x1".into(), Value::Constant(0));
+        assert!(!arguments_join(callee, &arguments, false, None));
+        arguments.insert("x1".into(), Value::Reader(0));
+        arguments.insert("x0".into(), Value::Reader(0));
+        assert!(!arguments_join(callee, &arguments, false, None));
+    }
+
+    #[test]
     fn scalar_width_follows_the_parameter_type() {
         for (callee, width) in [
             ("CReader::Read(bool&)", Some(1)),
@@ -508,6 +542,53 @@ mod tests {
         ] {
             assert_eq!(scalar_width(callee), width, "{callee}");
         }
+    }
+
+    #[test]
+    fn both_operand_readers_and_no_other_reader_read_a_scoped_numeric() {
+        for callee in ["CVariableValue::Read(CReader&, EScopeType)", SCOPED_ASSIGN] {
+            assert!(reads_scoped_numeric(&joined(callee)), "{callee}");
+        }
+
+        for callee in [
+            PERSISTENT_READ,
+            "CReader::Read(int&)",
+            "CVariableValue::ReadVariable(CString&)",
+        ] {
+            assert!(!reads_scoped_numeric(&joined(callee)), "{callee}");
+        }
+
+        assert!(!reads_scoped_numeric(&ReaderJoin::Missing(
+            Unresolved::new("reader-routing")
+        )));
+    }
+
+    #[test]
+    fn an_embedded_object_is_read_by_a_persistent_or_scoped_numeric_reader() {
+        for callee in [
+            PERSISTENT_READ,
+            "CVariableValue::Read(CReader&, EScopeType)",
+            SCOPED_ASSIGN,
+        ] {
+            assert!(reads_embedded_object(&joined(callee)), "{callee}");
+        }
+
+        for callee in [
+            "CPersistent::Read(CReader&)",
+            "CReader::Read(CString&, bool)",
+            "CReader::Read(int&)",
+            "CTrigger::Read(CReader&, EScopeType)",
+        ] {
+            assert!(!reads_embedded_object(&joined(callee)), "{callee}");
+        }
+
+        let stored = ReaderJoin::Stored {
+            callee: PERSISTENT_READ.into(),
+            kind: ReaderKind::Block,
+            destination: Some(0x40),
+            repeat: crate::RepeatBehavior::Merges,
+        };
+        assert!(!reads_embedded_object(&stored));
     }
 
     #[test]

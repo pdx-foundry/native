@@ -179,8 +179,7 @@ fn embedded_modifier(root: &RootField, clause: &Clause) -> Option<u64> {
         let offset = readers::destination(join)?;
         let (point, reader) = clause.embedded.get(&offset)?;
 
-        (callee == "CReader::Read(CPersistent&)"
-            && reader.as_ref()?.family == BlockFamily::Modifier)
+        (callee == readers::PERSISTENT_READ && reader.as_ref()?.family == BlockFamily::Modifier)
             .then_some(*point)
     });
     let point = points.next()?;

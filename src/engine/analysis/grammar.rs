@@ -524,17 +524,8 @@ fn analyze_reader_with_state(
     let scoped_destinations = fields
         .iter()
         .flat_map(|field| &field.readers)
+        .filter(|join| super::readers::reads_scoped_numeric(join))
         .filter_map(|join| {
-            let ReaderJoin::Joined { callee, .. } = join else {
-                return None;
-            };
-            if !matches!(
-                callee.as_str(),
-                "CVariableValue::Read(CReader&, EScopeType)"
-                    | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
-            ) {
-                return None;
-            }
             let offset = super::readers::destination(join)?;
             Some((offset, scoped_point(bytes, offset)?))
         })
@@ -628,6 +619,9 @@ fn scoped_point(bytes: &BTreeMap<u64, u8>, offset: i64) -> Option<u64> {
     Some(u64::from_le_bytes(word))
 }
 
+/// The vtable point of each destination that a value form assigns its scoped operand to. A form
+/// that reads the operand through `CVariableValue::Read` earns none:
+/// `docs/native/scoped-numeric.md` holds that limit and the condition for a change.
 fn scoped_form_points(forms: &forms::Result, bytes: &BTreeMap<u64, u8>) -> BTreeMap<i64, u64> {
     forms
         .alternatives
@@ -637,7 +631,7 @@ fn scoped_form_points(forms: &forms::Result, bytes: &BTreeMap<u64, u8>) -> BTree
             let ReaderJoin::Joined { callee, .. } = join else {
                 return None;
             };
-            if callee != "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+            if callee != super::readers::SCOPED_ASSIGN {
                 return None;
             }
             let offset = alternative.value.destination? as i64;
@@ -1220,6 +1214,60 @@ mod tests {
             crate::BuildId("authored".into()),
             &references,
         )
+    }
+
+    fn scoped_form(callee: &str, destination: u64) -> forms::Alternative {
+        forms::Alternative {
+            value: forms::ValueForm {
+                kind: crate::ReaderKind::ScopedNumeric,
+                destination: Some(destination),
+                reader: Some(ReaderJoin::Joined {
+                    callee: callee.into(),
+                    arguments: BTreeMap::new(),
+                    tail: true,
+                }),
+                initialization: None,
+                deferred_null: None,
+            },
+            paths: vec![],
+            missing: vec![],
+            verdict: forms::Verdict::Accepted,
+        }
+    }
+
+    #[test]
+    fn only_an_assign_form_earns_a_scoped_point() {
+        let forms = forms::Result {
+            key: forms::CacheKey {
+                slots: [None; 6],
+                functions: BTreeSet::new(),
+                receiver: BTreeMap::new(),
+            },
+            block: false,
+            alternatives: vec![
+                scoped_form(crate::engine::analysis::readers::SCOPED_ASSIGN, 0xa0),
+                scoped_form("CVariableValue::Read(CReader&, EScopeType)", 0xb0),
+                scoped_form("CReader::Read(int&)", 0xc0),
+            ],
+            complete: true,
+            receiver_state: false,
+            stops: vec![],
+        };
+        let bytes: BTreeMap<u64, u8> = [0xa0, 0xb0, 0xc0]
+            .into_iter()
+            .flat_map(|at: u64| {
+                0x9000_u64
+                    .to_le_bytes()
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(index, byte)| (at + index as u64, byte))
+            })
+            .collect();
+
+        assert_eq!(
+            scoped_form_points(&forms, &bytes),
+            BTreeMap::from([(0xa0, 0x9000)])
+        );
     }
 
     #[test]
