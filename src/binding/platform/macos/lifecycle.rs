@@ -16,10 +16,6 @@ use std::{
 
 const NAMESPACE: &str = "/Library/Application Support/PDX Native/instances";
 
-pub(crate) fn available() -> Result<(), SupervisorError> {
-    Ok(())
-}
-
 use crate::binding::ProcessIdentity;
 
 fn process_info(pid: u32) -> io::Result<libc::proc_bsdinfo> {

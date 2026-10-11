@@ -5,9 +5,6 @@ fn unavailable<T>() -> Result<T, SupervisorError> {
         "HostUnavailable: the game lifecycle requires Apple Silicon macOS".into(),
     ))
 }
-pub(crate) fn available() -> Result<(), SupervisorError> {
-    unavailable()
-}
 use crate::binding::ProcessIdentity;
 pub(crate) struct HostReservation;
 pub(crate) fn acquire_reservation() -> Result<HostReservation, SupervisorError> {

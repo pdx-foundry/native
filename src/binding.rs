@@ -324,7 +324,6 @@ impl ExecutionPlan {
     pub fn open(
         installation: &std::path::Path,
     ) -> Result<Self, crate::supervisor::SupervisorError> {
-        platform::lifecycle::available()?;
         let binding = Binding::open(installation)
             .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
         Ok(Self { binding })
