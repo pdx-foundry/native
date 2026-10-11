@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
-from script_checks import DiagnosticCapture, attribute_message, read_string, stored_durations
+from script_checks import DiagnosticCapture, ScriptChecks, attribute_message, read_string, stored_durations
 
 
 def log_frame(level=2):
@@ -109,6 +109,41 @@ class CaptureTests(unittest.TestCase):
         with patch('script_checks.read_string', return_value=('unattributed engine error', False)):
             capture.capture(frame, location)
         self.assertEqual(capture.finish(1)['unjoined'][0]['text'], 'unattributed engine error')
+
+
+class CheckSetupTests(unittest.TestCase):
+    BINDING = dict(logger_entry=1, logger_text_register='x4', logger_level_register='w1',
+                   string_tag_offset=23, scopes={'country': 1}, trigger={})
+
+    def start_check(self, invalid=()):
+        """Run one check whose first engine call fails, in a frame that cannot read `invalid`."""
+        def find(name):
+            value = Mock()
+            value.IsValid.return_value = name not in invalid
+            value.GetError.return_value.Fail.return_value = False
+            return value
+        calls = Mock()
+        calls.frame.return_value.FindRegister.side_effect = find
+        checks = ScriptChecks(Mock(), 7, self.BINDING, 'attempt',
+                              dict(text=4096, checks=2, durations=1, seconds=1, diagnostics=32))
+        request = dict(attempt='attempt', check=1, text='always = yes', scope=1, durations=[], kind='trigger')
+        with patch('script_checks.EngineCalls', return_value=calls), \
+                patch.object(checks, 'reader', side_effect=RuntimeError('first engine call')) as reader:
+            with self.assertRaises(RuntimeError) as raised:
+                checks.check(request)
+        return str(raised.exception), reader, calls
+
+    def test_an_invalid_logger_register_is_named_before_any_engine_call(self):
+        for name in ['x4', 'w1']:
+            message, reader, calls = self.start_check(invalid={name})
+            self.assertIn(name, message)
+            reader.assert_not_called()
+            calls.target.BreakpointDelete.assert_called_once()
+
+    def test_readable_logger_registers_let_the_first_engine_call_run(self):
+        message, reader, _ = self.start_check()
+        self.assertEqual(message, 'first engine call')
+        reader.assert_called_once()
 
 
 def long_message_memory(text, at=2):

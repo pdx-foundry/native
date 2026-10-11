@@ -18,6 +18,7 @@ import traceback
 from threading import Event, Thread
 import protocol
 import stored_values
+from stored_values import register
 
 ROOT = Path(__file__).resolve().parent.parent
 request = None
@@ -165,13 +166,6 @@ def emit(kind, **fields):
         output.write(encoded)
         output.flush()
         os.fsync(output.fileno())
-
-
-def register(frame, name):
-    value = frame.FindRegister(name)
-    if not value.IsValid() or value.GetError().Fail():
-        raise RuntimeError('native argument register unavailable: ' + name)
-    return value.GetValueAsUnsigned()
 
 
 def memory(process, address, size):

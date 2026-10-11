@@ -22,6 +22,25 @@ def long_cstring(pointer, length):
     return (pointer.to_bytes(8, 'little') + length.to_bytes(8, 'little')).ljust(TAG, b'\0') + bytes([128])
 
 
+class RegisterTests(unittest.TestCase):
+    def frame(self, valid, failed=False):
+        value = Mock()
+        value.IsValid.return_value = valid
+        value.GetError.return_value.Fail.return_value = failed
+        value.GetValueAsUnsigned.return_value = 0x1234
+        frame = Mock()
+        frame.FindRegister.return_value = value
+        return frame
+
+    def test_a_readable_register_gives_its_value(self):
+        self.assertEqual(stored_values.register(self.frame(valid=True), 'x4'), 0x1234)
+
+    def test_an_unreadable_register_names_itself_and_never_reads_as_zero(self):
+        for frame in [self.frame(valid=False), self.frame(valid=True, failed=True)]:
+            with self.assertRaisesRegex(RuntimeError, 'register unavailable: w1'):
+                stored_values.register(frame, 'w1')
+
+
 class CStringTests(unittest.TestCase):
     def test_short_text_is_in_place_and_multibyte_text_decodes(self):
         read = Mock(side_effect=AssertionError('heap read'))

@@ -58,6 +58,12 @@ class DiagnosticCapture:
         self.hook.SetScriptCallbackBody('import script_checks\nreturn script_checks.capture_callback(frame, bp_loc, internal_dict)')
         self.verify_hook()
 
+    def verify_registers(self, frame):
+        """Name a logger register that the debugger cannot read, before the first engine call.
+        The register set belongs to the machine, so the held frame answers for the logger's."""
+        stored_values.register(frame, self.binding['logger_text_register'])
+        stored_values.register(frame, self.binding['logger_level_register'])
+
     def verify_hook(self):
         self.hooks_active &= (self.hook.IsEnabled() and self.hook.GetNumLocations() == 1
                               and self.hook.GetNumResolvedLocations() == 1)
@@ -531,6 +537,7 @@ class ScriptChecks:
         capture.report_hook(self.diagnostics, 'script-logger')
         _active_capture = capture
         try:
+            capture.verify_registers(calls.frame())
             reader = self.reader(calls, request['text'], source)
             owner, children = self.read_command(calls, command, reader, request['scope'])
             durations = stored_durations(
