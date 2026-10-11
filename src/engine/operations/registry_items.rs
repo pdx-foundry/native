@@ -51,6 +51,14 @@ pub(crate) enum Observed {
     Unavailable,
 }
 
+impl Observed {
+    /// Whether the registry has an answer for the caller: its items were read, with or without
+    /// a gap.
+    pub(crate) fn has_answer(self) -> bool {
+        matches!(self, Self::Complete | Self::Partial)
+    }
+}
+
 /// The items of one registry, in the engine's collection order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RegistryItems {

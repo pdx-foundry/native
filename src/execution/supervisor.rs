@@ -14,8 +14,7 @@ use crate::{
     binding::{self, ExecutionPlan},
     engine::operations::{
         event_stream::{self, OwnerEvent},
-        loaded_modifiers,
-        registry_items::{self, Observed},
+        loaded_modifiers, registry_items,
     },
     protocol::{
         self, Hello, Reply,
@@ -538,7 +537,7 @@ fn observe_session(
                 let answered = answers
                     .as_ref()
                     .and_then(|answers| answers.get(&name))
-                    .is_some_and(|items| items.observed != Observed::Unavailable);
+                    .is_some_and(|items| items.observed.has_answer());
                 if !answered {
                     return Err(SupervisorError(
                         "Registry read before the pause or for a registry with no answer".into(),
@@ -630,6 +629,7 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 mod tests {
     use super::*;
+    use crate::engine::operations::registry_items::Observed;
     use std::{
         os::unix::fs::PermissionsExt,
         process::{Command, Stdio},
@@ -829,6 +829,29 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         binding::test_observer(directory, &mut command, game_pid, registry)
+    }
+
+    /// A shell worker that holds the pause for the `returned` registries (a JSON list) and answers
+    /// each fresh pause check.
+    fn pause_worker(returned: &str) -> String {
+        format!(
+            r#"
+publish() {{
+    printf '{{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":{returned},"generation":%s,"state":"held"}}' "$GAME_PID" "$$" "$1" > session-paused.json.pending
+    mv session-paused.json.pending session-paused.json
+}}
+generation=0
+publish 0
+while true; do
+    asked=$(sed -n 's/.*"generation": *\([0-9]*\).*/\1/p' pause-check.json 2>/dev/null)
+    if [ -n "$asked" ] && [ "$asked" -gt "$generation" ]; then
+        generation=$asked
+        publish "$generation"
+    fi
+    sleep 0.01
+done
+"#
+        )
     }
 
     /// The caller: close the session when it pauses, and keep every reply until the report.
@@ -1145,6 +1168,87 @@ exec sleep 30
         assert_eq!(session.report.disposal, Disposal::Confirmed);
         assert!(session.report.reservation_resolved);
         assert!(binding::process_identity(session.game_pid).is_err());
+    }
+
+    #[test]
+    fn only_a_registry_with_an_answer_restarts_the_idle_time_when_read() {
+        let registry = "common/traditions";
+        let never_loaded = {
+            let mut rows = requested_hook_rows();
+            rows.pop();
+            rows.push(
+                serde_json::json!({"kind":"session-paused","returned":[],"cause":"deadline"}),
+            );
+            rows
+        };
+        let loaded = {
+            let mut rows = requested_hook_rows();
+            rows.extend([
+                serde_json::json!({"kind":"registry-load-returned","name":registry,"owner":"0x1000"}),
+                serde_json::json!({"kind":"registry-snapshot","name":registry,"directory":registry,"owner":"0x1000","count":0}),
+                serde_json::json!({"kind":"registry-end","name":registry,"owner":"0x1000","count":0,"producerLastSequence":8}),
+                serde_json::json!({"kind":"session-paused","returned":[registry],"cause":"loaders-returned"}),
+            ]);
+            rows
+        };
+        for (rows, returned, observed) in [
+            (never_loaded, "[]", Observed::NotLoaded),
+            (loaded, r#"["common/traditions"]"#, Observed::Complete),
+        ] {
+            let session = FakeSession::controlled(
+                &rows,
+                &pause_worker(returned),
+                |mut reader, controls| {
+                    let mut replies = Vec::new();
+                    loop {
+                        let reply: Reply = protocol::read(&mut reader).unwrap();
+                        match &reply {
+                            Reply::Paused { .. } => controls
+                                .send(Input::Control(Control::ReadRegistry {
+                                    name: "common/traditions".into(),
+                                    request: 1,
+                                }))
+                                .unwrap(),
+                            Reply::ObservationRead { .. } => {
+                                controls.send(Input::Control(Control::Close)).unwrap()
+                            }
+                            _ => {}
+                        }
+                        let finished = matches!(reply, Reply::Finished(_));
+                        replies.push(reply);
+                        if finished {
+                            return replies;
+                        }
+                    }
+                },
+                Duration::from_secs(3),
+            );
+            let Some(Reply::Paused { registries, .. }) = session.replies.first() else {
+                panic!(
+                    "expected a pause answer first: {} replies",
+                    session.replies.len()
+                );
+            };
+            let read = session
+                .replies
+                .iter()
+                .any(|reply| matches!(reply, Reply::ObservationRead { .. }));
+
+            assert_eq!(registries[registry].observed, observed);
+            assert_eq!(read, observed.has_answer(), "{observed:?}");
+            assert_eq!(
+                session.report.outcome,
+                if read {
+                    SessionOutcome::Completed
+                } else {
+                    SessionOutcome::Failed(
+                        "Registry read before the pause or for a registry with no answer".into(),
+                    )
+                },
+                "{observed:?}"
+            );
+            assert_eq!(session.report.disposal, Disposal::Confirmed, "{observed:?}");
+        }
     }
 
     #[test]
