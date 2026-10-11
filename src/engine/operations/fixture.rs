@@ -17,6 +17,9 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// The producer numbers at most this many occurrences of one field, and refuses more.
+const MAX_OCCURRENCE: u64 = 128;
+
 /// Worker events inside one fixture window. Thread and sequence belong to the outer record.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
@@ -570,7 +573,7 @@ impl<'a> Window<'a> {
             .get(question)
             .and_then(|authority| authority.storage_decoder)
             .is_some_and(|decoder| decoder.accepts(value));
-        let in_order = *occurrence > last_occurrence;
+        let in_order = *occurrence > last_occurrence && *occurrence <= MAX_OCCURRENCE;
 
         if !(in_window
             && in_source
@@ -653,7 +656,7 @@ impl<'a> Window<'a> {
             let last = invocations.last();
             let last_occurrence = last.map_or(0, |entry| entry.occurrence);
             if *occurrence <= last_occurrence
-                || *occurrence > 128
+                || *occurrence > MAX_OCCURRENCE
                 || last.is_some_and(|entry| entry.return_line.is_none())
             {
                 self.parsing_gap(
@@ -2119,6 +2122,9 @@ mod tests {
             // The first kept occurrence skips ahead to 3, and the next one is earlier.
             (7, 3, (vec![3], vec![1, 2])),
             (6, 3, (vec![1, 2], vec![3])),
+            // An occurrence past the producer's bound is refused, and the next one is kept.
+            (7, 129, (vec![2], vec![1, 2])),
+            (6, 129, (vec![1, 2], vec![2])),
         ] {
             let mut events = parsed_field_events();
             events[row]["event"]["occurrence"] = json!(occurrence);
