@@ -185,18 +185,5 @@ fn joined_reader(
     if numeric {
         return declarations::reader_at_vtable(&input.declarations, vtable);
     }
-    let [read, member] = input.persistent_slots;
-    let slot = |offset| {
-        input
-            .declarations
-            .pointers
-            .get(&(vtable + offset))
-            .copied()
-            .ok_or(Unresolved::new("constructed-child-slot"))
-    };
-    Ok(CommandReader {
-        vtable,
-        read: slot(read)?,
-        member: slot(member)?,
-    })
+    super::persistent_reader(input, vtable, "constructed-child-slot")
 }

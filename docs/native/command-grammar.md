@@ -56,7 +56,9 @@ leave coverage unresolved.
   bytes at a member destination supply its vtable.
 - A member slot whose function is one `b` to another function is an alias, read through its target
   (`declarations::alias_target`, at most four aliases). `TFleetSettings::ReadMember` `0x101034738` is
-  an alias of `ReadBackwardsCompatible` `0x10103473c`, which reads the fleet `settings` keys.
+  an alias of `ReadBackwardsCompatible` `0x10103473c`, which reads the fleet `settings` keys. Both
+  routes to a child's persistent slots follow it: an embedded child, and a child that a fixed key
+  allocates (`persistent_reader`).
 - `create_species.flags` and `variables` are read with `CReader::ReadUniform<CString>`, a list of
   strings with no named fields, so they publish `Fields: []` with a `reader-routing` gap.
 - One internal coverage function governs fixed keys, child families and ordering; the normalizer does

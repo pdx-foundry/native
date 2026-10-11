@@ -661,20 +661,31 @@ fn nested_reader(
             .get(&(offset + index as u64))
             .ok_or(Unresolved::new("nested-member-vtable"))?;
     }
-    let vtable = u64::from_le_bytes(word);
+
+    persistent_reader(input, u64::from_le_bytes(word), "nested-member-slot")
+}
+
+/// The reader that the persistent slots of `vtable` declare, with the member read through its
+/// aliases. `missing_slot` is the stop for a slot that holds no pointer.
+fn persistent_reader(
+    input: &GrammarInput,
+    vtable: u64,
+    missing_slot: &'static str,
+) -> Result<CommandReader, Unresolved> {
+    let [read, member] = input.persistent_slots;
     let slot = |offset| {
         input
             .declarations
             .pointers
             .get(&(vtable + offset))
             .copied()
-            .ok_or(Unresolved::new("nested-member-slot"))
+            .ok_or(Unresolved::new(missing_slot))
     };
-    let member = slot(input.persistent_slots[1])?;
+
     Ok(CommandReader {
         vtable,
-        read: slot(input.persistent_slots[0])?,
-        member: declarations::alias_target(&input.declarations.functions, member),
+        read: slot(read)?,
+        member: declarations::alias_target(&input.declarations.functions, slot(member)?),
     })
 }
 
@@ -1435,8 +1446,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fixed_allocated_child_uses_the_persistent_slots() {
+    /// [`numeric_input`] whose fixed key `child` allocates its child and reads it through the
+    /// persistent slots.
+    fn allocated_child_input() -> GrammarInput {
         let mut input = numeric_input();
         input.tokens.insert(
             12,
@@ -1454,12 +1466,53 @@ mod tests {
             mov x0, x19; mov x1, x20; ldr x8, [x0]; ldr x8, [x8, #16]; blr x8; ret);
         input.declarations.functions.get_mut(&ROOT).unwrap().code = root.bytes();
         input.persistent_slots = [16, 24];
+        input
+    }
+
+    #[test]
+    fn fixed_allocated_child_uses_the_persistent_slots() {
+        let mut input = allocated_child_input();
         let result = analyze(&input, FACTORY).unwrap();
         assert!(result.nested.contains_key("child"));
         input.declarations.constructors.clear();
         let result = analyze(&input, FACTORY).unwrap();
         assert!(!result.coverage().covered());
         assert!(!result.nested.contains_key("child"));
+    }
+
+    #[test]
+    fn an_allocated_child_is_read_through_its_member_alias() {
+        const THUNK: u64 = 0xd100;
+        let child_through = |thunk: Vec<u8>| {
+            let mut input = allocated_child_input();
+            input.declarations.functions.insert(
+                THUNK,
+                Body {
+                    address: THUNK,
+                    code: thunk,
+                },
+            );
+            input.declarations.pointers.insert(0x12000 + 0x18, THUNK);
+            let result = analyze(&input, FACTORY).unwrap();
+
+            result.nested.get("child").map(|child| {
+                let fields: Vec<_> = child
+                    .fields
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect();
+
+                (child.reader.member, fields)
+            })
+        };
+
+        let alias = child_through(arm64!(at THUNK; b extern DELEGATE as usize));
+        assert_eq!(alias, Some((DELEGATE, vec!["limit".to_owned()])));
+
+        let changed_argument =
+            child_through(arm64!(at THUNK; mov x1, x3; b extern DELEGATE as usize));
+        assert_eq!(changed_argument, None);
     }
 
     #[test]
