@@ -31,7 +31,7 @@ impl Native {
     /// [`Error::UnknownRegistry`].
     pub fn modifier_families(&self, registry: &str) -> Result<Answer<Vec<ModifierFamily>>, Error> {
         let registry = registry.trim_end_matches('/');
-        self.answer("modifier_families", Some(registry), || {
+        self.answer(Operation::ModifierFamilies, Some(registry), || {
             let operation = Operation::ModifierFamilies;
             let analysis = self.declaration_analysis(operation)?;
             let index = analysis

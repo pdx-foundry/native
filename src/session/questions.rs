@@ -47,17 +47,17 @@ impl Native {
     /// write the result when a recorder is set.
     pub(super) fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
-        question: &str,
+        operation: Operation,
         subject: Option<&str>,
         method: impl FnOnce() -> Result<Answer<T>, Error>,
     ) -> Result<Answer<T>, Error> {
         let recorder = match &self.backend {
-            Backend::Recorded(answers) => return answers.read(question, subject),
+            Backend::Recorded(answers) => return answers.read(operation, subject),
             Backend::Live { recorder, .. } => recorder,
         };
         let answer = method();
         if let Some(directory) = recorder {
-            crate::recorded::write(directory, &self.build(), question, subject, &answer)?;
+            crate::recorded::write(directory, &self.build(), operation, subject, &answer)?;
         }
         answer
     }
@@ -184,7 +184,7 @@ impl Native {
     /// function pointer, argument grammar, behavior, and actual scope availability are outside
     /// this method.
     pub fn declarations(&self, kind: DeclarationKind) -> Result<Answer<Vec<Declaration>>, Error> {
-        self.answer("declarations", Some(kind.subject()), || {
+        self.answer(Operation::Declarations, Some(kind.subject()), || {
             let operation = Operation::Declarations;
             let input = self
                 .declaration_analysis(operation)?
@@ -201,7 +201,9 @@ impl Native {
     /// The search covers shared database-template candidates. Custom, nested, and late loaders
     /// are outside it. Completeness says whether every candidate inside that boundary was named.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
-        self.answer("registries", None, || self.registries_from_executable())
+        self.answer(Operation::Registries, None, || {
+            self.registries_from_executable()
+        })
     }
 
     fn registries_from_executable(&self) -> Result<Answer<Vec<Registry>>, Error> {
@@ -242,7 +244,7 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        self.answer("registry_fields", Some(registry), || {
+        self.answer(Operation::RegistryFields, Some(registry), || {
             self.registry_fields_from_executable(registry)
         })
     }

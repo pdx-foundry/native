@@ -44,7 +44,7 @@ impl Native {
     /// # }
     /// ```
     pub fn on_actions(&self) -> Result<Answer<Vec<OnAction>>, Error> {
-        self.answer("on_actions", None, || {
+        self.answer(Operation::OnActions, None, || {
             let (callbacks, scope_names) =
                 self.callbacks(Operation::OnActions, Family::OnAction)?;
             Ok(normalized_on_actions(
@@ -62,7 +62,7 @@ impl Native {
     /// or more call sites pass. A declared rule with no followed call site has no entries and a
     /// gap.
     pub fn game_rules(&self) -> Result<Answer<Vec<GameRule>>, Error> {
-        self.answer("game_rules", None, || {
+        self.answer(Operation::GameRules, None, || {
             let (callbacks, scope_names) =
                 self.callbacks(Operation::GameRules, Family::GameRule)?;
             Ok(normalized_game_rules(

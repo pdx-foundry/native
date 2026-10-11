@@ -26,7 +26,7 @@ impl Native {
     /// of a registry's generated modifiers. Category tags are intended-use tags; where a modifier
     /// takes effect is outside this method.
     pub fn modifiers(&self) -> Result<Answer<Vec<ModifierDeclaration>>, Error> {
-        self.answer("modifiers", None, || {
+        self.answer(Operation::Modifiers, None, || {
             let result = self.modifier_result(Operation::Modifiers)?;
             Ok(normalized_modifiers(&result, self.build()))
         })
@@ -37,7 +37,7 @@ impl Native {
     /// The list holds the name of each single category and of each whole category mask that a
     /// built-in modifier uses. A category is an intended-use tag, not an application context.
     pub fn modifier_categories(&self) -> Result<Answer<Vec<ModifierCategory>>, Error> {
-        self.answer("modifier_categories", None, || {
+        self.answer(Operation::ModifierCategories, None, || {
             let result = self.modifier_result(Operation::ModifierCategories)?;
             Ok(normalized_categories(&result, self.build()))
         })
@@ -50,7 +50,7 @@ impl Native {
     /// is listed with no categories. The categories are the parsed value's: a later step can add
     /// one, as economic-category generation adds AI Economy to each modifier that it generates.
     pub fn modifier_category_keys(&self) -> Result<Answer<Vec<ModifierCategoryKey>>, Error> {
-        self.answer("modifier_category_keys", None, || {
+        self.answer(Operation::ModifierCategoryKeys, None, || {
             let operation = Operation::ModifierCategoryKeys;
             let input = self
                 .declaration_analysis(operation)?
@@ -69,7 +69,7 @@ impl Native {
     /// several types, such as `carrier`, is a [`ScopeGroup`]. Keywords created at run time are
     /// outside this method.
     pub fn scopes(&self) -> Result<Answer<ScopeInventory>, Error> {
-        self.answer("scopes", None, || {
+        self.answer(Operation::Scopes, None, || {
             let operation = Operation::Scopes;
             let input = self
                 .declaration_analysis(operation)?
@@ -87,7 +87,7 @@ impl Native {
     /// Declared scopes are what the engine states. Which saved target or parameter a value names,
     /// and whether a link gives a useful target in a running game, are outside this method.
     pub fn scope_links(&self) -> Result<Answer<Vec<ScopeLink>>, Error> {
-        self.answer("scope_links", None, || {
+        self.answer(Operation::ScopeLinks, None, || {
             let operation = Operation::ScopeLinks;
             let input = self
                 .declaration_analysis(operation)?

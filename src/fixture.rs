@@ -691,7 +691,7 @@ mod tests {
             crate::recorded::write(
                 root.path(),
                 &build,
-                "observe_fixture",
+                Operation::ObserveFixture,
                 Some(&request.recorded_subject()),
                 &result,
             )

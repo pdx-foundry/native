@@ -23,7 +23,7 @@ impl Native {
     /// stores an interned flag index. Two commands share a namespace only when both reach the
     /// same store. Saved event targets and variables are outside it.
     pub fn dynamic_names(&self) -> Result<Answer<Vec<DynamicNamespace>>, Error> {
-        self.answer("dynamic_names", None, || {
+        self.answer(Operation::DynamicNames, None, || {
             let commands = self.dynamic_name_commands()?;
             Ok(normalize(&commands, self.build()))
         })

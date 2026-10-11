@@ -27,7 +27,7 @@ impl Native {
         name: &str,
     ) -> Result<Answer<CommandGrammar>, Error> {
         let subject = recorded_subject(kind, name);
-        self.answer("command_grammar", Some(&subject), || {
+        self.answer(Operation::CommandGrammar, Some(&subject), || {
             let result = self.command_grammar_result(kind, name)?;
             let references = self.reference_facts(Operation::CommandGrammar)?;
             let numeric = self.numeric_facts(Operation::CommandGrammar)?;
@@ -1236,7 +1236,7 @@ mod tests {
             crate::recorded::write(
                 root.path(),
                 &build,
-                "command_grammar",
+                Operation::CommandGrammar,
                 Some(&recorded_subject(DeclarationKind::Effect, name)),
                 &answer,
             )

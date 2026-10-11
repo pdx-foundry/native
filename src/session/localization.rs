@@ -42,7 +42,7 @@ impl Native {
     /// # }
     /// ```
     pub fn localization_declarations(&self) -> Result<Answer<LocalizationDeclarations>, Error> {
-        self.answer("localization_declarations", None, || {
+        self.answer(Operation::LocalizationDeclarations, None, || {
             let operation = Operation::LocalizationDeclarations;
             let input = self
                 .declaration_analysis(operation)?
