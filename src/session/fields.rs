@@ -914,6 +914,7 @@ mod tests {
                             empty_key_looked_up: Some(true),
                             on_missing: Some(Missing::NullObject),
                         }),
+                        null_object: Some("TPdxNullObject<CStaticModifier>::_pInstance".into()),
                     },
                 ),
                 (
@@ -922,6 +923,7 @@ mod tests {
                         database: "CShipDatabase".into(),
                         directory: None,
                         lookup: Err(Unresolved::new("reference-lambda-shape")),
+                        null_object: None,
                     },
                 ),
             ]),
@@ -1078,6 +1080,7 @@ mod tests {
                 empty_key_looked_up: Some(true),
                 on_missing: Some(Missing::NullObject),
             }),
+            null_object: Some(format!("TPdxNullObject<{database}>::_pInstance")),
         };
         let references = ReferenceFacts {
             readers: BTreeMap::from([
@@ -1147,7 +1150,7 @@ mod tests {
     }
 
     fn initialization(key_offset: i64) -> InitializationLookup {
-        use crate::engine::analysis::references::Stage;
+        use crate::engine::analysis::references::{Stage, initialization::Execution};
 
         InitializationLookup {
             database: "CShipSizeDatabase".into(),
@@ -1159,6 +1162,9 @@ mod tests {
                 key_match: Some(references::KeyMatch::Equal),
                 empty_key_looked_up: Some(false),
                 on_missing: Some(Missing::NullObject),
+            },
+            execution: Execution::Inline {
+                null: "TPdxNullObject<CShipSize>::_pInstance".into(),
             },
         }
     }
@@ -1378,6 +1384,7 @@ mod tests {
                         empty_key_looked_up: Some(true),
                         on_missing: Some(Missing::NullObject),
                     }),
+                    null_object: Some("TPdxNullObject<CShip>::_pInstance".into()),
                 },
             )]),
             initializers: BTreeMap::new(),
