@@ -1300,6 +1300,8 @@ fn call_outcome(
             Obstacle::Call,
         )))
     } else {
+        // Offset 0 is the reader itself. A default `KeyReaders` leaves the value token unbound.
+        let value_token = Some(input.key_readers.value_token).filter(|&offset| offset != 0);
         PathOutcome::Reader(reader_join(
             name,
             state,
@@ -1307,7 +1309,7 @@ fn call_outcome(
             entry,
             tail,
             input.member_delegates,
-            Some(input.key_readers.value_token),
+            value_token,
         ))
     }
 }
@@ -1821,6 +1823,51 @@ mod tests {
             matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
             if callee == "CReader::Read(CString&, bool)")
         );
+    }
+
+    #[test]
+    fn an_unbound_value_token_joins_no_assignment() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let assign = "CVariableValue::Assign(CToken const&, EScopeType, CString const&)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: assign.into(),
+                address: 0x2000,
+            },
+        ];
+        let functions = |code| {
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )])
+        };
+        let unchanged_reader = functions(arm64!(at 0x1000; b extern 0x2000));
+        let value_token_slot = functions(arm64!(at 0x1000;
+            add x1, x1, #0x278; // the reader's value token
+            b extern 0x2000
+        ));
+        let bound = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let default = super::super::KeyReaders::default();
+        let joins = |functions, readers| {
+            let input = DispatchInput::command(functions, &symbols, &[], 0x38, readers);
+            let (paths, _) = explore_member(&input, root);
+            matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
+                if callee == assign)
+        };
+
+        assert!(joins(&value_token_slot, &bound));
+        assert!(!joins(&unchanged_reader, &bound));
+        assert!(!joins(&unchanged_reader, &default));
     }
 
     #[test]
