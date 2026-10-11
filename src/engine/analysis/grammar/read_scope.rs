@@ -71,13 +71,7 @@ pub(super) fn analyze(input: &GrammarInput, reader: CommandReader, root: &str) -
             continue;
         };
         let member = readers::is_member(callee);
-        let family = input.families.get(callee).copied().or_else(|| {
-            let (_, family) = readers::entry(callee);
-            (path.domain[0] != path.domain[1]
-                && matches!(family, BlockFamily::Trigger | BlockFamily::Effect))
-            .then_some(family)
-        });
-        if let Some(family) = family {
+        if let Some(&family) = input.families.get(callee) {
             result
                 .children
                 .push((family, readers::scope_argument(callee, arguments).cloned()));
@@ -152,6 +146,44 @@ mod tests {
         let input = input(member, Arm64::at(0x4000));
         let result = super::super::analyze(&input, 0x10000).unwrap();
         assert_eq!(result.read_scopes.children[0].1, None);
+    }
+
+    #[test]
+    fn a_range_domain_block_reader_is_a_child_boundary_only_through_the_family_table() {
+        const TRIGGER_READER: &str = "CTrigger::Read(CReader&, EScopeType)";
+        let mut member = Arm64::at(0x3000);
+        arm64!(member; mov x2, x3; b extern 0x6000);
+        let mut input = input(member, Arm64::at(0x4000));
+        input
+            .symbols
+            .push(crate::engine::analysis::discovery::Symbol {
+                address: 0x6000,
+                name: TRIGGER_READER.into(),
+            });
+        let range_reader = |input: &GrammarInput| {
+            let result = super::super::analyze(input, 0x10000).unwrap();
+            let [path] = result.read_scopes.paths.as_slice() else {
+                panic!("{:?}", result.read_scopes.paths);
+            };
+
+            assert!(
+                matches!(&path.outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. }) if callee == TRIGGER_READER),
+                "{path:?}"
+            );
+            assert_ne!(path.domain[0], path.domain[1]);
+
+            result.read_scopes.children
+        };
+
+        assert_eq!(range_reader(&input), []);
+
+        input
+            .families
+            .insert(TRIGGER_READER.into(), BlockFamily::Trigger);
+        assert_eq!(
+            range_reader(&input),
+            [(BlockFamily::Trigger, Some(Value::EnclosingScope))]
+        );
     }
 
     #[test]
