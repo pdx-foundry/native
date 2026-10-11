@@ -70,7 +70,7 @@ pub(crate) struct WorkerRequest {
     pub target: String,
     /// SHA-256 of each file of the worker package, by file name.
     pub source_hashes: BTreeMap<String, String>,
-    pub machine: crate::binding::Machine,
+    pub machine: Machine,
     /// The registries to observe, by content directory.
     pub registries: BTreeMap<String, RegistryBinding>,
     /// A deliberate fault, applied only to its named observation.
@@ -103,6 +103,30 @@ pub(crate) struct ResumeGrant {
     pub attempt: String,
     pub game: u32,
     pub worker: u32,
+}
+
+/// The architecture of the game and the registers that its member function hooks read.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Machine {
+    pub architecture: String,
+    pub spawn_preference: i32,
+    pub registers: EntryRegisters,
+}
+
+/// The register that holds each value at a member function's entry: the receiver (`owner`), the
+/// return address (`return`) and the arguments that a hook reads (`file`, `reader` and
+/// `field-token`).
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EntryRegisters {
+    pub owner: String,
+    #[serde(rename = "return")]
+    pub return_address: String,
+    pub file: String,
+    pub reader: String,
+    #[serde(rename = "field-token")]
+    pub field_token: String,
 }
 
 /// Diagnostic producer stages. Strings remain open on the wire so unknown stages lose coverage.

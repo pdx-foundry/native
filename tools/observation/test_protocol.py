@@ -8,6 +8,9 @@ spec = importlib.util.spec_from_file_location('native_wire', PATH)
 wire = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wire)
 
+REGISTERS = {'owner': 'x0', 'return': 'lr', 'file': 'x1', 'reader': 'x1', 'field-token': 'w2'}
+MACHINE = dict(architecture='arm64', spawn_preference=0, registers=REGISTERS)
+
 
 class ProtocolTests(unittest.TestCase):
     def test_fixed_size_call_arguments_enforce_length_and_integer_width(self):
@@ -43,13 +46,23 @@ class ProtocolTests(unittest.TestCase):
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
                        malformed_entry=16464, unexpected_entry=16480))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
-                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+                       source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180,
                        fixture=fixture, modifiers=None, script_checks=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         outcome['load_entry'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
+
+    def test_machine_requires_each_entry_register(self):
+        root = wire.SCHEMAS['request']
+        machine_schema = root['$defs']['Machine']
+        self.assertEqual(set(root['$defs']['EntryRegisters']['required']), set(REGISTERS))
+        wire.validate(MACHINE, machine_schema, root)
+        missing = [{key: value for key, value in REGISTERS.items() if key != name} for name in REGISTERS]
+        for registers in missing + [dict(REGISTERS, extra='x2')]:
+            with self.subTest(registers=registers), self.assertRaises(ValueError):
+                wire.validate(dict(MACHINE, registers=registers), machine_schema, root)
 
     def test_nested_fixture_binding_and_diagnostic_codec(self):
         root = wire.SCHEMAS['request']
@@ -81,7 +94,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_fault_wire_has_one_target_and_kind(self):
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
-                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+                       source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None, script_checks=None)
         for target in [{'registry': 'common/traditions'}, 'fixture', 'modifiers']:
             for control in wire.CONTROL.values():
