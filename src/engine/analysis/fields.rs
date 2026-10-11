@@ -65,7 +65,7 @@ pub(crate) use inventory::fields_and_gaps;
 pub(crate) use member::{follow_member, serializer_owner_slot};
 pub(crate) use persistent::constructor_points;
 pub use records::*;
-pub(crate) use tokens::{Token, recover_decoded};
+pub(crate) use tokens::{Token, named_key, recover_decoded};
 pub(crate) use uses::{has_owner_receiver, storage_offset};
 
 use super::InputError;

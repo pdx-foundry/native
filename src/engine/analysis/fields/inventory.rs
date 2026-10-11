@@ -1,4 +1,4 @@
-use super::tokens::Token;
+use super::tokens::{Token, named_key};
 use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
 use std::collections::BTreeMap;
 
@@ -9,14 +9,12 @@ pub(crate) fn fields_and_gaps(
     let mut gaps = Vec::new();
     let mut fields = BTreeMap::<i64, RootField>::new();
     for path in paths {
-        if path.domain[0] != path.domain[1] || !matches!(path.outcome, PathOutcome::Reader(_)) {
+        if !matches!(path.outcome, PathOutcome::Reader(_)) {
             continue;
         }
-        if let Some(token) = tokens.get(&path.domain[0])
-            && let Some(name) = &token.name
-        {
+        if let Some((token, name)) = named_key(path.domain, tokens) {
             fields.entry(path.domain[0]).or_insert_with(|| RootField {
-                name: name.clone(),
+                name: name.to_owned(),
                 token: path.domain[0],
                 constructor: token.constructor,
                 paths: vec![],

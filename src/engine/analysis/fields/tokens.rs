@@ -89,6 +89,17 @@ pub(crate) struct Token {
     pub name: Option<String>,
     pub constructor: u64,
 }
+
+/// The token and name of the one key that `domain` holds: a singleton interval whose token has
+/// one name.
+pub(crate) fn named_key(domain: [i64; 2], tokens: &BTreeMap<i64, Token>) -> Option<(&Token, &str)> {
+    if domain[0] != domain[1] {
+        return None;
+    }
+    let token = tokens.get(&domain[0])?;
+
+    Some((token, token.name.as_deref()?))
+}
 pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
     let rows = match function(
         input.functions.iter().map(FunctionView::from),
@@ -269,5 +280,25 @@ mod function_tests {
                 .is_err()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn a_named_key_is_a_singleton_interval_of_one_named_token() {
+        let named = |name: Option<&str>| Token {
+            name: name.map(String::from),
+            constructor: 0x40,
+        };
+        let tokens = BTreeMap::from([(7, named(Some("limit"))), (8, named(None))]);
+
+        let (token, name) = named_key([7, 7], &tokens).unwrap();
+        assert_eq!((token.constructor, name), (0x40, "limit"));
+        assert!(named_key([7, 8], &tokens).is_none(), "a wider interval");
+        assert!(named_key([8, 8], &tokens).is_none(), "a conflicting name");
+        assert!(named_key([9, 9], &tokens).is_none(), "an unknown token");
     }
 }

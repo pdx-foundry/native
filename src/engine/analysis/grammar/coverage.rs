@@ -53,10 +53,7 @@ impl ReaderNode {
         tokens: &BTreeMap<i64, fields::Token>,
         stop: Unresolved,
     ) -> Disposition {
-        let name = tokens
-            .get(&domain[0])
-            .filter(|_| domain[0] == domain[1])
-            .and_then(|token| token.name.clone());
+        let name = fields::named_key(domain, tokens).map(|(_, name)| name.to_owned());
         Disposition::Gap { name, stop }
     }
 
@@ -71,19 +68,13 @@ impl ReaderNode {
             PathOutcome::Gap(stop) | PathOutcome::Reader(ReaderJoin::Missing(stop)) => {
                 Self::gap(path.domain, tokens, stop.clone())
             }
-            PathOutcome::Reader(_) => {
-                match tokens
-                    .get(&path.domain[0])
-                    .filter(|_| path.domain[0] == path.domain[1])
-                    .and_then(|token| token.name.clone())
-                {
-                    Some(name) => Disposition::Field {
-                        token: path.domain[0],
-                        name,
-                    },
-                    None => Disposition::Dynamic,
-                }
-            }
+            PathOutcome::Reader(_) => match fields::named_key(path.domain, tokens) {
+                Some((_, name)) => Disposition::Field {
+                    token: path.domain[0],
+                    name: name.to_owned(),
+                },
+                None => Disposition::Dynamic,
+            },
         };
         self.ledger.push(LedgerEntry {
             domain: path.domain,
