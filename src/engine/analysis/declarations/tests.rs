@@ -856,7 +856,7 @@ fn factory_member_constructor_preserves_only_the_primary_receiver() {
     ] {
         let input = member_constructor_factory(offset, false, false);
         assert_eq!(
-            factory_vtable(&input, FACTORY).map_err(|stop| stop.reason),
+            super::receiver::factory_vtable(&input, FACTORY).map_err(|stop| stop.reason),
             expected
         );
     }
@@ -865,10 +865,12 @@ fn factory_member_constructor_preserves_only_the_primary_receiver() {
 #[test]
 fn factory_enters_only_register_move_constructor_wrappers() {
     let input = member_constructor_factory(32, true, false);
-    assert_eq!(factory_vtable(&input, FACTORY), Ok(VTABLE));
+    assert_eq!(super::receiver::factory_vtable(&input, FACTORY), Ok(VTABLE));
     let input = member_constructor_factory(32, true, true);
     assert_eq!(
-        factory_vtable(&input, FACTORY).unwrap_err().reason,
+        super::receiver::factory_vtable(&input, FACTORY)
+            .unwrap_err()
+            .reason,
         "command-vtable"
     );
 }
@@ -931,7 +933,7 @@ fn an_outside_member_constructor_keeps_the_unknown_call_fallback() {
     );
     input.pointers.insert(FACTORY + 0x10, CREATE);
     input.constructors.insert(CONSTRUCTOR, BTreeMap::new());
-    assert_eq!(factory_vtable(&input, FACTORY), Ok(VTABLE));
+    assert_eq!(super::receiver::factory_vtable(&input, FACTORY), Ok(VTABLE));
 }
 
 #[test]

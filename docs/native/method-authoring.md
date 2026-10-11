@@ -494,8 +494,10 @@ cargo run --release --example command-population > after.json
 cargo run --release --example command-population -- --diff before.json after.json
 ```
 
-Totals count one operation answer per unique `(family, name)`. A failed receiver join still gives a
-partial public answer; `receiver_join_failed` counts it separately. Unknown registration
+Totals count one operation answer per unique `(family, name)`. A stopped command still gives a
+partial public answer, counted as `failed` when every property is unresolved; the stop in its
+diagnostics says where it stopped, because the method gives the receiver only with a result and
+the report reruns no stage. Unknown registration
 observations and input-wide gaps are listed separately and never added to the named denominator;
 `full_denominator_known` is false when either remains. The diff compares statuses, normalized
 answers and inventory uncertainty, and ignores timings and addresses.

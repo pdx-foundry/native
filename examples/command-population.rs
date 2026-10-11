@@ -3,7 +3,7 @@
 #[path = "support/population.rs"]
 mod population;
 
-use pdx_native::internals::command_grammar_stops::{self, Chain, GrammarResult, Run};
+use pdx_native::internals::command_grammar_stops::{self, GrammarResult, Run};
 use pdx_native::internals::inspect::{Image, read_image};
 use pdx_native::internals::reference_readers::{self, Initialization, ReferenceFacts};
 use pdx_native::internals::registry_field_stops::Stop;
@@ -76,7 +76,7 @@ fn population() -> Result<Value, Box<dyn std::error::Error>> {
             initialization.add(name, &run, &references);
             forms.add(name, &run);
             targets.add(name, &run, getters.commands.get(name).copied());
-            report.add(name, run.answer, &run.chain, diagnostics);
+            report.add(name, run.answer, diagnostics);
         })?;
         if !targets.failures.is_empty() {
             return Err(targets.failures.join("\n").into());
@@ -113,7 +113,6 @@ struct Totals {
     partial: usize,
     // Input errors abort the inventory; individual named runs always return an answer.
     failed: usize,
-    receiver_join_failed: usize,
 }
 
 #[derive(Default)]
@@ -127,13 +126,7 @@ struct Report {
 }
 
 impl Report {
-    fn add(
-        &mut self,
-        name: &str,
-        answer: Answer<CommandGrammar>,
-        chain: &Chain,
-        diagnostics: Value,
-    ) {
+    fn add(&mut self, name: &str, answer: Answer<CommandGrammar>, diagnostics: Value) {
         self.totals.named_commands += 1;
         if let Some(groups) = diagnostics["stop_groups"].as_object() {
             for shape in groups.keys() {
@@ -164,9 +157,6 @@ impl Report {
                 }
             }
         };
-        if chain.receiver.is_none() || chain.stopped_at == Some("reader slots and bodies") {
-            self.totals.receiver_join_failed += 1;
-        }
         for (key, stop) in diagnostics["state_stops"].as_object().into_iter().flatten() {
             let functions: Vec<_> = stop["causes"]
                 .as_array()
@@ -504,7 +494,7 @@ fn diagnostics(image: &Image, run: &Run) -> Value {
         Ok(result) => grammar_diagnostics(image, result, "root", &mut stops, &mut delegates),
         Err(unresolved) => stops.push(stop_case(
             image,
-            run.chain.stopped_at.unwrap_or("grammar"),
+            "grammar",
             unresolved.reason,
             unresolved.stop,
         )),
@@ -695,15 +685,6 @@ mod tests {
         }
     }
 
-    fn joined_chain() -> Chain {
-        Chain {
-            receiver: Some(1),
-            read: Some(2),
-            member: Some(3),
-            ..Chain::default()
-        }
-    }
-
     #[test]
     fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
         let full = report(vec![
@@ -720,51 +701,6 @@ mod tests {
         assert_eq!(diff(&baseline, &changed).unwrap()["changed"], 1);
     }
 
-    #[test]
-    fn grammar_name_failures_do_not_count_as_receiver_failures() {
-        let mut report = Report::default();
-        for reason in ["command-member-name", "command-reader-name"] {
-            let mut answer = answer(Completeness::Partial, false);
-            answer.gaps[0].detail = reason.into();
-            let chain = Chain {
-                stopped_at: Some("grammar"),
-                ..joined_chain()
-            };
-            report.add(reason, answer, &chain, Value::Null);
-        }
-        assert_eq!(report.totals.receiver_join_failed, 0);
-        assert_eq!(report.totals.failed, 2);
-        assert!(
-            report
-                .cases
-                .iter()
-                .all(|case| case["answer"]["value"]["reader"]["id"].is_null())
-        );
-
-        let missing_body = Chain {
-            stopped_at: Some("reader slots and bodies"),
-            ..joined_chain()
-        };
-        report.add(
-            "missing-body",
-            answer(Completeness::Partial, false),
-            &missing_body,
-            Value::Null,
-        );
-        assert_eq!(report.totals.receiver_join_failed, 1);
-        let missing_receiver = Chain {
-            stopped_at: Some("factory receiver"),
-            ..Chain::default()
-        };
-        report.add(
-            "missing-receiver",
-            answer(Completeness::Partial, false),
-            &missing_receiver,
-            Value::Null,
-        );
-        assert_eq!(report.totals.receiver_join_failed, 2);
-    }
-
     fn report(cases: Vec<Value>) -> Value {
         json!({"inventories": [{"kind": "Effect", "unknown_registrations": [], "inventory_gaps": [], "full_denominator_known": true, "cases": cases}]})
     }
@@ -775,7 +711,6 @@ mod tests {
         report.add(
             "complete",
             answer(Completeness::Complete, true),
-            &joined_chain(),
             Value::Null,
         );
         let mut partial = answer(Completeness::Partial, false);
@@ -783,27 +718,17 @@ mod tests {
         report.add(
             "unresolved",
             partial,
-            &Chain {
-                stopped_at: Some("factory receiver"),
-                ..Chain::default()
-            },
             json!({"stop_groups": {"factory-return/no-instruction": 2}}),
         );
-        report.add(
-            "partial",
-            answer(Completeness::Partial, true),
-            &joined_chain(),
-            Value::Null,
-        );
+        report.add("partial", answer(Completeness::Partial, true), Value::Null);
         assert_eq!(
             (
                 report.totals.named_commands,
                 report.totals.complete,
                 report.totals.partial,
                 report.totals.failed,
-                report.totals.receiver_join_failed
             ),
-            (3, 1, 1, 1, 1)
+            (3, 1, 1, 1)
         );
         assert_eq!(
             report.failure_shapes["factory-return"],
