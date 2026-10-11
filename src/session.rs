@@ -146,9 +146,10 @@ impl Native {
             }
             Backend::Live { binding, recorder } => (binding, recorder),
         };
-        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds) {
+        let longest_session = crate::protocol::session::MAX_SESSION_SECONDS;
+        if !(1..=longest_session).contains(&options.startup_seconds) {
             return Err(Error::Startup {
-                reason: "Startup budget must be 1 to 180 seconds".into(),
+                reason: format!("Startup budget must be 1 to {longest_session} seconds"),
                 disposal: Disposal::NotApplicable,
             });
         }

@@ -19,9 +19,9 @@ pub(crate) struct SessionRequest {
     pub build: String,
     /// A new directory for the private game profile and the session's files.
     pub work_directory: PathBuf,
-    /// Seconds allowed for the game to reach its pause, 1 to 180.
+    /// Seconds allowed for the game to reach its pause, 1 to `MAX_SESSION_SECONDS`.
     pub startup_seconds: u64,
-    /// Seconds that the paused game may stay idle, 1 to 180.
+    /// Seconds that the paused game may stay idle, 1 to `MAX_SESSION_SECONDS`.
     pub idle_seconds: u64,
     /// Content directories selected for this session.
     pub registries: Vec<String>,
@@ -68,9 +68,9 @@ impl SessionRequest {
             || !(1..=MAX_SESSION_SECONDS).contains(&self.startup_seconds)
             || !(1..=MAX_SESSION_SECONDS).contains(&self.idle_seconds)
         {
-            return Err(SupervisorError(
-                "Expected an absolute work directory and budgets of 1 to 180 seconds".into(),
-            ));
+            return Err(SupervisorError(format!(
+                "Expected an absolute work directory and budgets of 1 to {MAX_SESSION_SECONDS} seconds"
+            )));
         }
         let valid_registry_directory = |name: &str| {
             name.split('/').all(|segment| {
@@ -218,8 +218,8 @@ impl SessionRequest {
             installation: "/absent".into(),
             build: "test".into(),
             work_directory: std::env::temp_dir().join("unused-native-test"),
-            startup_seconds: 180,
-            idle_seconds: 180,
+            startup_seconds: MAX_SESSION_SECONDS,
+            idle_seconds: MAX_SESSION_SECONDS,
             registries: vec!["common/traditions".into()],
             fault: None,
             fixture: None,

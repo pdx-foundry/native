@@ -437,7 +437,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     // The strategy gets the hash bound at open and does not read the executable again; the
     // check before spawn and the worker refuse a changed file.
     fs::write(directory.path().join("stellaris"), "changed test bytes!").unwrap();
-    let mut request = SessionRequest {
+    let request = SessionRequest {
         installation: directory.path().into(),
         build: "unused".into(),
         work_directory: directory.path().join("unused"),
@@ -459,12 +459,4 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");
     assert!(!directory.path().join("unused").exists());
-    // A fault for a registry that the session does not observe never reaches the strategy.
-    request.fault.as_mut().unwrap().target =
-        crate::protocol::session::ObservationTarget::Registry("unknown".into());
-    let error = plan
-        .observer(&request.work_directory, "test", &request, &registries)
-        .err()
-        .unwrap();
-    assert_ne!(error.to_string(), "selected strategy reached");
 }

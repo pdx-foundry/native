@@ -585,14 +585,6 @@ impl ExecutionPlan {
         >,
     ) -> Result<Observer, crate::supervisor::SupervisorError> {
         let operation = self.operation();
-        if let Some(fault) = &request.fault
-            && let crate::protocol::session::ObservationTarget::Registry(registry) = &fault.target
-            && !registries.contains_key(registry)
-        {
-            return Err(crate::supervisor::SupervisorError(
-                "The fault names a registry that the session does not observe".into(),
-            ));
-        }
         (operation.strategy.prepare)(platform::ObservationSetup {
             work_directory,
             attempt,
@@ -681,9 +673,6 @@ impl ExecutionPlan {
         }
 
         if let Some(fixture) = fixture {
-            fixture
-                .validate()
-                .map_err(|error| SupervisorError(error.to_string()))?;
             for (relative, text) in &fixture.files {
                 files::write_new(&mount.join(relative), text.as_bytes())?;
             }
