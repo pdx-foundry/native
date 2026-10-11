@@ -4,6 +4,7 @@ use crate::engine::analysis::{
     discovery::CandidateRecord,
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
     fields::{self, FieldInput, ReaderJoin, Value},
+    numeric::NumericFacts,
     readers::PERSISTENT_READ,
     stop::Unresolved,
 };
@@ -38,6 +39,7 @@ impl BoundAnalysis {
             return Err("Inline fixture loaders support the initial file-load window only".into());
         }
         let verified = self.verified().map_err(|error| error.to_string())?;
+        let numeric = self.numeric_facts().map_err(|error| error.to_string())?;
         let loader = verified.verify_inline_loader(recipe)?;
         let input = verified.fixture_owner_input(recipe.owner, recipe)?;
         let root = fields::analyze_owner(&input).map_err(|error| error.to_string())?;
@@ -46,7 +48,7 @@ impl BoundAnalysis {
             .iter()
             .find(|field| field.name == recipe.key_field)
             .ok_or("Inline definition key is not established")?;
-        let (key_storage, _) = member_storage(&input, key.token)?;
+        let (key_storage, _) = member_storage(&input, key.token, numeric)?;
         if key_storage.decoder != FixtureStorageDecoder::String {
             return Err("Inline definition key is not a string".into());
         }
@@ -67,7 +69,7 @@ impl BoundAnalysis {
         let mut questions = Vec::new();
         for (index, question) in request.field_questions.iter().enumerate() {
             let mut setup = FixtureQuestionSetup::unresolved(index, question);
-            match verified.nested_fixture_storage(question, &root, recipe) {
+            match verified.nested_fixture_storage(question, &root, recipe, numeric) {
                 Ok((token, storage, callee, nested)) => {
                     setup.token = Some(token);
                     setup.reader_id = Some(crate::ReaderId::from_callee(&callee).0);
@@ -127,6 +129,7 @@ impl VerifiedAnalysis<'_> {
         question: &crate::FixtureFieldQuestion,
         root: &fields::RegistryFieldResult,
         recipe: &super::super::targets::InlineFixtureRecipe,
+        numeric: &NumericFacts,
     ) -> Result<(u64, FixtureStorageBinding, String, FixtureNestedField), String> {
         let parent_name = question
             .parent_field
@@ -177,7 +180,7 @@ impl VerifiedAnalysis<'_> {
             .iter()
             .find(|field| field.name == question.field)
             .ok_or("Nested field token is not established")?;
-        let (storage, callee) = member_storage(&nested_input, leaf.token)?;
+        let (storage, callee) = member_storage(&nested_input, leaf.token, numeric)?;
         let nested = FixtureNestedField {
             parent_token: parent
                 .token
@@ -232,6 +235,7 @@ impl VerifiedAnalysis<'_> {
 fn member_storage(
     input: &FieldInput,
     token: i64,
+    numeric: &NumericFacts,
 ) -> Result<(FixtureStorageBinding, String), String> {
     let name = format!(
         "{}::ReadMember(CReader&, int)",
@@ -269,7 +273,7 @@ fn member_storage(
         {
             return Ok(Call::Return(None));
         }
-        if fixture_decoder(&symbol.name).is_some()
+        if fixture_decoder(&symbol.name, numeric).is_some()
             && machine.is_tail_call()
             && machine.register(0) == Some(reader)
         {
@@ -298,7 +302,7 @@ fn member_storage(
     Ok((
         FixtureStorageBinding {
             offset,
-            decoder: fixture_decoder(callee).ok_or("Unsupported storage reader")?,
+            decoder: fixture_decoder(callee, numeric).ok_or("Unsupported storage reader")?,
         },
         callee.clone(),
     ))
@@ -306,7 +310,9 @@ fn member_storage(
 
 #[cfg(test)]
 mod tests {
+    use super::super::tests::{FPML_SCALE, fixed_point_numeric};
     use super::*;
+    use crate::GrammarProperty;
     use crate::engine::analysis::{assembler::arm64, discovery::Symbol, fields::Function};
 
     fn input(code: Vec<u8>) -> FieldInput {
@@ -337,13 +343,37 @@ mod tests {
             b extern 0x3000;
             rejected:; ret
         ));
-        let (storage, _) = member_storage(&input, 7).unwrap();
+        let numeric = fixed_point_numeric(
+            GrammarProperty::Unresolved,
+            GrammarProperty::Known(Some(FPML_SCALE)),
+        );
+        let (storage, _) = member_storage(&input, 7, &numeric).unwrap();
         assert_eq!(storage.offset, 56);
         assert_eq!(
             storage.decoder,
-            FixtureStorageDecoder::FixedPoint { scale: 32768 }
+            FixtureStorageDecoder::FixedPoint { scale: FPML_SCALE }
         );
-        assert!(member_storage(&input, 8).is_err());
+        assert!(member_storage(&input, 8, &numeric).is_err());
+    }
+
+    #[test]
+    fn a_fixed_point_read_without_a_known_scale_is_unproven() {
+        let input = input(arm64!(at 0x1000;
+            cmp w2, #7; b.ne >rejected;
+            mov x8, x0; mov x0, x1; add x1, x8, #56;
+            b extern 0x3000;
+            rejected:; ret
+        ));
+        for scale in [
+            GrammarProperty::Partial(Some(FPML_SCALE)),
+            GrammarProperty::Unresolved,
+        ] {
+            let numeric = fixed_point_numeric(GrammarProperty::Unresolved, scale);
+            assert_eq!(
+                member_storage(&input, 7, &numeric).unwrap_err(),
+                "Fixture storage read is not proven"
+            );
+        }
     }
 
     #[test]
@@ -359,11 +389,11 @@ mod tests {
                 rejected:; ret
             ));
             positive.symbols[1].name = callee.into();
-            let (storage, joined) = member_storage(&positive, 7).unwrap();
+            let (storage, joined) = member_storage(&positive, 7, &NumericFacts::default()).unwrap();
             assert_eq!(storage.offset, 56);
             assert_eq!(storage.decoder, decoder);
             assert_eq!(joined, callee);
-            assert!(member_storage(&positive, 8).is_err());
+            assert!(member_storage(&positive, 8, &NumericFacts::default()).is_err());
             for code in [
                 arm64!(at 0x1000; add x1, x0, #56; b extern 0x3000),
                 arm64!(at 0x1000; mov x0, x1; mov x1, #56; b extern 0x3000),
@@ -371,7 +401,7 @@ mod tests {
             ] {
                 let mut negative = input(code);
                 negative.symbols[1].name = callee.into();
-                assert!(member_storage(&negative, 7).is_err());
+                assert!(member_storage(&negative, 7, &NumericFacts::default()).is_err());
             }
         }
     }
@@ -386,7 +416,7 @@ mod tests {
             arm64!(at 0x1000; cbz x3, >other; ret; other:; mov x8, x0; mov x0, x1; add x1, x8, #56; b extern 0x3000),
         ];
         for code in controls {
-            assert!(member_storage(&input(code), 7).is_err());
+            assert!(member_storage(&input(code), 7, &NumericFacts::default()).is_err());
         }
     }
 }

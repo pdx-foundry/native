@@ -460,7 +460,7 @@ impl BoundAnalysis {
                 Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
                     token: u64::try_from(field.token).ok()?,
                     name: field.name.clone(),
-                    storage: fixture_storage_binding(field, &result.paths)
+                    storage: fixture_storage_binding(field, &result.paths, numeric)
                         .or_else(|| scoped_fixture_storage(field, &result, scoped, numeric)),
                 })
             })
@@ -623,6 +623,7 @@ fn fixture_reader_boundary(
 fn fixture_storage_binding(
     field: &crate::engine::analysis::fields::RootField,
     paths: &[crate::engine::analysis::fields::TokenPath],
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
 ) -> Option<crate::protocol::observation::FixtureStorageBinding> {
     use crate::engine::analysis::fields::{ReaderJoin, Value};
     use crate::protocol::observation::FixtureStorageBinding;
@@ -647,7 +648,7 @@ fn fixture_storage_binding(
         return None;
     };
     // Reader identity selects storage only after the exact-build installation is verified.
-    let decoder = fixture_decoder(callee)?;
+    let decoder = fixture_decoder(callee, numeric)?;
     Some(FixtureStorageBinding {
         offset: u64::try_from(*offset).ok()?,
         decoder,
@@ -740,19 +741,45 @@ pub(crate) fn scoped_operand_decoder(
     })
 }
 
-fn fixture_decoder(callee: &str) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
+/// The storage decoder of a reader that writes its value straight into the owner. A fixed-point
+/// reader has none unless the numeric facts establish its scale.
+fn fixture_decoder(
+    callee: &str,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
     use crate::protocol::observation::FixtureStorageDecoder;
     Some(match callee {
         "CReader::Read(CString&, bool)" => FixtureStorageDecoder::String,
         "CReader::Read(int&)" => FixtureStorageDecoder::Integer,
         "CReader::Read(float&)" => FixtureStorageDecoder::Float,
         "CReader::Read(short&)" => FixtureStorageDecoder::Integer16,
-        "CReader::Read(CFixedPoint&)" => FixtureStorageDecoder::FixedPoint { scale: 100_000 },
-        "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
-            FixtureStorageDecoder::FixedPoint { scale: 32_768 }
+        "CReader::Read(CFixedPoint&)"
+        | "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
+            FixtureStorageDecoder::FixedPoint {
+                scale: known_scale(numeric, callee)?,
+            }
         }
         _ => return None,
     })
+}
+
+/// The stored units per whole value of the numeric reader `callee`, when its conversion
+/// establishes that scale completely.
+fn known_scale(
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+    callee: &str,
+) -> Option<u64> {
+    use crate::GrammarProperty;
+    let (GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion))) =
+        &numeric.readers.get(callee)?.conversion
+    else {
+        return None;
+    };
+    let GrammarProperty::Known(Some(scale)) = conversion.scale else {
+        return None;
+    };
+
+    Some(scale)
 }
 
 #[cfg(test)]

@@ -203,7 +203,10 @@ second conversion leaves `%n` unreached (`consumed: -1`), not zero characters co
 suffix and quoted cases for int, direct and template fixed point, float and short, and the
 template keyword case (`long_float`);
 `tests/expected/numeric-m452/live.json` holds the values, and `check_storage` fails a run when
-static representation, width, scale or signedness differ from the observed storage. Six integer
+static representation, width, scale or signedness differ from the observed storage. The fixture
+decoder of a fixed-point field takes its scale from these same numeric facts. A reader with no
+`Known` scale gets no decoder, and its storage read is unproven. So the scale in an observed value
+does not check the static scale; the observed `raw` integers in `live.json` do. Six integer
 readers (`signed char`, `unsigned char`, `unsigned short`, `unsigned int`, `long long`,
 `unsigned long long`) have no root or exposed nested field in the bounded population (982 member
 descriptions stay unreachable); the SDK-544 AC4 amendment excludes them from the live requirement.

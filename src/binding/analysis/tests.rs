@@ -1,4 +1,5 @@
 use super::*;
+use crate::GrammarProperty;
 use std::fs;
 
 #[test]
@@ -1078,6 +1079,73 @@ fn cached_grammar_still_checks_executable_integrity() {
     ));
 }
 
+const CFIXED_POINT_READER: &str = "CReader::Read(CFixedPoint&)";
+const FPML_READER: &str =
+    "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)";
+/// Scales that no engine reader has, so that a decoder can only have taken them from the facts.
+const CFIXED_POINT_SCALE: u64 = 1_000;
+pub(super) const FPML_SCALE: u64 = 64;
+
+/// Numeric facts whose two fixed-point readers have these scales.
+pub(super) fn fixed_point_numeric(
+    cfixed_point: GrammarProperty<Option<u64>>,
+    fpml: GrammarProperty<Option<u64>>,
+) -> crate::engine::analysis::numeric::NumericFacts {
+    use crate::engine::analysis::numeric::NumericReader;
+    let reader = |scale| NumericReader {
+        conversion: GrammarProperty::Known(Some(crate::NumericConversion {
+            scale,
+            ..Default::default()
+        })),
+        gaps: Vec::new(),
+        boundary: Vec::new(),
+    };
+
+    crate::engine::analysis::numeric::NumericFacts {
+        readers: [
+            (CFIXED_POINT_READER.into(), reader(cfixed_point)),
+            (FPML_READER.into(), reader(fpml)),
+        ]
+        .into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_fixed_point_reader_has_a_storage_decoder_only_with_a_known_scale() {
+    use crate::engine::analysis::numeric::NumericFacts;
+    use crate::protocol::observation::FixtureStorageDecoder;
+    let both = [CFIXED_POINT_READER, FPML_READER];
+
+    let numeric = fixed_point_numeric(
+        GrammarProperty::Known(Some(250)),
+        GrammarProperty::Unresolved,
+    );
+    assert_eq!(
+        fixture_decoder(CFIXED_POINT_READER, &numeric),
+        Some(FixtureStorageDecoder::FixedPoint { scale: 250 })
+    );
+    assert_eq!(fixture_decoder(FPML_READER, &numeric), None);
+
+    for scale in [
+        GrammarProperty::Partial(Some(250)),
+        GrammarProperty::Known(None),
+        GrammarProperty::Unresolved,
+    ] {
+        let numeric = fixed_point_numeric(scale.clone(), scale);
+        for callee in both {
+            assert_eq!(fixture_decoder(callee, &numeric), None, "{callee}");
+        }
+    }
+    for callee in both {
+        assert_eq!(fixture_decoder(callee, &NumericFacts::default()), None);
+    }
+    assert_eq!(
+        fixture_decoder("CReader::Read(int&)", &NumericFacts::default()),
+        Some(FixtureStorageDecoder::Integer)
+    );
+}
+
 #[test]
 fn fixture_storage_requires_one_unconditional_owner_destination() {
     use crate::engine::analysis::fields::{
@@ -1106,17 +1174,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
         terminal: 0x1000,
         outcome: PathOutcome::Reader(field.readers[0].clone()),
     }];
+    let numeric = fixed_point_numeric(
+        GrammarProperty::Known(Some(CFIXED_POINT_SCALE)),
+        GrammarProperty::Known(Some(FPML_SCALE)),
+    );
     for (callee, decoder) in [
         ("CReader::Read(int&)", FixtureStorageDecoder::Integer),
         ("CReader::Read(float&)", FixtureStorageDecoder::Float),
         ("CReader::Read(short&)", FixtureStorageDecoder::Integer16),
         (
-            "CReader::Read(CFixedPoint&)",
-            FixtureStorageDecoder::FixedPoint { scale: 100_000 },
+            CFIXED_POINT_READER,
+            FixtureStorageDecoder::FixedPoint {
+                scale: CFIXED_POINT_SCALE,
+            },
         ),
         (
-            "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
-            FixtureStorageDecoder::FixedPoint { scale: 32_768 },
+            FPML_READER,
+            FixtureStorageDecoder::FixedPoint { scale: FPML_SCALE },
         ),
         (
             "CReader::Read(CString&, bool)",
@@ -1127,7 +1201,7 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
             unreachable!()
         };
         *target = callee.into();
-        let bound = fixture_storage_binding(&field, &paths).unwrap();
+        let bound = fixture_storage_binding(&field, &paths, &numeric).unwrap();
         assert_eq!(bound.offset, 48);
         assert_eq!(bound.decoder, decoder);
         let mut scratch_changed = field.clone();
@@ -1136,23 +1210,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
         };
         arguments.remove("x8");
         assert_eq!(
-            fixture_storage_binding(&scratch_changed, &paths)
+            fixture_storage_binding(&scratch_changed, &paths, &numeric)
                 .unwrap()
                 .decoder,
             decoder
         );
         let mut ambiguous = paths.clone();
         ambiguous[0].domain = [7, 8];
-        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        assert!(fixture_storage_binding(&field, &ambiguous, &numeric).is_none());
         ambiguous[0].domain = [8, 8];
-        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        assert!(fixture_storage_binding(&field, &ambiguous, &numeric).is_none());
         for (register, value) in [("x0", Value::Owner(0)), ("x1", Value::Constant(48))] {
             let mut missing = field.clone();
             let ReaderJoin::Joined { arguments, .. } = &mut missing.readers[0] else {
                 unreachable!()
             };
             arguments.insert(register.into(), value);
-            assert!(fixture_storage_binding(&missing, &paths).is_none());
+            assert!(fixture_storage_binding(&missing, &paths, &numeric).is_none());
         }
     }
     let original = field.clone();
@@ -1166,23 +1240,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
             unreachable!()
         };
         arguments.insert(register.into(), value);
-        assert!(fixture_storage_binding(&field, &paths).is_none());
+        assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     }
     field = original.clone();
     let ReaderJoin::Joined { callee, .. } = &mut field.readers[0] else {
         unreachable!()
     };
     *callee = "CReader::Read(unsigned int&)".into();
-    assert!(fixture_storage_binding(&field, &paths).is_none());
+    assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     field = original.clone();
     field.readers.push(field.readers[0].clone());
-    assert!(fixture_storage_binding(&field, &paths).is_none());
+    assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     paths[0].conditions.push(Condition {
         at: 0x1000,
         value: None,
         zero: true,
     });
-    assert!(fixture_storage_binding(&original, &paths).is_none());
+    assert!(fixture_storage_binding(&original, &paths, &numeric).is_none());
 }
 
 /// Report storage coverage independently of whether the registry has a live loader boundary.
