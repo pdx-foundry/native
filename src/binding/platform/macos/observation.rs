@@ -401,11 +401,7 @@ impl Observer {
             scope: *scope,
             text: input.text.clone(),
             durations,
-            kind: match input.kind {
-                crate::DeclarationKind::Trigger => "trigger",
-                crate::DeclarationKind::Effect => "effect",
-            }
-            .into(),
+            kind: input.kind.into(),
         })
     }
 

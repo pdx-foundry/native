@@ -37,6 +37,15 @@ class ProtocolTests(unittest.TestCase):
                 wire.encode('script_reply', dict(reply, result={'Ok': dict(observation=observation,
                     durations=dict(complete=True, stored=[dict(stored, **{field: value})]))}))
 
+    def test_script_checks_allow_only_trigger_and_effect(self):
+        request = dict(attempt='a', check=1, kind='trigger', scope=5, text='x = y', durations=[])
+        for kind in ['trigger', 'effect']:
+            with self.subTest(kind=kind):
+                self.assertEqual(wire.decode('script_check', wire.encode('script_check', dict(request, kind=kind)))['kind'], kind)
+        for kind in ['Trigger', 'Effect', 'scope', '', None]:
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                wire.encode('script_check', dict(request, kind=kind))
+
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(load_entry=16384, reader_entry=16400, reader_return=16416,
                        constructor_entry=16432, member_entry=16448, inline=None)
