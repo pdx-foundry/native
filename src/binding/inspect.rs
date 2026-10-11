@@ -15,11 +15,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
-use object::{Architecture, Object};
-
 use super::binary::declarations::Text;
 use super::binary::fixups::{self, FixupDiagnostic, Fixups};
 use super::binary::inventory::{self, Inventory};
+use crate::OpenError;
 use crate::engine::analysis::decode::{
     Instruction, add_immediate, adrp, call_target, decode_arm64, ldr_immediate, written_registers,
 };
@@ -194,13 +193,13 @@ pub struct Slot {
 }
 
 impl<'a> Image<'a> {
-    /// Read `bytes` as an ARM64 executable. Fails only when the image itself cannot be read or
-    /// is not ARM64; unreadable fixups are kept as a diagnostic.
+    /// Read `bytes` as an ARM64 Mach-O executable. Fails only when the image itself cannot be read
+    /// or is not ARM64 Mach-O; unreadable fixups are kept as a diagnostic.
     pub fn read(bytes: &'a [u8]) -> Result<Self, InspectError> {
-        let inventory = inventory::read(bytes).map_err(|cause| error(cause.to_string()))?;
-        if inventory.file.architecture() != Architecture::Aarch64 {
-            return Err(error("only ARM64 images are inspected"));
-        }
+        let inventory = inventory::read(bytes).map_err(|cause| match cause {
+            OpenError::UnsupportedTarget => error("the inspector reads ARM64 Mach-O images only"),
+            cause => error(cause.to_string()),
+        })?;
 
         let text = Text::read(bytes, &inventory.symbols)
             .map_err(|_| error("the image does not have exactly one text section"))?;

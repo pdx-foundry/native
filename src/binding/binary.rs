@@ -30,15 +30,11 @@ pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdent
     })
 }
 
-/// An executable of a declared target shape: ARM64 Mach-O or x86-64 PE.
+/// An executable of the declared target shape: ARM64 Mach-O.
 fn check_supported(file: &object::File<'_>) -> Result<(), OpenError> {
-    if file.kind() != ObjectKind::Executable {
-        return Err(OpenError::UnsupportedTarget);
-    }
-    if !matches!(
-        (file.format(), file.architecture()),
-        (BinaryFormat::MachO, Architecture::Aarch64) | (BinaryFormat::Pe, Architecture::X86_64)
-    ) {
+    if file.kind() != ObjectKind::Executable
+        || (file.format(), file.architecture()) != (BinaryFormat::MachO, Architecture::Aarch64)
+    {
         return Err(OpenError::UnsupportedTarget);
     }
     Ok(())
@@ -55,7 +51,7 @@ pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
             let file = MachOFatFile64::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
             select_arm64(file.arches(), bytes)
         }
-        FileKind::MachO64 | FileKind::Pe64 => Ok(bytes),
+        FileKind::MachO64 => Ok(bytes),
         _ => Err(OpenError::UnsupportedTarget),
     }
 }

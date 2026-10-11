@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use object::read::macho::{MachHeader, MachOFile64};
-use object::{BinaryFormat, Object, ObjectSegment};
+use object::{Object, ObjectSegment};
 
 use super::inventory::{Inventory, display_name};
 use super::{u32_at, u64_at};
@@ -25,8 +25,6 @@ pub(in crate::binding) struct Fixups {
 /// Why the fixups of an image were not read, naming the form that was found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::binding) enum FixupDiagnostic {
-    /// The image is not Mach-O.
-    NotMachO,
     /// The image has no `LC_DYLD_CHAINED_FIXUPS` command.
     Missing,
     /// The image has more than one `LC_DYLD_CHAINED_FIXUPS` command.
@@ -48,7 +46,6 @@ pub(in crate::binding) enum FixupDiagnostic {
 impl fmt::Display for FixupDiagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotMachO => write!(formatter, "the image is not Mach-O"),
             Self::Missing => write!(formatter, "the image has no chained fixups"),
             Self::Repeated => write!(
                 formatter,
@@ -80,10 +77,6 @@ impl fmt::Display for FixupDiagnostic {
 /// Read every chain of the image's fixups.
 pub(in crate::binding) fn read(inventory: &Inventory<'_>) -> Result<Fixups, FixupDiagnostic> {
     use FixupDiagnostic::Malformed;
-
-    if inventory.file.format() != BinaryFormat::MachO {
-        return Err(FixupDiagnostic::NotMachO);
-    }
 
     let payload = payload(inventory.slice)?;
     let header = Header::read(payload)?;

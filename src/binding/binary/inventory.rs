@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use object::read::macho::{MachHeader, MachOFile64};
-use object::{BinaryFormat, Object, ObjectSection, ObjectSymbol, SectionKind, SymbolIndex};
+use object::{Object, ObjectSection, ObjectSymbol, SectionKind, SymbolIndex};
 
 use super::{ImageIdentity, u32_at};
 use crate::engine::analysis::discovery::Symbol;
@@ -30,14 +30,12 @@ pub(in crate::binding) fn read(bytes: &[u8]) -> Result<Inventory<'_>, OpenError>
     super::check_supported(&file)?;
 
     let (mut symbols, raw_symbols) = definitions(&file);
-    if file.format() == BinaryFormat::MachO {
-        let stubs = indirect_stubs(slice, &file).ok_or(OpenError::MalformedExecutable)?;
-        symbols.extend(
-            stubs
-                .into_iter()
-                .map(|(address, name)| Symbol { name, address }),
-        );
-    }
+    let stubs = indirect_stubs(slice, &file).ok_or(OpenError::MalformedExecutable)?;
+    symbols.extend(
+        stubs
+            .into_iter()
+            .map(|(address, name)| Symbol { name, address }),
+    );
     symbols.sort_by(|a, b| a.address.cmp(&b.address).then(a.name.cmp(&b.name)));
 
     let strings = strings(&file).ok_or(OpenError::MalformedExecutable)?;
