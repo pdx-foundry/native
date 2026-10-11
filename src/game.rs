@@ -144,11 +144,16 @@ enum DriverCommand {
     },
 }
 
+/// The stop flag is 0 until the caller asks to stop. `Game::close` then stores `CLOSE`, and
+/// `Game::cancel` and a dropped check store `CANCEL`; each only replaces 0.
+const CLOSE: u8 = 1;
+const CANCEL: u8 = 2;
+
 struct CheckCancellation(Option<Arc<AtomicU8>>);
 impl Drop for CheckCancellation {
     fn drop(&mut self) {
         if let Some(stop) = &self.0 {
-            let _ = stop.compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+            let _ = stop.compare_exchange(0, CANCEL, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
 }
@@ -498,7 +503,7 @@ impl Game {
             self.closing = true;
             let _ = self
                 .stop
-                .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+                .compare_exchange(0, CANCEL, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
     /// Close the session and wait until the supervisor reports whether the game is gone.
@@ -527,7 +532,7 @@ impl Game {
             self.closing = true;
             let _ = self
                 .stop
-                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst);
+                .compare_exchange(0, CLOSE, Ordering::SeqCst, Ordering::SeqCst);
         }
         let finished = loop {
             if let Some(result) = self.state.borrow().finished.clone() {
@@ -679,10 +684,6 @@ async fn start_until_paused(
     request: SessionRequest,
     session: Session,
 ) -> Result<Game, Error> {
-    let timing = driver::Timing {
-        startup_seconds: request.startup_seconds,
-        idle_seconds: request.idle_seconds,
-    };
     let (commands, receive) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicU8::new(0));
     let owner_stop = stop.clone();
@@ -690,7 +691,7 @@ async fn start_until_paused(
     std::thread::Builder::new()
         .name("native-game-owner".into())
         .spawn(move || {
-            driver::run(supervisor, request, timing, receive, owner_stop, state);
+            driver::run(supervisor, request, receive, owner_stop, state);
         })
         .map_err(|error| Error::Supervisor(error.to_string()))?;
     // The only command sender stays in this future until ownership moves into Game.
@@ -866,7 +867,7 @@ mod tests {
             commands.try_recv().unwrap(),
             DriverCommand::CheckScript { .. }
         ));
-        assert_eq!(game.stop.load(Ordering::SeqCst), 2);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CANCEL);
         assert!(matches!(
             game.check_script(&input).await,
             Err(Error::Closed)
@@ -882,7 +883,7 @@ mod tests {
             scope: crate::ScopeId("scope".into()),
             text: "always = yes".into(),
         };
-        for stop in [1, 2] {
+        for stop in [CLOSE, CANCEL] {
             let (mut game, commands, _state) = game();
             game.stop.store(stop, Ordering::SeqCst);
 
@@ -1293,7 +1294,7 @@ mod tests {
                 .await
                 .is_err()
         );
-        assert_eq!(game.stop.load(Ordering::SeqCst), 1);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CLOSE);
         assert!(matches!(
             game.loader_items("common/traditions").await,
             Err(Error::Closed)
@@ -1309,7 +1310,7 @@ mod tests {
     async fn cancellation_and_drop_do_not_claim_disposal() {
         let (mut game, commands, state) = game();
         game.cancel();
-        assert_eq!(game.stop.load(Ordering::SeqCst), 2);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CANCEL);
         assert!(state.borrow().finished.is_none());
         drop(game);
         assert!(matches!(

@@ -10,34 +10,26 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// The supervisor's own budgets, which bound how long the driver waits for a reply.
-pub(super) struct Timing {
-    pub startup_seconds: u64,
-    pub idle_seconds: u64,
-}
-
 /// Time that the supervisor may need, beyond its budget, to clean up and report.
 const CLEANUP_SECONDS: u64 = 90;
 
 pub(super) fn run(
     supervisor: Command,
     request: SessionRequest,
-    timing: Timing,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: watch::Sender<State>,
 ) {
-    let result = connect(supervisor, request, timing, commands, stop, &state)
+    let result = connect(supervisor, request, commands, stop, &state)
         .map_err(|error| Error::Supervisor(error.to_string()));
     state.send_modify(|state| state.finished = Some(result));
 }
 
-/// The control that the caller's stop request asks for: `Game::close` stores 1 and
-/// `Game::cancel` stores 2, each only once.
+/// The control that the caller's stop request asks for.
 fn requested_stop(stop: &AtomicU8) -> Option<Control> {
     match stop.load(Ordering::SeqCst) {
         0 => None,
-        2 => Some(Control::Cancel),
+        CANCEL => Some(Control::Cancel),
         _ => Some(Control::Close),
     }
 }
@@ -57,7 +49,6 @@ impl Drop for SupervisorChild {
 fn connect(
     mut supervisor: Command,
     request: SessionRequest,
-    timing: Timing,
     commands: mpsc::Receiver<DriverCommand>,
     stop: Arc<AtomicU8>,
     state: &watch::Sender<State>,
@@ -99,8 +90,9 @@ fn connect(
             _ => "Supervisor handshake failed or timed out".into(),
         }));
     }
+    let idle_seconds = request.idle_seconds;
     let mut deadline =
-        Instant::now() + Duration::from_secs(timing.startup_seconds + CLEANUP_SECONDS);
+        Instant::now() + Duration::from_secs(request.startup_seconds + CLEANUP_SECONDS);
     protocol::write(output_pipe.as_mut().unwrap(), &request)?;
     let mut pending = BTreeMap::new();
     let mut pending_script = None;
@@ -197,8 +189,7 @@ fn connect(
                 }
                 let _ = reply.send(result);
                 if !ending {
-                    deadline =
-                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
+                    deadline = Instant::now() + Duration::from_secs(idle_seconds + CLEANUP_SECONDS);
                 }
             }
             Reply::Paused {
@@ -218,8 +209,7 @@ fn connect(
                     })
                 });
                 if !ending {
-                    deadline =
-                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
+                    deadline = Instant::now() + Duration::from_secs(idle_seconds + CLEANUP_SECONDS);
                 }
             }
             Reply::ObservationRead { request } => {
@@ -228,8 +218,7 @@ fn connect(
                 };
                 let _ = reply.send(Ok(()));
                 if !ending {
-                    deadline =
-                        Instant::now() + Duration::from_secs(timing.idle_seconds + CLEANUP_SECONDS);
+                    deadline = Instant::now() + Duration::from_secs(idle_seconds + CLEANUP_SECONDS);
                 }
             }
             Reply::Finished(report) => {
