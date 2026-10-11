@@ -90,12 +90,28 @@ fn production_lexer() -> (LexerInput, Vec<u64>) {
     );
     let addresses = image.unnamed().to_vec();
     let input = LexerInput {
-        body: image.function("GetTok").to_vec(),
+        body: Some(image.function("GetTok").to_vec()),
         names: image.names().clone(),
         data: placed(&addresses, m452_tables()),
         binary_selector: Vec::new(),
     };
     (input, addresses)
+}
+
+#[test]
+fn a_missing_get_tok_is_a_body_gap_and_a_changed_one_a_shape_gap() {
+    let mut input = production_lexer().0;
+    input.body = None;
+    assert_eq!(
+        token_boundary(&input).map_err(|obstacle| obstacle.reason),
+        Err("numeric-lexer-body")
+    );
+
+    input.body = Some(Vec::new());
+    assert_eq!(
+        token_boundary(&input).map_err(|obstacle| obstacle.reason),
+        Err("numeric-lexer-shape")
+    );
 }
 
 #[test]
@@ -107,6 +123,8 @@ fn the_production_shape_establishes_the_boundary_only_with_its_input_slots_and_d
     let mut changed_slot = production_lexer().0;
     let validity = changed_slot
         .body
+        .as_mut()
+        .unwrap()
         .iter_mut()
         .find(|row| row.operation == "ldr" && row.operands.ends_with(",#0x58]"))
         .unwrap();
@@ -119,6 +137,8 @@ fn the_production_shape_establishes_the_boundary_only_with_its_input_slots_and_d
     let mut moved_base = production_lexer().0;
     let base = moved_base
         .body
+        .as_mut()
+        .unwrap()
         .iter_mut()
         .find(|row| row.operation == "adr")
         .unwrap();

@@ -95,9 +95,9 @@ fn fixed_reader(binary: bool) -> ReaderInput {
         names.insert(address, name.into());
     }
     ReaderInput {
-        wrapper: decode_arm64(&wrapper, 0x4000).unwrap(),
-        token,
-        raw_token: scan_rows(),
+        wrapper: Some(decode_arm64(&wrapper, 0x4000).unwrap()),
+        token: Some(token),
+        raw_token: Some(scan_rows()),
         names,
         reader_token_offset: 0x278,
         token_text_offset: 0x10,
@@ -115,7 +115,7 @@ fn selector(binary: bool) -> LexerInput {
         arm64!(at 0x5000; mov w0,#0; ret)
     };
     LexerInput {
-        body: Vec::new(),
+        body: Some(Vec::new()),
         names: BTreeMap::new(),
         data: Default::default(),
         binary_selector: decode_arm64(&rows, 0x5000).unwrap(),
@@ -166,14 +166,15 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
         (17, "str", "x8,[x19]"),
     ] {
         let mut input = fixed_reader(false);
-        input.wrapper[index].operation = operation.into();
-        input.wrapper[index].operands = operands.into();
+        let wrapper = input.wrapper.as_mut().unwrap();
+        wrapper[index].operation = operation.into();
+        wrapper[index].operands = operands.into();
         let reader = analyze_reader(&input, &Ok(()), &Ok(()));
         assert_eq!(reader.conversion, GrammarProperty::Unresolved);
         assert_eq!(reader.gaps[0].reason, "numeric-wrapper-shape");
     }
     let mut input = fixed_reader(true);
-    input.raw_token.clear();
+    input.raw_token = Some(Vec::new());
     let reader = analyze_reader(&input, &Ok(()), &Ok(()));
     let GrammarProperty::Partial(Some(conversion)) = reader.conversion else {
         panic!("ordinary path was lost");
@@ -189,13 +190,102 @@ fn changed_raw_store_or_selector_cannot_inherit_wrapper_facts() {
     );
 }
 
+/// A scalar reader with a wrapper of the engine's scalar shape and no raw token.
+fn scalar_reader() -> ReaderInput {
+    let mut image = crate::engine::analysis::references::tests::Image::default();
+    image.add(
+        "wrapper",
+        include_str!("../shapes/scalar.txt"),
+        &[("reader_token", "0x278"), ("diagnostic", "\"Malformed\"")],
+    );
+    let mut names = image.names().clone();
+    names.extend(self::names("%i"));
+    ReaderInput {
+        wrapper: Some(image.function("wrapper").to_vec()),
+        token: Some(scan_rows()),
+        raw_token: None,
+        names,
+        reader_token_offset: 0x278,
+        token_text_offset: 0x10,
+    }
+}
+
+#[test]
+fn a_missing_function_is_a_body_gap_and_not_a_shape_gap() {
+    let reasons_of = |input: &ReaderInput| {
+        let reader = analyze_reader(input, &Ok(()), &Ok(()));
+        (reader.conversion, reasons(&reader.gaps))
+    };
+
+    let scalar = scalar_reader();
+    assert!(matches!(
+        reasons_of(&scalar),
+        (GrammarProperty::Partial(Some(_)), gaps) if gaps.is_empty()
+    ));
+    let no_token = ReaderInput {
+        token: None,
+        ..scalar_reader()
+    };
+    assert_eq!(
+        reasons_of(&no_token),
+        (Unresolved, vec!["numeric-token-body"])
+    );
+    let no_wrapper = ReaderInput {
+        wrapper: None,
+        ..scalar_reader()
+    };
+    assert_eq!(
+        reasons_of(&no_wrapper),
+        (Unresolved, vec!["numeric-wrapper-body"])
+    );
+
+    let no_token = ReaderInput {
+        token: None,
+        ..fixed_reader(false)
+    };
+    let (conversion, gaps) = reasons_of(&no_token);
+    assert!(matches!(conversion, GrammarProperty::Partial(Some(_))));
+    assert_eq!(gaps, ["numeric-token-body"]);
+    let no_raw = ReaderInput {
+        raw_token: None,
+        ..fixed_reader(false)
+    };
+    let (conversion, gaps) = reasons_of(&no_raw);
+    assert!(matches!(conversion, GrammarProperty::Partial(Some(_))));
+    assert_eq!(gaps, ["numeric-raw-body"]);
+    let neither = ReaderInput {
+        token: None,
+        raw_token: None,
+        ..fixed_reader(false)
+    };
+    assert_eq!(
+        reasons_of(&neither),
+        (Unresolved, vec!["numeric-token-body"])
+    );
+}
+
+#[test]
+fn a_token_method_that_the_build_lacks_is_a_body_gap_and_not_a_shape_gap() {
+    let token = |body| TokenInput {
+        body,
+        names: names("%i"),
+        token_text_offset: 0x10,
+    };
+    let missing = analyze_token(&token(None), &Ok(()));
+    assert_eq!(missing.conversion, Unresolved);
+    assert_eq!(reasons(&missing.gaps), ["numeric-token-body"]);
+    let unmatched = analyze_token(&token(Some(Vec::new())), &Ok(()));
+    assert_eq!(unmatched.conversion, Unresolved);
+    assert_eq!(reasons(&unmatched.gaps), ["numeric-token-shape"]);
+}
+
 #[test]
 fn a_lexer_obstacle_is_the_token_text_gap_of_readers_and_token_readers() {
     let obstacle = Err(super::super::Unresolved::new("numeric-lexer-shape"));
     let reader = analyze_reader(&fixed_reader(false), &obstacle, &Ok(()));
     let token = analyze_token(
         &TokenInput {
-            body: scan_rows(),
+            body: Some(scan_rows()),
             names: names("%i"),
             token_text_offset: 0x10,
         },
@@ -217,7 +307,7 @@ fn a_lexer_obstacle_is_the_token_text_gap_of_readers_and_token_readers() {
 #[test]
 fn scanner_pointer_and_return_check_are_required() {
     let token = TokenInput {
-        body: scan_rows(),
+        body: Some(scan_rows()),
         names: names("%i"),
         token_text_offset: 0x10,
     };
@@ -229,7 +319,7 @@ fn scanner_pointer_and_return_check_are_required() {
         (8, "cmp", "w0,#0x1"),
         (9, "cset", "w0,gt"),
     ] {
-        let mut changed = token.body.clone();
+        let mut changed = token.body.clone().unwrap();
         changed[index].operation = operation.into();
         changed[index].operands = operands.into();
         assert!(token_conversion(&changed, &token.names, 0x10).is_none());
@@ -240,7 +330,7 @@ fn scanner_pointer_and_return_check_are_required() {
 fn binary32_bounds_have_a_specific_gap_only_after_the_conversion_is_proved() {
     for (format, expected) in [("%f", true), ("%i", false)] {
         let token = TokenInput {
-            body: scan_rows(),
+            body: Some(scan_rows()),
             names: names(format),
             token_text_offset: 0x10,
         };
@@ -266,7 +356,7 @@ fn binary32_bounds_have_a_specific_gap_only_after_the_conversion_is_proved() {
     }
     let missing = analyze_token(
         &TokenInput {
-            body: scan_rows(),
+            body: Some(scan_rows()),
             names: BTreeMap::new(),
             token_text_offset: 0x10,
         },

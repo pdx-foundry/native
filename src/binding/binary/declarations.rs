@@ -319,6 +319,24 @@ impl<'a> Text<'a> {
             .ok_or(AnalysisError::InvalidRange)
     }
 
+    /// The decoded function named `name`, or `None` when the build has no single function of
+    /// that name: the name has no address or several.
+    pub fn unique_body(
+        &self,
+        symbols: &[Symbol],
+        name: &str,
+    ) -> Result<Option<Vec<Instruction>>, AnalysisError> {
+        let addresses = addresses(symbols, name);
+        let Some(&start) = addresses.first().filter(|_| addresses.len() == 1) else {
+            return Ok(None);
+        };
+        let (address, code) = self.function(start)?;
+
+        decode_arm64(code, address)
+            .map(Some)
+            .map_err(|_| AnalysisError::InvalidRange)
+    }
+
     /// The address of every direct `bl` to `target`, in address order. This includes calls in
     /// compiler-outlined regions that have no reliable symbol boundary.
     pub fn direct_calls(&self, target: u64) -> Vec<u64> {
@@ -610,6 +628,32 @@ mod tests {
             unique(&symbols, "Two()"),
             Err(InputError("2 addresses for Two()".into()).into())
         );
+    }
+
+    #[test]
+    fn a_function_with_no_single_address_has_no_body() {
+        let text = Text {
+            address: 0x1000,
+            code: &[0xc0, 0x03, 0x5f, 0xd6, 0xc0, 0x03, 0x5f, 0xd6],
+            starts: BTreeSet::from([0x1000, 0x1004]),
+        };
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = [
+            symbol("One()", 0x1000),
+            symbol("Alias()", 0x1004),
+            symbol("Alias()", 0x1004),
+            symbol("Two()", 0x1000),
+            symbol("Two()", 0x1004),
+        ];
+        let body = |name| text.unique_body(&symbols, name).unwrap();
+
+        assert_eq!(body("One()").map(|rows| rows.len()), Some(1));
+        assert_eq!(body("Alias()").map(|rows| rows[0].address), Some(0x1004));
+        assert!(body("Missing()").is_none());
+        assert!(body("Two()").is_none());
     }
 
     #[test]

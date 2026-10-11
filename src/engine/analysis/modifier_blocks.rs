@@ -385,8 +385,8 @@ mod tests {
             reader_token_offset: 0x38,
             base_member: base.into(),
             base: ModifierInput {
-                member: vec![],
-                insert: vec![],
+                member: Some(vec![]),
+                insert: Some(vec![]),
                 names: BTreeMap::new(),
                 shared_callee: "CReader::Read(CFixedPoint&)".into(),
             },
@@ -411,6 +411,18 @@ mod tests {
                 .iter()
                 .any(|(_, stop)| stop.reason == "modifier-numeric-member-flow")
         );
+    }
+
+    #[test]
+    fn a_missing_base_member_is_a_body_stop_and_not_a_flow_stop() {
+        let mut input = input();
+        input.base.member = None;
+        let facts = analyze(&input, &NumericFacts::default());
+        let variant = facts.points[&0x8000].as_ref().unwrap();
+        let reasons: Vec<_> = variant.stops.iter().map(|(_, stop)| stop.reason).collect();
+
+        assert!(reasons.contains(&"modifier-numeric-member-body"));
+        assert!(!reasons.contains(&"modifier-numeric-member-flow"));
     }
 
     #[test]

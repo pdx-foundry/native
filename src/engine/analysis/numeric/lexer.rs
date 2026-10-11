@@ -11,9 +11,9 @@ use super::super::references::shapes::{Line, Shape, canonical_local};
 use super::super::stop::Unresolved;
 
 /// `CTextLexer::GetTok`, the read-only bytes that hold its character tables, and the body of
-/// `CTextLexer::IsBinary`.
+/// `CTextLexer::IsBinary`. `body` is `None` when the build has no single `GetTok`.
 pub(crate) struct LexerInput {
-    pub body: Vec<Instruction>,
+    pub body: Option<Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub data: ReadOnlyData,
     /// The text lexer's virtual slot `0x20`, which the fixed-point wrappers call to choose their
@@ -55,7 +55,11 @@ const NOT_PUSHED_BACK: u8 = 2;
 
 /// `Ok` when `GetTok` and its character tables match the established token boundary.
 pub(crate) fn token_boundary(input: &LexerInput) -> Result<(), Unresolved> {
-    let lines = canonical_local(&input.body, &input.names)
+    let body = input
+        .body
+        .as_deref()
+        .ok_or(Unresolved::new("numeric-lexer-body"))?;
+    let lines = canonical_local(body, &input.names)
         .filter(|lines| {
             Shape::parse(include_str!("shapes/lexer.txt"))
                 .matches(lines)
@@ -63,7 +67,7 @@ pub(crate) fn token_boundary(input: &LexerInput) -> Result<(), Unresolved> {
         })
         .ok_or(Unresolved::new("numeric-lexer-shape"))?;
 
-    character_tables(&input.body, &lines, &input.data)
+    character_tables(body, &lines, &input.data)
 }
 
 /// `Ok` when the text lexer's `IsBinary` returns 0, so a fixed-point reader on a text lexer takes

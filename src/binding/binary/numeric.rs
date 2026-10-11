@@ -48,18 +48,21 @@ pub(in crate::binding) fn read(
             ))
         })
         .collect();
-    let fixed_point_text =
-        decode_unique_symbol_or_empty(&text, image.symbols, "StringToFixedPoint(char const*)")?;
+    let fixed_point_text = text.unique_body(image.symbols, "StringToFixedPoint(char const*)")?;
     let token_values = ["CToken::GetInt() const", "CToken::GetFloat() const"]
         .into_iter()
         .map(|name| {
-            let body = decode_unique_symbol_or_empty(&text, image.symbols, name)?;
+            let body = text.unique_body(image.symbols, name)?;
             let aliases = [
                 ("_atoi", "decimal_int"),
                 ("_atoll", "decimal_integer"),
                 ("StringToFixedPoint(char const*)", "fixed_point_text"),
             ];
-            let names = referenced_names(&[&body, &fixed_point_text], &names, &aliases);
+            let names = referenced_names(
+                &[body.as_deref(), fixed_point_text.as_deref()],
+                &names,
+                &aliases,
+            );
             let input = TokenInput {
                 body,
                 names,
@@ -84,8 +87,8 @@ fn lexer_input(
     image: &Image<'_>,
     names: &BTreeMap<u64, String>,
 ) -> Result<LexerInput, AnalysisError> {
-    let body = decode_unique_symbol_or_empty(text, image.symbols, "CTextLexer::GetTok()")?;
-    let names = referenced_names(&[&body], names, &[]);
+    let body = text.unique_body(image.symbols, "CTextLexer::GetTok()")?;
+    let names = referenced_names(&[body.as_deref()], names, &[]);
     Ok(LexerInput {
         body,
         names,
@@ -119,9 +122,9 @@ fn reader_input(
     let wrapper_name = format!("CReader::Read({value_type}&)");
     let token_name = format!("CToken::ReadValue({value_type}&) const");
     let raw_name = "CToken::ReadValue(long long&) const";
-    let wrapper = decode_unique_symbol_or_empty(text, symbols, &wrapper_name)?;
-    let token = decode_unique_symbol_or_empty(text, symbols, &token_name)?;
-    let raw_token = decode_unique_symbol_or_empty(text, symbols, raw_name)?;
+    let wrapper = text.unique_body(symbols, &wrapper_name)?;
+    let token = text.unique_body(symbols, &token_name)?;
+    let raw_token = text.unique_body(symbols, raw_name)?;
     let cold_one = format!("{wrapper_name} [clone .cold.1]");
     let cold_two = format!("{wrapper_name} [clone .cold.2]");
     // The scanner contract supplies C-format storage types and representable conversion
@@ -145,7 +148,11 @@ fn reader_input(
         ),
         ("__Unwind_Resume", "unwind"),
     ];
-    let names = referenced_names(&[&wrapper, &token, &raw_token], names, &aliases);
+    let names = referenced_names(
+        &[wrapper.as_deref(), token.as_deref(), raw_token.as_deref()],
+        names,
+        &aliases,
+    );
     Ok((
         wrapper_name,
         ReaderInput {
@@ -165,8 +172,8 @@ pub(super) fn modifier_input(
     names: &BTreeMap<u64, String>,
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierInput, AnalysisError> {
-    let member = decode_unique_symbol_or_empty(text, symbols, NUMERIC_MODIFIER_MEMBER)?;
-    let insert = decode_unique_symbol_or_empty(text, symbols, recipe.numeric_modifier_insert)?;
+    let member = text.unique_body(symbols, NUMERIC_MODIFIER_MEMBER)?;
+    let insert = text.unique_body(symbols, recipe.numeric_modifier_insert)?;
     let shared_callee = "CReader::Read(CFixedPoint&)";
     let cold = format!("{NUMERIC_MODIFIER_MEMBER} [clone .cold.1]");
     let aliases = [
@@ -191,7 +198,7 @@ pub(super) fn modifier_input(
         ),
         ("__Unwind_Resume", "unwind"),
     ];
-    let names = referenced_names(&[&member, &insert], names, &aliases);
+    let names = referenced_names(&[member.as_deref(), insert.as_deref()], names, &aliases);
     Ok(ModifierInput {
         member,
         insert,
@@ -202,12 +209,13 @@ pub(super) fn modifier_input(
 
 /// Retain only addresses used by these bodies, with their bound semantic helper identities.
 fn referenced_names(
-    functions: &[&[Instruction]],
+    functions: &[Option<&[Instruction]>],
     names: &BTreeMap<u64, String>,
     aliases: &[(&str, &str)],
 ) -> BTreeMap<u64, String> {
     let referenced: BTreeSet<_> = functions
         .iter()
+        .flatten()
         .flat_map(|rows| canonical(rows, names))
         .filter_map(|line| line.value)
         .collect();
@@ -223,21 +231,4 @@ fn referenced_names(
             (*address, alias.to_owned())
         })
         .collect()
-}
-
-fn decode_unique_symbol_or_empty(
-    text: &Text<'_>,
-    symbols: &[Symbol],
-    name: &str,
-) -> Result<Vec<Instruction>, AnalysisError> {
-    let addresses: BTreeSet<_> = symbols
-        .iter()
-        .filter(|symbol| symbol.name == name)
-        .map(|symbol| symbol.address)
-        .collect();
-    if addresses.len() != 1 {
-        return Ok(Vec::new());
-    }
-    let (address, bytes) = text.function(*addresses.first().unwrap())?;
-    decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)
 }

@@ -8,9 +8,10 @@ use crate::engine::analysis::{
 };
 use std::collections::BTreeMap;
 
+/// A body is `None` when the build has no single function of that name.
 pub(crate) struct Input {
-    pub member: Vec<Instruction>,
-    pub conversion: Vec<Instruction>,
+    pub member: Option<Vec<Instruction>>,
+    pub conversion: Option<Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub key_text_offset: u64,
     pub value_token_offset: u64,
@@ -19,7 +20,11 @@ pub(crate) struct Input {
 
 pub(crate) fn analyze(input: &Input) -> Result<(), Unresolved> {
     let failed = || Unresolved::new("modifier-reference-flow");
-    let lines = canonical(&input.member, &input.names);
+    let member = input
+        .member
+        .as_deref()
+        .ok_or(Unresolved::new("modifier-reference-member-body"))?;
+    let lines = canonical(member, &input.names);
     let binding = Shape::parse(include_str!("reference_lookup.txt"))
         .matches_prefix(&lines)
         .ok_or_else(failed)?;
@@ -33,7 +38,11 @@ pub(crate) fn analyze(input: &Input) -> Result<(), Unresolved> {
     {
         return Err(failed());
     }
-    let conversion = canonical(&input.conversion, &input.names);
+    let conversion = input
+        .conversion
+        .as_deref()
+        .ok_or(Unresolved::new("modifier-reference-conversion-body"))?;
+    let conversion = canonical(conversion, &input.names);
     let shape = format!(
         "ldr x0,[x0,#{:#x}]\nb CALL = fixed_conversion",
         input.token_text_offset

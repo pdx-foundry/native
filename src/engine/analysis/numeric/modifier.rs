@@ -6,7 +6,7 @@ use super::number;
 use crate::ReaderId;
 use crate::engine::analysis::{
     decode::Instruction,
-    references::shapes::{Shape, canonical},
+    references::shapes::{Bindings, Shape, canonical},
     stop::Unresolved,
 };
 use std::collections::BTreeMap;
@@ -22,9 +22,11 @@ pub struct ModifierNumericEntry {
     pub storage_width_bits: u8,
 }
 
+/// The modifier's numeric member reader and its entry insertion. A body is `None` when the build
+/// has no single function of that name.
 pub(crate) struct ModifierInput {
-    pub member: Vec<Instruction>,
-    pub insert: Vec<Instruction>,
+    pub member: Option<Vec<Instruction>>,
+    pub insert: Option<Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub shared_callee: String,
 }
@@ -33,11 +35,12 @@ pub(super) fn analyze(
     input: &ModifierInput,
     readers: &BTreeMap<String, super::NumericReader>,
 ) -> Result<ModifierNumericEntry, Unresolved> {
-    let member = canonical(&input.member, &input.names);
-    let binding = Shape::parse(include_str!("shapes/modifier_member.txt"))
-        .matches(&member)
-        .ok_or(Unresolved::new("modifier-numeric-member-flow"))?;
-    let insert = canonical(&input.insert, &input.names);
+    let binding = member_binding(input)?;
+    let insert = input
+        .insert
+        .as_deref()
+        .ok_or(Unresolved::new("modifier-numeric-insert-body"))?;
+    let insert = canonical(insert, &input.names);
     let insertion = Shape::parse(include_str!("shapes/modifier_insert.txt"))
         .matches(&insert)
         .ok_or(Unresolved::new("modifier-numeric-entry-store"))?;
@@ -59,6 +62,19 @@ pub(super) fn analyze(
     })
 }
 
+/// The bindings of the member reader's complete shape.
+fn member_binding(input: &ModifierInput) -> Result<Bindings, Unresolved> {
+    let member = input
+        .member
+        .as_deref()
+        .ok_or(Unresolved::new("modifier-numeric-member-body"))?;
+    let lines = canonical(member, &input.names);
+
+    Shape::parse(include_str!("shapes/modifier_member.txt"))
+        .matches(&lines)
+        .ok_or(Unresolved::new("modifier-numeric-member-flow"))
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct MemberTokens {
     pub name: i64,
@@ -71,10 +87,7 @@ pub(crate) struct MemberTokens {
 
 /// Reserved tokens proved by the same complete member shape as the numeric entry.
 pub(crate) fn member_tokens(input: &ModifierInput) -> Result<MemberTokens, Unresolved> {
-    let lines = canonical(&input.member, &input.names);
-    let binding = Shape::parse(include_str!("shapes/modifier_member.txt"))
-        .matches(&lines)
-        .ok_or(Unresolved::new("modifier-numeric-member-flow"))?;
+    let binding = member_binding(input)?;
     let token = |name| {
         number(&binding, name)
             .and_then(|value| i64::try_from(value).ok())

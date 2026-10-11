@@ -151,22 +151,9 @@ pub(in crate::binding) fn read(
             )
         })
         .collect();
-    let body = |name: &str| -> Result<Vec<_>, AnalysisError> {
-        let starts: BTreeSet<_> = image
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == name)
-            .map(|symbol| symbol.address)
-            .collect();
-        if starts.len() != 1 {
-            return Ok(vec![]);
-        }
-        let (address, bytes) = text.function(*starts.first().unwrap())?;
-        decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)
-    };
     let reference_input = reference::Input {
-        member: body(recipe.modifier_reference_member)?,
-        conversion: body("CToken::GetFloat() const")?,
+        member: text.unique_body(image.symbols, recipe.modifier_reference_member)?,
+        conversion: text.unique_body(image.symbols, "CToken::GetFloat() const")?,
         names: semantic_names,
         key_text_offset: recipe.reader_token_offset + recipe.token_text_offset,
         value_token_offset: recipe.reader_value_token_offset,

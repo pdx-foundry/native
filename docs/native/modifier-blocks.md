@@ -130,6 +130,7 @@ aliased stores; writes beside the slot do not invalidate it. The list loop for
 | `modifier-name-implementations` / `modifier-name-reader` | Modifier method: a name implementation outside single inheritance, or a read slot that is not the shared forward (none on M452) |
 | `reader-routing` / `instruction` on `description_parameters` | Shared walker: parameter-list loop and nested serializer (SDK-741) |
 | Numeric conversion | Shared numeric method: incomplete lexical and overflow properties |
+| `modifier-numeric-member-body`, `modifier-numeric-insert-body`, `modifier-reference-member-body`, `modifier-reference-conversion-body` | A function that the build lacks (no single symbol of its name); a present body that does not match gives `-flow` or `-store` instead |
 
 Missing default flow or reference anchors retain typed gaps. An ambiguous token name produces no
 named field. Equal public reader identities must have equal blocks; both the population report

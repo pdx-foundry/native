@@ -87,7 +87,7 @@ fn direct_scan_proves_storage_and_partial_syntax_without_universal_acceptance() 
 fn scoped_token_reader_keeps_conversion_limits_and_fails_closed() {
     let fact = analyze_token(
         &TokenInput {
-            body: scan_rows(),
+            body: Some(scan_rows()),
             names: names("%i"),
             token_text_offset: 0x10,
         },
@@ -102,7 +102,7 @@ fn scoped_token_reader_keeps_conversion_limits_and_fails_closed() {
 
     let missing = analyze_token(
         &TokenInput {
-            body: scan_rows(),
+            body: Some(scan_rows()),
             names: BTreeMap::new(),
             token_text_offset: 0x10,
         },
@@ -618,8 +618,7 @@ fn raw_value_mode_adds_its_scanner_forms_without_replacing_fixed_point_scale() {
     let (rows, token_names) = binary_rows();
     let ordinary = token_conversion(&rows, &token_names, 0x10).unwrap();
     let raw = token_conversion(&scan_rows(), &names("%lli"), 0x10).unwrap();
-    let (combined, gap) = fixed_paths(Some(ordinary), Some(raw));
-    let combined = combined.unwrap();
+    let (combined, gap) = fixed_paths(Ok(ordinary), Ok(raw)).unwrap();
     assert_eq!(gap, None);
     assert_eq!(combined.scale, Known(Some(32768)));
     assert_eq!(
@@ -633,15 +632,13 @@ fn an_unproved_raw_path_keeps_partial_storage_and_syntax() {
     let (rows, names) = decimal_rows();
     let ordinary = token_conversion(&rows, &names, 0x10).unwrap();
     let forms = ordinary.literal_syntax.clone();
-    let (combined, gap) = fixed_paths(Some(ordinary), None);
-    let combined = combined.unwrap();
+    let (combined, gap) = fixed_paths(Ok(ordinary), Err("numeric-raw-conversion")).unwrap();
     assert_eq!(gap, Some("numeric-raw-conversion"));
     assert_eq!(combined.width_bits, GrammarProperty::Partial(64));
     assert_eq!(combined.literal_syntax, forms);
 
     let raw = token_conversion(&scan_rows(), &self::names("%lld"), 0x10).unwrap();
-    let (combined, gap) = fixed_paths(None, Some(raw));
-    let combined = combined.unwrap();
+    let (combined, gap) = fixed_paths(Err("numeric-token-shape"), Ok(raw)).unwrap();
     assert_eq!(gap, Some("numeric-token-shape"));
     assert_eq!(combined.scale, Unresolved);
     assert_eq!(
@@ -656,8 +653,7 @@ fn an_incompatible_raw_conversion_cannot_add_literal_forms() {
     let ordinary = token_conversion(&rows, &token_names, 0x10).unwrap();
     let forms = ordinary.literal_syntax.clone();
     let raw = token_conversion(&scan_rows(), &names("%f"), 0x10).unwrap();
-    let (combined, gap) = fixed_paths(Some(ordinary), Some(raw));
-    let combined = combined.unwrap();
+    let (combined, gap) = fixed_paths(Ok(ordinary), Ok(raw)).unwrap();
     assert_eq!(gap, Some("numeric-raw-storage"));
     assert_eq!(combined.literal_syntax, forms);
 }
@@ -745,7 +741,7 @@ fn token_value(conversion: u64, text_offset: u32) -> TokenInput {
         b extern conversion as usize
     );
     TokenInput {
-        body: decode_arm64(&bytes, 0x2000).unwrap(),
+        body: Some(decode_arm64(&bytes, 0x2000).unwrap()),
         names: BTreeMap::from([
             (0x3000, "fixed_point_text".into()),
             (0x9100, "decimal_integer".into()),
@@ -759,7 +755,7 @@ fn token_value(conversion: u64, text_offset: u32) -> TokenInput {
 #[test]
 fn token_value_methods_take_their_storage_from_the_conversion_that_they_call() {
     let fixed_point_text = fixed_point_text_rows(100_000);
-    let int = value_conversion(&token_value(0x9200, 0x10), &fixed_point_text).unwrap();
+    let int = value_conversion(&token_value(0x9200, 0x10), Some(&fixed_point_text)).unwrap();
     assert_eq!(
         (int.width_bits, int.signedness, int.scale),
         (Known(32), Known(NumericSignedness::Signed), Known(Some(1)))
@@ -768,7 +764,7 @@ fn token_value_methods_take_their_storage_from_the_conversion_that_they_call() {
         int.literal_syntax,
         GrammarProperty::Partial(vec![NumericLiteralSyntax::DecimalInteger])
     );
-    let fixed = value_conversion(&token_value(0x3000, 0x10), &fixed_point_text).unwrap();
+    let fixed = value_conversion(&token_value(0x3000, 0x10), Some(&fixed_point_text)).unwrap();
     assert_eq!(
         (fixed.width_bits, fixed.signedness, fixed.scale),
         (
@@ -781,12 +777,46 @@ fn token_value_methods_take_their_storage_from_the_conversion_that_they_call() {
     assert_eq!(int.accepted_range, Unresolved);
     assert_eq!(fixed.accepted_range, Unresolved);
 
-    let changed_scale =
-        value_conversion(&token_value(0x3000, 0x10), &fixed_point_text_rows(10_000));
+    let changed_scale = value_conversion(
+        &token_value(0x3000, 0x10),
+        Some(&fixed_point_text_rows(10_000)),
+    );
     assert_eq!(changed_scale.unwrap().scale, Unresolved);
-    assert!(value_conversion(&token_value(0x3000, 0x10), &fixed_point_text[1..]).is_none());
-    assert!(value_conversion(&token_value(0x9200, 0x18), &fixed_point_text).is_none());
-    assert!(value_conversion(&token_value(0x9300, 0x10), &fixed_point_text).is_none());
+    for (input, text) in [
+        (token_value(0x3000, 0x10), &fixed_point_text[1..]),
+        (token_value(0x9200, 0x18), &fixed_point_text[..]),
+        (token_value(0x9300, 0x10), &fixed_point_text[..]),
+    ] {
+        assert_eq!(
+            value_conversion(&input, Some(text)).unwrap_err(),
+            "numeric-token-shape"
+        );
+    }
+}
+
+#[test]
+fn a_token_value_method_lacks_a_body_or_the_fixed_point_text_that_it_calls() {
+    let fixed_point_text = fixed_point_text_rows(100_000);
+    let reason = |input: &TokenInput, text: Option<&[Instruction]>| {
+        value_conversion(input, text).unwrap_err()
+    };
+
+    // `GetInt` calls `atoi`, and never the engine's fixed-point conversion.
+    assert!(value_conversion(&token_value(0x9200, 0x10), None).is_ok());
+    assert_eq!(
+        reason(&token_value(0x3000, 0x10), None),
+        "numeric-fixed-point-text-body"
+    );
+    let mut missing = token_value(0x9200, 0x10);
+    missing.body = None;
+    assert_eq!(
+        reason(&missing, Some(&fixed_point_text)),
+        "numeric-token-body"
+    );
+    assert_eq!(
+        reason(&token_value(0x9300, 0x10), Some(&fixed_point_text)),
+        "numeric-token-shape"
+    );
 }
 
 fn signed_32_range() -> GrammarProperty<Box<NumericRange>> {
