@@ -68,6 +68,15 @@ impl Population {
     }
 }
 
+/// A registry group's value in the shape of `GrammarProperty`: `{"Known": value}`, or
+/// `"Unresolved"` when the method stopped.
+fn property<T: serde::Serialize, E>(result: &Result<T, E>) -> Value {
+    match result {
+        Ok(value) => json!({"Known": value}),
+        Err(_) => json!("Unresolved"),
+    }
+}
+
 fn unit_keys(fixed_keys: &GrammarProperty<Vec<pdx_native::Field>>) -> Vec<String> {
     match fixed_keys {
         GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) => keys
@@ -166,9 +175,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             "registry": registry,
                             "path": owner.path,
                             "units": group.units.iter().map(|unit| json!({
-                                "key": unit.key, "factor": format!("{:?}", unit.factor),
+                                "key": unit.key, "factor": property(&unit.factor),
                             })).collect::<Vec<_>>(),
-                            "combination": format!("{:?}", group.combination),
+                            "combination": property(&group.combination),
                         })
                     }));
                 }
@@ -198,4 +207,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pdx_native::internals::duration_groups::Combination;
+
+    #[test]
+    fn registry_group_values_are_properties_not_debug_text() {
+        assert_eq!(property(&Ok::<_, ()>(Some(30))), json!({"Known": 30}));
+        assert_eq!(
+            property(&Ok::<Option<i64>, ()>(None)),
+            json!({"Known": null})
+        );
+        assert_eq!(
+            property(&Ok::<_, ()>(Combination::ScaledAtRead)),
+            json!({"Known": "ScaledAtRead"})
+        );
+        assert_eq!(property(&Err::<Combination, _>(())), json!("Unresolved"));
+    }
 }

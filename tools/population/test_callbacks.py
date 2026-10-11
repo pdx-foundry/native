@@ -34,6 +34,14 @@ class CallbackCountTests(unittest.TestCase):
         self.assertEqual(report["only_unresolved_gaps"], {PATH_LIMIT: 1})
         self.assertEqual(report["answer_gaps"], {"outside": 1})
 
+    def test_a_typed_scope_in_any_prev_slot_counts(self):
+        later_slot = "this=country root=SelfLink from=[SelfLink] prev=[SelfLink,colony]"
+        answer = {"names": {"later": [later_slot], "links_only": [OTHER]}, "gaps": []}
+
+        report = count(answer, with_kinds=False)
+
+        self.assertEqual(report["typed_prev"], 1)
+
     def test_rules_carry_their_kind(self):
         answer = {"names": {"rule": ["Weighted", [OTHER]]}, "gaps": []}
 

@@ -57,7 +57,7 @@ pub struct Unit {
 }
 
 /// How later keys combine with earlier ones.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum Combination {
     /// Each key scales its value in the count slot; the last key read replaces the count.
     ScaledAtRead,

@@ -23,13 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let after = serde_json::from_slice(&std::fs::read(after)?)?;
             diff(&before, &after)
         }
-        [installation] => population(installation)?,
-        [flag, installation] if flag == "--baseline" => population(installation)?,
-        [flag, installation] if flag == "--trace" => trace_causes(|| population(installation))?,
+        [] => population()?,
+        [flag] if flag == "--baseline" => population()?,
+        [flag] if flag == "--trace" => trace_causes(population)?,
         _ => {
             return Err(
-                "usage: command-population [--baseline | --trace] INSTALLATION \
-                 | --diff BEFORE AFTER"
+                "usage: command-population [--baseline | --trace] | --diff BEFORE AFTER \
+                 (set STELLARIS_PATH)"
                     .into(),
             );
         }
@@ -57,8 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let native = Native::open(installation)?;
+fn population() -> Result<Value, Box<dyn std::error::Error>> {
+    let installation = std::env::var_os("STELLARIS_PATH").ok_or("set STELLARIS_PATH")?;
+    let native = Native::open(&installation)?;
     let bytes = read_image(installation.as_ref())?;
     let image = Image::read(&bytes)?;
     let started = std::time::Instant::now();
