@@ -45,11 +45,11 @@ inherited range at `overclock_cooldown` and `cycle_length_in_days`.
 A destination is complete when its literal conversion has no typed gap and its routing forms are
 established; the `Partial` wrappers of `Reader.numeric` and `forms` stay by design.
 
-- Registry destinations, including nested key paths: 107 in 21 registries, **97 complete, 0
-  partial, 10 failed**. The 97 are 95 signed 64-bit fixed point at scale 100000 and two signed
-  32-bit integer, all with a known range. The 10 failed ones are the `multiplier` and `mult` keys of
-  five triggered modifier blocks of `common/pop_jobs`, whose scoped destination vtable is not
-  established.
+- Registry destinations, including nested key paths and the operands of weight block operation
+  keys: 1,932 in 55 registries, **1,922 complete, 0 partial, 10 failed**. The 1,922 are 1,920
+  signed 64-bit fixed point at scale 100000 and two signed 32-bit integer, all with a known
+  range. The 10 failed ones are the `multiplier` and `mult` keys of five triggered modifier
+  blocks of `common/pop_jobs`, whose scoped destination vtable is not established.
 - Command arguments: 302, **302 complete**: 150 signed 32-bit integer and 152 signed 64-bit fixed
   point at scale 100000, all with a known range.
 

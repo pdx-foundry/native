@@ -116,6 +116,7 @@ impl Population {
                 FieldMembers::ModifierBlock(block) => {
                     self.modifier_block(owner, block, &path, gaps)
                 }
+                FieldMembers::WeightBlock(block) => self.weight_block(owner, block, &path, gaps),
                 FieldMembers::TriggeredModifier(clause) => {
                     if let Some(keys) = established(&clause.fixed_keys) {
                         self.fields(owner, keys, &path, gaps);
@@ -142,6 +143,27 @@ impl Population {
         for entry in established(&block.entries).into_iter().flatten() {
             if let pdx_native::ModifierEntry::Numeric { value } = entry {
                 self.reader(owner, path, value, gaps);
+            }
+        }
+    }
+
+    /// The fixed keys of a weight block, which reach nested blocks, and the operand of each
+    /// operation key.
+    fn weight_block(
+        &mut self,
+        owner: &str,
+        block: &pdx_native::WeightBlock,
+        path: &[String],
+        gaps: &[Gap],
+    ) {
+        if let Some(keys) = established(&block.fixed_keys) {
+            self.fields(owner, keys, path, gaps);
+        }
+        for operation in established(&block.operations).into_iter().flatten() {
+            if let Some(operand) = &operation.operand {
+                let mut operand_path = path.to_vec();
+                operand_path.push(operation.key.clone());
+                self.reader(owner, &operand_path, operand, gaps);
             }
         }
     }
