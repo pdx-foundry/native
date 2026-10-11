@@ -340,8 +340,8 @@ fn print_grammar(image: &Image, result: &GrammarResult, traced: bool) {
         );
         for alternative in &forms.alternatives {
             println!(
-                "value {:?}: accepted={}",
-                alternative.value.kind, alternative.accepted
+                "value {:?}: {:?}",
+                alternative.value.kind, alternative.verdict
             );
             for path in &alternative.paths {
                 println!("  {:?}: {:?}", path.class, path.stages);

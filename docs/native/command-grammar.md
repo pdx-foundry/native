@@ -21,8 +21,10 @@ to a base block reader is not an established rejection.
 - **The diagnostic test is essential:** the dispatch and database drivers ignore stage results
   (F1, F7). A diagnostic on any stage makes a path rejecting; without one, every result-bearing stage
   must return true in bit zero. False, unknown, unfinished and bounded paths are unresolved. An
-  alternative is listed only if all its paths accept; mixed paths, unknown reader kinds and more than
-  64 paths keep `forms` partial with a `value-acceptance` gap.
+  alternative is listed only if all its paths accept; mixed paths, unknown reader kinds, receiver
+  state and more than 64 paths (`evaluate::PATH_LIMIT`, even when every path rejects) keep `forms`
+  partial with a `value-acceptance` gap. `forms.rs` decides this once, as the alternative's
+  `Verdict`; the session only maps it.
 - A read watch records loads from command bytes that the chain has not written; script writes do
   not become construction state. The factory walk keeps only bytes agreed by every returning path
   and never enters constructor bodies for more state. An unknown receiver branch whose outcomes

@@ -111,8 +111,156 @@ fn shared_value_runs_validation_and_is_accepted() {
     let result = analyze(&input(string_read(), false_assign(), true_validation()));
     assert!(result.complete, "{result:?}");
     assert_eq!(result.alternatives.len(), 1);
-    assert!(result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict == Verdict::Accepted);
     assert_eq!(result.alternatives[0].value.kind, ReaderKind::String);
+}
+
+fn value(kind: ReaderKind) -> ValueForm {
+    ValueForm {
+        kind,
+        destination: Some(0x40),
+        reader: None,
+        initialization: None,
+        deferred_null: None,
+    }
+}
+
+fn paths(class: PathClass, count: usize, cause: Option<&'static str>) -> Vec<ChainPath> {
+    let stage = StageResult {
+        stage: Stage::PostValidate,
+        returned: None,
+        diagnostic: class == PathClass::Rejecting,
+        cause,
+    };
+
+    vec![chain(vec![stage], vec![]); count]
+}
+
+fn unresolved(causes: &[(Stage, &'static str)]) -> Verdict {
+    Verdict::Unresolved(causes.iter().copied().collect())
+}
+
+#[test]
+fn the_verdict_accepts_or_rejects_only_within_the_path_limit() {
+    let string = value(ReaderKind::String);
+    let at_limit = |class| paths(class, PATH_LIMIT, None);
+    let over_limit = |class| paths(class, PATH_LIMIT + 1, None);
+    let path_limit = unresolved(&[(Stage::PostValidate, "path limit")]);
+
+    assert_eq!(
+        verdict(&string, &at_limit(PathClass::Accepting), false),
+        Verdict::Accepted
+    );
+    assert_eq!(
+        verdict(&string, &at_limit(PathClass::Rejecting), false),
+        Verdict::Rejected
+    );
+    assert_eq!(
+        verdict(&string, &over_limit(PathClass::Accepting), false),
+        path_limit
+    );
+    assert_eq!(
+        verdict(&string, &over_limit(PathClass::Rejecting), false),
+        path_limit,
+        "paths beyond the limit that all reject are still unfinished"
+    );
+}
+
+#[test]
+fn the_verdict_names_the_reason_that_keeps_an_accepting_alternative_open() {
+    let accepting = paths(PathClass::Accepting, 2, None);
+    let mixed = unresolved(&[(Stage::Read, "mixed paths or unknown reader kind")]);
+
+    assert_eq!(
+        verdict(&value(ReaderKind::String), &accepting, true),
+        unresolved(&[(Stage::Read, "receiver-state")])
+    );
+    assert_eq!(
+        verdict(&value(ReaderKind::Unknown), &accepting, false),
+        mixed
+    );
+    assert_eq!(
+        verdict(
+            &value(ReaderKind::String),
+            &paths(PathClass::Unresolved, 1, Some("false without diagnostic")),
+            true
+        ),
+        unresolved(&[(Stage::PostValidate, "false without diagnostic")]),
+        "a stage cause is the alternative's own reason"
+    );
+}
+
+#[test]
+fn every_path_beyond_the_limit_that_rejects_leaves_the_alternative_unresolved() {
+    let mut read = Arm64::at(READ);
+    arm64!(read;
+        ldrb w8, [x0, #0x30]; cbz w8, >a; nop; a:;
+        ldrb w8, [x0, #0x31]; cbz w8, >b; nop; b:;
+        ldrb w8, [x0, #0x32]; cbz w8, >c; nop; c:;
+        mov x8, x0; mov x0, x1; add x1, x8, #0x40; b extern STRING as usize
+    );
+    let mut validation = Arm64::at(VALIDATE);
+    arm64!(validation;
+        ldrb w8, [x0, #0x33]; cbz w8, >a; nop; a:;
+        ldrb w8, [x0, #0x34]; cbz w8, >b; nop; b:;
+        ldrb w8, [x0, #0x35]; cbz w8, >c; nop; c:;
+        ldrb w8, [x0, #0x36]; cbz w8, >d; nop; d:;
+        bl extern LOG as usize; mov w0, #0; ret
+    );
+
+    let result = analyze(&input(read, false_assign(), validation));
+    let alternative = &result.alternatives[0];
+
+    assert!(alternative.paths.len() > PATH_LIMIT);
+    assert!(
+        alternative
+            .paths
+            .iter()
+            .all(|path| path.class == PathClass::Rejecting)
+    );
+    assert_eq!(
+        alternative.verdict,
+        unresolved(&[(Stage::PostValidate, "path limit")])
+    );
+    assert!(!result.complete);
+}
+
+#[test]
+fn an_alternative_that_accepts_only_under_receiver_state_is_unresolved_for_that_reason() {
+    let mut read = Arm64::at(READ);
+    arm64!(read; ldrb w8, [x0, #0x30]; cbz w8, >skip; mov x8, x0; mov x0, x1; add x1, x8, #0x40; b extern STRING as usize; skip:; ret);
+
+    let result = analyze(&input(read, false_assign(), true_validation()));
+    let string = result
+        .alternatives
+        .iter()
+        .find(|alternative| alternative.value.kind == ReaderKind::String)
+        .unwrap();
+
+    assert!(result.receiver_state);
+    assert!(
+        string
+            .paths
+            .iter()
+            .all(|path| path.class == PathClass::Accepting)
+    );
+    assert_eq!(
+        string.verdict,
+        unresolved(&[(Stage::Read, "receiver-state")])
+    );
+}
+
+#[test]
+fn the_stage_functions_sit_at_their_named_positions() {
+    let input = input(string_read(), false_assign(), true_validation());
+    let functions = stage_functions(&input, receiver(), 0x1234);
+
+    assert_eq!(functions[READ_FUNCTION], Some(READ));
+    assert_eq!(functions[MEMBER_FUNCTION], Some(0x1234));
+    assert_eq!(functions[ASSIGN_FUNCTION], Some(ASSIGN_BODY));
+    assert_eq!(functions[INITIALIZER_FUNCTION], Some(INIT));
+    assert_eq!(functions[VALIDATION_FUNCTION], Some(VALIDATE));
+    assert_eq!(functions[ROLE_FUNCTION], None);
 }
 
 #[test]
@@ -122,7 +270,7 @@ fn validation_false_without_log_is_unresolved_not_rejected() {
     let result = analyze(&input(string_read(), false_assign(), validation));
     assert!(!result.complete);
     let alternative = &result.alternatives[0];
-    assert!(!alternative.accepted);
+    assert!(alternative.verdict != Verdict::Accepted);
     assert!(
         alternative
             .paths
@@ -139,7 +287,7 @@ fn validation_false_without_log_is_unresolved_not_rejected() {
 fn false_assign_then_true_base_validation_is_unresolved() {
     let result = analyze(&input(assign_read(), false_assign(), true_validation()));
     assert!(!result.complete);
-    assert!(!result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict != Verdict::Accepted);
     assert!(
         result.alternatives[0]
             .paths
@@ -158,7 +306,7 @@ fn later_log_rejects_even_when_assign_returned_false() {
     arm64!(validation; bl extern LOG as usize; mov w0, #0; ret);
     let result = analyze(&input(assign_read(), false_assign(), validation));
     assert!(result.complete, "{result:?}");
-    assert!(!result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict != Verdict::Accepted);
     assert!(
         result.alternatives[0]
             .paths
@@ -176,7 +324,7 @@ fn validation_unknown_or_mixed_paths_are_unresolved() {
     }] {
         let result = analyze(&input(string_read(), false_assign(), validation));
         assert!(!result.complete, "{result:?}");
-        assert!(!result.alternatives[0].accepted);
+        assert!(result.alternatives[0].verdict != Verdict::Accepted);
     }
 }
 
@@ -186,7 +334,7 @@ fn diagnostic_rejects_a_true_result() {
     arm64!(validation; bl extern LOG as usize; mov w0, #1; ret);
     let result = analyze(&input(string_read(), false_assign(), validation));
     assert!(result.complete);
-    assert!(!result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict != Verdict::Accepted);
 }
 
 #[test]
@@ -200,7 +348,7 @@ fn boolean_probe_accepts_two_distinct_values_and_rejects_marker() {
     let accepted: Vec<_> = result
         .alternatives
         .iter()
-        .filter(|value| value.accepted)
+        .filter(|value| value.verdict == Verdict::Accepted)
         .collect();
     assert_eq!(accepted.len(), 1);
     assert_eq!(accepted[0].value.kind, ReaderKind::Boolean);
@@ -214,7 +362,8 @@ fn unresolved_boolean_marker_keeps_forms_partial() {
         result
             .alternatives
             .iter()
-            .any(|value| value.accepted && value.value.kind == ReaderKind::Boolean)
+            .any(|value| value.verdict == Verdict::Accepted
+                && value.value.kind == ReaderKind::Boolean)
     );
 }
 
@@ -321,7 +470,12 @@ fn known_receiver_byte_selects_the_proved_form() {
     let unknown = super::analyze(&input, receiver(), &BTreeMap::new()).0;
     assert!(!unknown.complete);
     assert!(unknown.receiver_state);
-    assert!(unknown.alternatives.iter().all(|value| !value.accepted));
+    assert!(
+        unknown
+            .alternatives
+            .iter()
+            .all(|value| value.verdict != Verdict::Accepted)
+    );
 }
 
 #[test]
@@ -352,8 +506,18 @@ fn cache_uses_slot_functions_and_established_receiver_bytes() {
     put(&mut input, other_assign);
     let different = super::analyze(&input, other, &BTreeMap::new()).0;
     assert_ne!(first.key, different.key);
-    assert!(first.alternatives.iter().any(|value| value.accepted));
-    assert!(different.alternatives.iter().all(|value| !value.accepted));
+    assert!(
+        first
+            .alternatives
+            .iter()
+            .any(|value| value.verdict == Verdict::Accepted)
+    );
+    assert!(
+        different
+            .alternatives
+            .iter()
+            .all(|value| value.verdict != Verdict::Accepted)
+    );
 }
 
 fn lookup() -> InitializationLookup {
@@ -393,7 +557,7 @@ fn inline_lookup_keeps_memory_and_runs_before_validation() {
     );
     let result = analyze(&input);
     assert!(result.complete, "{result:?}");
-    assert!(result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict == Verdict::Accepted);
     assert!(!result.alternatives[0].missing.is_empty());
     assert!(
         result.alternatives[0]
@@ -404,7 +568,7 @@ fn inline_lookup_keeps_memory_and_runs_before_validation() {
     input.forms.cache.lock().unwrap().clear();
     input.forms.initializers.insert(INIT, Initializer::NoLookup);
     let without_init = analyze(&input);
-    assert!(!without_init.alternatives[0].accepted);
+    assert!(without_init.alternatives[0].verdict != Verdict::Accepted);
 }
 #[test]
 fn conditional_or_unestablished_initializers_are_not_summarized() {
@@ -449,7 +613,7 @@ fn called_lookup_runs_its_caller_and_stores_the_intercepted_result() {
     );
     let result = analyze(&input);
     assert!(result.complete, "{result:?}");
-    assert!(result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict == Verdict::Accepted);
 }
 #[test]
 fn unclassified_initializer_call_with_command_stops_the_chain() {
@@ -475,7 +639,7 @@ fn block_and_value_branches_are_both_kept() {
         .insert(0x9000, "CEffect::Read(CReader&, EScopeType)".into());
     let result = analyze(&input);
     assert!(result.complete && result.block, "{result:?}");
-    assert!(result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict == Verdict::Accepted);
 }
 #[test]
 fn operator_bytes_are_script_input_and_survive_into_assign() {
@@ -515,7 +679,7 @@ fn unknown_call_cannot_preserve_a_vtable_for_later_assignment() {
         result
             .alternatives
             .iter()
-            .all(|alternative| !alternative.accepted)
+            .all(|alternative| alternative.verdict != Verdict::Accepted)
     );
 }
 #[test]
@@ -532,7 +696,7 @@ fn unknown_value_reader_stays_partial_for_accepting_and_rejecting_validation() {
         input.command_bindings.variable_assign = 0xb000;
         let result = analyze(&input);
         assert!(!result.complete);
-        assert!(!result.alternatives[0].accepted);
+        assert!(result.alternatives[0].verdict != Verdict::Accepted);
         assert!(
             result
                 .stops
@@ -570,7 +734,7 @@ fn direct_and_assigned_targets_both_continue_through_validation() {
         let result = analyze(&input);
         assert!(result.complete, "{result:?}");
         assert_eq!(result.alternatives[0].value.kind, ReaderKind::Target);
-        assert!(result.alternatives[0].accepted);
+        assert!(result.alternatives[0].verdict == Verdict::Accepted);
         assert_eq!(
             result.alternatives[0].paths[0].stages.last().unwrap().stage,
             Stage::PostValidate
@@ -585,7 +749,7 @@ fn diagnostic_validation_omits_a_target_alternative() {
     targets(&mut input);
     let result = analyze(&input);
     assert!(result.complete);
-    assert!(!result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict != Verdict::Accepted);
 }
 #[test]
 fn assign_result_is_kept_when_read_overwrites_the_return_register() {
@@ -677,7 +841,7 @@ fn dynamic_name_from_the_token_text_is_a_string_alternative() {
     input.forms.dynamic_name = 0xc100;
     let result = analyze(&input);
     assert!(result.complete, "{result:?}");
-    assert!(result.alternatives[0].accepted);
+    assert!(result.alternatives[0].verdict == Verdict::Accepted);
     assert_eq!(result.alternatives[0].value.kind, ReaderKind::String);
 }
 
@@ -694,7 +858,7 @@ fn deferred_reference_runs_found_and_bound_null_results() {
     let result = analyze(&input);
     assert!(result.complete, "{result:?}");
     let alternative = &result.alternatives[0];
-    assert!(alternative.accepted);
+    assert!(alternative.verdict == Verdict::Accepted);
     assert_eq!(alternative.value.kind, ReaderKind::Reference);
     assert!(!alternative.missing.is_empty());
     assert!(
@@ -761,7 +925,7 @@ fn script_kind_forks_do_not_make_equal_receiver_sides_dependent() {
         result
             .alternatives
             .iter()
-            .any(|a| a.accepted && a.value.kind == ReaderKind::String)
+            .any(|a| a.verdict == Verdict::Accepted && a.value.kind == ReaderKind::String)
     );
 }
 
@@ -813,7 +977,7 @@ fn boolean_probe_pairs_the_same_unknown_operator_decisions() {
         let boolean = result
             .alternatives
             .iter()
-            .any(|a| a.accepted && a.value.kind == ReaderKind::Boolean);
+            .any(|a| a.verdict == Verdict::Accepted && a.value.kind == ReaderKind::Boolean);
         assert_eq!(boolean, !same, "{result:?}");
         if !same {
             assert!(result.complete, "{result:?}");
@@ -835,7 +999,12 @@ fn receiver_dependence_suppresses_only_the_affected_value() {
     assert!(!result.complete);
     assert!(result.receiver_state);
     assert!(result.block);
-    assert!(result.alternatives.iter().all(|a| !a.accepted));
+    assert!(
+        result
+            .alternatives
+            .iter()
+            .all(|a| a.verdict != Verdict::Accepted)
+    );
 }
 
 #[test]
@@ -870,7 +1039,12 @@ fn receiver_origins_follow_stored_bytes_and_compared_flags() {
     );
     let result = analyze(&input(read, false_assign(), true_validation()));
     assert!(result.receiver_state, "{result:?}");
-    assert!(result.alternatives.iter().all(|a| !a.accepted));
+    assert!(
+        result
+            .alternatives
+            .iter()
+            .all(|a| a.verdict != Verdict::Accepted)
+    );
 }
 
 #[test]
@@ -891,6 +1065,6 @@ fn receiver_dependence_does_not_suppress_an_independent_value() {
         result
             .alternatives
             .iter()
-            .any(|a| a.accepted && a.value.kind == ReaderKind::String)
+            .any(|a| a.verdict == Verdict::Accepted && a.value.kind == ReaderKind::String)
     );
 }

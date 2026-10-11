@@ -74,13 +74,7 @@ pub fn getter_table(input: &GrammarInput) -> &BTreeMap<u64, Getter> {
             .nulls
             .keys()
             .map(|&address| {
-                let count = input
-                    .declarations
-                    .scope_names
-                    .as_ref()
-                    .map_or(64, Vec::len)
-                    .min(64);
-                let bits = (0..count)
+                let bits = (0..input.declarations.scope_bits())
                     .map(|bit| match &code {
                         Ok(code) => getter_bit(input, code, address, bit),
                         Err(_) => Bit::Unresolved("getter code"),
@@ -412,12 +406,13 @@ pub fn analyze(
     grammar: &super::GrammarResult,
     state: &BTreeMap<u64, u8>,
 ) -> Vec<Argument> {
+    use super::forms::Verdict;
     use crate::engine::analysis::declarations::{ScopeOutcome, scope_mask};
     use crate::{ArgumentPath, ReaderKind, TargetCheckStage};
     let mut found = Vec::new();
     if let Some(forms) = &grammar.forms {
         for value in &forms.alternatives {
-            if value.accepted && value.value.kind == ReaderKind::Target {
+            if value.verdict == Verdict::Accepted && value.value.kind == ReaderKind::Target {
                 found.push((ArgumentPath::Value, value.value.destination, None));
             }
         }

@@ -299,7 +299,7 @@ struct FormsTally {
 
 impl FormsTally {
     fn add(&mut self, name: &str, run: &Run) {
-        use command_grammar_stops::PathClass;
+        use command_grammar_stops::{PathClass, READ_FUNCTION, Verdict};
         if run.answer.completeness == Completeness::Complete
             && let Ok(result) = &run.result
             && !result.value_only()
@@ -350,7 +350,7 @@ impl FormsTally {
             self.receiver_state.insert(name.into());
         }
         for alternative in &forms.alternatives {
-            if alternative.accepted
+            if alternative.verdict == Verdict::Accepted
                 && alternative
                     .paths
                     .iter()
@@ -361,7 +361,7 @@ impl FormsTally {
                 ));
             }
             if forms.complete
-                && !alternative.accepted
+                && alternative.verdict != Verdict::Accepted
                 && alternative
                     .paths
                     .iter()
@@ -393,7 +393,7 @@ impl FormsTally {
         for stop in &forms.stops {
             if stop.reason == "form-reader-call" {
                 let entry = stop.stop.map(|stop| stop.entry);
-                let stage = if entry == forms.key.slots[0] || entry.is_none() {
+                let stage = if entry == forms.key.slots[READ_FUNCTION] || entry.is_none() {
                     "Read"
                 } else {
                     "Assign"

@@ -1,7 +1,7 @@
 //! Attach one shared proof and a constructor-selected subtype to each public reader occurrence.
 use crate::engine::analysis::{
     fields::{PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath},
-    grammar::GrammarResult,
+    grammar::{GrammarResult, forms::Verdict},
     numeric::NumericFacts,
     readers,
     scoped_numeric::{Facts, Subtype},
@@ -146,7 +146,7 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
         let offsets = forms
             .alternatives
             .iter()
-            .filter(|alternative| alternative.accepted)
+            .filter(|alternative| alternative.verdict == Verdict::Accepted)
             .filter(|alternative| alternative.value.reader.as_ref().is_some_and(is_scoped))
             .filter_map(|alternative| alternative.value.destination)
             .map(|offset| offset as i64);
@@ -233,7 +233,7 @@ pub(super) fn grammar(
                 internal
                     .alternatives
                     .iter()
-                    .filter(|alternative| alternative.accepted),
+                    .filter(|alternative| alternative.verdict == Verdict::Accepted),
             )
         {
             let point = alternative

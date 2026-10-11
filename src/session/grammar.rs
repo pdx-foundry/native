@@ -6,7 +6,7 @@ use crate::engine::analysis::references::{
 };
 use crate::engine::analysis::{
     declarations::{self, Site},
-    grammar,
+    grammar::{self, forms::Verdict},
     stop::Unresolved,
 };
 use crate::{
@@ -210,46 +210,29 @@ pub(crate) fn normalize(
                     accepted.push(crate::CommandForm::Block);
                 }
                 for alternative in &forms.alternatives {
-                    if alternative.accepted {
-                        accepted.push(crate::CommandForm::Value(form_value(
-                            &alternative.value,
-                            references,
-                        )));
-                        if let Some(detail) = value_reference_gap(&alternative.value, references) {
-                            gap(
-                                GapKind::ReaderSemantics,
-                                format!("value reference: {detail}"),
-                            );
+                    match &alternative.verdict {
+                        Verdict::Accepted => {
+                            accepted.push(crate::CommandForm::Value(form_value(
+                                &alternative.value,
+                                references,
+                            )));
+                            if let Some(detail) =
+                                value_reference_gap(&alternative.value, references)
+                            {
+                                gap(
+                                    GapKind::ReaderSemantics,
+                                    format!("value reference: {detail}"),
+                                );
+                            }
                         }
-                    }
-                    if !alternative.accepted
-                        && alternative
-                            .paths
-                            .iter()
-                            .any(|path| path.class != grammar::forms::PathClass::Rejecting)
-                    {
-                        let mut causes: BTreeSet<_> = alternative
-                            .paths
-                            .iter()
-                            .flat_map(|path| &path.stages)
-                            .filter_map(|stage| stage.cause.map(|cause| (stage.stage, cause)))
-                            .collect();
-                        if alternative.paths.len() > 64 {
-                            causes.extend(alternative.paths.iter().filter_map(|path| {
-                                path.stages.last().map(|stage| (stage.stage, "path limit"))
-                            }));
-                        }
-                        if causes.is_empty() {
-                            gap(
-                                GapKind::UnresolvedPath,
-                                "value-acceptance: Read: mixed paths or unknown reader kind".into(),
-                            );
-                        }
-                        for (stage, cause) in causes {
-                            gap(
-                                GapKind::UnresolvedPath,
-                                format!("value-acceptance: {stage:?}: {cause}"),
-                            );
+                        Verdict::Rejected => {}
+                        Verdict::Unresolved(causes) => {
+                            for (stage, cause) in causes {
+                                gap(
+                                    GapKind::UnresolvedPath,
+                                    format!("value-acceptance: {stage:?}: {cause}"),
+                                );
+                            }
                         }
                     }
                 }
@@ -849,9 +832,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn false_validation_is_partial_with_its_acceptance_gap() {
-        use grammar::forms::{Alternative, ChainPath, PathClass, Stage, StageResult, ValueForm};
+    /// The answer for a command whose only value alternative has `verdict` and no paths, so that
+    /// only the verdict can decide what the answer says about it.
+    fn verdict_answer(verdict: Verdict) -> Answer<CommandGrammar> {
+        use grammar::forms::{Alternative, ValueForm};
+
         let mut result = with_forms(false);
         std::sync::Arc::make_mut(result.forms.as_mut().unwrap())
             .alternatives
@@ -863,27 +848,69 @@ mod tests {
                     initialization: None,
                     deferred_null: None,
                 },
-                paths: vec![ChainPath {
-                    class: PathClass::Unresolved,
-                    stops: vec![],
-                    stages: vec![StageResult {
-                        stage: Stage::PostValidate,
-                        returned: Some(false),
-                        diagnostic: false,
-                        cause: Some("false without diagnostic"),
-                    }],
-                }],
+                paths: vec![],
                 missing: vec![],
-                accepted: false,
+                verdict,
             });
-        let answer = normalize(
+
+        normalize(
             Ok(&result),
             "example",
             crate::BuildId("authored".into()),
             &ReferenceFacts::default(),
-        );
+        )
+    }
+
+    fn acceptance_gaps(answer: &Answer<CommandGrammar>) -> Vec<&str> {
+        answer
+            .gaps
+            .iter()
+            .map(|gap| gap.detail.as_str())
+            .filter(|detail| detail.starts_with("value-acceptance"))
+            .collect()
+    }
+
+    #[test]
+    fn an_accepted_alternative_is_a_form_without_an_acceptance_gap() {
+        let answer = verdict_answer(Verdict::Accepted);
+
+        assert!(matches!(
+            &answer.value.forms,
+            GrammarProperty::Partial(forms) if forms.len() == 1
+        ));
+        assert!(acceptance_gaps(&answer).is_empty());
+    }
+
+    #[test]
+    fn a_rejected_alternative_is_neither_a_form_nor_a_gap() {
+        let answer = verdict_answer(Verdict::Rejected);
+
         assert_eq!(answer.value.forms, GrammarProperty::Partial(vec![]));
-        assert!(answer.gaps.iter().any(|gap| gap.detail == "value-acceptance: PostValidate: false without diagnostic"));
+        assert!(acceptance_gaps(&answer).is_empty());
+    }
+
+    #[test]
+    fn an_unresolved_alternative_gives_each_of_its_causes_as_an_acceptance_gap() {
+        use grammar::forms::Stage;
+
+        let answer = verdict_answer(Verdict::Unresolved(
+            [
+                (Stage::PostValidate, "false without diagnostic"),
+                (Stage::PostValidate, "path limit"),
+                (Stage::Read, "receiver-state"),
+            ]
+            .into(),
+        ));
+
+        assert_eq!(answer.value.forms, GrammarProperty::Partial(vec![]));
+        assert_eq!(
+            acceptance_gaps(&answer),
+            [
+                "value-acceptance: Read: receiver-state",
+                "value-acceptance: PostValidate: false without diagnostic",
+                "value-acceptance: PostValidate: path limit",
+            ]
+        );
     }
 
     #[test]
