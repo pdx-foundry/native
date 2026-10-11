@@ -1036,10 +1036,7 @@ struct CallbackSites {
 /// dispatch and inside the script effect. An anchor that the build lacks is an error; a
 /// forwarder without exactly one address is skipped.
 fn callback_sites(text: &Text, symbols: &[Symbol]) -> Result<CallbackSites, AnalysisError> {
-    let names: BTreeMap<u64, &str> = symbols
-        .iter()
-        .map(|symbol| (symbol.address, symbol.name.as_str()))
-        .collect();
+    let names = Names::new(symbols);
     let function_of = |address: u64| text.starts.range(..=address).next_back().copied();
 
     let mut targets: Vec<(u64, SiteCall)> = Vec::new();
@@ -1085,8 +1082,8 @@ fn callback_sites(text: &Text, symbols: &[Symbol]) -> Result<CallbackSites, Anal
                 continue;
             }
             if names
-                .get(&function)
-                .is_some_and(|name| name.starts_with(SCRIPT_FIRED))
+                .of(function)
+                .any(|name| name.starts_with(SCRIPT_FIRED))
             {
                 script_fired_sites += 1;
                 continue;
@@ -1183,8 +1180,10 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::{
-        argument_registers, constructs_at_x8, getter_offset, import_call_arguments, registers_read,
+        anchors, argument_registers, callback_sites, constructs_at_x8, getter_offset,
+        import_call_arguments, registers_read,
     };
+    use crate::binding::binary::declarations::Text;
     use crate::engine::analysis::assembler::arm64;
     use crate::engine::analysis::decode::{Instruction, decode_arm64};
     use crate::engine::analysis::discovery::Symbol;
@@ -1233,6 +1232,43 @@ mod tests {
         );
         assert_eq!(named.evaluating, BTreeSet::from([0x1000]));
         assert!(named.tooltips.is_empty());
+    }
+
+    #[test]
+    fn a_function_is_the_script_effect_when_any_of_its_names_is() {
+        const CALLER: u64 = 0x1000;
+        const FIRST_ANCHOR: u64 = 0x9000;
+        let code = arm64!(at CALLER;
+            bl extern 0x9000; // the first anchor
+            ret
+        );
+        let text = Text {
+            address: CALLER,
+            code: &code,
+            starts: BTreeSet::from([CALLER]),
+        };
+        let found = |caller_names: [&str; 2]| {
+            let anchors = anchors()
+                .into_iter()
+                .enumerate()
+                .map(|(index, (name, _))| Symbol {
+                    name,
+                    address: FIRST_ANCHOR + 4 * index as u64,
+                });
+            let aliases = caller_names.map(|name| Symbol {
+                name: name.into(),
+                address: CALLER,
+            });
+            let symbols: Vec<_> = anchors.chain(aliases).collect();
+            let sites = callback_sites(&text, &symbols).unwrap();
+
+            (sites.script_fired_sites, sites.sites.len())
+        };
+        let script = "CFireOnActionEffect::Execute()";
+
+        assert_eq!(found([script, "Zzz::Alias()"]), (1, 0));
+        assert_eq!(found(["Aaa::Alias()", script]), (1, 0));
+        assert_eq!(found(["Aaa::Alias()", "Zzz::Alias()"]), (0, 1));
     }
 
     fn row(address: u64, operation: &str, operands: &str) -> Instruction {

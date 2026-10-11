@@ -1,5 +1,5 @@
 //! Constructor summaries shared with the nested-object reader method.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, families::Names, references::Image};
 use crate::AnalysisError;
 use crate::binding::targets::{AnchorSlot, PersistentRecipe};
 use crate::engine::analysis::{
@@ -196,6 +196,7 @@ pub(super) fn persistent(
     image: &Image<'_>,
     text: &Text<'_>,
     data: &ReadOnlyData,
+    names: &Names<'_>,
     owner: &str,
     recipe: &PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
@@ -237,19 +238,13 @@ pub(super) fn persistent(
         })
         .map(|body| body.address)
         .collect();
-    let names_at = |address: u64| {
-        symbols
-            .iter()
-            .filter(move |symbol| symbol.address == address)
-            .map(|symbol| symbol.name.as_str())
-    };
     let full_names: BTreeSet<_> = full_entries
         .iter()
-        .flat_map(|&entry| names_at(entry))
+        .flat_map(|&entry| names.of(entry))
         .collect();
     // A branch-island stub outside the text section carries the name of the body it reaches.
     let full_stub = |target: u64| {
-        !text.starts.contains(&target) && names_at(target).any(|name| full_names.contains(name))
+        !text.starts.contains(&target) && names.of(target).any(|name| full_names.contains(name))
     };
     bodies.retain(|body| {
         let Ok(rows) = decode_arm64(&body.code, body.address) else {
@@ -276,14 +271,7 @@ pub(super) fn persistent(
             );
         }
     }
-    let name = |address| {
-        let names: BTreeSet<_> = symbols
-            .iter()
-            .filter(|symbol| symbol.address == address)
-            .map(|symbol| symbol.name.as_str())
-            .collect();
-        (names.len() == 1).then(|| names.first().unwrap().to_string())
-    };
+    let name = |address| names.unique(address).map(str::to_owned);
     let mut pages = BTreeSet::new();
     for body in &bodies {
         for row in
@@ -393,8 +381,9 @@ mod tests {
         };
         let text = Text::read(bytes, symbols).unwrap();
         let data = ReadOnlyData::default();
+        let names = Names::new(symbols);
 
-        persistent(&image, &text, &data, owner, recipe).unwrap()
+        persistent(&image, &text, &data, &names, owner, recipe).unwrap()
     }
 
     #[test]

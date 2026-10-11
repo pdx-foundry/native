@@ -1,6 +1,6 @@
 //! Collect triggered modifier clause readers from executable pointer slots, with their member and
 //! delegate bodies and the constructors of each reader's class.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, families::Names, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     declarations::Function, modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
@@ -41,14 +41,22 @@ pub(in crate::binding) fn read(
     }
 
     let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
+    let symbol_names = Names::new(image.symbols);
     let classes = points
         .keys()
         .map(|&point| {
             let class = super::families::point_class(image.symbols, &data, point)
                 .ok_or_else(|| Unresolved::new("triggered-class"))
                 .and_then(|class| {
-                    super::receivers::persistent(image, &text, &data, &class, &recipe.persistent)
-                        .map_err(|_| Unresolved::new("triggered-class-constructors"))
+                    super::receivers::persistent(
+                        image,
+                        &text,
+                        &data,
+                        &symbol_names,
+                        &class,
+                        &recipe.persistent,
+                    )
+                    .map_err(|_| Unresolved::new("triggered-class-constructors"))
                 });
 
             (point, class)

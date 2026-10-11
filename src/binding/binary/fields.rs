@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     declarations::{Text, read_only_sections},
+    families::Names,
     references::Image,
 };
 
@@ -63,11 +64,13 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
+    let names = Names::new(symbols);
     let objects = collect_objects(
         &text,
         symbols,
         pointers,
         &data,
+        &names,
         persistent_recipe,
         &mut functions,
     )?;
@@ -82,7 +85,14 @@ pub(in crate::binding) fn read(
     }
     let persistent = persistent_recipe
         .map(|recipe| {
-            super::receivers::persistent(image, &text, &data, &selection.owner_candidate, recipe)
+            super::receivers::persistent(
+                image,
+                &text,
+                &data,
+                &names,
+                &selection.owner_candidate,
+                recipe,
+            )
         })
         .transpose()?;
     Ok(FieldInput {
@@ -108,6 +118,7 @@ fn collect_objects(
     symbols: &[Symbol],
     pointers: &BTreeMap<u64, u64>,
     data: &ReadOnlyData,
+    names: &Names<'_>,
     recipe: Option<&PersistentRecipe>,
     functions: &mut Vec<Function>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
@@ -138,15 +149,7 @@ fn collect_objects(
         return Ok(Vec::new());
     }
 
-    let unique_name = |address: u64| {
-        let names: BTreeSet<_> = symbols
-            .iter()
-            .filter(|symbol| symbol.address == address)
-            .map(|symbol| symbol.name.as_str())
-            .collect();
-
-        (names.len() == 1).then(|| names.first().unwrap().to_string())
-    };
+    let unique_name = |address: u64| names.unique(address).map(str::to_owned);
     let mut objects = Vec::new();
 
     for (class, factories) in classes {
