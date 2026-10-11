@@ -331,7 +331,7 @@ impl Block<'_> {
                     super::fields::concrete_reader_id(&nested.reader.read, &nested.reader.member);
                 let concrete = |reader: &mut Reader| {
                     reader.id = Some(id.clone());
-                    reader.family = BlockFamily::Weight;
+                    reader.family = nested.reader.family;
                 };
                 concrete(&mut key.reader);
                 for alternative in &mut key.read {
