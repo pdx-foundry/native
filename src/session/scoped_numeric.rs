@@ -10,7 +10,7 @@ use crate::engine::analysis::{
 };
 use crate::{
     CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
-    GrammarProperty, Reader, ReaderKind, ScopedOperand, ScopedOperandForm, ScopedReferenceKind,
+    GrammarProperty, Reader, ReaderKind, ScopedOperand, ScopedOperandForm,
 };
 use std::collections::BTreeMap;
 
@@ -332,13 +332,9 @@ pub(super) fn attach(
             if literal {
                 values.push(ScopedOperandForm::Literal);
             }
-            for (prefix, kind) in forms.prefixes.iter().zip([
-                ScopedReferenceKind::Trigger,
-                ScopedReferenceKind::Modifier,
-                ScopedReferenceKind::ScriptValue,
-            ]) {
+            for (kind, prefix) in &forms.prefixes {
                 values.push(ScopedOperandForm::Prefixed {
-                    kind,
+                    kind: *kind,
                     prefix: format!("{prefix}{}", forms.separator),
                 });
             }
@@ -377,12 +373,12 @@ fn gap(gaps: &mut Vec<Gap>, kind: GapKind, subject: &GapSubject, detail: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::NumericConversion;
     use crate::engine::analysis::{
         numeric::NumericReader,
         scoped_numeric::{Forms, Layout, Shared},
         stop::Unresolved,
     };
+    use crate::{NumericConversion, ScopedReferenceKind};
 
     fn reader() -> Reader {
         Reader {
@@ -400,7 +396,11 @@ mod tests {
         Facts {
             shared: Shared {
                 forms: Ok(Forms {
-                    prefixes: ["trigger".into(), "modifier".into(), "value".into()],
+                    prefixes: [
+                        (ScopedReferenceKind::Trigger, "trigger".into()),
+                        (ScopedReferenceKind::Modifier, "modifier".into()),
+                        (ScopedReferenceKind::ScriptValue, "value".into()),
+                    ],
                     separator: ":".into(),
                 }),
 
