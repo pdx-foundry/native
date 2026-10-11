@@ -24,7 +24,6 @@ impl BoundAnalysis {
     pub(crate) fn inline_fixture(
         &self,
         request: &crate::FixtureRequest,
-        base: &FixtureOutcomeRegistryBinding,
     ) -> Result<Option<(FixtureOutcomeRegistryBinding, Vec<FixtureQuestionSetup>)>, String> {
         let Some(recipe) = self.declarations.and_then(|recipe| {
             recipe
@@ -52,36 +51,21 @@ impl BoundAnalysis {
         }
         let member_entry =
             verified.symbol(&format!("{}::ReadMember(CReader&, int)", recipe.owner))?;
-        let mut binding = base.clone();
-        binding.registry = request.registry().into();
-        binding.load_entry = loader + recipe.reader_call;
-        binding.reader_entry = loader + recipe.root_call;
-        binding.reader_return = loader + recipe.file_end;
-        binding.constructor_entry = loader + recipe.root_call + 4;
-        binding.member_entry = member_entry;
-        binding.inline = Some(FixtureInlineLoader {
-            root_return: binding.constructor_entry,
-            key_storage,
-        });
-        binding.fields.clear();
+        let root_return = loader + recipe.root_call + 4;
+        let binding = FixtureOutcomeRegistryBinding {
+            load_entry: loader + recipe.reader_call,
+            reader_entry: loader + recipe.root_call,
+            reader_return: loader + recipe.file_end,
+            constructor_entry: root_return,
+            member_entry,
+            inline: Some(FixtureInlineLoader {
+                root_return,
+                key_storage,
+            }),
+        };
         let mut questions = Vec::new();
         for (index, question) in request.field_questions.iter().enumerate() {
-            let mut setup = FixtureQuestionSetup {
-                index: index as u64,
-                definition: question.definition.clone(),
-                field: question.field.clone(),
-                nested: None,
-                parent_field: question.parent_field.clone(),
-                parsing: question.parsing,
-                diagnostics: question.diagnostics,
-
-                reader_id: None,
-                reader_kind: crate::ReaderKind::Unknown,
-                reader_family: crate::BlockFamily::Unknown,
-                token: None,
-                storage: None,
-                storage_unavailable: None,
-            };
+            let mut setup = FixtureQuestionSetup::unresolved(index, question);
             match verified.nested_fixture_storage(question, &root, recipe) {
                 Ok((token, storage, callee, nested)) => {
                     setup.token = Some(token);

@@ -67,6 +67,22 @@ pub(crate) struct FixtureLoader {
     pub member_entry: u64,
 }
 
+impl FixtureLoader {
+    /// The worker hooks of an ordinary registry loader.
+    pub(crate) fn outcome_binding(
+        self,
+    ) -> crate::protocol::observation::FixtureOutcomeRegistryBinding {
+        crate::protocol::observation::FixtureOutcomeRegistryBinding {
+            load_entry: self.load_entry,
+            reader_entry: self.reader_entry,
+            reader_return: self.reader_return,
+            constructor_entry: self.constructor_entry,
+            member_entry: self.member_entry,
+            inline: None,
+        }
+    }
+}
+
 /// One fresh integrity check and the immutable analysis derived from this installation.
 /// Verified static facts that a live session reads for its script-check duration tables.
 pub(crate) struct PreparedDurations<'a> {

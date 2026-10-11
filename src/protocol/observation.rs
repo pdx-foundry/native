@@ -242,7 +242,10 @@ pub(crate) struct FixtureBinding {
     pub file_name_offset: u64,
     pub string_tag_offset: u64,
     pub file_line_offset: u64,
-    pub outcome_registries: Vec<FixtureOutcomeRegistryBinding>,
+    /// `CReader::ReportMalformed(CString const&)`, shared by every registry reader.
+    pub malformed_entry: u64,
+    /// `CReader::ReportUnexpected(CString const&)`, shared by every registry reader.
+    pub unexpected_entry: u64,
     pub validation: Option<FixtureValidationBinding>,
 }
 
@@ -261,24 +264,19 @@ pub(crate) struct FixtureValidationBinding {
     pub sourced_log_source_offset: u64,
     /// Bytes below `x29` of the instance source that the engine error generated.
     pub sourced_log_generated_frame_offset: u64,
-    pub complete_entry: u64,
     pub source_file_prefix: String,
     pub source_line_prefix: String,
 }
 
-/// Exact-build hooks and storage layouts for one fixture registry.
+/// Exact-build loader hooks for the fixture's registry.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureOutcomeRegistryBinding {
-    pub registry: String,
     pub load_entry: u64,
     pub reader_entry: u64,
     pub reader_return: u64,
     pub constructor_entry: u64,
     pub member_entry: u64,
-    pub malformed_entry: u64,
-    pub unexpected_entry: u64,
-    pub fields: Vec<FixtureOutcomeFieldBinding>,
     pub inline: Option<FixtureInlineLoader>,
 }
 
@@ -408,13 +406,37 @@ pub(crate) struct FixtureQuestionSetup {
     pub storage_unavailable: Option<String>,
 }
 
+impl FixtureQuestionSetup {
+    /// A question with no established reader, token or storage yet.
+    pub(crate) fn unresolved(index: usize, question: &crate::FixtureFieldQuestion) -> Self {
+        Self {
+            index: index as u64,
+            definition: question.definition.clone(),
+            field: question.field.clone(),
+            nested: None,
+            parent_field: question.parent_field.clone(),
+            parsing: question.parsing,
+            diagnostics: question.diagnostics,
+
+            reader_id: None,
+            reader_kind: crate::ReaderKind::Unknown,
+            reader_family: crate::BlockFamily::Unknown,
+            token: None,
+            storage: None,
+            storage_unavailable: None,
+        }
+    }
+}
+
 /// The validated observation selection, resolved before starting the worker.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureSetup {
     pub file: String,
-    pub validation: bool,
+    /// The terminal after content validation, when the window includes validation.
+    pub validation_complete_entry: Option<u64>,
     pub questions: Vec<FixtureQuestionSetup>,
+    pub registry: FixtureOutcomeRegistryBinding,
     pub bindings: FixtureBinding,
 }
 
