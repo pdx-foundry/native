@@ -13,8 +13,8 @@
 //! The scan is linear and bounded. It tracks only constants, stack addresses and register copies.
 //! A frame address, such as `x29 - 0x98` after the prologue sets `x29` from the stack pointer, is
 //! a stack address.
-//! A call clears the caller-saved registers, and any other instruction clears the register that
-//! it may write. It does not follow branches, so a value that arrives on another path is unknown:
+//! A call clears the caller-saved registers, and any other instruction clears the registers that
+//! it may write, including the second register of a load pair. It does not follow branches, so a value that arrives on another path is unknown:
 //! the target of a conditional branch is a join, where the scan forgets every register and every
 //! built object. A loop before the literal is harmless, since the literal is built after it.
 //! The target of an unconditional `b` is not a join. If a constructor closes a loop with `b`
@@ -215,6 +215,9 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             if let Some(base) = writeback_base(word) {
                 registers[base] = Value::Unknown;
             }
+            for register in second_written(word) {
+                registers[register] = Value::Unknown;
+            }
             registers[(word & 31) as usize] = Value::Unknown;
         }
     }
@@ -291,6 +294,23 @@ fn writeback_base(word: u32) -> Option<usize> {
     let pair_writeback = word & 0x3a00_0000 == 0x2800_0000 && word & 0x0080_0000 != 0;
     let single_writeback = word & 0x3b20_0400 == 0x3800_0400;
     (pair_writeback || single_writeback).then_some((word >> 5 & 31) as usize)
+}
+
+/// The registers other than the low register field that a load or store writes: the second
+/// register of a load pair, and the status register of an exclusive store or the compare
+/// registers of a compare-and-swap, which use the same fields. Clearing a field that an
+/// instruction of the exclusive class only reads is conservative.
+fn second_written(word: u32) -> Vec<usize> {
+    let pair_load = word & 0x3c40_0000 == 0x2840_0000;
+    let exclusive = word & 0x3f00_0000 == 0x0800_0000;
+    let second = (word >> 10 & 31) as usize;
+    let status = (word >> 16 & 31) as usize;
+    match (pair_load, exclusive) {
+        (true, _) => vec![second],
+        // A compare-and-swap pair also writes the register after its first compare register.
+        (_, true) => vec![second, status, (status + 1).min(31)],
+        _ => Vec::new(),
+    }
 }
 
 /// The literal as a directory path without trailing `/`, when that path is nonempty.
@@ -633,6 +653,31 @@ mod tests {
             resolve(&[function(overwritten.bytes())], &BTreeMap::new()),
             Directory::Missing
         );
+    }
+
+    #[test]
+    fn a_load_pair_or_an_exclusive_store_clears_the_register_outside_the_low_field() {
+        let writes: [fn(&mut Arm64); 4] = [
+            |code| arm64!(code; ldp x0, x1, [sp, #16]),
+            |code| arm64!(code; ldxp x0, x1, [x2]),
+            |code| arm64!(code; stxr w1, x2, [x3]),
+            |code| arm64!(code; cas x1, x2, [x3]),
+        ];
+        for write in writes {
+            let mut code = Arm64::at(0x1000);
+            code.address(1, EXAMPLES);
+            write(&mut code);
+            arm64!(code; add x0, sp, #8);
+            code.call(STRING);
+            assert!(scan(&function(code.bytes()), &anchors()).built.is_empty());
+        }
+
+        // A store pair reads both registers, so the literal survives it.
+        let mut stored = Arm64::at(0x1000);
+        stored.address(1, EXAMPLES);
+        arm64!(stored; stp x0, x1, [sp, #16]; add x0, sp, #8);
+        stored.call(STRING);
+        assert_eq!(scan(&function(stored.bytes()), &anchors()).built.len(), 1);
     }
 
     #[test]
