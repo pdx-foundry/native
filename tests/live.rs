@@ -2575,9 +2575,10 @@ async fn close_confirmed(game: &mut Game) -> Outcome {
         return Err(format!("disposal: {disposal:?}").into());
     }
     // A later check of this case may still fail, so its diagnostics must outlive the close.
-    if !game.work_directory().is_some_and(std::path::Path::exists) {
+    let Some(work) = game.work_directory().filter(|work| work.exists()) else {
         return Err("a confirmed close removed the kept work directory".into());
-    }
+    };
+    require_owner_records(work)?;
     // A repeated close gives the same result, and a closed game answers nothing.
     if game.close().await? != Disposal::Confirmed {
         return Err("the second close gave another disposal".into());
@@ -2967,6 +2968,18 @@ fn owned_identities(
     Ok(owned)
 }
 
+/// The cleanup gate finds a case's processes only through `owner.json` and `worker-owned.json`,
+/// so a closed game that left no readable record of its game and its worker fails the case
+/// instead of leaving the gate with nothing to check.
+fn require_owner_records(work: &std::path::Path) -> Outcome {
+    let session = work.join("session");
+    let owner = required_json(&session.join("owner.json"))?;
+    identity_pid(&owner["game"]).ok_or("owner.json: no game pid")?;
+    let worker = required_json(&session.join("worker-owned.json"))?;
+    identity_pid(&worker).ok_or("worker-owned.json: invalid pid")?;
+    Ok(())
+}
+
 fn identity_pid(identity: &serde_json::Value) -> Option<u32> {
     identity["pid"].as_u64()?.try_into().ok()
 }
@@ -2983,6 +2996,11 @@ fn optional_json(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("{}: {error}", path.display()).into()),
     }
+}
+
+/// The JSON file at `path`; a session that did not write it is an error.
+fn required_json(path: &std::path::Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    optional_json(path)?.ok_or_else(|| format!("{}: not written", path.display()).into())
 }
 
 /// The processes that are a recorded game, or members of a recorded worker's process group. The
@@ -3127,10 +3145,11 @@ fn failed_cases_keep_their_work_directories() -> Outcome {
     Ok(())
 }
 
-/// A failed or incomplete process inventory fails the gate, and a process left in a recorded
-/// worker's group, or recorded as the game, is found after its parent has exited and it is no
-/// longer a child of this process. Uses a stand-in work directory and a compiled stub, because
-/// macOS kills a copied Apple binary; starts no game.
+/// A failed or incomplete process inventory fails the gate, a closed game without its owner
+/// records fails, and a process left in a recorded worker's group, or recorded as the game, is
+/// found after its parent has exited and it is no longer a child of this process. Uses a
+/// stand-in work directory and a compiled stub, because macOS kills a copied Apple binary; starts
+/// no game.
 fn cleanup_gate_checks() -> Outcome {
     use std::os::unix::process::{CommandExt, ExitStatusExt};
     let ps = |status: i32, stdout: &str| std::process::Output {
@@ -3150,6 +3169,7 @@ fn cleanup_gate_checks() -> Outcome {
             return Err(format!("a malformed inventory row was accepted: {row:?}").into());
         }
     }
+    owner_record_checks()?;
     // The supervisor's own platform is macOS; elsewhere only the inventory rules apply.
     if !cfg!(target_os = "macos") {
         return Ok(());
@@ -3220,6 +3240,42 @@ fn cleanup_gate_checks() -> Outcome {
         return Err("a process recorded as the game was not found".into());
     }
     Ok(())
+}
+
+/// A closed game must leave a game identity in `owner.json` and a worker identity in
+/// `worker-owned.json`; a missing, renamed or null record fails.
+fn owner_record_checks() -> Outcome {
+    let work = tempfile::tempdir()?;
+    let session = work.path().join("session");
+    std::fs::create_dir(&session)?;
+    let identity = r#"{"pid":1,"started_seconds":0,"started_microseconds":0}"#;
+    let record = |file: &str, text: &str| std::fs::write(session.join(file), text);
+    let expect_failure = |state: &str| -> Outcome {
+        match require_owner_records(work.path()) {
+            Err(_) => Ok(()),
+            Ok(()) => Err(format!("owner records were accepted with {state}").into()),
+        }
+    };
+
+    expect_failure("no record")?;
+    record("owner.json", &format!(r#"{{"game":{identity}}}"#))?;
+    expect_failure("no worker record")?;
+    record("worker-owned.json", identity)?;
+    require_owner_records(work.path())?;
+
+    std::fs::rename(
+        session.join("owner.json"),
+        session.join("owner-renamed.json"),
+    )?;
+    expect_failure("a renamed owner record")?;
+    record("owner.json", r#"{"game":null}"#)?;
+    expect_failure("a null game")?;
+    record("owner.json", &format!(r#"{{"game":{identity}}}"#))?;
+    std::fs::rename(
+        session.join("worker-owned.json"),
+        session.join("worker-renamed.json"),
+    )?;
+    expect_failure("a renamed worker record")
 }
 
 /// Kill the process with this PID when dropped. Only for a process that this file started.
