@@ -52,7 +52,9 @@ evaluation leaves a scope as it found it ([engine commands](engine-commands.md#o
   (`export_resource_stockpile_to_variable`, `export_modifier_to_variable`,
   `export_trigger_value_to_variable`) or copy it with a qualified operand.
 
-## World pins on M451-hotfix
+## World pins
+
+These pins are for M451-hotfix.
 
 - `CInGameIdler::UpdateInternal(bool)` is `0x10086de60`. The pause is at `+4`, after its first
   `sub sp, sp, #0xe0`; the expected caller chain is `CGameIdler::Idle(bool)`, then
@@ -70,7 +72,7 @@ evaluation leaves a scope as it found it ([engine commands](engine-commands.md#o
 
 ## Observed country-flag countdown
 
-The five SDK-646 durations agreed with the [flag store countdown](durations.md#flag-store-countdown-m45-release)
+The five SDK-646 durations agreed with the [flag store countdown](durations.md#flag-store-countdown)
 over 90 days: one decrement per engine day; `days = 0` becomes -1 on day 1 and stays; negative
 counts stay; `years = 5965233` wraps to -2147483416 and stays. This is country-flag behavior on
 this build and fixture, not the update frequency of every flag owner.

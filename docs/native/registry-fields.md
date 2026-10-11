@@ -17,7 +17,9 @@ classification is resolved. An `OutsideMethod` gap states the boundary and can a
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
 
-## Current M452 sweep
+## Current sweep
+
+This sweep ran on M452.
 
 `tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v30`) holds
 the baseline: **164 registries, 13 complete, 151 partial, 0 failed**, 1,593 root and 46 nested
@@ -35,7 +37,7 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   establish its member family. `potential`, `allow`, `effect`
   and `init_effect` enter only as a country with self-linked root, from and prev
   ([block entry contexts](#block-entry-contexts)). `ai_weight` keeps an entry gap: a template
-  helper evaluates it on an array element ([weight blocks](weight-blocks.md#entry-contexts-m452)).
+  helper evaluates it on an array element ([weight blocks](weight-blocks.md#entry-contexts)).
   The acceptance test `council_agenda_fields_are_complete_with_every_milestone_4_fact`
   (`cargo parity council_agenda`) lists each missing fact and typed gap in one run. It accepts
   that one `ai_weight` gap and the range gaps of those four weight keys, when their storage is
@@ -206,7 +208,9 @@ Pitfalls:
   destination; conditional normalization also accounts for unresolved and rejected paths. Do not
   merge them: removing the last check promotes conditional facts.
 
-### Read conditions and use-time inheritance (M45-release)
+### Read conditions and use-time inheritance
+
+These facts are for M45-release.
 
 - `CCouncilAgenda::ReadMember` (`0x10020bfa8`) tests presence bytes at `+0x6d0` and `+0x6d8`. Both
   sides reach `CReader::Read(int&)` after clearing the value at `+0x6d4` or `+0x6dc`: the branches
@@ -353,7 +357,7 @@ methods: it passes `this` plus the block's storage offset to a trigger evaluator
 executor or a weight evaluator (`CTrigger::Evaluate`, `EvaluateExtended`, `CEffect::Execute`,
 `ExecuteExtended`, `CRootEffect::Execute`, and, called directly, `CAndTrigger::ActualEvaluate`,
 `SafeExecuteEffect` and `SafeExecuteEffectExtended`; the weight evaluators are on
-[weight blocks](weight-blocks.md#entry-contexts-m452)), with a scope in `x1`. The method either builds the scope itself
+[weight blocks](weight-blocks.md#entry-contexts)), with a scope in `x1`. The method either builds the scope itself
 (`CTraditionType::IsPotential(CCountry const*)`: a fresh scope, `SetCountry`, then `this + 0x108`)
 or takes it from its caller (`CCouncilAgenda::IsPotential(CEventScope&, CString*)` evaluates
 `this + 0x1c8` with its scope parameter; `CGovernment::UpdateCouncilAgenda` builds that scope).
@@ -511,7 +515,7 @@ effect and weight blocks in 88 of the 164 registries. Of the 239 trigger and eff
 have contexts and no entry gap, 54 have contexts and a gap, and 31 have none (SDK-735;
 154, 50 and 35 before); 26 keep several
 contexts with a known `this`, 66 name a typed `from` and 4 a typed `prev`. The 73 weight blocks
-are on [weight blocks](weight-blocks.md#entry-contexts-m452). 6 registries have 7 direct
+are on [weight blocks](weight-blocks.md#entry-contexts). 6 registries have 7 direct
 evaluation calls in the owner's methods whose block the method cannot name. SDK-726's two rules
 changed 10 blocks in 6 registries, each only removing an unresolved context and its gaps: the
 register saves those of astral action `potential` and `is_exhausted`,
@@ -557,7 +561,7 @@ context and loses its path-limit gap. Its run starts at
 `CPlanetModifier::GetSpawnChance(CEventScope&)`, which calls `IsPotential`. Before, the run entered
 `GetRawFactor` as a scope receiver, and its modifier loop used up the path limit before a path
 reached the evaluation in `IsPotential`. Anomalies and civics gain unnamed weight evaluations
-([weight blocks](weight-blocks.md#entry-contexts-m452)).
+([weight blocks](weight-blocks.md#entry-contexts)).
 SDK-732 part 1, which attributes evaluations through the block's own vtable and direct evaluator
 calls in any function with a type pointer, changed 28 blocks in 13 registries; no block lost a
 context. 25 trigger and effect blocks and 2 weight blocks (technology `ai_weight` and
@@ -711,7 +715,7 @@ truncates the pointer even though the register number stays the same.
 
 - 21 trigger and effect blocks have no attributed evaluation and 1 is named only by tooltip calls
   (25 before SDK-735). The 35 weight blocks with this gap are on
-  [weight blocks](weight-blocks.md#entry-contexts-m452). By group, read by hand on M452:
+  [weight blocks](weight-blocks.md#entry-contexts). By group, read by hand on M452:
   - *Offset getters.* Specialist subject type `on_progress_complete` resolves (above). Agreement
     term value `activate_effect` and `deactivate_effect` keep the gap:
     `CAgreementManager::CreateAgreement` calls `GetActivateEffect` on each element of the term
@@ -766,7 +770,7 @@ truncates the pointer even though the register number stays the same.
 - Path, loop and step limits are gaps only where a contradiction appears (41 trigger and effect
   blocks at the path limit, 15 at the loop limit); 16 stop at a branch on an unknown value and 4 at
   an instruction. The weight blocks' bounds are on
-  [weight blocks](weight-blocks.md#entry-contexts-m452).
+  [weight blocks](weight-blocks.md#entry-contexts).
 - 7 trigger and effect blocks and 1 weight block keep `no-caller`, and 4 trigger blocks keep
   `caller-depth`. These gaps are already narrow; the wrapper that each one ends at:
   - `no-caller`: casus belli `destroy_if` (`CCasusBelli::ShouldDestroyScripted`), colony

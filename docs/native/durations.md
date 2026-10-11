@@ -31,7 +31,9 @@ So `months = 2 days = 3` stores operand 3 with factor 30 and executes as 90. A l
 the operand only under the [scoped operand rules](scoped-numeric.md). `add_timed_trait` has the
 same read shape but passes the product to `CLeader::AddTimedTrait`.
 
-## Flag store countdown (M45-release)
+## Flag store countdown
+
+These facts are for M45-release.
 
 - `CPdxIntegerFlags::SetFlag` (`0x1022a2688`), in mode 0, replaces an existing flag's date and
   count. Mode 1 keeps the earlier date and the larger count; the timed-flag effect does not use it.

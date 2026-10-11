@@ -122,7 +122,7 @@ swap's name carries `inherit_name` as a field condition, and the swap tooltips c
 `inherit_effects`. The tradition icon (`GFX_` and the key) is composed by interface code, outside
 that method. SDK-597 must preserve the processing stage and unresolved context. This is not a new
 exclusion from SDK-600. The exact-build findings and remaining work are in
-[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-m45-release)
+[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance)
 and [derived names](native/derived-names.md).
 
 ## Release and later work

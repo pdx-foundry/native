@@ -46,14 +46,14 @@ root at `+0x1d0`, and ends the file at `+0xa8`. The logger's formatted and unfor
 calls moved to `0x1025087e4` and `0x1025088b8`; the scripted-trigger stream call is `0x10212388c`.
 The tradition reader return is `0x100ce3054`, immediately after its reader call. Trigger writes
 keep the `CAndTrigger` address point `0x103095ee8` and the child-array address point
-`0x103000458`. The world pins are on [ready-world observations](ready-world.md#world-pins-on-m451-hotfix).
+`0x103000458`. The world pins are on [ready-world observations](ready-world.md#world-pins).
 Raw symbol tables, disassembly, vtable slots, the old-to-new address map and capture scripts are
 in `.local/sdk-650/hotfix/`.
 
 Pitfalls of this port:
 
 - The shared scoped-body matcher broke on changed compiler source paths and relocated local `adr`
-  bases; see [scoped numeric](scoped-numeric.md#transfer-to-the-451-hotfix).
+  bases; see [scoped numeric](scoped-numeric.md#transfer-compiler-paths-and-jump-table-bases).
 - Relocated store IDs change row order: static parity compares dynamic-namespace rows without
   assuming order.
 - The SDK-533 live storage record (`tests/expected/m45/field-storage-sdk533.json` at `b9dd059`)
@@ -82,10 +82,10 @@ Pitfalls of this port:
   `0x447a` moved up by 9, and IDs from `0x44fa` up by 8 (`yes` is `0x3ff8`, special-project
   `fleet_power` is 18433). Derive each token from the build; do not apply an offset. Tests that
   assert a token number and the scoped `GetValue` shapes, which pin the token switch, need the new
-  values; see [scoped numeric](scoped-numeric.md#transfer-to-m452).
+  values; see [scoped numeric](scoped-numeric.md#transfer-store-pages-and-token-ids).
 - **`CCountry` lost 0xc0 bytes** before its name and flags: `GetNameNoThe` adds `+0x13e0` (was
   `+0x14a0`), `CEventScope::GetFlags` reads country flags at `+0x19a0` (was `+0x1a60`). No recipe
-  holds a `CCountry` offset, but the retired [world pins](ready-world.md#world-pins-on-m451-hotfix)
+  holds a `CCountry` offset, but the retired [world pins](ready-world.md#world-pins)
   are M451-hotfix only.
 - **A store to a global through an `adrp` page** was a literal page offset in canonical shapes, so
   the prefix shape broke when `CPostInitVariableValueDatabase::_pInstance` moved. Canonical shapes
@@ -93,7 +93,7 @@ Pitfalls of this port:
 - **Engine changes, not port defects:** six AI platform effects, the triggers
   `is_preferred_platform_weapons` and `pop_ethics_divergence`, the define
   `DESIGNER_STARBASE_WEAPON_PREF_MUL`, the edict container `relay_network_modifier`, and one
-  country modifier node instead of two ([modifier masks](modifier-masks.md#result-on-m452)).
+  country modifier node instead of two ([modifier masks](modifier-masks.md#node-result)).
   `STATION_BUILD_DISTANCE_MAX`, listed as new in the 4.5.2 notes, was already in the M451-hotfix
   executable.
   Civics lost `multiply_by_habitability_effect_modifier`, and installed content loads 45,583

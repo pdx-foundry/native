@@ -84,9 +84,9 @@ method confirmed them and corrected one.
 - **Parse-time containers.** The registry field method reads them; see
   [container masks](#container-masks) below.
 
-## Result on M452
+## Node result
 
-34 nodes. 33 have a followed construction and a resolved mask; node 0 is a gap. Node 14 has two
+On M452 the graph has 34 nodes. 33 have a followed construction and a resolved mask; node 0 is a gap. Node 14 has two
 owners, and node 31 (the ship) has two masks. `tests/expected/m452/modifier-nodes.json` holds the
 whole answer. M452 has one country node where M451-hotfix had two: the M451-hotfix node 1, which
 had no source nodes, is gone, and the colony node no longer receives it. Every other node keeps its
@@ -227,9 +227,9 @@ Stated assumptions, true for M451-hotfix by the scans above: no code writes a co
 between its construction and the check, and the galactic-object initializer runs before any parse.
 Extend the walk when a new build shows another writer.
 
-### Result on M452
+### Container result
 
-`tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
+On M452, `tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
 fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys, with no unresolved
 modifier field. The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
 `__common` form (psionic aura `triggered_system_modifier`, system) resolve. Tradition `modifier`

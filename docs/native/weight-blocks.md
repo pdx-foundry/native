@@ -115,9 +115,9 @@ not read these functions. The read scope of `limit` and `potential`, and of the 
 read scope comes from their keys, stays `Unresolved` with an `OutsideMethod` gap: decision D5(a), a
 [recorded exception](../design/simplification.md#decisions-of-2026-10-07) with its stated limit.
 
-## Keyword domains (M452)
+## Keyword domains
 
-Executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`. `Field.domain` of
+M452 executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`. `Field.domain` of
 `calc` and `mode` is `Listed`; both lists equal the config's `scaled_modifier_calc` and
 `complex_maths_enum`.
 
@@ -198,7 +198,9 @@ civics; `ai_location_weight` in leader classes; `weight` in `common/galactic_foc
 join since the shared evaluator runs it (SDK-547). The sweep lists them under
 `modifier_blocks.failed_persistent_fields`.
 
-## Entry contexts (M452)
+## Entry contexts
+
+These results are for M452.
 
 `Field.entry_contexts` of a weight field comes from the [block entry context
 method](registry-fields.md#block-entry-contexts), as for a trigger block (SDK-733). The weight

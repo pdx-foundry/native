@@ -94,9 +94,11 @@ enough, and a known range does not close `numeric-overflow`.
 | `CToken::GetInt()`, `CToken::GetFloat()` | `Unresolved` | No live fixture reaches a weight key. `GetFloat` scales a fraction of up to five digits; see [token value methods](#token-value-methods). |
 
 Scoped literals inherit these ranges only when their concrete storage is established; see
-[scoped numeric](scoped-numeric.md#engine-facts-and-method-m45-release-to-m452).
+[scoped numeric](scoped-numeric.md#engine-facts-and-method).
 
-## Engine boundary facts (M451-hotfix)
+## Engine boundary facts
+
+These facts are for M451-hotfix.
 
 - Every matched token conversion loads the text pointer from token `+0x10`; the wrappers pass
   their token at reader `+0x278`. The scanner gets no length, end pointer or `%n`. Simple
