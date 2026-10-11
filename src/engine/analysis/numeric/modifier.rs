@@ -63,6 +63,8 @@ pub(super) fn analyze(
 pub(crate) struct MemberTokens {
     pub name: i64,
     pub data: i64,
+    /// The callee that reads the integer after the `data` token.
+    pub data_reader: String,
     /// The vtable slot of the name object that reads the `name` token.
     pub name_read_slot: u64,
 }
@@ -78,9 +80,16 @@ pub(crate) fn member_tokens(input: &ModifierInput) -> Result<MemberTokens, Unres
             .and_then(|value| i64::try_from(value).ok())
             .ok_or(Unresolved::new("modifier-base-token"))
     };
+    // A call target without a name canonicalizes to `?`.
+    let data_reader = binding
+        .get("other_integer_reader")
+        .filter(|callee| callee.as_str() != "?")
+        .ok_or(Unresolved::new("modifier-base-token"))?;
+
     Ok(MemberTokens {
         name: token("other_token_a")?,
         data: token("other_token_b")?,
+        data_reader: data_reader.clone(),
         name_read_slot: number(&binding, "name_read_slot")
             .ok_or(Unresolved::new("modifier-base-token"))?,
     })

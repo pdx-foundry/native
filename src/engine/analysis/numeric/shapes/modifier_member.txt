@@ -14,7 +14,7 @@ cmp w2,#{other_token_b}
 b.ne @+13
 add x1,xr9,#{other_integer_offset}
 mov x0,xr7
-bl CALL = other_integer_reader
+bl CALL = {other_integer_reader}
 mov wr8,#0x1
 b @+155
 ldr x0,[xr9,#{other_reader_offset}]
