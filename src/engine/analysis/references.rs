@@ -149,7 +149,7 @@ pub enum Missing {
     ScriptedTriggerPlaceholder,
 }
 
-/// The lookup semantics that complete shapes establish. `None` is an unresolved fact.
+/// The lookup semantics that complete shapes establish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lookup {
     /// When the lookup runs.
@@ -157,9 +157,9 @@ pub struct Lookup {
     /// Which item the key selects, when the search was qualified.
     pub key_match: Option<KeyMatch>,
     /// Whether an empty key is looked up like any other key.
-    pub empty_key_looked_up: Option<bool>,
+    pub empty_key_looked_up: bool,
     /// What a key that selects no item yields.
-    pub on_missing: Option<Missing>,
+    pub on_missing: Missing,
 }
 
 /// Everything established about one reference reader.
@@ -317,8 +317,8 @@ impl Method<'_> {
         let lookup = Lookup {
             stage: Stage::WhileReading,
             key_match,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         };
 
         Ok((lookup, null))
@@ -349,8 +349,8 @@ impl Method<'_> {
         let lookup = Lookup {
             stage: Stage::Deferred,
             key_match,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         };
 
         Ok((lookup, null))
@@ -377,8 +377,8 @@ impl Method<'_> {
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: None,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
+            empty_key_looked_up: true,
+            on_missing: Missing::ScriptedTriggerPlaceholder,
         })
     }
 

@@ -747,8 +747,8 @@ mod tests {
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
-                empty_key_looked_up: Some(true),
-                on_missing: Some(Missing::NullObject),
+                empty_key_looked_up: true,
+                on_missing: Missing::NullObject,
             },
             execution: Execution::Inline {
                 null: "TPdxNullObject<CDistrictType>::_pInstance".into(),

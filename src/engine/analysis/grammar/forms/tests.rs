@@ -532,8 +532,8 @@ fn lookup() -> InitializationLookup {
         lookup: Lookup {
             stage: LookupStage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         },
         execution: Execution::Inline {
             null: "TPdxNullObject<Item>::_pInstance".into(),

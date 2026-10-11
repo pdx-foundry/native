@@ -155,8 +155,8 @@ fn control_01_ship_map_skips_an_empty_key_and_selects_the_null_object() {
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::Equal),
-                empty_key_looked_up: Some(false),
-                on_missing: Some(Missing::NullObject),
+                empty_key_looked_up: false,
+                on_missing: Missing::NullObject,
             },
             execution: Execution::Inline {
                 null: "TPdxNullObject<CShipSize>::_pInstance".into(),
@@ -177,8 +177,8 @@ fn control_02_district_scan_selects_the_first_equal_item() {
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
-                empty_key_looked_up: Some(true),
-                on_missing: Some(Missing::NullObject),
+                empty_key_looked_up: true,
+                on_missing: Missing::NullObject,
             },
             execution: Execution::Inline {
                 null: "TPdxNullObject<CDistrictType>::_pInstance".into(),
@@ -202,8 +202,8 @@ fn control_03_planet_getter_is_an_equal_hash_search_with_a_null_substitute() {
         Lookup {
             stage: Stage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         }
     );
     assert_eq!(
@@ -559,11 +559,11 @@ fn a_nonempty_scan_and_a_plain_map_state_their_empty_key() {
         &district(shape("initializer_scan_nonempty"), &values),
         DISTRICT,
     ));
-    assert_eq!(scan.lookup.empty_key_looked_up, Some(false));
+    assert!(!scan.lookup.empty_key_looked_up);
     assert_eq!(scan.lookup.key_match, Some(KeyMatch::FirstEqual));
 
     let map = found(initialization(&ship(shape("initializer_map")), SHIP));
-    assert_eq!(map.lookup.empty_key_looked_up, Some(true));
+    assert!(map.lookup.empty_key_looked_up);
     assert_eq!(map.lookup.key_match, Some(KeyMatch::Equal));
 }
 
@@ -619,7 +619,7 @@ fn initializer_execution_requires_the_whole_inline_body_and_an_unconditional_loo
         DISTRICT,
     ));
     assert_eq!(original.execution, inline);
-    assert_eq!(original.lookup.empty_key_looked_up, Some(true));
+    assert!(original.lookup.empty_key_looked_up);
 
     let extra_store = mutated(shape("initializer_scan"), "ret", "str xzr,[x0,#0x78]\nret");
     let changed = district(&extra_store, DISTRICT_VALUES);
@@ -633,5 +633,5 @@ fn initializer_execution_requires_the_whole_inline_body_and_an_unconditional_loo
         DISTRICT,
     ));
     assert_eq!(conditional.execution, inline);
-    assert_eq!(conditional.lookup.empty_key_looked_up, Some(false));
+    assert!(!conditional.lookup.empty_key_looked_up);
 }

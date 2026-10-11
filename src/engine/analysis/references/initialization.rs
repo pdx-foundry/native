@@ -114,8 +114,8 @@ impl Method<'_> {
                 lookup: Lookup {
                     stage: Stage::OwnerInitialization,
                     key_match: found.key_match,
-                    empty_key_looked_up: Some(found.empty_key_looked_up),
-                    on_missing: Some(Missing::NullObject),
+                    empty_key_looked_up: found.empty_key_looked_up,
+                    on_missing: Missing::NullObject,
                 },
                 execution: found.execution,
             }),

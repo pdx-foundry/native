@@ -358,7 +358,7 @@ pub(in crate::binding) fn initializers(
             Initialization::Lookup(lookup) => {
                 let execution = match &lookup.execution {
                     Execution::Inline { null } => LookupExecution::Inline {
-                        always: lookup.lookup.empty_key_looked_up == Some(true),
+                        always: lookup.lookup.empty_key_looked_up,
                         null: super::declarations::unique(symbols, null)?,
                     },
                     Execution::Getter {

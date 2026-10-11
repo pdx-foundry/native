@@ -280,8 +280,8 @@ fn a_deferred_reader_with_a_forwarded_scan_is_a_deferred_first_equal_lookup() {
         Ok(Lookup {
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         })
     );
     assert_eq!(
@@ -421,8 +421,8 @@ fn an_immediate_reader_looks_up_while_reading_and_names_its_own_clone() {
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         })
     );
     assert_eq!(
@@ -549,8 +549,8 @@ fn the_trigger_lookup_runs_while_reading_and_makes_a_placeholder_on_a_miss() {
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: None,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
+            empty_key_looked_up: true,
+            on_missing: Missing::ScriptedTriggerPlaceholder,
         })
     );
 }
