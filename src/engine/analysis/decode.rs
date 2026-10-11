@@ -3,13 +3,12 @@
 use std::collections::BTreeMap;
 
 use capstone::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::declarations::number;
 
 /// One fully decoded ARM64 instruction. This establishes no higher-level reader semantics.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Instruction {
     /// Unsigned virtual address in the selected executable slice.
     pub address: u64,
