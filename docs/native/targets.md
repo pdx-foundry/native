@@ -14,11 +14,11 @@
 
 M45-observe ARM64 slice SHA-256 is `1e0c9aec45650272fcaecba2eb47f8dce8f17bc08ef2b992be18c99ae098c623`. M45-release ARM64 slice SHA-256 is `a4cb49ad17a84ef6bf438019a50d3a66362c80731f8359888ddbce47c0d0aab9` (85,076,200 bytes). M451-hotfix ARM64 slice SHA-256 is `2aeb9e15241bb114fd9f35a2dd09b454a5df6a0b1948b229d9eb83123e665c21`. M452 ARM64 slice SHA-256 is `573e0f2511317e83f47a4d11f9c48f31361fe1cbb68900aae99ca945b2e47507` (85,110,152 bytes). Universal-image identity alone does not select process architecture; mixed image/slice identities are unsupported. Per-run manifests in the bundles keep OS, LLDB, fixture and content identities. Intel and ARM64 observations are not interchangeable.
 
-M452 is the only catalogued build. Native keeps full-release targets only, and a patch is not
-admitted automatically; SDK-557 is the update rehearsal on the next build. Native supports one
-release at a time: SDK-674 removed the M45-release record and pins (in Git at `b9dd059`), and
-SDK-714 replaced the M451-hotfix record, pins and expected output in place (in Git at `04e80d8`).
-The ignored exact-build tests and the `tests/expected/*m452` directories check M452.
+M452 is the only catalogued build. The
+[support policy](../specs/native.md#6-supported-builds-and-maintenance) says what supports a build
+and which releases Native keeps. SDK-557 is the update rehearsal on the next build. SDK-674 removed the M45-release record and pins (in Git at `b9dd059`), and SDK-714
+replaced the M451-hotfix record, pins and expected output in place (in Git at `04e80d8`). The
+ignored exact-build tests and the `tests/expected/*m452` directories check M452.
 
 A port is whole. Every exact-build recipe carries a `DeclarationRecipe`, and every `Binding` holds a
 `BoundAnalysis`. A new build cannot be ported in part, for example with its observation parts
@@ -98,6 +98,10 @@ Pitfalls of this port:
   executable.
   Civics lost `multiply_by_habitability_effect_modifier`, and installed content loads 45,583
   modifiers (5 more).
+- **Changed readers, same commands.** Six `set_ai_*` armor, shield and weapon-preference effects
+  have new reader identities. `is_species_class` keeps the same value but now stops at value
+  acceptance in `PostValidate` instead of the form reader call and reference lookup. Each is a 4.5.2
+  change.
 - **The engine logs more fixture errors.** A repeated definition key now logs `Object with key: …
   already exists` at each repeat, and a quoted variable with a space and a trigger in the wrong
   scope now log during the fixture load. The emitting code did not change. Live expectations

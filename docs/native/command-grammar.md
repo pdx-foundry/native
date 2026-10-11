@@ -76,9 +76,10 @@ leave coverage unresolved.
 
 ### Current value-form results
 
-The tracked baseline and its counts are in
-[`tests/population/m452/README.md`](../../tests/population/m452/README.md). A failed
-answer has every property unresolved: the failed receiver joins are `factory-terminal`
+The tracked baseline is
+[`tests/population/m452/command-population.json`](../../tests/population/m452/command-population.json);
+its counts are in the [discovery](discovery.md#numeric-scanner-boundary-sdk-720) population table.
+A failed answer has every property unresolved: the failed receiver joins are `factory-terminal`
 (`add_starbase_component`, `remove_starbase_component`). `set_location` joins since the shared
 evaluator runs `ld1r` (SDK-547). The six
 former `command-vtable` failures (`pop_change_ethic`, `pop_force_add_ethic`,

@@ -23,7 +23,7 @@ Before you work on game launch, cleanup, injection, engine calls, memory layouts
 [engine knowledge index](docs/engine-knowledge.md). Match the exact build before you reuse a finding.
 
 `STELLARIS_PATH` is set in the development environment and names the installed game. Use it in
-commands for `cargo parity`, the ignored M45 tests and `examples/inspect`; do not write the path.
+commands for `cargo parity`, the ignored exact-build tests and `examples/inspect`; do not write the path.
 
 Native owns the platform and build methods. Atlas owns extraction fixtures, rule conclusions and coverage.
 

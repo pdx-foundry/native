@@ -117,8 +117,7 @@ Each `LoadedModifier` has its loaded category tags, by the rule of `Native::modi
 the executable declares its name, and each `modifier_families` family and loaded item whose
 generated name it is. A name that is neither declared nor generated is unexplained; a gap counts
 those names. `registry_items` holds the loaded keys that the families were applied to, and
-`content` states what the game loaded. On M451-hotfix
-the table has 45,578 entries: 571 declared, 5,432 generated and 39,576 unexplained.
+`content` states what the game loaded.
 
 ## Prepared fixtures
 
@@ -229,8 +228,9 @@ loaded_modifiers.json
 
 ## Supported build
 
-The catalogue binds the exact M452 (4.5.2) ARM64 executable, with fixtures and script
-checks. An unknown build is refused; it never inherits another build's recipe. See [targets](docs/native/targets.md) for exact identities.
+[Targets](docs/native/targets.md) lists the catalogued build and its exact identity. The
+[specification](docs/specs/native.md#6-supported-builds-and-maintenance) says what makes a build
+supported. Native refuses an unknown build.
 
 ## One-time setup for live games (Apple Silicon macOS)
 
