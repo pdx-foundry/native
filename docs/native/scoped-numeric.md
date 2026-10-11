@@ -18,7 +18,7 @@ The method matches complete `Read`, `Assign`, prefix, variable, `AssignSimple`, 
 address point; captured offsets must agree across the shared and concrete bodies. A subtype whose
 literal offset is not the shared layout's is refused once, in the shared analysis, so no consumer
 reads its literal. `forms` lists the literal, `trigger:`, `modifier:`, `value:` and unprefixed
-variable routes; the qualified
+variable routes, taken from the strings that the prefix body compares; the qualified
 event-target grammar is not established, and a recognized prefix does not prove that a lookup
 finds a name. The `value:name|KEY|value|` parameters are in [script expansion](script-expansion.md).
 

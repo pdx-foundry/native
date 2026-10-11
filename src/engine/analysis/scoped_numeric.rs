@@ -104,13 +104,9 @@ pub(crate) fn analyze(input: &Input) -> Facts {
     .and_then(|bindings| offset(&bindings, "variable"));
 
     let read_joined = read == Ok(input.value_token_offset);
-    let forms = if read_joined && assign.is_ok() && prefixes.is_ok() && variable.is_ok() {
-        Ok(Forms {
-            separator: ":".into(),
-            prefixes: ["trigger".into(), "modifier".into(), "value".into()],
-        })
-    } else {
-        Err(Unresolved::new("scoped-operand-forms"))
+    let forms = match &prefixes {
+        Ok(bindings) if read_joined && assign.is_ok() && variable.is_ok() => forms(bindings),
+        _ => Err(Unresolved::new("scoped-operand-forms")),
     };
     let selection = selection(
         input,
@@ -150,6 +146,28 @@ fn matched(input: &Input, name: &str, shape: &str) -> Result<Bindings, Unresolve
         return Err(Unresolved::new("scoped-diagnostic-source"));
     }
     Ok(bindings)
+}
+
+/// The operand forms that the prefix body compares: the separator and the three prefixes, as
+/// the quoted strings the body names.
+fn forms(bindings: &Bindings) -> Result<Forms, Unresolved> {
+    let string = |name| {
+        bindings
+            .get(name)
+            .and_then(|value| value.strip_prefix('"')?.strip_suffix('"'))
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+            .ok_or(Unresolved::new("scoped-operand-forms"))
+    };
+
+    Ok(Forms {
+        separator: string("separator")?,
+        prefixes: [
+            string("trigger_prefix")?,
+            string("modifier_prefix")?,
+            string("script_value_prefix")?,
+        ],
+    })
 }
 
 fn offset(bindings: &Bindings, name: &str) -> Result<u64, Unresolved> {
@@ -491,6 +509,9 @@ mod tests {
             "{:?}",
             facts.subtypes
         );
+        let forms = facts.shared.forms.as_ref().unwrap();
+        assert_eq!(forms.separator, ":");
+        assert_eq!(forms.prefixes, ["trigger", "modifier", "value"]);
 
         let mut missing_read = input.clone();
         missing_read.bodies.remove(&input.reader_name);
@@ -523,6 +544,17 @@ mod tests {
             .names
             .retain(|_, value| value != "\"trigger\"");
         assert!(analyze(&missing_prefix).shared.forms.is_err());
+
+        let mut renamed_prefix = input.clone();
+        for name in renamed_prefix.names.values_mut() {
+            if name == "\"trigger\"" {
+                *name = "\"cause\"".into();
+            }
+        }
+        assert_eq!(
+            analyze(&renamed_prefix).shared.forms.unwrap().prefixes[0],
+            "cause"
+        );
 
         let mut missing_dispatch = input.clone();
         missing_dispatch.bodies.remove(&input.prefix_name);
