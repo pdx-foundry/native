@@ -160,18 +160,12 @@ impl Binding {
     pub(crate) fn open(installation: &std::path::Path) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(installation)?;
         let image = binary::identify(&bytes, installation.executable_hash())?;
-        let operation = compose::compose(&image)?;
-        let installation = installation.with_default_registries(operation.default_registries);
         let invalidated = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let analysis = std::sync::Arc::new(compose::analysis(
-            &image,
-            installation.clone(),
-            invalidated.clone(),
-        )?);
+        let composition = compose::compose(&image, installation, invalidated.clone())?;
         Ok(Self {
-            analysis,
-            operation: Some(operation),
-            installation,
+            analysis: std::sync::Arc::new(composition.analysis),
+            operation: Some(composition.operation),
+            installation: composition.installation,
             invalidated,
         })
     }

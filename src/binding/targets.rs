@@ -41,19 +41,14 @@ fn lookup_in(
 #[cfg(test)]
 mod tests;
 
+/// The catalogued recipe, for tests of an authored image.
+#[cfg(test)]
+pub(super) fn test_recipe() -> &'static Recipe {
+    records::CATALOGUE[0].recipe
+}
+
 /// The catalogued declarations, for tests of an authored image.
 #[cfg(test)]
 pub(super) fn test_declarations() -> &'static DeclarationRecipe {
-    records::CATALOGUE[0].recipe.declarations
-}
-
-#[cfg(test)]
-pub(super) fn test_identity() -> ImageIdentity {
-    let record = &records::CATALOGUE[0];
-    ImageIdentity {
-        executable: record.executable.into(),
-        slice: record.slice.into(),
-        architecture: record.architecture,
-        format: record.format,
-    }
+    test_recipe().declarations
 }

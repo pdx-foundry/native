@@ -8,11 +8,3 @@ pub(super) fn resolve(
         _ => Err(crate::OpenError::UnsupportedTarget),
     }
 }
-
-/// Whether the static methods can decode this architecture.
-pub(super) fn static_methods(architecture: object::Architecture) -> Result<(), crate::OpenError> {
-    match architecture {
-        object::Architecture::Aarch64 => Ok(()),
-        _ => Err(crate::OpenError::UnsupportedTarget),
-    }
-}
