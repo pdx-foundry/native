@@ -1,7 +1,7 @@
 //! Resolve the named readers and decode their complete bodies for layout analysis.
 use super::{
     declarations::{Text, read_only_data, unique},
-    families::string_functions,
+    families::{DEFINITIONS, string_functions},
 };
 use crate::AnalysisError;
 use crate::engine::analysis::{
@@ -23,10 +23,7 @@ pub(in crate::binding) fn read(
     Ok(Input {
         documentation: rows("CModifier::LogDefinitions()")?,
         get_string: rows("CStaticLexer::GetString(int)")?,
-        definitions: unique(
-            symbols,
-            "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions",
-        )?,
+        definitions: unique(symbols, DEFINITIONS)?,
         category_name: unique(
             symbols,
             "(anonymous namespace)::GetModifierCategoryName(ModifierCategory, CString&)",

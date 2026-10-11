@@ -42,14 +42,16 @@ pub(super) fn never_return(symbols: &[Symbol]) -> BTreeSet<u64> {
         .collect()
 }
 
-const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
+/// Assignment of a string from text.
+pub(super) const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
 
 const MOVE_ASSIGN: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)";
 
-const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
+/// The array that holds the modifier definitions.
+pub(in crate::binding) const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
 
 /// The post-read functions that the engine runs for a content object.
-const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
+pub(super) const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
 
 /// The functions that return new memory.
 const ALLOCATIONS: [&str; 3] = ["_calloc", "_malloc", "operator new(unsigned long)"];

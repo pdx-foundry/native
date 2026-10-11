@@ -68,8 +68,6 @@ impl PersistentRecipe {
 
 /// Layout facts that the declaration methods need on this exact build.
 pub(in crate::binding) struct DeclarationRecipe {
-    /// Concrete modifier parser and numeric-entry insertion functions.
-    pub numeric_modifier_member: &'static str,
     pub modifier_serializer_constructor: &'static str,
     /// The class that every object in a modifier's name slot derives from. Stated, not derived:
     /// no method follows the stores to that slot (`docs/native/modifier-blocks.md`).
@@ -94,7 +92,6 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub effect_names: CommandSlots,
     pub persistent: PersistentRecipe,
     pub command_children: crate::engine::analysis::grammar::ChildLayout,
-    pub numeric_key_reader: &'static str,
     pub reader_token_offset: u64,
     /// The assigned value token within a reader.
     pub reader_value_token_offset: u64,
@@ -109,7 +106,6 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub trigger_target_getter_slot: u64,
     /// Token names used for the Boolean assignment probes, true then false.
     pub boolean_tokens: [&'static str; 2],
-    pub child_families: &'static [(&'static str, crate::BlockFamily)],
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
     /// Stack offset of the category argument of the call that registers a generated modifier.
@@ -230,7 +226,6 @@ fn m452_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
 }
 
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
-    numeric_modifier_member: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)",
     modifier_serializer_constructor: "CCustomDescription::CSerializer::CSerializer(CCustomDescription&)",
     modifier_name_base: "CPdxModifierNameImplBase",
     modifier_reference_database: "CStaticModifierDatabase",
@@ -312,7 +307,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         count: 0x1c,
         token: 0x20,
     },
-    numeric_key_reader: "CToken::ReadValue(int&) const",
     reader_token_offset: 0x38,
     reader_value_token_offset: M45_VALUE_TOKEN,
     token_text_offset: M45_TOKEN_TEXT,
@@ -322,16 +316,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     effect_target_getter_slot: 0x88,
     trigger_target_getter_slot: 0x80,
     boolean_tokens: ["yes", "no"],
-    child_families: &[
-        (
-            "CTriggerCollectionBase::ReadMember(CReader&, int, EScopeType)",
-            crate::BlockFamily::Trigger,
-        ),
-        (
-            "CEffect::ReadMember(CReader&, int, EScopeType)",
-            crate::BlockFamily::Effect,
-        ),
-    ],
     modifier_category_offset: 0x4,
     dynamic_modifier_category_offset: 0x0,
     modifier_nodes: crate::engine::analysis::modifier_nodes::ModifierNodeLayout {

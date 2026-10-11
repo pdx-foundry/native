@@ -16,6 +16,7 @@ mod targets;
 mod tests;
 
 use crate::{OpenError, UnavailableReason};
+use binary::families::DEFINITIONS;
 
 /// Returns after content validation; the loaded modifier table is complete there.
 const MODIFIER_LOG_DEFINITIONS: &str = "CModifier::LogDefinitions()";
@@ -263,9 +264,7 @@ impl Binding {
             layout,
             groups::ModifierTableSymbols {
                 documentation_entry: verified.symbol(MODIFIER_LOG_DEFINITIONS)?,
-                definitions: verified.symbol(
-                    "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions",
-                )?,
+                definitions: verified.symbol(DEFINITIONS)?,
                 registries: instances,
             },
         ))

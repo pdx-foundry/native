@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declarations::{Text, addresses};
+use super::grammar::{EFFECT_MEMBER_READER, TRIGGER_MEMBER_READER};
 use crate::AnalysisError;
 use crate::binding::analysis::NamedCandidate;
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
@@ -80,11 +81,11 @@ const HOST_READERS: [(&str, ExpansionHost); 8] = [
         ExpansionHost::Commands(BlockFamily::Trigger),
     ),
     (
-        "CEffect::ReadMember(CReader&, int, EScopeType)",
+        EFFECT_MEMBER_READER,
         ExpansionHost::Commands(BlockFamily::Effect),
     ),
     (
-        "CTriggerCollectionBase::ReadMember(CReader&, int, EScopeType)",
+        TRIGGER_MEMBER_READER,
         ExpansionHost::Commands(BlockFamily::Trigger),
     ),
     (

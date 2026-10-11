@@ -1,6 +1,6 @@
 //! Collect shared weight readers from executable pointer slots, with the constructors that their
 //! member readers call.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, grammar::CHILD_FAMILIES, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     declarations::Function, decode::decode_arm64, evaluate::ReadOnlyData, fields,
@@ -54,8 +54,7 @@ pub(in crate::binding) fn read(
         operator_new: super::declarations::addresses(image.symbols, "operator new(unsigned long)"),
         symbols: image.symbols.to_vec(),
         tokens,
-        families: recipe
-            .child_families
+        families: CHILD_FAMILIES
             .iter()
             .map(|&(name, family)| (name.into(), family))
             .collect(),

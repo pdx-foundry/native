@@ -3,7 +3,7 @@
 //! The name object that a modifier block reads `name` through is stated to derive from the
 //! recipe's `modifier_name_base`; [`name_reads`] derives the rest from the executable's
 //! type information.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, numeric::NUMERIC_MODIFIER_MEMBER, references::Image};
 use crate::binding::{analysis::NamedCandidate, targets::DeclarationRecipe};
 use crate::engine::analysis::{
     declarations::Function,
@@ -73,7 +73,7 @@ pub(in crate::binding) fn read(
         .map(|reader| reader.member.clone())
         .collect();
     pending.insert(recipe.modifier_reference_member.into());
-    pending.insert(recipe.numeric_modifier_member.into());
+    pending.insert(NUMERIC_MODIFIER_MEMBER.into());
     while let Some(name) = pending.pop_first() {
         let addresses: BTreeSet<_> = image
             .symbols
@@ -141,7 +141,7 @@ pub(in crate::binding) fn read(
     let aliases = [
         (database.as_str(), "database"),
         (null, "null_item"),
-        (recipe.numeric_modifier_member, "base_member"),
+        (NUMERIC_MODIFIER_MEMBER, "base_member"),
         ("CString::CString(char const*)", "key_string"),
         ("CToken::GetFloat() const", "fixed_value"),
         ("StringToFixedPoint(char const*)", "fixed_conversion"),
@@ -202,7 +202,7 @@ pub(in crate::binding) fn read(
         serializer_constructors,
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
         reader_token_offset: recipe.reader_token_offset,
-        base_member: recipe.numeric_modifier_member.into(),
+        base_member: NUMERIC_MODIFIER_MEMBER.into(),
         base,
         references: BTreeMap::from([(recipe.modifier_reference_member.into(), reference)]),
         name_reads,
