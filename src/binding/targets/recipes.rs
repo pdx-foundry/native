@@ -30,7 +30,9 @@ pub(in crate::binding) struct Recipe {
 pub(in crate::binding) struct PersistentRecipe {
     pub string_array: [i64; 3],
     pub compound_sizes: [i64; 3],
+    /// The assigned value token within a reader.
     pub value_token: u64,
+    /// Text object within an assigned token.
     pub token_text: u64,
     pub read_slot: u64,
     pub member_slot: u64,
@@ -93,10 +95,6 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub persistent: PersistentRecipe,
     pub command_children: crate::engine::analysis::grammar::ChildLayout,
     pub reader_token_offset: u64,
-    /// The assigned value token within a reader.
-    pub reader_value_token_offset: u64,
-    /// Text object within an assigned token.
-    pub token_text_offset: u64,
     /// Full event-target object, including its token and link fields.
     pub event_target_size: u64,
     /// Post-validation and developer-only target getter slots, from the address point.
@@ -168,7 +166,7 @@ fn m452_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
         file_arguments: [1, 0, 0],
         lexer_argument: 0,
         file_name_offset: 0x20,
-        string_tag_offset: 23,
+        string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset(),
         logger_entry: 0x102507610,
         logger_text_register: "x4".into(),
         logger_level_register: "w1".into(),
@@ -270,8 +268,8 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     persistent: PersistentRecipe {
         string_array: [8, 0x14, 0x28],
         compound_sizes: [M45_EVENT_TARGET_SIZE as i64, 0x30, 0x18],
-        value_token: M45_VALUE_TOKEN,
-        token_text: M45_TOKEN_TEXT,
+        value_token: 0x278,
+        token_text: 0x10,
         read_slot: 0x20,
         member_slot: 0x28,
         container_mask_offset: 0xac,
@@ -308,8 +306,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         token: 0x20,
     },
     reader_token_offset: 0x38,
-    reader_value_token_offset: M45_VALUE_TOKEN,
-    token_text_offset: M45_TOKEN_TEXT,
     event_target_size: M45_EVENT_TARGET_SIZE,
     effect_validation_slot: 0x98,
     trigger_validation_slot: 0x68,
@@ -352,9 +348,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         declaration_token_offset: 0,
     },
 };
-
-const M45_VALUE_TOKEN: u64 = 0x278;
-const M45_TOKEN_TEXT: u64 = 0x10;
 
 /// An initial loader with inline file and definition reads, verified on this exact build.
 pub(in crate::binding) struct InlineFixtureRecipe {

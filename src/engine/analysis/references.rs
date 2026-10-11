@@ -8,6 +8,10 @@
 //! the scan or map search that those call. The content directory comes from the binding's
 //! directory join, never from the database's class name. A fact that no join establishes stays
 //! unresolved with its reason.
+//!
+//! `string_layout` keeps the engine's string layout here: the length at `0x8` and the flag byte at
+//! `0x17`. It is a per-build layout fact that stays with its reader, not a recipe field. The build
+//! is in `docs/native/targets.md` and its facts are on `docs/native/references.md`.
 pub mod initialization;
 pub mod shapes;
 

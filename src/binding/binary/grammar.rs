@@ -106,8 +106,8 @@ pub(in crate::binding) fn read(
     let numeric_decoder = super::declarations::unique(symbols, super::numeric::READ_INT_VALUE)?;
     let command_bindings = command_bindings(symbols, &tokens, recipe, kind)?;
     let mut form_input = crate::engine::analysis::grammar::forms::Input {
-        reader_value_token_offset: Some(recipe.reader_value_token_offset),
-        token_text_offset: recipe.token_text_offset,
+        reader_value_token_offset: Some(recipe.persistent.value_token),
+        token_text_offset: recipe.persistent.token_text,
         target_size: recipe.event_target_size,
         string_size: recipe.string_object_size,
         role_slot: match kind {
@@ -223,7 +223,7 @@ fn command_bindings(
         error_logs.insert(unique(symbols, name)?);
     }
     Ok(CommandBindings {
-        reader_value_token_offset: recipe.reader_value_token_offset,
+        reader_value_token_offset: recipe.persistent.value_token,
         assign_slot: slots.assign,
         validation_slot,
         target_getter_slot,

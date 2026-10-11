@@ -1,4 +1,8 @@
 //! Bind numeric reader functions and external helper identities on the supported recipe.
+//!
+//! `binary_selector` keeps the `CTextLexer` vtable slot `0x20` here. It is a per-build layout fact
+//! that stays with its reader, not a recipe field. The build is in `docs/native/targets.md` and its
+//! facts are on `docs/native/numeric-conversion.md`.
 use super::{
     declarations::Text, families::DEFINITIONS, grammar::LOG_FILE_AND_LINE, references::Image,
 };
@@ -66,7 +70,7 @@ pub(in crate::binding) fn read(
             let input = TokenInput {
                 body,
                 names,
-                token_text_offset: recipe.token_text_offset,
+                token_text_offset: recipe.persistent.token_text,
             };
             Ok((name.to_owned(), input))
         })
@@ -160,8 +164,8 @@ fn reader_input(
             token,
             raw_token,
             names,
-            reader_token_offset: recipe.reader_value_token_offset,
-            token_text_offset: recipe.token_text_offset,
+            reader_token_offset: recipe.persistent.value_token,
+            token_text_offset: recipe.persistent.token_text,
         },
     ))
 }

@@ -54,8 +54,8 @@ pub(in crate::binding) fn read(
         pointers: image.pointers.clone(),
         data: pointer_view(image)?,
         reader_token_offset: recipe.reader_token_offset,
-        value_token_offset: recipe.reader_value_token_offset,
-        token_text_offset: recipe.token_text_offset,
+        value_token_offset: recipe.persistent.value_token,
+        token_text_offset: recipe.persistent.token_text,
     })
 }
 

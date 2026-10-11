@@ -155,9 +155,9 @@ pub(in crate::binding) fn read(
         member: text.unique_body(image.symbols, recipe.modifier_reference_member)?,
         conversion: text.unique_body(image.symbols, "CToken::GetFloat() const")?,
         names: semantic_names,
-        key_text_offset: recipe.reader_token_offset + recipe.token_text_offset,
-        value_token_offset: recipe.reader_value_token_offset,
-        token_text_offset: recipe.token_text_offset,
+        key_text_offset: recipe.reader_token_offset + recipe.persistent.token_text,
+        value_token_offset: recipe.persistent.value_token,
+        token_text_offset: recipe.persistent.token_text,
     };
     let reference = reference::analyze(&reference_input).map(|()| target);
     let serializer_constructors = image

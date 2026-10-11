@@ -123,7 +123,7 @@ impl VerifiedAnalysis<'_> {
         &self,
         recipe: &super::targets::DeclarationRecipe,
     ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
-        binary::scoped_numeric::read(&self.image(), recipe.reader_value_token_offset)
+        binary::scoped_numeric::read(&self.image(), recipe.persistent.value_token)
     }
 
     /// The address of the one symbol with this demangled name.
