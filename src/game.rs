@@ -4,7 +4,7 @@
 //! the game. The supervisor sends the answers once, when the game is paused; every
 //! fixture and modifier query returns from them.
 use crate::{
-    Disposal, Error, GameReadiness,
+    Disposal, Error,
     engine::operations::registry_items::{Observed, RegistryItems},
     protocol::session::{
         Fault, ObservationControl, ObservationTarget, SessionOutcome, SessionRequest,
@@ -104,7 +104,6 @@ pub(crate) struct Session {
 /// What the supervisor established when the game paused.
 #[derive(Debug, Clone)]
 struct Paused {
-    readiness: GameReadiness,
     /// By internal registry name.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
@@ -225,21 +224,11 @@ impl Game {
         &mut self,
         input: &crate::ScriptCheck,
     ) -> Result<crate::Answer<crate::ScriptObservation>, Error> {
-        if self.closing
-            || self.stop.load(Ordering::SeqCst) != 0
-            || self.state.borrow().finished.is_some()
-        {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         input.validate()?;
         let subject = input.recorded_subject(&self.script_history);
         let result = self
             .answer("check_script", Some(&subject), async |game| {
-                if game.paused.readiness != GameReadiness::AfterContentLoad {
-                    return Err(Error::ScriptRequest {
-                        reason: "script checks require a confirmed content-loaded pause".into(),
-                    });
-                }
                 let durations = game.duration_receivers(input);
                 let (reply, receive) = oneshot::channel();
                 game.commands
@@ -314,9 +303,7 @@ impl Game {
     async fn answer_loaded_modifiers(
         &mut self,
     ) -> Result<crate::Answer<crate::LoadedModifiers>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         let subject = self
             .fixture
             .as_ref()
@@ -351,9 +338,7 @@ impl Game {
     async fn answer_observe_fixture(
         &mut self,
     ) -> Result<crate::Answer<crate::FixtureObservation>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         let fixture = self.fixture.as_ref().ok_or_else(|| Error::FixtureRequest {
             reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
         })?;
@@ -383,7 +368,6 @@ impl Game {
         fixture: Option<crate::FixtureRequest>,
     ) -> Self {
         let paused = Paused {
-            readiness: GameReadiness::AfterRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -448,14 +432,24 @@ impl Game {
                 ),
             });
         }
+        self.ensure_open()?;
         let name = directory.to_owned();
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
         let answer =
             registry_items_answer(directory, self.paused.registries.get(&name), &self.build)?;
         self.restart_idle_time(ReadQuestion::Registry(name)).await?;
         Ok(answer)
+    }
+
+    /// `Error::Closed` once the caller asked to stop or the supervisor ended the session.
+    fn ensure_open(&self) -> Result<(), Error> {
+        if self.closing
+            || self.stop.load(Ordering::SeqCst) != 0
+            || self.state.borrow().finished.is_some()
+        {
+            return Err(Error::Closed);
+        }
+
+        Ok(())
     }
 
     /// Record a read error so that `close` keeps the work directory. The error is returned
@@ -855,7 +849,6 @@ mod tests {
     #[tokio::test]
     async fn cancelling_a_check_future_ends_the_session_before_reuse() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::AfterContentLoad;
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
@@ -883,25 +876,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn early_pauses_reject_checks_without_queuing_engine_work() {
-        let (mut game, commands, _) = game();
+    async fn a_stop_request_closes_every_read_before_it_queues_work() {
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
             text: "always = yes".into(),
         };
-        assert!(matches!(
-            game.check_script(&input).await,
-            Err(Error::ScriptRequest { .. })
-        ));
-        assert!(commands.try_recv().is_err());
-        assert!(game.script_history.is_empty());
+        for stop in [1, 2] {
+            let (mut game, commands, _state) = game();
+            game.stop.store(stop, Ordering::SeqCst);
+
+            assert_eq!(game.observe_fixture().await, Err(Error::Closed));
+            assert_eq!(game.loaded_modifiers().await, Err(Error::Closed));
+            assert_eq!(
+                game.loader_items("common/traditions").await,
+                Err(Error::Closed)
+            );
+            // An unknown registry is still named as such before the session counts as closed.
+            assert!(matches!(
+                game.loader_items("traditions").await,
+                Err(Error::Unsupported { .. })
+            ));
+            // A check that is not refused would queue its command and wait for a reply.
+            assert_eq!(game.check_script(&input).await, Err(Error::Closed));
+            assert!(commands.try_recv().is_err());
+        }
     }
 
     #[tokio::test]
     async fn recording_failure_preserves_completed_check_history() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::AfterContentLoad;
         let root = tempfile::tempdir().unwrap();
         let recording = root.path().join("recording");
         std::fs::write(&recording, "block directory creation").unwrap();
@@ -973,7 +977,6 @@ mod tests {
     }
     fn game() -> (Game, mpsc::Receiver<DriverCommand>, watch::Sender<State>) {
         let paused = Paused {
-            readiness: GameReadiness::DuringRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,

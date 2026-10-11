@@ -202,17 +202,16 @@ fn connect(
                 }
             }
             Reply::Paused {
-                readiness,
                 registries,
                 fixture,
                 modifiers,
+                ..
             } => {
                 if state.borrow().paused.is_some() {
                     return Err(SupervisorError("Unexpected second pause".into()));
                 }
                 state.send_modify(|state| {
                     state.paused = Some(Paused {
-                        readiness,
                         registries,
                         fixture: *fixture,
                         modifiers: *modifiers,
