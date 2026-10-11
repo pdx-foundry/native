@@ -1454,7 +1454,7 @@ fn native() -> Native {
 }
 
 fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
-    let path = format!("{}/tests/expected/m452/{name}", env!("CARGO_MANIFEST_DIR"));
+    let path = parity::expected_directory().join(name);
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
@@ -2716,8 +2716,7 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
 fn read_scopes_match_the_engine_and_link_output_ids() {
     use pdx_native::GrammarProperty;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let expected: serde_json::Value =
-        serde_json::from_str(include_str!("expected/m452/read-scopes.json")).unwrap();
+    let expected: serde_json::Value = expected("read-scopes.json");
     let actual = parity::read_scopes(&native, &expected).unwrap();
     assert_eq!(actual, expected);
     // Independent config expectations at cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8:

@@ -301,10 +301,7 @@ fn duration_stamp_and_cases_are_required() {
 }
 
 fn tracked_on_actions() -> Value {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/expected/m452/on-actions.json"
-    );
+    let path = super::expected_directory().join("on-actions.json");
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
 
