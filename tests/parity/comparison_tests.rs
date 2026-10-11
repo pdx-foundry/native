@@ -321,14 +321,25 @@ fn duration_stamp_and_cases_are_required() {
     );
 }
 
-fn tracked_on_actions() -> Value {
-    let path = super::expected_directory().join("on-actions.json");
-    serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+fn on_actions() -> Value {
+    let context = "this=country root=SelfLink from=[SelfLink] prev=[SelfLink]";
+    json!({
+        "completeness": "Partial",
+        "names": {
+            "anomaly_success": [context],
+            "empire_init_add_technologies": [context],
+            "on_add_to_council": [context, "this=country root=SelfLink from=[Unresolved] prev=[SelfLink]"]
+        },
+        "gaps": [
+            ["UnresolvedPath", {"kind": "answer_item", "name": "anomaly_success"}, "some entry scopes of a call site could not be established"],
+            ["UnresolvedPath", {"kind": "answer_item", "name": "empire_init_add_technologies"}, "a call site has more paths than the method follows (path-limit)"]
+        ]
+    })
 }
 
 #[test]
 fn callback_answers_compare_by_name_and_gap_subject() {
-    let reviewed = tracked_on_actions();
+    let reviewed = on_actions();
     let paths = |candidate: &Value| {
         compare("on-actions.json", &reviewed, candidate)
             .differences
