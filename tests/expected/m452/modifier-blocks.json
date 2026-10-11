@@ -45,6 +45,11 @@
         "The modifier block analysis stopped at instruction."
       ],
       [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
+        "read-scope: scope-argument"
+      ],
+      [
         "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},
         "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."

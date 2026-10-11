@@ -17,6 +17,7 @@ pub(super) fn attach(
     result: &RegistryFieldResult,
     facts: &ModifierBlockFacts,
     references: &ReferenceFacts,
+    scope_names: Option<&[String]>,
     gaps: &mut Vec<Gap>,
 ) {
     for field in values
@@ -45,6 +46,7 @@ pub(super) fn attach(
         if let Some(block) = block(
             facts.points.get(point),
             references,
+            scope_names,
             std::slice::from_ref(&field.name),
             gaps,
         ) {
@@ -58,6 +60,7 @@ pub(super) fn attach(
 pub(super) fn block(
     found: Option<&Result<Variant, Unresolved>>,
     references: &ReferenceFacts,
+    scope_names: Option<&[String]>,
     path: &[String],
     gaps: &mut Vec<Gap>,
 ) -> Option<ModifierBlock> {
@@ -100,13 +103,29 @@ pub(super) fn block(
         });
     }
 
-    Some(normalize(variant, references, path.last()?))
+    normalize(variant, references, scope_names, path, gaps)
 }
 
-/// The block grammar of the field `parent`. Fixed-key conditions name field paths from `parent`.
-fn normalize(variant: &Variant, references: &ReferenceFacts, parent: &str) -> ModifierBlock {
+/// The block grammar of the field at `path`. Fixed-key conditions name field paths from its last
+/// name, and each fixed key's read scope is normalized with a gap where its reader leaves it open.
+fn normalize(
+    variant: &Variant,
+    references: &ReferenceFacts,
+    scope_names: Option<&[String]>,
+    path: &[String],
+    gaps: &mut Vec<Gap>,
+) -> Option<ModifierBlock> {
+    let parent = path.last()?;
     let mut fields =
         super::fields::grammar_fields(&variant.fields, &variant.paths, references, None);
+    super::read_scope::block_keys(
+        &mut fields,
+        &variant.fields,
+        &variant.paths,
+        scope_names,
+        path,
+        gaps,
+    );
     for field in &mut fields {
         super::fields::prefix_conditions(field, parent);
     }
@@ -141,10 +160,10 @@ fn normalize(variant: &Variant, references: &ReferenceFacts, parent: &str) -> Mo
         GrammarProperty::Partial(entries) => GrammarProperty::Partial(normalize_entries(entries)),
         GrammarProperty::Unresolved => GrammarProperty::Unresolved,
     };
-    ModifierBlock {
+    Some(ModifierBlock {
         fixed_keys,
         entries,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -196,7 +215,14 @@ mod tests {
         };
         let references = ReferenceFacts::default();
 
-        let block = normalize(&variant, &references, "modifier");
+        let block = normalize(
+            &variant,
+            &references,
+            None,
+            &["modifier".into()],
+            &mut Vec::new(),
+        )
+        .unwrap();
 
         let GrammarProperty::Known(keys) = &block.fixed_keys else {
             panic!("{:?}", block.fixed_keys);
@@ -207,6 +233,57 @@ mod tests {
                 path: vec!["modifier".into(), "flag".into()],
                 zero: false,
             }
+        );
+    }
+
+    #[test]
+    fn a_scalar_fixed_key_reads_in_no_scope_and_an_unknown_reader_keeps_a_gap() {
+        let key = |name: &str, token: i64, callee: &str| RootField {
+            name: name.into(),
+            token,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: callee.into(),
+                arguments: Default::default(),
+                tail: true,
+            }],
+        };
+        let variant = Variant {
+            fields: vec![
+                key("label", 1, "CReader::Read(CString&, bool)"),
+                key("count", 2, "CReader::Read(int&)"),
+                key("mystery", 3, "Mystery::Read(CReader&)"),
+            ],
+            paths: vec![],
+            fixed_complete: true,
+            entries: GrammarProperty::Known(vec![]),
+            stops: vec![],
+        };
+        let mut gaps = Vec::new();
+
+        let block = normalize(
+            &variant,
+            &ReferenceFacts::default(),
+            None,
+            &["modifier".into()],
+            &mut gaps,
+        )
+        .unwrap();
+
+        let GrammarProperty::Known(keys) = &block.fixed_keys else {
+            panic!("{:?}", block.fixed_keys);
+        };
+        assert_eq!(keys[0].read_scope, GrammarProperty::Known(vec![]));
+        assert_eq!(keys[1].read_scope, GrammarProperty::Known(vec![]));
+        assert_eq!(keys[2].read_scope, GrammarProperty::Unresolved);
+        assert_eq!(gaps.len(), 1, "{gaps:?}");
+        assert_eq!(
+            gaps[0].subject,
+            Some(GapSubject::key_path(vec![
+                "modifier".into(),
+                "mystery".into()
+            ]))
         );
     }
 }
