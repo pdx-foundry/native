@@ -986,8 +986,12 @@ impl BoundAnalysis {
                     pointers: &verified.catalog.pointers,
                     imports: &verified.catalog.imports,
                 };
-                let input =
-                    binary::modifier_blocks::read(&image, &verified.catalog.candidates, recipe)?;
+                let input = binary::modifier_blocks::read(
+                    &image,
+                    &verified.catalog.bound_slots,
+                    &verified.catalog.candidates,
+                    recipe,
+                )?;
                 Ok(crate::engine::analysis::modifier_blocks::analyze(
                     &input,
                     self.numeric_facts()?,

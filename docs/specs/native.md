@@ -118,6 +118,10 @@ for contexts and scope types.
   or fixed-point literal and scoped references. `Reader.numeric` describes its concrete literal
   storage. `Reader.scoped_operand` reports partial routing forms. These facts do not claim a
   successful lookup or an evaluated number.
+- `ReaderKind::Skipped` identifies a reader that reads past the value and keeps nothing, such as
+  the modifier block's `name`. The value can be one scalar or a whole block, so its
+  `FieldShape.value` is `ValueShape::Any`, its members are `None` and its `numeric` is
+  `Known(None)`.
 - `FieldShape.repeat` gives what a second successful read does to storage, on the field and on
   each `FieldReadOutcome::Read` alternative: `Replace` (the last occurrence is stored),
   `Accumulate` (each occurrence adds an entry), `Merges` (a repeat is accepted; it replaces some

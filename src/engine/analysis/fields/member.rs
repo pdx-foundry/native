@@ -67,7 +67,11 @@ fn translate(path: &mut TokenPath, offset: i64) {
             translate_value(tested, offset);
         }
     }
-    if let PathOutcome::Reader(ReaderJoin::Stored { destination, .. }) = &mut path.outcome {
+    if let PathOutcome::Reader(ReaderJoin::Stored {
+        destination: Some(destination),
+        ..
+    }) = &mut path.outcome
+    {
         *destination += offset;
     }
     if let PathOutcome::Reader(ReaderJoin::Joined { arguments, .. }) = &mut path.outcome {

@@ -19,8 +19,8 @@ required input make the answer partial.
 
 ## Current M452 sweep
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v28`) holds
-the baseline: **164 registries, 12 complete, 152 partial, 0 failed**, 1,593 root and 46 nested
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v29`) holds
+the baseline: **164 registries, 13 complete, 151 partial, 0 failed**, 1,593 root and 46 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -47,7 +47,9 @@ authoring](method-authoring.md#run-over-the-whole-population)).
   target and moved to an owner destination (`Target`), a `CString` array emplace read by the shared
   string reader (`String/Accumulate`, for example `common/asteroid_belts.mesh`), and an optional
   `CString` set from token text (`String`). A different token source, a stack move destination or
-  an element from an unknown call cannot establish the shape.
+  an element from an unknown call cannot establish the shape. A stack `CString` made from the
+  value token's text and passed to an owner call reads `String` with no destination, by a stated
+  rule ([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)).
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13
   child fields each); in `advanced_authority_swap` the collection is established but not its
   children. The council presence branches normalize to unconditional integer reads. Objects built
@@ -149,9 +151,10 @@ gap: each default reaches the rejection, or the table has no default slot.
 `is_ruined_orbital_ring` and `hide_name` copy the bit to a stack temporary with `ldr` and `ubfx`,
 or with `ldrb w8,[x19,x8]` where `x8` is a constant, then call `CReader::Read(bool&)`. The walker
 reads a register-offset load with a constant index and forgets the result of `ubfx` and `and`, so
-these paths reach the call and name their fields. The reader join stays missing, because the
-destination is a temporary, not the member. Joining the temporary to its member is a separate
-repair.
+these paths reach the call and name their fields. `CReader::Read(bool&)` joins a stack
+destination, as the 4-byte integer reader does, so these fields read `Boolean`. The walk ends at
+the call, so the join establishes the kind, not the member that stores the bit, and the repeat
+stays unknown. Joining the temporary to its member is a separate repair.
 
 ## Members and shared readers
 

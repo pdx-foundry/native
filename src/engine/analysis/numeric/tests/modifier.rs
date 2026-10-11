@@ -443,7 +443,8 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
         super::super::modifier::member_tokens(&input()).unwrap(),
         super::super::modifier::MemberTokens {
             name: 27,
-            data: 240
+            data: 240,
+            name_read_slot: 0x10,
         }
     );
     let mut input = input();
@@ -457,7 +458,8 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
         super::super::modifier::member_tokens(&input).unwrap(),
         super::super::modifier::MemberTokens {
             name: 29,
-            data: 240
+            data: 240,
+            name_read_slot: 0x10,
         }
     );
     let comparison = input

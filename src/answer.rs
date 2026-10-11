@@ -1348,6 +1348,8 @@ pub enum ReaderKind {
     /// A name from a fixed set of engine keywords, stored as the engine's own value for it.
     /// `Field.domain` gives the set when it is established.
     Keyword,
+    /// The reader reads past the value, one scalar or a whole block, and keeps nothing.
+    Skipped,
     /// The value form is not established.
     Unknown,
 }

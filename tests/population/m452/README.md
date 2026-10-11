@@ -17,7 +17,7 @@ selected on M45-release and keeps that build stamp; `cargo live fixture_argument
 
 | Report | Population | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
-| Registry fields | 164 registries | 12 | 152 | 0 |
+| Registry fields | 164 registries | 13 | 151 | 0 |
 | Effect grammars | 1,080 named commands | 163 | 915 | 2 |
 | Trigger grammars | 1,098 named commands | 122 | 976 | 0 |
 

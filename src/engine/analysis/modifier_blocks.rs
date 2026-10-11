@@ -1,6 +1,7 @@
 //! Modifier-block member chains at constructor-proven vtable points. Named leaves retain
 //! unresolved readers; the default domain must join one try-member before entry forms or
 //! inherited keys are added. No content name selects a path through this method.
+pub(crate) mod name;
 pub(crate) mod reference;
 pub(crate) mod triggered;
 
@@ -32,6 +33,8 @@ pub(crate) struct ModifierBlockInput {
     pub base_member: String,
     pub base: ModifierInput,
     pub references: BTreeMap<String, Result<ReferenceTarget, Unresolved>>,
+    /// The read-slot function of each class that the base member's name object can have.
+    pub name_reads: Result<Vec<Function>, Unresolved>,
 }
 
 #[derive(Debug, Clone)]
@@ -217,7 +220,8 @@ fn default_members(
             });
         }
     };
-    let paths = inherited_paths(tokens, &default);
+    let name = name::reader(&input.name_reads, &input.symbols);
+    let paths = inherited_paths(tokens, name, &default);
     match &numeric.modifier_entry {
         Ok(entry) => entries.push(Entry::Numeric(entry.shared_callee.clone())),
         Err(stop) => stops.push(stop.clone()),
@@ -251,9 +255,9 @@ fn default_callee<'a>(paths: &[&'a TokenPath]) -> Result<&'a str, Unresolved> {
 
 fn inherited_paths(
     tokens: numeric::modifier::MemberTokens,
+    name: ReaderJoin,
     default: &[&TokenPath],
 ) -> Vec<TokenPath> {
-    let name = ReaderJoin::Missing(Unresolved::new("modifier-name-reader"));
     let data = ReaderJoin::Joined {
         callee: "CReader::Read(int&)".into(),
         arguments: BTreeMap::new(),
@@ -389,6 +393,7 @@ mod tests {
                 shared_callee: "CReader::Read(CFixedPoint&)".into(),
             },
             references: BTreeMap::new(),
+            name_reads: Ok(vec![]),
         }
     }
 

@@ -141,6 +141,9 @@ pub(crate) fn conversion_kind(callee: &str) -> Option<ReaderKind> {
 pub(crate) const TRIGGER_LOOKUP: &str =
     "CTriggerDatabase::CreateTriggerOrScriptedPlaceholder(CToken const&, CString const&) const";
 
+/// Reads past the reader's current value: one token, or the whole block that it opens.
+pub(crate) const SKIP: &str = "CReader::SkipToken()";
+
 pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
         "CVariableValue::Read(CReader&, EScopeType)"
@@ -162,6 +165,7 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
             ReaderKind::FixedPoint
         }
         "CReader::Read(CString&, bool)" => ReaderKind::String,
+        SKIP => ReaderKind::Skipped,
         "CReader::Read(CPersistent&)"
         | "CPersistent::Read(CReader&)"
         | "CTrigger::Read(CReader&, EScopeType)"
@@ -206,7 +210,9 @@ fn is_simple_template_argument(argument: &str) -> bool {
 
 /// Registers that affect a supported reader call, excluding caller scratch state.
 pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
-    if callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
+    if callee == SKIP {
+        Some(&["x0"])
+    } else if callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)" {
         Some(&["x0", "x1", "x2", "x3"])
     } else if callee == "CVariableValue::Read(CReader&, EScopeType)"
         || callee == "CReader::Read(CString&, bool)"
@@ -227,7 +233,7 @@ pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
 /// The owner-derived output object of a supported shared reader.
 pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     if let ReaderJoin::Stored { destination, .. } = join {
-        return Some(*destination);
+        return *destination;
     }
     let ReaderJoin::Joined {
         callee, arguments, ..
@@ -251,7 +257,7 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
             | "CEffect::Read(CReader&, EScopeType)"
     ) {
         "x0"
-    } else if call_arguments(callee).is_some() {
+    } else if call_arguments(callee).is_some_and(|registers| registers.contains(&"x1")) {
         "x1"
     } else {
         return None;
@@ -283,12 +289,16 @@ pub(crate) fn arguments_join(
             && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
     } else if name.ends_with("::Read(CReader&, EScopeType)") {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
-    } else if name.starts_with("CReader::Read(") {
+    } else if name == SKIP {
         get("x0") == Some(&Value::Reader(0))
-            && (owner(get("x1"))
-                || (classify_callee(name) == ReaderKind::Integer
-                    && scalar_width(name) == Some(4)
-                    && matches!(get("x1"), Some(Value::Stack(_)))))
+    } else if name.starts_with("CReader::Read(") {
+        let stack_temporary = match classify_callee(name) {
+            ReaderKind::Integer => scalar_width(name) == Some(4),
+            ReaderKind::Boolean => true,
+            _ => false,
+        };
+        get("x0") == Some(&Value::Reader(0))
+            && (owner(get("x1")) || (stack_temporary && matches!(get("x1"), Some(Value::Stack(_)))))
     } else if name == "CVariableValue::Read(CReader&, EScopeType)" {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name.starts_with("void NParserUtil::ReadEffect<")
@@ -348,6 +358,52 @@ mod tests {
             false,
             None
         ));
+    }
+
+    #[test]
+    fn a_boolean_reader_can_join_a_stack_temporary_but_not_an_unknown_destination() {
+        use crate::engine::analysis::fields::Value;
+
+        let mut arguments = BTreeMap::from([
+            ("x0".into(), Value::Reader(0)),
+            ("x1".into(), Value::Stack(8)),
+        ]);
+        assert!(arguments_join(
+            "CReader::Read(bool&)",
+            &arguments,
+            false,
+            None
+        ));
+
+        arguments.insert("x1".into(), Value::Constant(8));
+        assert!(!arguments_join(
+            "CReader::Read(bool&)",
+            &arguments,
+            false,
+            None
+        ));
+    }
+
+    #[test]
+    fn a_skipped_value_joins_with_the_reader_and_has_no_destination() {
+        use crate::engine::analysis::fields::Value;
+
+        let mut arguments = BTreeMap::from([
+            ("x0".into(), Value::Reader(0)),
+            ("x1".into(), Value::Owner(0x40)),
+        ]);
+        assert!(arguments_join(SKIP, &arguments, false, None));
+        assert_eq!(
+            destination(&ReaderJoin::Joined {
+                callee: SKIP.into(),
+                arguments: arguments.clone(),
+                tail: true,
+            }),
+            None
+        );
+
+        arguments.insert("x0".into(), Value::Owner(0));
+        assert!(!arguments_join(SKIP, &arguments, false, None));
     }
 
     fn joined(callee: &str) -> ReaderJoin {

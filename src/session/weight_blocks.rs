@@ -652,7 +652,7 @@ mod tests {
             readers: vec![ReaderJoin::Stored {
                 callee: callee.into(),
                 kind: ReaderKind::Keyword,
-                destination: 0x298,
+                destination: Some(0x298),
                 repeat: crate::RepeatBehavior::Replace,
             }],
         };

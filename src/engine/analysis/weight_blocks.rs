@@ -1302,7 +1302,7 @@ impl End {
             }) => PathOutcome::Reader(ReaderJoin::Stored {
                 callee: callee.clone(),
                 kind: *kind,
-                destination: *destination,
+                destination: Some(*destination),
                 repeat: RepeatBehavior::Replace,
             }),
             Some(Shape::Inserted {
@@ -1311,7 +1311,7 @@ impl End {
             }) => PathOutcome::Reader(ReaderJoin::Stored {
                 callee: child.read.clone(),
                 kind: ReaderKind::Block,
-                destination: *array,
+                destination: Some(*array),
                 repeat: RepeatBehavior::Accumulate,
             }),
             _ if self.emitted => PathOutcome::Rejected,

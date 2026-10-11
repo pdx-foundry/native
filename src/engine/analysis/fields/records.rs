@@ -130,8 +130,9 @@ pub enum ReaderJoin {
         callee: String,
         /// Broad value kind established by the compound idiom.
         kind: crate::ReaderKind,
-        /// Storage offset in the original owner.
-        destination: i64,
+        /// Storage offset in the original owner, or `None` when the idiom establishes only the
+        /// value's kind.
+        destination: Option<i64>,
         /// Storage behavior established by the idiom.
         repeat: crate::RepeatBehavior,
     },
@@ -403,4 +404,7 @@ pub struct KeyReaders {
     pub optional_string: Option<u64>,
     pub string_read: Option<u64>,
     pub persistent_read: Option<u64>,
+    /// `CString::CString(char const*)`, which makes a string from a token's text.
+    #[serde(default)]
+    pub string_from_text: Vec<u64>,
 }

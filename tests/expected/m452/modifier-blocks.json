@@ -8,9 +8,9 @@
     },
     "fixed_keys": {
       "Partial": [
-        ["name", "Unknown"],
+        ["name", "Skipped"],
         ["icon", "String"],
-        ["key", "Unknown"],
+        ["key", "String"],
         ["data", "Integer"],
         ["custom_tooltip", "String"],
         ["apply_modifier_to_other_planets", "String"],
@@ -19,18 +19,13 @@
         ["description", "String"],
         ["important", "Boolean"],
         ["description_parameters", "Unknown"],
-        ["divide_over_pop_groups", "Unknown"],
+        ["divide_over_pop_groups", "Boolean"],
         ["hide_from_country_list", "Boolean"]
       ]
     },
     "gaps": [
       [
         "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "key"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
         {"kind": "key_path", "path": ["modifier", "description_parameters"]},
         "The modifier block analysis stopped at reader-routing."
       ],
@@ -48,16 +43,6 @@
         "UnresolvedReader",
         {"kind": "key_path", "path": ["modifier", "description_parameters"]},
         "The modifier block analysis stopped at instruction."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "divide_over_pop_groups"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
         "OutsideMethod",
@@ -89,8 +74,8 @@
       ]
     },
     "fixed_keys": {
-      "Partial": [
-        ["name", "Unknown"],
+      "Known": [
+        ["name", "Skipped"],
         ["icon", "String"],
         ["data", "Integer"],
         ["custom_tooltip", "String"],
@@ -101,11 +86,6 @@
       ]
     },
     "gaps": [
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
-      ],
       [
         "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},
@@ -136,36 +116,21 @@
       ]
     },
     "fixed_keys": {
-      "Partial": [
-        ["name", "Unknown"],
+      "Known": [
+        ["name", "Skipped"],
         ["icon", "String"],
-        ["key", "Unknown"],
+        ["key", "String"],
         ["data", "Integer"],
         ["custom_tooltip", "String"],
         ["apply_modifier_to_other_planets", "String"],
         ["show_only_custom_tooltip", "Boolean"],
         ["icon_frame", "Integer"],
         ["important", "Boolean"],
-        ["divide_over_pop_groups", "Unknown"],
+        ["divide_over_pop_groups", "Boolean"],
         ["hide_from_country_list", "Boolean"]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["country_modifier", "key"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["country_modifier", "divide_over_pop_groups"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["country_modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
-      ],
       [
         "OutsideMethod",
         {"kind": "key_path", "path": ["country_modifier", "data"]},
@@ -196,17 +161,12 @@
       ]
     },
     "fixed_keys": {
-      "Partial": [
-        ["name", "Unknown"],
+      "Known": [
+        ["name", "Skipped"],
         ["data", "Integer"]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
-      ],
       [
         "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},

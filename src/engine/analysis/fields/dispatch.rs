@@ -108,6 +108,11 @@ struct State {
     stack: BTreeMap<i64, Value>,
     serializer: Option<(i64, i64, i64)>,
     copied_tokens: BTreeSet<i64>,
+    /// Stack strings made from the value token's text since the last stack store.
+    value_strings: BTreeSet<i64>,
+    /// Where the path first made a string from the value token's text. A path that then joins
+    /// no reader ends there, as it did before the string idiom was followed.
+    value_read: Option<Unresolved>,
     targets: BTreeSet<i64>,
     emplaced: BTreeSet<i64>,
     stored: Option<(ReaderJoin, i64, i64)>,
@@ -211,6 +216,12 @@ impl State {
         }
     }
     fn finish(&self, terminal: u64, outcome: PathOutcome) -> TokenPath {
+        let outcome = match (outcome, &self.value_read) {
+            (PathOutcome::Gap(_) | PathOutcome::Reader(ReaderJoin::Missing(_)), Some(read)) => {
+                PathOutcome::Reader(ReaderJoin::Missing(read.clone()))
+            }
+            (outcome, _) => outcome,
+        };
         TokenPath {
             domain: self.domain,
             conditions: self.conditions.clone(),
@@ -704,6 +715,7 @@ fn apply(
             } else if let Some(Value::Stack(at)) = location {
                 state.save_address(at, width, state.stack_store_value(operand));
                 state.copied_tokens.clear();
+                state.value_strings.clear();
                 state.targets.clear();
                 state.stack.clear();
                 if row.operation == "str"
@@ -748,6 +760,7 @@ fn apply(
                 }
                 state.stack.clear();
                 state.copied_tokens.clear();
+                state.value_strings.clear();
                 state.targets.clear();
             }
             if row.operation == "ldp" {
@@ -837,6 +850,8 @@ fn explore_member_with_wrapped_owner(
         stack: BTreeMap::new(),
         serializer: None,
         copied_tokens: BTreeSet::new(),
+        value_strings: BTreeSet::new(),
+        value_read: None,
         targets: BTreeSet::new(),
         emplaced: BTreeSet::new(),
         stored: None,
@@ -1038,7 +1053,15 @@ fn explore_member_with_wrapped_owner(
                     continue;
                 }
                 if let Some(target) = target {
-                    match compound_call(input.key_readers, target, &mut state) {
+                    let call = compound_call(input.key_readers, target, &mut state);
+                    if matches!(call, CompoundCall::Continue)
+                        && input.key_readers.string_from_text.contains(&target)
+                    {
+                        state
+                            .value_read
+                            .get_or_insert_with(|| stop("reader-routing", Obstacle::Call));
+                    }
+                    match call {
                         // A tail call does not return to the next instruction.
                         CompoundCall::Continue if row.operation == "b" => {
                             leaves.push(state.finish(
@@ -1062,7 +1085,7 @@ fn explore_member_with_wrapped_owner(
                             let join = ReaderJoin::Stored {
                                 callee,
                                 kind,
-                                destination,
+                                destination: Some(destination),
                                 repeat,
                             };
                             if row.operation == "b" {
@@ -1113,13 +1136,27 @@ fn explore_member_with_wrapped_owner(
                     outcome = PathOutcome::Reader(ReaderJoin::Stored {
                         callee: name.unwrap_or_default().into(),
                         kind: crate::ReaderKind::String,
-                        destination,
+                        destination: Some(destination),
                         repeat: crate::RepeatBehavior::Accumulate,
                     });
                 }
+                if let Some(name) = name
+                    && passes_value_string(&state)
+                {
+                    outcome = PathOutcome::Reader(ReaderJoin::Stored {
+                        callee: name.into(),
+                        kind: crate::ReaderKind::String,
+                        destination: None,
+                        repeat: crate::RepeatBehavior::Unknown,
+                    });
+                }
                 if row.operation == "bl"
-                    && let PathOutcome::Reader(join @ ReaderJoin::Stored { destination, .. }) =
-                        &outcome
+                    && let PathOutcome::Reader(
+                        join @ ReaderJoin::Stored {
+                            destination: Some(destination),
+                            ..
+                        },
+                    ) = &outcome
                 {
                     let size = input.key_readers.compound_sizes[2];
                     if size <= 0 {
@@ -1659,6 +1696,11 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
         state.targets.clear();
         state.stack.clear();
         state.copied_tokens.insert(at);
+    } else if bindings.string_from_text.contains(&target)
+        && source == Some(value_text(bindings))
+        && let Some(Value::Stack(at)) = receiver
+    {
+        state.value_strings.insert(at);
     } else if bindings.target_construct.contains(&target)
         && let (Some(Value::Stack(at)), Some(Value::Stack(token))) = (&receiver, &source)
         && state.copied_tokens.contains(token)
@@ -1678,11 +1720,7 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
         };
     } else if bindings.optional_string == Some(target)
         && let (Some(Value::Owner(destination)), Some(Value::Stack(at))) = (&receiver, &source)
-        && state.stack.get(at)
-            == Some(&Value::Load(
-                Box::new(Value::Reader(bindings.value_token + bindings.token_text)),
-                8,
-            ))
+        && state.stack.get(at) == Some(&value_text(bindings))
     {
         return CompoundCall::Stored {
             kind: crate::ReaderKind::String,
@@ -1709,6 +1747,22 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     }
     state.flags = None;
     CompoundCall::Continue
+}
+
+/// The pointer to the value token's text, loaded from the reader.
+fn value_text(bindings: &super::KeyReaders) -> Value {
+    Value::Load(
+        Box::new(Value::Reader(bindings.value_token + bindings.token_text)),
+        8,
+    )
+}
+
+/// A call that passes the owner a stack string made from the value token's text reads the value
+/// as a string. This is a stated rule: the method does not follow the callee, so where the
+/// string is stored, and which strings it accepts, are not established.
+fn passes_value_string(state: &State) -> bool {
+    state.value("x0") == Some(Value::Owner(0))
+        && matches!(state.value("x1"), Some(Value::Stack(at)) if state.value_strings.contains(&at))
 }
 
 fn emplaced_destination(bindings: &super::KeyReaders, state: &State) -> Option<i64> {
@@ -2025,6 +2079,8 @@ mod tests {
             stack: BTreeMap::new(),
             serializer: None,
             copied_tokens: BTreeSet::new(),
+            value_strings: BTreeSet::new(),
+            value_read: None,
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),
             stored: None,

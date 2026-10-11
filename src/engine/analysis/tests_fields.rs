@@ -1658,6 +1658,7 @@ fn compound_fixture(code: Vec<u8>) -> FieldInput {
         optional_string: Some(0xe000),
         string_read: Some(0xf000),
         persistent_read: None,
+        string_from_text: vec![0x9000],
         array_data: 8,
         array_count: 0x14,
         string_stride: 0x28,
@@ -1669,6 +1670,8 @@ fn compound_fixture(code: Vec<u8>) -> FieldInput {
         (0xd000, "emplace"),
         (0xe000, "optional"),
         (0xf000, "CReader::Read(CString&, bool)"),
+        (0x9000, "CString::CString(char const*)"),
+        (0x9800, "Owner::SetKey(CString const&)"),
     ] {
         input.symbols.push(Symbol {
             address,
@@ -1733,7 +1736,7 @@ fn compound_array_requires_emplace_before_reading_last_string() {
                 ReaderJoin::Stored {
                     kind: crate::ReaderKind::String,
                     repeat: crate::RepeatBehavior::Accumulate,
-                    destination: 0x80,
+                    destination: Some(0x80),
                     ..
                 }
             ),
@@ -1789,6 +1792,53 @@ fn compound_optional_string_requires_value_token_text() {
             ),
             offset == 0x288
         );
+    }
+}
+
+/// A stated rule: a value-text string passed to an owner call is a string read, whatever the
+/// callee stores. A path that reaches no such call still names its field.
+#[test]
+fn a_value_text_string_passed_to_the_owner_reads_a_string() {
+    let read = |text: &str, receiver: &str, overwrite: bool| {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            mov x19, x0; mov x20, x1; sub sp, sp, #0x40
+        );
+        match text {
+            "value" => arm64!(code; ldr x1, [x20, #0x288]),
+            _ => arm64!(code; adr x1, #0x40),
+        }
+        arm64!(code; add x0, sp, #8; bl extern 0x9000);
+        if overwrite {
+            arm64!(code; str xzr, [sp, #8]);
+        }
+        arm64!(code; add x1, sp, #8);
+        match receiver {
+            "owner" => arm64!(code; mov x0, x19),
+            "after a branch" => arm64!(code; mov x0, x19; b.eq extern 0x1010),
+            _ => arm64!(code; mov x0, x20),
+        }
+        arm64!(code; bl extern 0x9800; ret);
+        derive(compound_fixture(code.bytes())).fields[0].readers[0].clone()
+    };
+
+    assert!(matches!(
+        read("value", "owner", false),
+        ReaderJoin::Stored {
+            kind: crate::ReaderKind::String,
+            destination: None,
+            ..
+        }
+    ));
+    for join in [
+        read("literal", "owner", false),
+        read("value", "reader", false),
+        read("value", "owner", true),
+        read("value", "after a branch", false),
+    ] {
+        assert!(matches!(join, ReaderJoin::Missing(_)), "{join:?}");
     }
 }
 

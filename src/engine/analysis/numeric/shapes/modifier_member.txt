@@ -19,7 +19,7 @@ mov wr8,#0x1
 b @+155
 ldr x0,[xr9,#{other_reader_offset}]
 ldr xr10,[x0]
-ldr xr10,[xr10,#0x10]
+ldr xr10,[xr10,#{name_read_slot}]
 mov x1,xr7
 blr xr10
 mov wr8,#0x1

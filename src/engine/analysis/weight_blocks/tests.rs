@@ -534,7 +534,7 @@ fn stored(callee: &str, kind: ReaderKind, destination: i64) -> ReaderJoin {
     ReaderJoin::Stored {
         callee: callee.into(),
         kind,
-        destination,
+        destination: Some(destination),
         repeat: RepeatBehavior::Replace,
     }
 }
@@ -578,7 +578,7 @@ fn fixed_keys_read_into_the_owner() {
         [ReaderJoin::Stored {
             callee: "CToken::GetInt() const".into(),
             kind: ReaderKind::Integer,
-            destination: 0x10,
+            destination: Some(0x10),
             repeat: RepeatBehavior::Replace,
         }]
     );
