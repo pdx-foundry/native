@@ -192,13 +192,13 @@ authored tests independent of an installed game.
 
 Keep reviewed expected output in [`tests/expected/m452/`](../../tests/expected/m452/), and check it
 in [`tests/static_questions.rs`](../../tests/static_questions.rs). Those ignored tests read the
-exact M452 executable and start no game:
+exact M452 executable and start no game. The ignored library tests read the same executable:
 
 ```sh
-cargo test --release --test static_questions -- --ignored
+cargo test --release --lib --test static_questions -- --ignored
 ```
 
-`STELLARIS_PATH` must be set for this command; `cargo parity` is its existing alias. Check source
+`STELLARIS_PATH` must be set for this command; `cargo parity` is its alias. Check source
 stamp, values, completeness and gaps, including an unresolved or invalid case. Inspect a changed
 answer before changing its expected file. A parity sample does not replace the population run.
 
