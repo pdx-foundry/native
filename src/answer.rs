@@ -849,7 +849,7 @@ pub struct DerivedName {
 }
 
 /// What a derived name is looked up in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum NameLookup {
     /// The localisation keys.

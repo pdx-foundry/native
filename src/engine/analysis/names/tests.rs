@@ -91,7 +91,7 @@ fn input() -> NameInput {
     let view_lookup = Sink {
         result: Some(ResultView { size: 0x10 }),
         ..sink(
-            Target::Localization,
+            NameLookup::Localization,
             Role::Lookup,
             view,
             Some(Miss::ShowsKey),
@@ -102,16 +102,24 @@ fn input() -> NameInput {
             (
                 LOOKUP,
                 sink(
-                    Target::Localization,
+                    NameLookup::Localization,
                     Role::Lookup,
                     view,
                     Some(Miss::ShowsKey),
                 ),
             ),
-            (CHECK, sink(Target::Localization, Role::Check, view, None)),
+            (
+                CHECK,
+                sink(NameLookup::Localization, Role::Check, view, None),
+            ),
             (
                 SPRITE_LOOKUP,
-                sink(Target::Sprite, Role::Lookup, NameArgument::Object(1), None),
+                sink(
+                    NameLookup::Sprite,
+                    Role::Lookup,
+                    NameArgument::Object(1),
+                    None,
+                ),
             ),
             (VIEW_LOOKUP, view_lookup),
         ]
@@ -310,7 +318,7 @@ fn a_literal_and_the_key_looked_up_without_a_check_show_the_key_and_are_always_u
         result.names,
         [Name {
             parts: vec![literal("prefix_"), Part::ItemKey],
-            target: Target::Localization,
+            target: NameLookup::Localization,
             stage: Stage::WhenUsed,
             on_missing: Miss::ShowsKey,
             condition: Condition::Always,
@@ -330,7 +338,7 @@ fn an_unchecked_lookup_without_a_stated_rule_has_an_unresolved_miss() {
     let result = analyze_root(code, &Storage::default());
 
     let name = named(&result, &key_desc());
-    assert_eq!(name.target, Target::Sprite);
+    assert_eq!(name.target, NameLookup::Sprite);
     assert_eq!(name.on_missing, Miss::Unresolved);
     assert_eq!(name.condition, Condition::Always);
 }

@@ -55,6 +55,7 @@ use super::families::{
 };
 use super::fields::{RegistryFieldResult, StorageSelection, storage_offset};
 use super::stop::Unresolved;
+use crate::NameLookup;
 
 #[cfg(test)]
 mod tests;
@@ -85,7 +86,7 @@ pub struct NameInput {
 /// A function that checks or looks up a name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sink {
-    pub target: Target,
+    pub target: NameLookup,
     pub role: Role,
     pub argument: NameArgument,
     /// What a name gives that this lookup does not find, when no check of the name came first.
@@ -101,14 +102,6 @@ pub struct Sink {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResultView {
     pub size: u64,
-}
-
-/// What a sink searches for a name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Target {
-    Localization,
-    Sprite,
-    File,
 }
 
 /// Whether a sink only tests that a name exists, or looks it up for use.
@@ -223,7 +216,7 @@ pub struct NameResult {
 pub struct Name {
     /// At least one part is the item key or a field; none is unresolved.
     pub parts: Vec<Part>,
-    pub target: Target,
+    pub target: NameLookup,
     pub stage: Stage,
     pub on_missing: Miss,
     pub condition: Condition,
@@ -401,10 +394,10 @@ enum Kind {
 }
 
 /// A name and what it is checked or looked up in, by the name's text in one run.
-type NameKey = (Target, String);
+type NameKey = (NameLookup, String);
 
 /// A derived name's parts and lookup target, independent of the run.
-type NameId = (Vec<Part>, Target);
+type NameId = (Vec<Part>, NameLookup);
 
 /// The fixed inputs of one run.
 struct Plan<'s> {
@@ -428,7 +421,7 @@ struct Event {
 enum EventKind {
     Use {
         role: Role,
-        target: Target,
+        target: NameLookup,
         name: Node,
         unchecked_miss: Option<Miss>,
     },
