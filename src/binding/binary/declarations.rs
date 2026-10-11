@@ -14,6 +14,10 @@ use crate::{AnalysisError, DeclarationKind};
 
 use super::super::targets::DeclarationRecipe;
 
+/// The most bytes of one function that the declaration and grammar readers keep. A longer body is
+/// cut at this length, and the grammar reader records it as a cut body.
+pub(super) const FUNCTION_BODY_LIMIT: u64 = 65_536;
+
 /// Read every registration call in executable text, including tail calls and calls in compiler
 /// outlined regions that have no reliable symbol boundary, with the code that composes run-time
 /// tokens.
@@ -62,7 +66,7 @@ pub(in crate::binding) fn read(
     }
     let mut functions = BTreeMap::new();
     for &start in &text.starts {
-        let length = text.function_length(start).min(4096);
+        let length = text.function_length(start).min(FUNCTION_BODY_LIMIT);
         if length == 0 || !length.is_multiple_of(4) {
             continue;
         }
@@ -300,12 +304,21 @@ impl<'a> Text<'a> {
         end - start
     }
 
-    /// The whole function that starts at `start`.
+    /// The whole function that starts at `start`. An address that is not a function start is an
+    /// error.
     pub fn function(&self, start: u64) -> Result<(u64, &'a [u8]), AnalysisError> {
-        if !(self.address..self.end()).contains(&start) {
+        if !self.starts.contains(&start) {
             return Err(AnalysisError::InvalidRange);
         }
         Ok((start, self.bytes(start, self.function_length(start))?))
+    }
+
+    /// The whole function that starts at `start`, or `None` when `start` is not a function start
+    /// or the function is longer than `limit` bytes.
+    pub fn function_within(&self, start: u64, limit: u64) -> Option<&'a [u8]> {
+        let (_, code) = self.function(start).ok()?;
+
+        (code.len() as u64 <= limit).then_some(code)
     }
 
     pub fn bytes(&self, start: u64, length: u64) -> Result<&'a [u8], AnalysisError> {
@@ -528,6 +541,33 @@ mod tests {
         assert!(text.function(0x2000).is_err());
         assert!(text.function(0xff0).is_err());
         assert_eq!(text.function(0x1000).unwrap().1.len(), 16);
+    }
+
+    #[test]
+    fn every_collector_takes_the_same_function_extent() {
+        // The symbol of a later data object at 0x9000 is outside the text, so it is not a start.
+        let text = Text {
+            address: 0x1000,
+            code: &[0; 32],
+            starts: BTreeSet::from([0x1000, 0x1010]),
+        };
+
+        let final_length = |code: &[u8]| code.len() as u64;
+        assert_eq!(text.function_length(0x1010), 16);
+        assert!(
+            text.function(0x1010)
+                .is_ok_and(|(_, code)| code.len() == 16)
+        );
+        assert_eq!(text.function_within(0x1010, 16).map(final_length), Some(16));
+        assert_eq!(text.function_within(0x1010, 15), None);
+        assert_eq!(
+            super::super::weight_blocks::body(&text, 0x1010).map(final_length),
+            Some(16)
+        );
+
+        assert!(text.function(0x1004).is_err());
+        assert_eq!(text.function_within(0x1004, 1024), None);
+        assert_eq!(super::super::weight_blocks::body(&text, 0x1004), None);
     }
 
     #[test]

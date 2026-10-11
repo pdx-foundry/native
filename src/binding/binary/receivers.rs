@@ -74,10 +74,12 @@ pub(super) fn constructors(
                     continue;
                 };
                 calls.insert(address);
-                if !text.starts.contains(&address) || followed.contains(&address) {
+                if followed.contains(&address) {
                     continue;
                 }
-                let (address, code) = text.function(address)?;
+                let Ok((address, code)) = text.function(address) else {
+                    continue;
+                };
                 let callee = Function {
                     address,
                     code: code.to_vec(),

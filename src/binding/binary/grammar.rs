@@ -48,12 +48,6 @@ pub(in crate::binding) fn read(
     names: BTreeMap<u64, String>,
 ) -> Result<GrammarInput, AnalysisError> {
     let text = super::declarations::Text::read(bytes, symbols)?;
-    for (&address, body) in &mut declarations.functions {
-        let length = text.function_length(address).min(65_536);
-        if length > body.code.len() as u64 {
-            body.code = text.bytes(address, length)?.to_vec();
-        }
-    }
     let mut roots: Vec<_> = inventory
         .sites
         .iter()
@@ -144,7 +138,9 @@ pub(in crate::binding) fn read(
         ) {
             form_input.harmless.insert(symbol.address);
         }
-        if text.starts.contains(&symbol.address) && text.function_length(symbol.address) > 65_536 {
+        if text.starts.contains(&symbol.address)
+            && text.function_length(symbol.address) > super::declarations::FUNCTION_BODY_LIMIT
+        {
             form_input.cut_bodies.insert(symbol.address);
         }
     }

@@ -46,7 +46,9 @@ can overlap, but the union must tile the full token range and every overlapping 
 established. A covered node has no gap, dynamic key, table gap or stop; every named key has a known
 reader kind after grouping its reader paths (disagreement gives `unknown-key-reader`). Coverage groups
 by token identity, not spelling (`ambiguous-key-token`). Missing member vtables, cycles, cut bodies
-(slot bodies keep up to 65,536 bytes) and the eight-level nesting bound leave coverage unresolved.
+(the declaration reader keeps up to 65,536 bytes of each function, `FUNCTION_BODY_LIMIT`, and
+the grammar reader records each longer function as a cut body) and the eight-level nesting bound
+leave coverage unresolved.
 
 - The factory contributes only allocation bytes that agree on every returning path; eight agreed
   bytes at a member destination supply its vtable.

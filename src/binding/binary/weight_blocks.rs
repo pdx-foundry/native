@@ -69,8 +69,5 @@ pub(in crate::binding) fn read(
 
 /// The code of the function that starts at `address`.
 pub(in crate::binding) fn body<'a>(text: &Text<'a>, address: u64) -> Option<&'a [u8]> {
-    text.starts
-        .contains(&address)
-        .then(|| text.function(address).ok().map(|(_, code)| code))
-        .flatten()
+    text.function(address).ok().map(|(_, code)| code)
 }

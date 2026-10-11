@@ -135,24 +135,15 @@ impl VerifiedAnalysis<'_> {
         reader_entry: u64,
         owner: &str,
     ) -> Result<Option<u64>, AnalysisError> {
+        const READER_LIMIT: u64 = 16 * 1024;
+
+        let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
         let mut entry = reader_entry;
         for depth in 0..2 {
-            let Some(end) = self
-                .catalog
-                .symbols
-                .iter()
-                .filter(|symbol| symbol.address > entry)
-                .map(|symbol| symbol.address)
-                .min()
-            else {
+            let Some(code) = text.function_within(entry, READER_LIMIT) else {
                 return Ok(None);
             };
-            let length = end - entry;
-            if length == 0 || length > 16 * 1024 {
-                return Ok(None);
-            }
-            let bytes = binary::code_range(&self.executable, entry, length)?;
-            let rows = decode_arm64(&bytes, entry).map_err(|_| AnalysisError::InvalidRange)?;
+            let rows = decode_arm64(code, entry).map_err(|_| AnalysisError::InvalidRange)?;
             match fixture_constructor_route(&rows, entry, owner, &self.catalog.symbols) {
                 Some(FixtureConstructorRoute::Constructor(address)) => return Ok(Some(address)),
                 Some(FixtureConstructorRoute::NewEntry(address)) if depth == 0 => entry = address,
