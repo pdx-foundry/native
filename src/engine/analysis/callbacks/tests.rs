@@ -1625,7 +1625,6 @@ fn a_forwarder_that_does_not_pass_its_argument_is_refused() {
     assert_eq!(
         result.unnamed,
         [Unnamed {
-            family: Family::OnAction,
             reason: "forwarder-not-verified"
         }]
     );
@@ -2425,7 +2424,6 @@ fn a_climbed_site_without_a_literal_name_takes_no_name_from_its_caller() {
     assert_eq!(
         result.unnamed,
         [Unnamed {
-            family: Family::OnAction,
             reason: "name-not-a-literal"
         }]
     );

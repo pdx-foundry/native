@@ -104,7 +104,7 @@ pub(crate) fn normalized_on_actions(
         })
         .collect();
 
-    unnamed_gaps(result, Family::OnAction, &mut gaps);
+    unnamed_gaps(result, &mut gaps);
     if result.script_fired_sites > 0 {
         gaps.push(gap(
             GapKind::OutsideMethod,
@@ -147,7 +147,7 @@ pub(crate) fn normalized_game_rules(
         })
         .collect();
 
-    unnamed_gaps(result, Family::GameRule, &mut gaps);
+    unnamed_gaps(result, &mut gaps);
     gaps.push(gap(
         GapKind::OutsideMethod,
         None,
@@ -240,7 +240,7 @@ pub(super) fn entries(
     let incomplete = findings
         .contexts
         .iter()
-        .flat_map(slots)
+        .flat_map(Context::slots)
         .any(|slot| *slot == Slot::Unresolved);
     if incomplete {
         gaps.push(gap(
@@ -251,7 +251,7 @@ pub(super) fn entries(
     let unreadable = findings
         .contexts
         .iter()
-        .flat_map(slots)
+        .flat_map(Context::slots)
         .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.scope(*bit).is_none()));
     if unreadable {
         gaps.push(gap(
@@ -268,21 +268,10 @@ pub(super) fn entries(
     entries
 }
 
-fn slots(context: &Context) -> impl Iterator<Item = &Slot> {
-    std::iter::once(&context.this)
-        .chain([&context.root])
-        .chain(&context.from)
-        .chain(&context.prev)
-}
-
 /// One gap for each reason that some call sites could not be named, with their number.
-fn unnamed_gaps(result: &CallbacksResult, family: Family, gaps: &mut Vec<Gap>) {
+fn unnamed_gaps(result: &CallbacksResult, gaps: &mut Vec<Gap>) {
     let mut counts = BTreeMap::<&str, usize>::new();
-    for unnamed in result
-        .unnamed
-        .iter()
-        .filter(|unnamed| unnamed.family == family)
-    {
+    for unnamed in &result.unnamed {
         *counts.entry(unnamed.reason).or_default() += 1;
     }
     for (reason, count) in counts {
@@ -476,14 +465,14 @@ mod tests {
     }
 
     #[test]
-    fn unnamed_sites_are_counted_by_reason_and_family() {
+    fn unnamed_sites_are_counted_by_reason() {
         let mut result = CallbacksResult::default();
-        for (family, reason) in [
-            (Family::OnAction, "name-not-a-literal"),
-            (Family::OnAction, "name-not-a-literal"),
-            (Family::GameRule, "rule-unknown"),
+        for reason in [
+            "name-not-a-literal",
+            "name-not-a-literal",
+            "name-not-proved",
         ] {
-            result.unnamed.push(Unnamed { family, reason });
+            result.unnamed.push(Unnamed { reason });
         }
         let answer = normalized_on_actions(&result, &names(), build());
 
@@ -493,9 +482,15 @@ mod tests {
             .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
             .map(|gap| gap.detail.as_str())
             .collect();
-        assert_eq!(unnamed.len(), 1);
-        assert!(unnamed[0].starts_with("2 call sites"));
-        assert!(unnamed[0].contains("built at run time"));
+        assert_eq!(unnamed.len(), 2);
+        assert!(unnamed.iter().any(
+            |detail| detail.starts_with("2 call sites") && detail.contains("built at run time")
+        ));
+        assert!(
+            unnamed
+                .iter()
+                .any(|detail| detail.starts_with("1 ") && detail.contains("name-not-proved"))
+        );
     }
 
     /// The text of `describe` without its reason code, which stays at the end.

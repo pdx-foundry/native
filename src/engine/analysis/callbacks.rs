@@ -247,13 +247,17 @@ pub struct Context {
 }
 
 impl Context {
-    /// Whether every slot of the context is established.
-    pub fn is_established(&self) -> bool {
+    /// Every slot of the context: `this`, `root`, then the `from` chain and the `prev` chain.
+    pub fn slots(&self) -> impl Iterator<Item = &Slot> {
         std::iter::once(&self.this)
             .chain([&self.root])
             .chain(&self.from)
             .chain(&self.prev)
-            .all(|slot| *slot != Slot::Unresolved)
+    }
+
+    /// Whether every slot of the context is established.
+    pub fn is_established(&self) -> bool {
+        self.slots().all(|slot| *slot != Slot::Unresolved)
     }
 }
 
@@ -268,7 +272,6 @@ pub struct Findings {
 /// A site whose subject the method could not name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Unnamed {
-    pub family: Family,
     pub reason: &'static str,
 }
 
@@ -417,7 +420,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
             continue;
         }
         let Some(state) = states.get(&site.address) else {
-            assembly.unnamed(family, "site-not-decoded");
+            assembly.unnamed("site-not-decoded");
             continue;
         };
         let code = code_for(&mut codes, &runner, input, site.function);
@@ -642,10 +645,7 @@ enum SiteFinding {
         found: SiteContexts,
     },
     /// A site whose subject the method could not name.
-    Unnamed {
-        family: Family,
-        reason: &'static str,
-    },
+    Unnamed { reason: &'static str },
 }
 
 /// How the contexts that arrive at one site are found: from the callers that the climb followed,
@@ -728,7 +728,6 @@ fn site_finding(
         SiteCall::Forwarded { forwarder } => {
             let Some(inner) = &inner[forwarder] else {
                 return Some(SiteFinding::Unnamed {
-                    family: input.forwarders[forwarder].kind.family(),
                     reason: "forwarder-not-verified",
                 });
             };
@@ -793,12 +792,12 @@ impl Assembly {
                 name,
                 found,
             } => self.rule_site(family, name, found),
-            SiteFinding::Unnamed { family, reason } => self.unnamed(family, reason),
+            SiteFinding::Unnamed { reason } => self.unnamed(reason),
         }
     }
 
-    fn unnamed(&mut self, family: Family, reason: &'static str) {
-        self.result.unnamed.push(Unnamed { family, reason });
+    fn unnamed(&mut self, reason: &'static str) {
+        self.result.unnamed.push(Unnamed { reason });
     }
 
     fn on_action_names(
@@ -813,7 +812,7 @@ impl Assembly {
                     findings.unresolved.extend(reason);
                 }
             }
-            Err(reason) => self.unnamed(Family::OnAction, reason),
+            Err(reason) => self.unnamed(reason),
         }
     }
 
@@ -828,7 +827,7 @@ impl Assembly {
         let (mut names, named) = match names {
             Ok(names) => (names, true),
             Err(reason) => {
-                self.unnamed(Family::OnAction, reason);
+                self.unnamed(reason);
                 (BTreeSet::new(), false)
             }
         };
@@ -859,7 +858,7 @@ impl Assembly {
 
         let reached_none = attributed.is_empty() && !unattributed;
         if names.is_empty() && named {
-            self.unnamed(Family::OnAction, "name-not-proved");
+            self.unnamed("name-not-proved");
         }
         for name in names {
             let findings = self.result.on_actions.entry(name.clone()).or_default();
@@ -885,7 +884,7 @@ impl Assembly {
         let name = match name {
             Ok(name) => name,
             Err(reason) => {
-                self.unnamed(Family::GameRule, reason);
+                self.unnamed(reason);
                 return;
             }
         };
