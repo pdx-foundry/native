@@ -1547,23 +1547,7 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
                 Completeness::Partial
             }
         );
-        for field in &answer.value {
-            let expected_gap = if field.reader.id.is_none() {
-                Some(GapKind::UnresolvedReader)
-            } else if field.reader.kind == ReaderKind::Unknown {
-                Some(GapKind::ReaderSemantics)
-            } else {
-                None
-            };
-            if let Some(kind) = expected_gap {
-                assert!(
-                    answer.gaps.iter().any(|gap| gap.kind == kind
-                        && gap.subject.as_ref().map(|subject| subject.name()) == Some(&field.name)),
-                    "{registry}: {}",
-                    field.name
-                );
-            }
-        }
+        assert_reader_gaps(registry, &answer);
         potential.extend(
             answer
                 .value
@@ -1577,6 +1561,48 @@ fn registry_fields_match_and_share_reader_identities_across_registries() {
         native.registry_fields("common/no_such_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
+
+    // Persistent reads with no known destination reader: fields with no identity and, before the
+    // reader gap followed the field's own reader, no reader gap.
+    for registry in ["common/ascension_perks", "common/federation_perks"] {
+        assert_reader_gaps(registry, &native.registry_fields(registry).unwrap());
+    }
+}
+
+/// A field at any depth with no reader identity has an `UnresolvedReader` gap, and one with an
+/// identity and an unknown kind has a `ReaderSemantics` gap, named by its dotted path.
+fn assert_reader_gaps(registry: &str, answer: &Answer<Vec<pdx_native::Field>>) {
+    fn check(
+        registry: &str,
+        gaps: &[pdx_native::Gap],
+        fields: &[pdx_native::Field],
+        parent: Option<&str>,
+    ) {
+        for field in fields {
+            let name = match parent {
+                Some(parent) => format!("{parent}.{}", field.name),
+                None => field.name.clone(),
+            };
+            let expected_gap = if field.reader.id.is_none() {
+                Some(GapKind::UnresolvedReader)
+            } else if field.reader.kind == ReaderKind::Unknown {
+                Some(GapKind::ReaderSemantics)
+            } else {
+                None
+            };
+            if let Some(kind) = expected_gap {
+                assert!(
+                    gaps.iter().any(|gap| gap.kind == kind
+                        && gap.subject.as_ref().map(|subject| subject.name()) == Some(&name)),
+                    "{registry}: {name}"
+                );
+            }
+            if let pdx_native::FieldMembers::Fields(children) = &field.members {
+                check(registry, gaps, children, Some(&name));
+            }
+        }
+    }
+    check(registry, &answer.gaps, &answer.value, None);
 }
 
 /// The developer entry that the sweep uses gives the public answer from its one run.
