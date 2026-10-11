@@ -1142,14 +1142,15 @@ impl BoundAnalysis {
         self.modifier_nodes
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::modifier_nodes::read(
+                let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
-                    &verified.catalog.pointers,
-                    &verified.catalog.bound_slots,
-                    recipe,
                 )?;
-                Ok(crate::engine::analysis::modifier_nodes::analyze(&input))
+                let input = binary::modifier_nodes::read(&verified.image(), &text, recipe)?;
+                let bodies = |start| text.code_from(start);
+                Ok(crate::engine::analysis::modifier_nodes::analyze(
+                    &input, &bodies,
+                ))
             })
             .as_ref()
             .map_err(Clone::clone)

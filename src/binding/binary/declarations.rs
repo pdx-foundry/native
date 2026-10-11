@@ -295,6 +295,17 @@ impl<'a> Text<'a> {
         Ok((start, self.bytes(start, self.function_length(start))?))
     }
 
+    /// The code from `start` to the next function start, or to the end of the text. Unlike
+    /// [`Self::function`], `start` need not be a symbol: a static initializer can start where no
+    /// symbol does. `None` when `start` is outside the text.
+    pub fn code_from(&self, start: u64) -> Option<&'a [u8]> {
+        if !(self.address..self.end()).contains(&start) {
+            return None;
+        }
+
+        self.bytes(start, self.function_length(start)).ok()
+    }
+
     /// The whole function that starts at `start`, or `None` when `start` is not a function start
     /// or the function is longer than `limit` bytes.
     pub fn function_within(&self, start: u64, limit: u64) -> Option<&'a [u8]> {
@@ -575,6 +586,23 @@ mod tests {
         assert!(text.function(0x2000).is_err());
         assert!(text.function(0xff0).is_err());
         assert_eq!(text.function(0x1000).unwrap().1.len(), 16);
+    }
+
+    #[test]
+    fn code_runs_from_an_address_that_no_symbol_names_to_the_next_function() {
+        let text = Text {
+            address: 0x1000,
+            code: &[0; 32],
+            starts: BTreeSet::from([0x1000, 0x1010]),
+        };
+        let length = |start| text.code_from(start).map(<[u8]>::len);
+
+        assert_eq!(length(0x1000), Some(16));
+        assert_eq!(length(0x1004), Some(12));
+        assert_eq!(length(0x1010), Some(16));
+        assert!(text.function(0x1004).is_err());
+        assert_eq!(length(0x1020), None);
+        assert_eq!(length(0xff0), None);
     }
 
     #[test]
