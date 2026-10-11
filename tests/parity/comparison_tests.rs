@@ -35,32 +35,58 @@ fn unchanged_output_has_no_notices() {
 }
 
 #[test]
-fn build_difference_is_permitted_but_other_provenance_is_strict() {
-    let reviewed = commands("release");
-    let candidate = commands("hotfix");
-    let report = compare("command-grammars.json", &reviewed, &candidate);
-    assert!(report.passes());
-    assert_eq!(report.differences.len(), 1);
-    let difference = &report.differences[0];
-    assert_eq!(difference.path, "/effect~1sample/source/build");
-    assert_eq!(difference.category, Category::Provenance);
-    assert_eq!(difference.status, Status::Pass);
-    assert_eq!(difference.reviewed, Some(json!("release")));
-    assert_eq!(difference.candidate, Some(json!("hotfix")));
-    for key in ["method", "basis", "native_version"] {
-        let mut changed = candidate.clone();
-        changed["effect/sample"]["source"][key] = if key == "basis" {
-            json!("Recorded")
-        } else {
-            json!("changed")
+fn a_stamp_difference_fails_every_file_as_provenance() {
+    let read_scopes = |identity: &str| json!({"build": identity, "registries": {}, "commands": {}});
+    let durations = |identity: &str| json!({"build": identity, "cases": {}});
+    for (report, path) in [
+        (
+            compare(
+                "command-grammars.json",
+                &commands("release"),
+                &commands("hotfix"),
+            ),
+            "/effect~1sample/source/build",
+        ),
+        (
+            compare(
+                "read-scopes.json",
+                &read_scopes("release"),
+                &read_scopes("hotfix"),
+            ),
+            "/build",
+        ),
+        (
+            duration_report(&durations("release"), &durations("hotfix")),
+            "/build",
+        ),
+    ] {
+        assert!(!report.passes(), "{path}");
+        let [difference] = report.differences.as_slice() else {
+            panic!("{path}: {:?}", report.differences);
         };
-        let report = compare("command-grammars.json", &reviewed, &changed);
+        assert_eq!(difference.path, path);
+        assert_eq!(difference.category, Category::Provenance);
+        assert_eq!(difference.status, Status::Fail);
+        assert_eq!(difference.reviewed, Some(json!("release")));
+        assert_eq!(difference.candidate, Some(json!("hotfix")));
+    }
+}
+
+#[test]
+fn every_other_source_difference_fails_as_provenance() {
+    let reviewed = commands("hotfix");
+    for key in ["method", "basis", "native_version"] {
+        let mut candidate = reviewed.clone();
+        candidate["effect/sample"]["source"][key] = json!("changed");
+        let report = compare("command-grammars.json", &reviewed, &candidate);
+        let path = format!("/effect~1sample/source/{key}");
+        assert!(
+            report.differences.iter().any(|entry| entry.path == path
+                && entry.category == Category::Provenance
+                && entry.status == Status::Fail),
+            "{key}"
+        );
         assert!(!report.passes(), "{key}");
-        let failed_provenance = report
-            .differences
-            .iter()
-            .any(|entry| entry.category == Category::Provenance && entry.status == Status::Fail);
-        assert!(failed_provenance);
     }
 }
 
@@ -265,24 +291,19 @@ fn duration_report(reviewed: &Value, candidate: &Value) -> Report {
 }
 
 #[test]
-fn fresh_durations_compare_behavior_without_transferring_historical_evidence() {
-    let reviewed = json!({"build": "release", "cases": {"timed_flag/days": {"count": 7, "completeness": "Complete", "gaps": []}}});
+fn durations_compare_cases_under_one_stamp() {
+    let reviewed = json!({"build": "hotfix", "cases": {"timed_flag/days": {"count": 7, "completeness": "Complete", "gaps": []}}});
     let mut candidate = reviewed.clone();
-    candidate["build"] = json!("hotfix");
     let report = duration_report(&reviewed, &candidate);
     assert!(report.passes());
-    assert_eq!(report.differences[0].category, Category::Provenance);
-    assert!(
-        report.differences[0]
-            .note
-            .contains("historical live observations do not apply")
-    );
+    assert!(report.differences.is_empty());
     candidate["cases"]["timed_flag/days"]["count"] = json!(8);
     let report = duration_report(&reviewed, &candidate);
     assert!(!report.passes());
-    assert_eq!(report.differences[1].path, "/cases/timed_flag~1days/count");
-    assert_eq!(report.differences[1].reviewed, Some(json!(7)));
-    assert_eq!(report.differences[1].candidate, Some(json!(8)));
+    assert_eq!(report.differences.len(), 1);
+    assert_eq!(report.differences[0].path, "/cases/timed_flag~1days/count");
+    assert_eq!(report.differences[0].reviewed, Some(json!(7)));
+    assert_eq!(report.differences[0].candidate, Some(json!(8)));
 }
 
 #[test]

@@ -217,14 +217,15 @@ reports the files that were not written as missing.
 The output directory must be new and outside `tests/expected/`; the command never overwrites a
 file, and the comparison is offline. Pass the exact candidate build ID from `Native::build()` or
 the [target catalogue](targets.md), without JSON quotes. Exit status is 0 for parity, 1 for parity
-failures, 2 for invalid input. `Answer` and `Provenance` differences fail (a permitted build change
-is checked against the candidate stamp); `Ordering` permits only moves of complete
-dynamic-namespace rows; other files keep byte equality (`Layout`). `on-actions.json` and
-`game-rules.json` compare by name: one difference for each name whose entries changed
-(`/names/<name>`) and for each gap kind and subject whose details changed
-(`/gaps/<kind>/answer_item/<name>`), so one removed gap is one line; the same content in another
-order is one `Ordering` failure. A clipped terminal report ends with the path of the full report
-under `.local/parity/`.
+failures, 2 for invalid input. `Answer` and `Provenance` differences fail, and a build stamp
+that differs from the reviewed one is a `Provenance` failure in every file (`read-scopes.json`,
+`command-grammars.json` and the duration file); after a build change, regenerate those files
+before parity passes. `Ordering` permits only moves of complete dynamic-namespace rows; other files
+keep byte equality (`Layout`). `on-actions.json` and `game-rules.json` compare by name: one
+difference for each name whose entries changed (`/names/<name>`) and for each gap kind and subject
+whose details changed (`/gaps/<kind>/answer_item/<name>`), so one removed gap is one line; the same
+content in another order is one `Ordering` failure. A clipped terminal report ends with the path of
+the full report under `.local/parity/`.
 
 Stored-duration behavior can be compared against an existing fresh live report without repeating
 the session:
@@ -233,8 +234,9 @@ the session:
 cargo run --release --example expected -- --compare-durations tests/expected/duration-m452/live.json .local/durations/live.json --build BUILD_ID
 ```
 
-The duration mode compares `cases`, including diagnostic and stored count order, after checking the
-candidate build.
+The duration mode requires the candidate build to equal `BUILD_ID` and the reviewed build to equal
+the candidate build, then compares `cases`, including diagnostic and stored count order. A new
+build needs a fresh live run to refresh the reviewed duration file.
 
 The generator is not verification. Review each changed answer against the method's tests and
 engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
