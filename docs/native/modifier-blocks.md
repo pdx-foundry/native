@@ -104,6 +104,11 @@ bit-field flags ([population](discovery.md#modifier-fixed-key-readers-sdk-675)).
 **`description_parameters`.** It is a `{ <any key> = <scalar> }` block. Its list loop and entry
 serializer, and the obstacle to a public form, are recorded on SDK-741.
 
+**Fixed-key read scope (SDK-749).** Each fixed key's `read_scope` is set where the block is built, for
+root and embedded blocks alike. A scalar key reads in no scope (`Known([])`). A key whose reader the
+method does not classify stays `Unresolved` with a `read-scope` gap at its path. On M452 the modifier
+fixed keys that stay open are `description_parameters` (11 places).
+
 ## Proof boundaries and gaps
 
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived

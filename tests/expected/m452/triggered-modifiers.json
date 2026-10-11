@@ -182,6 +182,11 @@
         "The modifier block analysis stopped at instruction."
       ],
       [
+        "UnresolvedPath",
+        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
+        "read-scope: scope-argument"
+      ],
+      [
         "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "data"]},
         "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
@@ -235,6 +240,11 @@
         "UnresolvedReader",
         {"kind": "field", "name": "triggered_modifier"},
         "Keys that the triggered modifier does not name, at `description_parameters`: The modifier block analysis stopped at instruction."
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "field", "name": "triggered_modifier"},
+        "Keys that the triggered modifier does not name, at `description_parameters`: read-scope: scope-argument"
       ],
       [
         "OutsideMethod",

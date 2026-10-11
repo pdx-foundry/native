@@ -71,6 +71,29 @@
       },
       "gaps": [
         {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "modifier",
+              "description_parameters"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "triggered_modifier",
+              "modifier",
+              "description_parameters"
+            ]
+          }
+        },
+        {
           "detail": "read-scope: stored-scope",
           "kind": "UnresolvedPath",
           "subject": {

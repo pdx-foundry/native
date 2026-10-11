@@ -103,6 +103,7 @@ fn normalize(
         key.members = match super::modifier_blocks::block(
             facts.modifiers.points.get(&point),
             facts.references,
+            facts.scope_names,
             &key_path,
             gaps,
         ) {
@@ -224,6 +225,7 @@ fn other_keys(
     let mut block = super::modifier_blocks::block(
         facts.modifiers.points.get(&point),
         facts.references,
+        facts.scope_names,
         &path,
         &mut block_gaps,
     );

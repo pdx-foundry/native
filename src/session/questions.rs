@@ -409,7 +409,14 @@ impl Native {
         let references = facts.references;
         let mut gaps = normalized_gaps(result, registry, references);
         let mut value = normalized_fields(result, references);
-        super::modifier_blocks::attach(&mut value, result, facts.modifiers, references, &mut gaps);
+        super::modifier_blocks::attach(
+            &mut value,
+            result,
+            facts.modifiers,
+            references,
+            facts.blocks.scope_names.as_deref(),
+            &mut gaps,
+        );
         let clauses = super::triggered_modifiers::ClauseFacts {
             clauses: facts.triggered,
             modifiers: facts.modifiers,
