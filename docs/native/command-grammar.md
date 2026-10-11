@@ -211,6 +211,13 @@ the token at command `+0x20` and the file location at `+0x28`, checks the comman
   the getter analysis keeps them unresolved; treating any other return as acceptance would accept
   every scope bit. `GetDesign` uses `TPdxNullObject<CShipDesign>` and `GetDlcRecommendation`
   `TPdxNullObject<SDlcRecommendationScriptData>`: the method suffix does not name the null type.
+- **Recorded binding exceptions** (`src/binding/binary/grammar.rs` module comment). The binding
+  skips `GetLocalPointer`, `GetColonyCarrierRef`, `GetOpenerID` and `GetObjectName`: they are not
+  typed accessors. The `System` target getters use the `GetGalacticObject` accessor. Other
+  accessors use `TPdxNullObject<C{suffix}>`. An accessor with no single null object, and a getter
+  with no bound accessor, are bound `NoNullObject`. They become unresolved getter bits, and the
+  grammar read continues. Removal route: read the type compare and the null object from each
+  accessor body, and follow the call from each getter to its accessor.
 - `CEffect::CheckScopeSupport*` and `CTrigger::CheckScopeSupport*` test the command's own scope (the
   getter at effects `+0x80`), not a target argument.
 

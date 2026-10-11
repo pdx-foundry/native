@@ -1,3 +1,19 @@
+//! Bind the command grammar method to executable symbols and the selected build recipe.
+//!
+//! Stated per-build facts. The knowledge page is `docs/native/command-grammar.md`, F4.
+//!
+//! - Claim: `CScopeObjectReference::Get{LocalPointer, ColonyCarrierRef, OpenerID, ObjectName}()`
+//!   are not typed scope accessors, so the binding skips them. Conditions: M45-release names.
+//!   Obstacle: their symbol shape is the shape of a typed accessor. Removal route: derive the
+//!   accessor set from the scope-type compare in each body.
+//! - Claim: `GetGrowthStage()`, `GetGalacticCommunity()` and `GetObject<CGalacticCommunity>()` have
+//!   no rejection null object; `GetDesign()` and `GetDlcRecommendation()` return a null object
+//!   that the suffix does not name. Removal route: read the null object from the accessor body.
+//! - Claim: the `System` target getters use the `GalacticObject` accessor. Conditions: M45-release
+//!   names. Removal route: follow the call from the getter to its accessor.
+//!
+//! An accessor with no single `TPdxNullObject` and a getter with no accessor are bound
+//! `NoNullObject`. The getter analysis keeps them unresolved.
 use super::super::targets::DeclarationRecipe;
 use crate::AnalysisError;
 use crate::engine::analysis::{
@@ -247,9 +263,9 @@ fn scope_accessors(symbols: &[Symbol]) -> Result<BTreeMap<u64, AccessorNullObjec
             match suffix {
                 "LocalPointer" | "ColonyCarrierRef" | "OpenerID" | "ObjectName" => continue,
                 "GrowthStage" | "GalacticCommunity" => AccessorNullObject::NoNullObject,
-                "DlcRecommendation" => null_object(symbols, "SDlcRecommendationScriptData")?,
-                "Design" => null_object(symbols, "CShipDesign")?,
-                kind => null_object(symbols, &format!("C{kind}"))?,
+                "DlcRecommendation" => null_object(symbols, "SDlcRecommendationScriptData"),
+                "Design" => null_object(symbols, "CShipDesign"),
+                kind => null_object(symbols, &format!("C{kind}")),
             }
         } else if let Some((_, kind)) = name.split_once(" const* CScopeObjectReference::GetObject<")
         {
@@ -259,7 +275,7 @@ fn scope_accessors(symbols: &[Symbol]) -> Result<BTreeMap<u64, AccessorNullObjec
             if kind == "CGalacticCommunity" {
                 AccessorNullObject::NoNullObject
             } else {
-                null_object(symbols, kind)?
+                null_object(symbols, kind)
             }
         } else {
             continue;
@@ -272,9 +288,13 @@ fn scope_accessors(symbols: &[Symbol]) -> Result<BTreeMap<u64, AccessorNullObjec
     Ok(accessors)
 }
 
-fn null_object(symbols: &[Symbol], kind: &str) -> Result<AccessorNullObject, AnalysisError> {
+/// The null object that an accessor of `kind` returns on a type mismatch, or `NoNullObject` when
+/// the image has no single one.
+fn null_object(symbols: &[Symbol], kind: &str) -> AccessorNullObject {
     let name = format!("TPdxNullObject<{kind}>::_pInstance");
-    super::declarations::unique(symbols, &name).map(AccessorNullObject::Global)
+
+    super::declarations::unique(symbols, &name)
+        .map_or(AccessorNullObject::NoNullObject, AccessorNullObject::Global)
 }
 
 /// Constructors can have distinct complete-object and base-object entry points.
@@ -380,37 +400,12 @@ fn target_input(
         ..Default::default()
     };
     input.nulls.extend(bindings.scope_accessors.clone());
+    input.nulls.extend(getter_nulls(
+        symbols,
+        &bindings.target_getters,
+        &bindings.scope_accessors,
+    ));
     for symbol in symbols {
-        if bindings.target_getters.contains(&symbol.address) {
-            let suffix = symbol.name.strip_prefix("CEventTarget::").unwrap();
-            let kind = suffix
-                .strip_prefix("AccessTarget")
-                .or_else(|| suffix.strip_prefix("GetTarget"))
-                .or_else(|| suffix.strip_prefix("GetScope"))
-                .unwrap();
-            let kind = kind
-                .split(['(', '<'])
-                .next()
-                .unwrap()
-                .trim_end_matches("WithErrorLogging");
-            let kind = match kind {
-                "System" => "GalacticObject",
-                kind => kind,
-            };
-            let accessor = format!("CScopeObjectReference::Get{kind}() const");
-            let null = symbols
-                .iter()
-                .find(|entry| entry.name == accessor)
-                .and_then(|entry| bindings.scope_accessors.get(&entry.address))
-                .copied()
-                .ok_or_else(|| {
-                    InputError(format!(
-                        "target getter has no accessor binding: {}",
-                        symbol.name
-                    ))
-                })?;
-            input.nulls.insert(symbol.address, null);
-        }
         if symbol.name.starts_with("CEventScope::GetTarget")
             || symbol.name.starts_with("CEventScope::GetScope")
             || symbol.name.starts_with("CEventScope::AccessTarget")
@@ -419,4 +414,83 @@ fn target_input(
         }
     }
     Ok(input)
+}
+
+/// The rejection null object of each target getter: the null object of the accessor that the
+/// getter's type names, or `NoNullObject` when no accessor is bound for that type.
+fn getter_nulls(
+    symbols: &[Symbol],
+    target_getters: &BTreeSet<u64>,
+    scope_accessors: &BTreeMap<u64, AccessorNullObject>,
+) -> BTreeMap<u64, AccessorNullObject> {
+    let accessor_null = |accessor: &str| {
+        symbols
+            .iter()
+            .find(|entry| entry.name == accessor)
+            .and_then(|entry| scope_accessors.get(&entry.address))
+            .copied()
+            .unwrap_or(AccessorNullObject::NoNullObject)
+    };
+
+    symbols
+        .iter()
+        .filter(|symbol| target_getters.contains(&symbol.address))
+        .map(|symbol| {
+            let kind = match getter_kind(&symbol.name) {
+                "System" => "GalacticObject",
+                kind => kind,
+            };
+            let accessor = format!("CScopeObjectReference::Get{kind}() const");
+
+            (symbol.address, accessor_null(&accessor))
+        })
+        .collect()
+}
+
+/// The scope type that a target getter's name states, such as `Country` in
+/// `CEventTarget::AccessTargetCountryWithErrorLogging(…)`.
+fn getter_kind(name: &str) -> &str {
+    let suffix = name.strip_prefix("CEventTarget::").unwrap_or(name);
+    let kind = suffix
+        .strip_prefix("AccessTarget")
+        .or_else(|| suffix.strip_prefix("GetTarget"))
+        .or_else(|| suffix.strip_prefix("GetScope"))
+        .unwrap_or(suffix);
+    let kind = kind.split(['(', '<']).next().unwrap_or(kind);
+
+    kind.trim_end_matches("WithErrorLogging")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn symbol(name: &str, address: u64) -> Symbol {
+        Symbol {
+            name: name.into(),
+            address,
+        }
+    }
+
+    #[test]
+    fn an_unfamiliar_accessor_is_a_typed_gap() {
+        let symbols = [
+            symbol("CScopeObjectReference::GetCountry() const", 0x1000),
+            symbol("TPdxNullObject<CCountry>::_pInstance", 0x9000),
+            symbol("CScopeObjectReference::GetNewThing() const", 0x1100),
+            symbol("CEventTarget::GetScopeCountry(CEventScope&) const", 0x2000),
+            symbol("CEventTarget::GetScopeNewThing(CEventScope&) const", 0x2100),
+            symbol("CEventTarget::GetScopeUnbound(CEventScope&) const", 0x2200),
+        ];
+
+        let accessors = scope_accessors(&symbols).unwrap();
+        let getters = BTreeSet::from([0x2000, 0x2100, 0x2200]);
+        let nulls = getter_nulls(&symbols, &getters, &accessors);
+
+        assert_eq!(accessors[&0x1000], AccessorNullObject::Global(0x9000));
+        assert_eq!(accessors[&0x1100], AccessorNullObject::NoNullObject);
+        assert_eq!(nulls[&0x2000], AccessorNullObject::Global(0x9000));
+        assert_eq!(nulls[&0x2100], AccessorNullObject::NoNullObject);
+        assert_eq!(nulls[&0x2200], AccessorNullObject::NoNullObject);
+    }
 }
