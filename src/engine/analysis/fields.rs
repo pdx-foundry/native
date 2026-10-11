@@ -136,7 +136,7 @@ pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, I
         ));
     }
     let collections = nested::discover(input, &fields, &tokens);
-    let uses = uses::discover(input, &fields, &collections);
+    let uses = uses::discover(input, &fields, &collections, partition_accounted);
     if !collections.is_empty() {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));

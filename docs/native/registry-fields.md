@@ -161,7 +161,10 @@ stays unknown. Joining the temporary to its member is a separate repair.
 A field's reader identity, kind and family come from every token path whose interval holds the
 field's token, not only from its singleton paths. A wider path that is unresolved, or reads with
 another reader, leaves the shared claim unknown; each read alternative keeps its own reader.
-Rejected paths do not change the claim. A condition on a nested field, on its reference lookup or
+Rejected paths do not change the claim. Storage offsets, storage selections and derived-name
+storage come from the singleton paths only, so they hold only when `partition_accounted` is true:
+an overlapping wider path could join another reader, and then no offset is proven. No M45 registry
+has an overlap. A condition on a nested field, on its reference lookup or
 on a modifier-block fixed key names the full field path from the root field or command key.
 
 ### Reader identities and kinds

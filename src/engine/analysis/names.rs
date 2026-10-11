@@ -53,7 +53,7 @@ use super::families::{
     Node, NotEstablished, Part, Sources, StringFunctions, StringLayout, ending,
     every_returned_path, key_storage, loading, write_source,
 };
-use super::fields::{RegistryFieldResult, RootField, StorageSelection, storage_offset};
+use super::fields::{RegistryFieldResult, StorageSelection, storage_offset};
 use super::stop::Unresolved;
 
 #[cfg(test)]
@@ -266,7 +266,7 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
         selections: result.uses.clone(),
         ..Storage::default()
     };
-    collect_fields(&mut storage, &result.fields, &[], None);
+    collect_fields(&mut storage, result, &[], None);
 
     for collection in &result.collections {
         let (Some(data_offset), Some(count_offset)) =
@@ -288,12 +288,7 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
             count_offset,
         });
         let prefix = [parent.name.clone()];
-        collect_fields(
-            &mut storage,
-            &collection.fields.fields,
-            &prefix,
-            Some(element),
-        );
+        collect_fields(&mut storage, &collection.fields, &prefix, Some(element));
     }
 
     storage
@@ -301,12 +296,13 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
 
 fn collect_fields(
     storage: &mut Storage,
-    fields: &[RootField],
+    result: &RegistryFieldResult,
     prefix: &[String],
     element: Option<usize>,
 ) {
-    for field in fields {
-        let Some(offset) = storage_offset(field).and_then(|offset| u64::try_from(offset).ok())
+    for field in &result.fields {
+        let Some(offset) = storage_offset(field, result.partition_accounted)
+            .and_then(|offset| u64::try_from(offset).ok())
         else {
             continue;
         };
