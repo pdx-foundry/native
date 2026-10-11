@@ -104,6 +104,7 @@ pub enum CallForm {
     /// `name = { KEY = value … }`.
     Block {
         /// The key that names the definition when the use's own key does not, such as `script`.
+        #[serde(deserialize_with = "crate::answer::required_option")]
         name_key: Option<String>,
     },
     /// `prefix:name|KEY|value|`.

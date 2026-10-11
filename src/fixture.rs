@@ -326,6 +326,7 @@ pub enum FixtureStorage {
         /// Source-ordered values after each joined reader return.
         occurrences: Vec<StoredFieldOccurrence>,
         /// Value at the file-load terminal, including constructor initialization when observed.
+        #[serde(deserialize_with = "crate::answer::required_option")]
         final_value: Option<FixtureValue>,
         /// Whether all storage records and terminals completed intact.
         completeness: crate::Completeness,
@@ -340,6 +341,7 @@ pub struct ParsedFieldOccurrence {
     /// One-based occurrence of this field on the requested definition.
     pub occurrence: u64,
     /// Source line when the same invocation returned, or `None` if its return was lost.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub return_line: Option<u64>,
 }
 
@@ -370,10 +372,13 @@ pub enum DiagnosticJoin {
         /// One-based engine source line.
         line: u64,
         /// Definition key when established.
+        #[serde(deserialize_with = "crate::answer::required_option")]
         definition: Option<String>,
         /// Field when established.
+        #[serde(deserialize_with = "crate::answer::required_option")]
         field: Option<String>,
         /// Field occurrence when established.
+        #[serde(deserialize_with = "crate::answer::required_option")]
         occurrence: Option<u64>,
     },
     /// The engine diagnostic was preserved, but its fixture source join was not established.
@@ -425,8 +430,10 @@ pub struct FixtureFieldOutcome {
     /// Fixture-relative file.
     pub file: String,
     /// Session-local owner identity, when the definition constructor was witnessed.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub owner: Option<FixtureOwnerId>,
     /// One-based definition source line, when established by the engine reader.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub definition_line: Option<u64>,
     /// Shared reader established by Native's static method.
     pub reader: crate::Reader,

@@ -42,6 +42,7 @@ pub struct Gap {
     /// Machine-readable reason.
     pub kind: GapKind,
     /// The public subject that the gap concerns, when one can be identified.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub subject: Option<GapSubject>,
     /// Human-readable detail. It holds no address, symbol, or other native detail.
     pub detail: String,
@@ -108,6 +109,15 @@ fn deserialize_key_path<'de, D: serde::Deserializer<'de>>(
         ));
     }
     Ok(path)
+}
+
+/// Deserializes an `Option` that a recording must state, as `null` or a value.
+pub(crate) fn required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer)
 }
 
 impl GapSubject {
@@ -776,6 +786,7 @@ pub struct ModifierFamily {
     pub condition: GenerationCondition,
     /// The longest name in bytes that the engine keeps, when a fixed-size buffer builds the name.
     /// The name for a key that would be longer is not established.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub name_limit: Option<usize>,
 }
 
@@ -1256,6 +1267,7 @@ pub struct Reader {
     /// Scoped operand forms for this destination.
     pub scoped_operand: crate::GrammarProperty<Option<crate::ScopedOperand>>,
     /// Opaque reader identity within one build, or `None` when no reader is established.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub id: Option<ReaderId>,
     /// Value form that the reader accepts.
     pub kind: ReaderKind,
