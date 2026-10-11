@@ -7,8 +7,9 @@
 //! - **Activation.** The debugger held the game at its first instruction, the registry's hook
 //!   was in place before the game ran, and the game process is the one that the supervisor owns.
 //!   Without this, items could have loaded before anyone looked.
-//! - **Sequence.** Record numbers have no hole. A hole that lies wholly inside the records of
-//!   another registry does not count against this one.
+//! - **Sequence.** Record numbers have no hole before this registry's terminal. A hole after the
+//!   terminal, or wholly inside the records of another registry or of the fixture window, does
+//!   not count against this one.
 //! - **Loader, owner and thread.** The loader entry, its return, the snapshot, every entry and
 //!   the terminal name the same receiver object and the same game thread, in that order.
 //! - **Slots.** Entry indices rise without a hole, and each key and each object occurs once.
@@ -79,7 +80,8 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
     let mut unsupported = false;
     let mut saw_registry = false;
     for (position, record) in records.iter().enumerate() {
-        // A hole wholly inside the records of another registry does not count against this one.
+        // A hole after this registry's terminal, or wholly inside the records of another registry
+        // or of the fixture window, does not count against this one.
         let hole_elsewhere = position > 0
             && registry_name(&records[position - 1].event)
                 .zip(registry_name(&record.event))
@@ -87,7 +89,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         let hole_in_fixture = position > 0
             && matches!(records[position - 1].event, WorkerEvent::Fixture { .. })
             && matches!(record.event, WorkerEvent::Fixture { .. });
-        if record.seq != expected && !hole_elsewhere && !hole_in_fixture {
+        if !ended && record.seq != expected && !hole_elsewhere && !hole_in_fixture {
             diagnostics.push(format!(
                 "Sequence gap: expected {expected}, found {}",
                 record.seq
@@ -834,6 +836,20 @@ mod tests {
             reduce(CATEGORIES, &records, &owner).observed,
             Observed::Partial
         );
+    }
+
+    #[test]
+    fn a_hole_after_a_finished_registry_does_not_demote_it() {
+        let (mut records, owner, _) = session(&["first"]);
+        // Remove the categories terminal: the hole follows the traditions terminal.
+        records.remove(13);
+        assert_eq!(
+            reduce(TRADITIONS, &records, &owner).observed,
+            Observed::Complete
+        );
+        let categories = reduce(CATEGORIES, &records, &owner);
+        assert_eq!(categories.observed, Observed::Partial);
+        assert_eq!(categories.items, ["category"]);
     }
 
     #[test]
