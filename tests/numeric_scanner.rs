@@ -2,6 +2,7 @@
 //! whitespace test; overflow remains sampled.
 #![cfg(all(target_os = "macos", target_arch = "aarch64"))]
 
+use pdx_native::internals::inspect::read_image;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -18,24 +19,13 @@ fn output(command: &mut Command) -> String {
 #[test]
 #[ignore = "requires M452, the recorded macOS libc image, and the C compiler"]
 fn m452_numeric_scanner_platform_observations() {
-    let hint = PathBuf::from(std::env::var_os("STELLARIS_PATH").expect("set STELLARIS_PATH"));
-    let native = pdx_native::Native::open(&hint).unwrap();
-    let executable = if hint.is_file() {
-        hint
-    } else {
-        let candidates: Vec<_> = [
-            "stellaris.app/Contents/MacOS/stellaris",
-            "Contents/MacOS/stellaris",
-            "stellaris",
-        ]
-        .map(|relative| hint.join(relative))
-        .into_iter()
-        .filter(|path| path.is_file())
-        .collect();
-        assert_eq!(candidates.len(), 1, "requires a unique macOS executable");
-        candidates[0].clone()
-    };
-    let symbols = output(Command::new("nm").arg("-m").arg(executable));
+    let installation =
+        PathBuf::from(std::env::var_os("STELLARIS_PATH").expect("set STELLARIS_PATH"));
+    let native = pdx_native::Native::open(&installation).unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let executable = directory.path().join("stellaris");
+    std::fs::write(&executable, read_image(&installation).unwrap()).unwrap();
+    let symbols = output(Command::new("nm").arg("-m").arg(&executable));
     let imports: Vec<_> = symbols
         .lines()
         .map(str::trim)
@@ -60,7 +50,6 @@ fn m452_numeric_scanner_platform_observations() {
             "(undefined) external _sscanf (from libSystem)"
         ]
     );
-    let directory = tempfile::tempdir().unwrap();
     let probe = directory.path().join("numeric-scanner");
     output(
         Command::new("cc")
