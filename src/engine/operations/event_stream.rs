@@ -172,7 +172,7 @@ pub(crate) enum OwnerEvent {
     GamePauseConfirmed { pid: u64, returned: Vec<String> },
     /// The session failed in the supervisor.
     ObservationUnavailable { reason: String },
-    /// The supervisor asked the worker to stop. A later nonzero exit is then not a loss.
+    /// The supervisor asked the worker to stop.
     WorkerStopRequested,
     /// The worker process ended with this code; a negative code is a signal.
     WorkerExited { returncode: i64 },

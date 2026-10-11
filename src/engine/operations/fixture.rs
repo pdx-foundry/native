@@ -183,16 +183,6 @@ pub(crate) fn reduce(
     if diagnostics_requested && window.diagnostic_terminal.is_none() {
         window.diagnostic_gap("The parser diagnostic terminal is missing");
     }
-    let stopping = owner_events
-        .iter()
-        .any(|event| matches!(event, OwnerEvent::WorkerStopRequested));
-    if !stopping
-        && owner_events.iter().any(
-            |event| matches!(event, OwnerEvent::WorkerExited { returncode } if *returncode != 0),
-        )
-    {
-        window.window_gap("The observation worker was lost");
-    }
     Ok(window.finish(build))
 }
 

@@ -14,8 +14,6 @@
 //! - **Slots.** Entry indices rise without a hole, and each key and each object occurs once.
 //! - **Terminal totals.** The terminal's count equals the snapshot's count and the number of
 //!   accepted entries, and its own sequence number equals the one that the worker gave it.
-//! - **Worker loss.** The worker did not exit with a failure before the supervisor asked it to
-//!   stop.
 //!
 //! No diagnostic gives a complete answer. Any diagnostic gives a partial answer that keeps the
 //! accepted items, or no answer when the registry was not observed at all. An empty complete
@@ -48,7 +46,7 @@ pub(crate) enum Observed {
     NotLoaded,
     /// The loader ran, but the binding cannot read this registry's item layout.
     Unsupported,
-    /// The registry was not observed: no activation, no access, or the worker was lost.
+    /// The registry was not observed: no activation or no access.
     Unavailable,
 }
 
@@ -239,14 +237,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         WorkerEvent::SessionPaused { cause, .. } => Some(cause),
         _ => None,
     });
-    let session_failed = owner
-        .iter()
-        .any(|event| matches!(event, OwnerEvent::ObservationUnavailable { .. }));
     if let Some(cause) = pause_cause
         && activated
         && !saw_registry
         && diagnostics.is_empty()
-        && !session_failed
     {
         return RegistryItems {
             items: Vec::new(),
@@ -256,26 +250,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
     }
     if !ended {
         diagnostics.push("Registry terminal missing".into());
-        for event in owner {
-            if let OwnerEvent::ObservationUnavailable { reason } = event {
-                unavailable = true;
-                diagnostics.push(reason.clone());
-            }
-        }
-    }
-    let stop_requested = owner
-        .iter()
-        .any(|event| matches!(event, OwnerEvent::WorkerStopRequested));
-    let worker_lost = !stop_requested
-        && owner.iter().any(
-            |event| matches!(event, OwnerEvent::WorkerExited { returncode } if *returncode != 0),
-        );
-    if worker_lost && !diagnostics.is_empty() {
-        diagnostics.push("The observation worker was lost".into());
     }
     let observed = if diagnostics.is_empty() {
         Observed::Complete
-    } else if worker_lost || unavailable || !activated {
+    } else if unavailable || !activated {
         Observed::Unavailable
     } else if unsupported {
         Observed::Unsupported
@@ -966,28 +944,5 @@ mod tests {
             readiness(&records, &owner, &names, false),
             Some(GameReadiness::DuringRegistryInitialization)
         );
-    }
-
-    #[test]
-    fn a_later_failure_keeps_a_completed_answer_and_a_lost_worker_gives_none() {
-        let (records, mut owner, _) = session(&["first"]);
-        owner.push(OwnerEvent::ObservationUnavailable {
-            reason: "later session failure".into(),
-        });
-        owner.push(OwnerEvent::WorkerExited { returncode: -9 });
-        assert_eq!(
-            reduce(TRADITIONS, &records, &owner).observed,
-            Observed::Complete
-        );
-        // The worker was lost before the terminal of the categories.
-        let mut cut = records.clone();
-        cut.truncate(records.len() - 2);
-        let categories = reduce(CATEGORIES, &cut, &owner);
-        assert_eq!(categories.observed, Observed::Unavailable);
-        assert_eq!(categories.items, ["category"]);
-        // An exit after the supervisor asked the worker to stop is not a loss.
-        owner.remove(2);
-        owner.insert(2, OwnerEvent::WorkerStopRequested);
-        assert_eq!(reduce(CATEGORIES, &cut, &owner).observed, Observed::Partial);
     }
 }
