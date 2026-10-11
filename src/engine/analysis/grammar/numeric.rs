@@ -70,10 +70,7 @@ fn child_reader(
         return Ok(None);
     }
     let code = Code::from_rows(rows);
-    let mut machine = Machine::new(&code, &input.declarations.composition.data);
-    for (&slot, &pointer) in &input.declarations.pointers {
-        machine.write(slot, 8, pointer);
-    }
+    let mut machine = Machine::new(&code, input.declarations.pointer_data());
     let owner = machine.reserve(SPAN);
     let reader = machine.reserve(SPAN);
     let stack = machine.stack_pointer();

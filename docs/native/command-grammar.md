@@ -304,7 +304,9 @@ the token at command `+0x20` and the file location at `+0x28`, checks the comman
   rules describe these reader selections, not a syntax restriction.
 - `random_list` joins integer-key decoding to an allocated entry's concrete virtual reader; the
   numeric token's origin must be the original reader's bound token storage, and weight arithmetic
-  is not interpreted. The same method transfers to `locked_random_list`.
+  is not interpreted. The same method transfers to `locked_random_list`. The child walk reads
+  pointer slots from the declarations' read-only pointer data, so a slot stays known after a store
+  to an unknown address.
 - The member walk reuses field token dispatch, follows inherited delegates to depth eight, and keeps
   missing routing and cycles unresolved.
 - `CTriggerDatabase::AddTrigger` can enter a Robin Hood hash insertion, and effect insertion

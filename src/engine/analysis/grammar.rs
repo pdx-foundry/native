@@ -193,16 +193,26 @@ pub fn analyze(input: &GrammarInput, factory: u64) -> Result<GrammarResult, Unre
     let state = declarations::factory_state(&input.declarations, factory)?;
     let reader = declarations::reader_at_vtable(&input.declarations, state.vtable)?;
     let mut result = analyze_reader_with_state(input, reader, 0, &state.bytes)?;
-    let (forms, key) = forms::analyze(input, reader, &state.bytes);
-    result.forms = Some(forms);
-    result.scoped_destinations.extend(scoped_form_points(
-        result.forms.as_ref().unwrap(),
-        &state.bytes,
-    ));
-    result.forms_key = Some(key);
-    result.targets = targets::analyze(input, &result, &state.bytes);
+    attach_forms_and_targets(input, &mut result, reader, &state.bytes);
     result.state_traces = state.traces;
     Ok(result)
+}
+
+/// Give the grammar of `reader` its value forms and target arguments, for the factory `bytes`.
+fn attach_forms_and_targets(
+    input: &GrammarInput,
+    grammar: &mut GrammarResult,
+    reader: CommandReader,
+    bytes: &BTreeMap<u64, u8>,
+) {
+    let (forms, key) = forms::analyze(input, reader, bytes);
+
+    grammar
+        .scoped_destinations
+        .extend(scoped_form_points(&forms, bytes));
+    grammar.forms = Some(forms);
+    grammar.forms_key = Some(key);
+    grammar.targets = targets::analyze(input, grammar, bytes);
 }
 
 fn analyze_reader_with_state(
@@ -450,14 +460,7 @@ fn analyze_reader_with_state(
     } else if let Some(child) = numeric_reader {
         match analyze_reader_with_state(input, child.reader, depth + 1, &child.bytes) {
             Ok(mut grammar) => {
-                let (forms, key) = forms::analyze(input, child.reader, &child.bytes);
-                grammar.forms = Some(forms);
-                grammar.scoped_destinations.extend(scoped_form_points(
-                    grammar.forms.as_ref().unwrap(),
-                    &child.bytes,
-                ));
-                grammar.forms_key = Some(key);
-                grammar.targets = targets::analyze(input, &grammar, &child.bytes);
+                attach_forms_and_targets(input, &mut grammar, child.reader, &child.bytes);
                 Some(Box::new(grammar))
             }
             Err(stop) => {
