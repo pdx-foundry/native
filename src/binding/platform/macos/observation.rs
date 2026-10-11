@@ -424,8 +424,9 @@ impl Observer {
         if !path.try_exists()? {
             return Ok(None);
         }
-        let reply: crate::protocol::script_check::CheckReply =
-            serde_json::from_slice(&files::read_bounded(&path, 256 * 1024)?)?;
+        let reply: crate::protocol::script_check::CheckReply = serde_json::from_slice(
+            &files::read_bounded(&path, crate::protocol::script_check::MAX_REPLY)?,
+        )?;
         if reply.attempt != self.request.attempt || reply.check != check {
             return Err(SupervisorError("foreign script-check reply".into()));
         }

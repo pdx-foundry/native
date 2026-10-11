@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'))
+import protocol
 from script_checks import DiagnosticCapture, ScriptChecks, attribute_message, read_string, stored_durations
 
 
@@ -115,7 +116,7 @@ class CheckSetupTests(unittest.TestCase):
     BINDING = dict(logger_entry=1, logger_text_register='x4', logger_level_register='w1',
                    string_tag_offset=23, scopes={'country': 1}, trigger={})
 
-    def start_check(self, invalid=()):
+    def start_check(self, invalid=(), control=None):
         """Run one check whose first engine call fails, in a frame that cannot read `invalid`."""
         def find(name):
             value = Mock()
@@ -125,7 +126,7 @@ class CheckSetupTests(unittest.TestCase):
         calls = Mock()
         calls.frame.return_value.FindRegister.side_effect = find
         checks = ScriptChecks(Mock(), 7, self.BINDING, 'attempt',
-                              dict(text=4096, checks=2, durations=1, seconds=1, diagnostics=32))
+                              dict(text=4096, checks=2, durations=1, seconds=1, diagnostics=32), control=control)
         request = dict(attempt='attempt', check=1, text='always = yes', scope=1, durations=[], kind='trigger')
         with patch('script_checks.EngineCalls', return_value=calls), \
                 patch.object(checks, 'reader', side_effect=RuntimeError('first engine call')) as reader:
@@ -144,6 +145,14 @@ class CheckSetupTests(unittest.TestCase):
         message, reader, _ = self.start_check()
         self.assertEqual(message, 'first engine call')
         reader.assert_called_once()
+
+    def test_the_access_failure_control_is_the_generated_control_value(self):
+        lldb = Mock(LLDB_INVALID_ADDRESS=(1 << 64) - 1)
+        with patch.dict(protocol.CONTROL, access_failure='generated-value'), patch.dict(sys.modules, lldb=lldb):
+            _, _, calls = self.start_check(control='generated-value')
+            calls.write.assert_called_once_with(lldb.LLDB_INVALID_ADDRESS, b'\0')
+            _, _, calls = self.start_check(control=protocol.CONTROL['normal'])
+            calls.write.assert_not_called()
 
 
 def long_message_memory(text, at=2):

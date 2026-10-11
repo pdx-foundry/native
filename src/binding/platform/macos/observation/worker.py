@@ -1318,7 +1318,7 @@ def run(debugger):
                         raise RuntimeError('session registers changed from the witnessed pause')
                     if current_check is not None:
                         atomic('script_reply', 'script-check-reply.json', dict(attempt=request['attempt'],
-                            check=current_check['check'], result=completion['result']), 256 * 1024)
+                            check=current_check['check'], result=completion['result']), protocol.SCRIPT_LIMITS['reply'])
                         current_check = None
                     witness['state'] = 'held'
                     check_path = ROOT / 'script-check.json'

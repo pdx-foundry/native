@@ -7,6 +7,7 @@ from functools import partial
 import re
 import time
 
+import protocol
 import stored_values
 
 
@@ -529,7 +530,7 @@ class ScriptChecks:
         if self.diagnostics is not None:
             self.diagnostics.update(phase='script-check', context=f"check {request['check']}")
         calls = EngineCalls(self.process, self.thread_id, time.monotonic() + self.limits['seconds'], diagnostics=self.diagnostics)
-        if self.control == 'access-failure':
+        if self.control == protocol.CONTROL['access_failure']:
             import lldb
             calls.write(lldb.LLDB_INVALID_ADDRESS, b'\0')
         capture = DiagnosticCapture(calls.target, self.process, self.binding, self.sources,

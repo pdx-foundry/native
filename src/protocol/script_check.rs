@@ -87,6 +87,9 @@ pub(crate) struct CheckRequest {
 /// The most receivers that one check carries.
 pub(crate) const MAX_DURATION_RECEIVERS: usize = 64;
 
+/// The most bytes of the worker's reply file for one check.
+pub(crate) const MAX_REPLY: usize = 256 * 1024;
+
 /// The duration slots of one command receiver, which the worker matches by vtable.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
