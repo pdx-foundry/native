@@ -1,10 +1,9 @@
 //! Dynamic-name namespaces from the stores that flag commands reach.
 use std::collections::{BTreeMap, BTreeSet};
 
-use sha2::{Digest, Sha256};
-
 use super::Native;
 use super::questions::{error, scope_references};
+use crate::answer::opaque_id;
 use crate::engine::analysis::declarations::ScopeType;
 use crate::engine::analysis::dynamic_names::{
     self, CommandNames, NameOutcome, Role, routes::Route,
@@ -81,9 +80,7 @@ impl StoreKey {
                 ..
             } => format!("dynamic-names/scope/{bit}/{terminal:x}/{offset:x}"),
         };
-        let digest = Sha256::digest(text.as_bytes());
-
-        DynamicNamespaceId(format!("{digest:x}")[..16].to_owned())
+        DynamicNamespaceId(opaque_id(&text))
     }
 
     fn owner(&self) -> NamespaceOwner {

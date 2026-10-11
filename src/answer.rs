@@ -1317,10 +1317,15 @@ pub struct ReaderId(pub(crate) String);
 
 impl ReaderId {
     pub(crate) fn from_callee(callee: &str) -> Self {
-        use sha2::{Digest, Sha256};
-        let digest = Sha256::digest(callee.as_bytes());
-        Self(format!("{digest:x}")[..16].to_owned())
+        Self(opaque_id(callee))
     }
+}
+
+/// The text of an opaque identity: the first 16 hexadecimal digits of the SHA-256 of `input`.
+/// The identity hides `input`, which names an engine fact, and is the same on every build.
+pub(crate) fn opaque_id(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(input.as_bytes()))[..16].to_owned()
 }
 
 /// Broad value form accepted by a shared reader.

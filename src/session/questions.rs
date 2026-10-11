@@ -3,7 +3,7 @@ use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
     Field, Gap, GapKind, GapSubject, Operation, ReaderKind, Registry, ScopeId, ScopeReference,
-    Source, Support,
+    Source, Support, opaque_id,
 };
 use crate::binding::{Binding, VerifiedAnalysis, unique_named_candidate};
 use crate::engine::analysis::{
@@ -16,7 +16,6 @@ use crate::engine::analysis::{
     stop::Unresolved,
 };
 use crate::{AnalysisError, UnavailableReason};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub(super) fn error(operation: Operation, error: AnalysisError) -> Error {
@@ -611,8 +610,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
 
 /// The public identity of a scope type. It hides the engine's bit number.
 pub(crate) fn scope_id(scope: &ScopeType) -> ScopeId {
-    let digest = Sha256::digest(format!("scope-type/{}", scope.bit).as_bytes());
-    ScopeId(format!("{digest:x}")[..16].to_owned())
+    ScopeId(opaque_id(&format!("scope-type/{}", scope.bit)))
 }
 
 pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
