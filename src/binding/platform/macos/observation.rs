@@ -127,6 +127,9 @@ pub(crate) fn probe_observer() -> Result<(), SupervisorError> {
 pub(crate) struct Observer {
     output: PathBuf,
     request: WorkerRequest,
+    /// The scope bit of each scope identity, or why the build's scopes were not established. A
+    /// check needs them; the session does not.
+    script_scopes: Result<BTreeMap<String, u64>, String>,
     tool: Tool,
     worker: Option<Child>,
     granted: bool,
@@ -152,6 +155,7 @@ impl Observer {
             machine,
             package,
             script_checks,
+            script_scopes,
         } = setup;
         let tool = discover()?;
         let source = work_directory.join("source");
@@ -188,6 +192,7 @@ impl Observer {
         Ok(Self {
             output: work_directory.into(),
             request,
+            script_scopes,
             tool,
             worker: None,
             granted: false,
@@ -374,20 +379,22 @@ impl Observer {
                 reason: "too many duration receivers for one script check".into(),
             });
         }
-        let binding =
-            self.request
-                .script_checks
-                .as_ref()
-                .ok_or_else(|| crate::Error::ScriptRequest {
-                    reason: "script checks require the supported loaded-modifier pause".into(),
-                })?;
-        let scope =
-            binding
-                .scopes
-                .get(&input.scope.0)
-                .ok_or_else(|| crate::Error::ScriptRequest {
-                    reason: "scope identity is not declared by this build".into(),
-                })?;
+        if self.request.script_checks.is_none() {
+            return Err(crate::Error::ScriptRequest {
+                reason: "script checks require the supported loaded-modifier pause".into(),
+            });
+        }
+        let scopes = self
+            .script_scopes
+            .as_ref()
+            .map_err(|reason| crate::Error::ScriptRequest {
+                reason: format!("the build's scopes were not established: {reason}"),
+            })?;
+        let scope = scopes
+            .get(&input.scope.0)
+            .ok_or_else(|| crate::Error::ScriptRequest {
+                reason: "scope identity is not declared by this build".into(),
+            })?;
         if check > crate::script::MAX_CHECKS {
             return Err(crate::Error::ScriptRequest {
                 reason: "session script-check limit reached".into(),
@@ -594,12 +601,10 @@ pub(crate) fn test_observer(
             fault: None,
             fixture: None,
             modifiers: None,
-            script_checks: Some(crate::protocol::script_check::ScriptCheckBinding {
-                scopes: BTreeMap::from([("test-scope".into(), 1 << 40)]),
-                ..Default::default()
-            }),
+            script_checks: Some(Default::default()),
             deadline_seconds: 1,
         },
+        script_scopes: Ok(BTreeMap::from([("test-scope".into(), 1 << 40)])),
         tool: Tool {
             path: "/not-used".into(),
             sha256: "unused".into(),
@@ -703,6 +708,47 @@ mod tests {
 
     fn observer(root: &Path, command: &mut Command) -> Observer {
         test_observer(root, command, 123, None)
+    }
+
+    fn check_in(scope: &str) -> crate::ScriptCheck {
+        crate::ScriptCheck {
+            kind: crate::DeclarationKind::Trigger,
+            scope: crate::ScopeId(scope.into()),
+            text: "always = yes".into(),
+        }
+    }
+
+    #[test]
+    fn a_scope_failure_rejects_the_check_with_its_reason() {
+        let root = tempfile::tempdir().unwrap();
+        let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
+        let request = observer.prepare_check(1, &check_in("test-scope"), Vec::new());
+        assert_eq!(request.unwrap().scope, 1 << 40);
+
+        observer.script_scopes = Err("scope functions were not found".into());
+        let Err(crate::Error::ScriptRequest { reason }) =
+            observer.prepare_check(1, &check_in("test-scope"), Vec::new())
+        else {
+            panic!("a failed scope analysis must reject the check")
+        };
+        assert!(
+            reason.contains("scope functions were not found"),
+            "{reason}"
+        );
+        observer.stop().unwrap();
+    }
+
+    #[test]
+    fn a_scope_that_the_build_does_not_declare_rejects_the_check() {
+        let root = tempfile::tempdir().unwrap();
+        let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
+        let Err(crate::Error::ScriptRequest { reason }) =
+            observer.prepare_check(1, &check_in("other-scope"), Vec::new())
+        else {
+            panic!("an undeclared scope must reject the check")
+        };
+        assert!(reason.contains("not declared"), "{reason}");
+        observer.stop().unwrap();
     }
 
     #[test]

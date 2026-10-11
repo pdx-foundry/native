@@ -122,26 +122,24 @@ impl Binding {
             .is_some_and(|operation| operation.script_checks.is_some())
     }
 
-    fn script_check_binding(
-        &self,
-    ) -> Result<
-        Option<crate::protocol::script_check::ScriptCheckBinding>,
-        crate::supervisor::SupervisorError,
-    > {
-        let Some(mut binding) = self
-            .operation
+    fn script_check_binding(&self) -> Option<crate::protocol::script_check::ScriptCheckBinding> {
+        self.operation
             .as_ref()
             .and_then(|operation| operation.script_checks.clone())
-        else {
-            return Ok(None);
-        };
+    }
+
+    /// The scope bit of each scope identity of this build, which the supervisor puts in a check
+    /// request. The worker does not see them. A scope analysis that fails is a reason, so it
+    /// rejects the checks and nothing else.
+    fn script_scopes(&self) -> Result<std::collections::BTreeMap<String, u64>, String> {
         let input = self
             .analysis
             .scope_input()
-            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
-        let scopes = crate::engine::analysis::scopes::scopes(&input)
-            .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
-        binding.scopes = scopes
+            .map_err(|error| error.to_string())?;
+        let scopes =
+            crate::engine::analysis::scopes::scopes(&input).map_err(|error| error.to_string())?;
+
+        Ok(scopes
             .scopes
             .iter()
             .map(|(scope, _)| {
@@ -150,8 +148,7 @@ impl Binding {
                     1u64 << scope.bit,
                 )
             })
-            .collect();
-        Ok(Some(binding))
+            .collect())
     }
     pub(crate) fn open(installation: &std::path::Path) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(installation)?;
@@ -562,6 +559,15 @@ impl ExecutionPlan {
         >,
     ) -> Result<Observer, crate::supervisor::SupervisorError> {
         let operation = self.operation();
+        let script_checks = request
+            .loaded_modifiers
+            .as_ref()
+            .and_then(|_| self.binding.script_check_binding());
+        let script_scopes = if script_checks.is_some() {
+            self.binding.script_scopes()
+        } else {
+            Ok(Default::default())
+        };
         (operation.strategy.prepare)(platform::ObservationSetup {
             work_directory,
             attempt,
@@ -582,11 +588,8 @@ impl ExecutionPlan {
             startup_seconds: request.startup_seconds,
             machine: &operation.machine,
             package: &operation.strategy.package,
-            script_checks: if request.loaded_modifiers.is_some() {
-                self.binding.script_check_binding()?
-            } else {
-                None
-            },
+            script_checks,
+            script_scopes,
         })
     }
     pub(crate) fn spawn_observed(

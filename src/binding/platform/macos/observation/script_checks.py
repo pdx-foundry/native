@@ -516,8 +516,8 @@ class ScriptChecks:
             raise RuntimeError('foreign or out-of-order script check')
         if len(request['text'].encode('utf-8')) > self.limits['text'] or '\0' in request['text']:
             raise RuntimeError('script check text bound exceeded')
-        if request['check'] > self.limits['checks'] or request['scope'] not in self.binding['scopes'].values():
-            raise RuntimeError('script check count or scope is invalid')
+        if request['check'] > self.limits['checks']:
+            raise RuntimeError('script check count is invalid')
         if len(request['durations']) > self.limits['durations']:
             raise RuntimeError('script check duration receiver bound exceeded')
         command = self.binding[request['kind']]

@@ -40,6 +40,9 @@ pub(in crate::binding) struct ObservationSetup<'a> {
     pub fixture: Option<crate::protocol::observation::FixtureSetup>,
     pub modifiers: Option<crate::protocol::observation::ModifierTableBinding>,
     pub script_checks: Option<crate::protocol::script_check::ScriptCheckBinding>,
+    /// The scope bit of each scope identity, or why the build's scopes were not established. The
+    /// supervisor reads it to build a check; the worker never receives it.
+    pub script_scopes: Result<std::collections::BTreeMap<String, u64>, String>,
     pub startup_seconds: u64,
     pub machine: &'a crate::protocol::observation::Machine,
     pub package: &'a std::collections::BTreeMap<String, Vec<u8>>,

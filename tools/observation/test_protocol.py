@@ -21,6 +21,12 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 wire.validate(value, schema, root)
 
+    def test_the_script_check_binding_carries_no_scopes(self):
+        root = wire.SCHEMAS['request']
+        schema = root['$defs']['ScriptCheckBinding']
+        self.assertNotIn('scopes', schema['properties'])
+        self.assertNotIn('scopes', schema['required'])
+
     def test_script_checks_carry_duration_receivers_and_raw_duration_reads(self):
         receiver = dict(vtable=0x103000000, groups_complete=True, groups=[dict(
             units=['days', 'months', 'years'], factor_offset=None, count=dict(offset=0xb0, decoder='Integer'))])
