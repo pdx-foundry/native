@@ -18,22 +18,18 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The producer numbers at most this many occurrences of one field, and refuses more.
-const MAX_OCCURRENCE: u64 = 128;
-
-pub(crate) fn reduce(
-    request: &FixtureRequest,
-    records: &[WorkerRecord],
-    owner_events: &[OwnerEvent],
-    build: BuildId,
-) -> Result<Answer<FixtureObservation>, Error> {
-    let mut hooks = vec![hooks::FIXTURE_LOAD];
+/// The fixture hooks that must be active before resume: the minimum that the request implies,
+/// and every fixture hook that the worker names as requested. The worker selects its hooks from
+/// the bound setup, so a hook that only that setup needs (an inline loader's return and nested
+/// hooks) is required by its name.
+fn required_hooks<'a>(request: &FixtureRequest, records: &'a [WorkerRecord]) -> Vec<&'a str> {
+    let mut required = vec![hooks::FIXTURE_LOAD];
     let diagnostics_requested = request
         .field_questions
         .iter()
         .any(|question| question.diagnostics);
     if diagnostics_requested {
-        hooks.extend([
+        required.extend([
             hooks::FIXTURE_LOG,
             hooks::FIXTURE_UNFORMATTED_LOG,
             hooks::FIXTURE_STREAM_LOG,
@@ -41,19 +37,39 @@ pub(crate) fn reduce(
         ]);
     }
     if request.window == crate::FixtureWindow::InitialFileLoadAndValidation {
-        hooks.push(hooks::FIXTURE_VALIDATED);
+        required.push(hooks::FIXTURE_VALIDATED);
     }
     if !request.field_questions.is_empty() {
-        hooks.extend([
+        required.extend([
             hooks::FIXTURE_CONSTRUCTOR,
             hooks::FIXTURE_READER,
             hooks::FIXTURE_MEMBER,
         ]);
         if diagnostics_requested {
-            hooks.extend([hooks::FIXTURE_MALFORMED, hooks::FIXTURE_UNEXPECTED]);
+            required.extend([hooks::FIXTURE_MALFORMED, hooks::FIXTURE_UNEXPECTED]);
         }
     }
-    let Some((thread, resumed)) = event_stream::activation(records, owner_events, &hooks) else {
+    let requested_by_worker = records
+        .iter()
+        .filter_map(|record| match &record.event {
+            WorkerEvent::HooksRequested { hooks } => Some(hooks),
+            _ => None,
+        })
+        .flatten()
+        .map(String::as_str)
+        .filter(|name| name.starts_with(hooks::FIXTURE));
+    required.extend(requested_by_worker);
+    required
+}
+
+pub(crate) fn reduce(
+    request: &FixtureRequest,
+    records: &[WorkerRecord],
+    owner_events: &[OwnerEvent],
+    build: BuildId,
+) -> Result<Answer<FixtureObservation>, Error> {
+    let required = required_hooks(request, records);
+    let Some((thread, resumed)) = event_stream::activation(records, owner_events, &required) else {
         return Err(Error::Observation {
             operation: Operation::ObserveFixture,
             reason: "Fixture hook activation before resume was not established".into(),
@@ -94,7 +110,7 @@ pub(crate) fn reduce(
             window.field_gap(index, "The field reader authority is missing");
         }
     }
-    if diagnostics_requested && window.diagnostic_terminal.is_none() {
+    if window.diagnostics_requested && window.diagnostic_terminal.is_none() {
         window.diagnostic_gap("The parser diagnostic terminal is missing");
     }
     Ok(window.finish(build))
@@ -481,7 +497,7 @@ impl<'a> Window<'a> {
             .get(question)
             .and_then(|authority| authority.storage_decoder)
             .is_some_and(|decoder| decoder.accepts(value));
-        let in_order = *occurrence > last_occurrence && *occurrence <= MAX_OCCURRENCE;
+        let in_order = *occurrence > last_occurrence;
 
         if !(in_window
             && in_source
@@ -564,7 +580,6 @@ impl<'a> Window<'a> {
             let last = invocations.last();
             let last_occurrence = last.map_or(0, |entry| entry.occurrence);
             if *occurrence <= last_occurrence
-                || *occurrence > MAX_OCCURRENCE
                 || last.is_some_and(|entry| entry.return_line.is_none())
             {
                 self.parsing_gap(
@@ -1869,6 +1884,91 @@ mod tests {
         );
     }
 
+    /// The hooks that `field_request` requires before resume.
+    const MINIMUM_HOOKS: [&str; 10] = [
+        "fixture:load",
+        "fixture:constructor",
+        "fixture:reader",
+        "fixture:member",
+        "fixture:malformed",
+        "fixture:unexpected",
+        "fixture:log",
+        "fixture:unformatted-log",
+        "fixture:stream-log",
+        "fixture:sourced-log",
+    ];
+
+    /// `field_events` with the worker's `hooks-requested` record first. Rows shift by one: 1
+    /// launch stop, 2 hooks in place before resume and 3 resume.
+    fn with_requested_hooks(requested: &[&str]) -> Vec<Value> {
+        let mut events = field_events();
+        events.insert(
+            0,
+            json!({"kind":"hooks-requested", "hooks":requested, "run":"attempt"}),
+        );
+        renumber(&mut events);
+        events
+    }
+
+    fn activation_fails(events: Vec<Value>) -> bool {
+        reduce(
+            &field_request(),
+            &records(events),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .is_err()
+    }
+
+    #[test]
+    fn a_minimum_hook_that_the_worker_does_not_name_is_still_required() {
+        let requested: Vec<_> = MINIMUM_HOOKS
+            .into_iter()
+            .filter(|name| *name != "fixture:member")
+            .collect();
+        let mut events = with_requested_hooks(&requested);
+        assert_eq!(answer(events.clone()), answer(field_events()));
+
+        events[2]["hooks"]
+            .as_object_mut()
+            .unwrap()
+            .remove("fixture:member");
+        assert!(activation_fails(events));
+    }
+
+    #[test]
+    fn a_hook_that_only_the_worker_names_must_be_active_before_resume() {
+        let hook = json!({"enabled":true, "locations":1, "resolved":1, "hits":0});
+        let mut requested = MINIMUM_HOOKS.to_vec();
+        requested.extend([
+            "fixture:return",
+            "fixture:nested:4660",
+            "registry:common/traditions",
+        ]);
+        let mut events = with_requested_hooks(&requested);
+        events[2]["hooks"]["fixture:return"] = hook.clone();
+        events[2]["hooks"]["fixture:nested:4660"] = hook;
+        // Only a fixture hook binds the fixture answer; the registry hook has no state here.
+        assert_eq!(answer(events.clone()), answer(field_events()));
+
+        for name in ["fixture:return", "fixture:nested:4660"] {
+            let mut absent = events.clone();
+            absent[2]["hooks"].as_object_mut().unwrap().remove(name);
+            assert!(activation_fails(absent), "{name} absent");
+
+            for (field, value) in [
+                ("enabled", json!(false)),
+                ("locations", json!(0)),
+                ("resolved", json!(2)),
+                ("hits", json!(1)),
+            ] {
+                let mut inactive = events.clone();
+                inactive[2]["hooks"][name][field] = value;
+                assert!(activation_fails(inactive), "{name} {field}");
+            }
+        }
+    }
+
     #[test]
     fn later_registry_record_loss_does_not_revoke_a_completed_fixture_window() {
         let expected = answer(field_events());
@@ -2026,9 +2126,6 @@ mod tests {
             // The first kept occurrence skips ahead to 3, and the next one is earlier.
             (7, 3, (vec![3], vec![1, 2])),
             (6, 3, (vec![1, 2], vec![3])),
-            // An occurrence past the producer's bound is refused, and the next one is kept.
-            (7, 129, (vec![2], vec![1, 2])),
-            (6, 129, (vec![1, 2], vec![2])),
         ] {
             let mut events = parsed_field_events();
             events[row]["event"]["occurrence"] = json!(occurrence);

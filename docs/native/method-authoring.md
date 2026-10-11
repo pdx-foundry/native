@@ -467,7 +467,8 @@ also when a check fails after a clean `close`. The directory also holds `raw-tra
 A live observation has separate checks in the worker and in the reducer. The reducer must reject
 an incoherent or misplaced observation even when the normal worker would not send it, so keep
 stage-window checks on both sides. The protocol owns the stage vocabulary; the worker does not
-decide whether an answer is complete.
+decide whether an answer is complete. The worker owns the size bounds of a record (a registry's
+entry count, a key's length, the occurrences of a field); a reducer does not repeat them.
 
 ## Command inspection and population reports
 

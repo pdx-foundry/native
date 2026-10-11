@@ -56,10 +56,12 @@ states its witness chain. The public item query is in Git at `d8f9d8a`.
 
 The fixture's loader-return callback ends its observation window without stopping the session;
 the registry callbacks then establish the pause. Missing or late fixture hooks give an
-observation error; dropped records, missing terminals and an access failure give partial
-answers; worker loss before the pause gives a startup error with confirmed disposal. A dropped
-occurrence of a field leaves the later occurrences, their parser pairs and the terminal in the
-answer, with a gap for the lost one. The answer is `Complete` when every gap is `OutsideMethod`, as
+observation error. The required hooks are the request's minimum and every fixture hook that the
+worker names in `hooks-requested`, such as an inline loader's return and nested hooks. Dropped
+records, missing terminals and an access failure give partial answers; worker loss before the
+pause gives a startup error with confirmed disposal. A dropped occurrence of a field leaves the
+later occurrences, their parser pairs and the terminal in the answer, with a gap for the lost
+one. The answer is `Complete` when every gap is `OutsideMethod`, as
 for every other operation (`Completeness::from_gaps`): a field whose reader has no storage decoder,
 or a category with no diagnostics, states its boundary and does not make the answer partial.
 
