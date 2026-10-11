@@ -234,7 +234,7 @@ pub fn analyze(input: &DeclarationInput) -> Result<DeclarationResult, InputError
     Ok(DeclarationResult {
         sites,
         table_gaps: if input.scope_names.is_none() {
-            vec!["scope-table"]
+            vec![SCOPE_TABLE_MISSING]
         } else {
             Vec::new()
         },
@@ -627,6 +627,10 @@ fn command_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, &'stati
         .ok_or("command-vtable")
 }
 
+/// The [`Unresolved`] reason of a scope that the missing scope-name table left unnamed. One
+/// answer-wide gap reports the table, so a session does not report each such scope again.
+pub(crate) const SCOPE_TABLE_MISSING: &str = "scope-table";
+
 /// Scope names of a declared scope mask. Zero and all bits mean every scope. A name is kept as
 /// the engine spells it, even with a space (`pop job`); splitting it would invent a scope.
 pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
@@ -634,7 +638,7 @@ pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
         return ScopeOutcome::Any;
     }
     let Some(names) = names else {
-        return ScopeOutcome::Unresolved(Unresolved::new("scope-table"));
+        return ScopeOutcome::Unresolved(Unresolved::new(SCOPE_TABLE_MISSING));
     };
     let mut listed = Vec::new();
     for index in 0..64 {

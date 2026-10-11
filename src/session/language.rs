@@ -10,7 +10,7 @@ use crate::answer::{
 };
 use crate::engine::analysis::{
     category_keys::{self, CategoryKeyResult},
-    declarations::ScopeOutcome,
+    declarations::{SCOPE_TABLE_MISSING, ScopeOutcome},
     modifiers::{self, CATEGORY_METHOD, DefinitionSite, MODIFIER_METHOD, ModifierResult, Tags},
     scopes::{self, LINK_METHOD, LinkResult, Output, SCOPE_METHOD, ScopeResult},
     stop::Unresolved,
@@ -462,7 +462,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             ScopeOutcome::Any => DeclaredScopes::Any,
             ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
             ScopeOutcome::Unresolved(Unresolved { reason, .. }) => {
-                if *reason != "scope-table" {
+                if *reason != SCOPE_TABLE_MISSING {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
                         Some(&link.name),
@@ -476,7 +476,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             Output::Listed(types) => OutputScope::Listed(scope_references(types)),
             Output::Various => OutputScope::Various,
             Output::Unresolved(Unresolved { reason, .. }) => {
-                if *reason != "scope-table" {
+                if *reason != SCOPE_TABLE_MISSING {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
                         Some(&link.name),
