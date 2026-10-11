@@ -143,6 +143,19 @@ the switch rule assumes that no known name maps to the fallback value, and the p
 assumes that the report concerns the value it overwrites. The parity test checks both lists
 against the 19 operation spellings less the six operand-free ones, and against the four names.
 
+The post-read run is a validated rule too. A call in the hook that receives no owner pointer in
+`x0` to `x7` is assumed not to change the owner's stored value; the run goes on after it. A call
+that receives an owner pointer ends the path. When no path reports and overwrites the value and
+some path ended at such a call, the hook is unresolved: the keyword domain stays `Unknown` with the
+gap. Change this rule for a build where a hook passes the owner to a callee through memory.
+
+Accepted limit: a hook path that reaches the path limit, or stops for any reason other than a call
+that receives the owner, counts as not recovered. A value that the unwalked rest of the hook could
+still overwrite stays in the domain. The current case is `CComplexTriggerMTTHModifier::
+InitPostRead()`: after the mode check, the values 0 to 6, 10, 11 and 14 reach the 64-path limit at
+`0x10092d2b4`. Change this limit for a hook whose overwrite of a stored value lies past the path
+limit.
+
 **Stored scope.** `CMeanTimeToHappen(EScopeType, CFixedPoint, bool)` stores `x1` (the scope) at
 `+0x30` and `x2` (the default base) at `+0x10`. The council agenda, tradition and tradition
 category constructors pass `4` (country) and `_VHUNDRED`. An omitted `base` keeps that default

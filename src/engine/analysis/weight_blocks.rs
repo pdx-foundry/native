@@ -53,6 +53,10 @@ use super::{
 use crate::{ReaderKind, RepeatBehavior};
 
 const SPAN: u64 = 0x10000;
+/// Why a post-read run stops at a call that receives an owner pointer.
+const OWNER_CALL: &str = "weight-post-read-call";
+/// The registers `x0` to `x7`, which carry the arguments of a call.
+const ARGUMENT_REGISTERS: usize = 8;
 /// Stands for the scope that a scoped member reader receives in `x3`.
 const ENCLOSING: u64 = 0xe5c0_0000_0000_0001;
 /// The deepest nested entry reader that the method follows.
@@ -271,8 +275,9 @@ impl<'a> Context<'a> {
         self.names.get(&address).copied().unwrap_or("")
     }
 
-    /// The one entry of the symbol `name`, excluding cold parts.
-    fn entry(&self, name: &str) -> Result<u64, Unresolved> {
+    /// The one entry of the symbol `name`, excluding cold parts, or `None` when no symbol has
+    /// the name. Several entries are ambiguous.
+    fn entry(&self, name: &str) -> Result<Option<u64>, Unresolved> {
         let entries: BTreeSet<_> = self
             .input
             .symbols
@@ -281,7 +286,8 @@ impl<'a> Context<'a> {
             .map(|symbol| symbol.address)
             .collect();
         match entries.len() {
-            1 => Ok(*entries.first().unwrap()),
+            0 => Ok(None),
+            1 => Ok(entries.first().copied()),
             _ => Err(Unresolved::new("weight-member-symbol")),
         }
     }
@@ -293,7 +299,9 @@ impl<'a> Context<'a> {
     /// The member reader `name` with every member delegate and enum switch that it calls
     /// directly, transitively through the delegates.
     fn member(&self, name: &str) -> Result<Member, Unresolved> {
-        let entry = self.entry(name)?;
+        let entry = self
+            .entry(name)?
+            .ok_or(Unresolved::new("weight-member-symbol"))?;
         let mut bodies = BTreeMap::new();
         let mut enums = BTreeMap::new();
         let mut pending = vec![entry];
@@ -473,6 +481,7 @@ impl<'a> Context<'a> {
         let mut stores = BTreeSet::new();
         let mut accepted = BTreeMap::new();
         let mut terminal = None;
+        let mut hook_unresolved = false;
         for value in self.token_domain() {
             let (seeds, paths) = self.run(member, token, Some(value));
             let mut outcomes = BTreeSet::new();
@@ -503,7 +512,10 @@ impl<'a> Context<'a> {
                         results.insert(machine.labelled(KEYWORD_VALUE));
                         terminal.get_or_insert(machine.pc());
                         if let Ok(Some(hook)) = &post_read {
-                            recovered |= self.recovers(hook, &owner_bytes(machine, seeds.owner));
+                            match self.recovers(hook, &owner_bytes(machine, seeds.owner)) {
+                                Ok(replaced) => recovered |= replaced,
+                                Err(_) => hook_unresolved = true,
+                            }
                         }
                     }
                     _ => return None,
@@ -531,7 +543,11 @@ impl<'a> Context<'a> {
             terminal?,
         );
 
-        let domain = post_read.ok().and_then(|_| self.keyword_domain(&accepted));
+        let domain = if post_read.is_ok() && !hook_unresolved {
+            self.keyword_domain(&accepted)
+        } else {
+            None
+        };
 
         Some((keyword, domain))
     }
@@ -542,7 +558,7 @@ impl<'a> Context<'a> {
         let Some((class, _)) = member.name.split_once("::ReadMember(") else {
             return Ok(None);
         };
-        let Ok(entry) = self.entry(&format!("{class}::InitPostRead()")) else {
+        let Some(entry) = self.entry(&format!("{class}::InitPostRead()"))? else {
             return Ok(None);
         };
 
@@ -553,8 +569,15 @@ impl<'a> Context<'a> {
 
     /// Whether the post-read hook reports a value and then overwrites it, on some path. `stored`
     /// gives the owner bytes that the read wrote; every other owner byte is unknown. This is a
-    /// validated rule, not a proof that the report concerns the overwritten value.
-    fn recovers(&self, (entry, code): &(u64, Code), stored: &[(u64, u8)]) -> bool {
+    /// validated rule, not a proof that the report concerns the overwritten value. A call that
+    /// receives no owner pointer in `x0` to `x7` is assumed not to change the owner's stored
+    /// value. When no path recovers and some path stopped at a call that receives the owner, the hook
+    /// is unresolved. A path that stops for another reason counts as not recovered.
+    fn recovers(
+        &self,
+        (entry, code): &(u64, Code),
+        stored: &[(u64, u8)],
+    ) -> Result<bool, Unresolved> {
         let mut machine = Machine::new(code, &self.input.data);
         let owner = machine.reserve(SPAN);
         for &(offset, byte) in stored {
@@ -563,20 +586,38 @@ impl<'a> Context<'a> {
         machine.set_register(0, owner);
 
         let paths = machine.run_paths(*entry, &mut |target, machine| {
-            let Some(target) = target else {
-                return Err(Unresolved::new("weight-post-read-call"));
-            };
-            if EMISSIONS.contains(&self.name(target)) {
+            if target.is_some_and(|target| EMISSIONS.contains(&self.name(target))) {
                 machine.label(EMITTED, 1);
+                return Ok(Call::Return(None));
             }
+
+            let receives_owner = (0..ARGUMENT_REGISTERS)
+                .filter_map(|index| machine.register(index))
+                .any(|value| (owner..owner + SPAN).contains(&value));
+            if receives_owner {
+                return Err(Unresolved::new(OWNER_CALL));
+            }
+
             Ok(Call::Return(None))
         });
-        paths.iter().any(|path| {
+        let recovered = paths.iter().any(|path| {
             let overwritten = stored.iter().any(|&(offset, byte)| {
                 path.machine.read(owner + offset, 1) != Some(u64::from(byte))
             });
             path.machine.labelled(EMITTED).is_some() && overwritten
-        })
+        });
+        if recovered {
+            return Ok(true);
+        }
+
+        let owner_call = paths
+            .iter()
+            .filter_map(|path| path.end.as_ref().err())
+            .find(|stop| stop.reason == OWNER_CALL);
+        match owner_call {
+            Some(stop) => Err(stop.clone()),
+            None => Ok(false),
+        }
     }
 
     /// The names of the values that a keyword recognizes, from the switch results of each value
@@ -719,7 +760,9 @@ impl<'a> Context<'a> {
     /// What the read entry `name` does before it reads a block: the reader of a bare value it
     /// accepts instead, and the owner words it writes.
     fn read_entry(&self, name: &str) -> Result<ReadEntry, Unresolved> {
-        let entry = self.entry(name)?;
+        let entry = self
+            .entry(name)?
+            .ok_or(Unresolved::new("weight-member-symbol"))?;
         let rows = decode_arm64(self.body(entry)?, entry)
             .map_err(|_| Unresolved::new("weight-read-code"))?;
         let code = Code::from_rows(rows);
