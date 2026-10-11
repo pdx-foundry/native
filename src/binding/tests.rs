@@ -69,6 +69,27 @@ fn registry_binding_keeps_the_established_key_offset_or_refusal() {
     );
 }
 
+/// A binding of an authored installation: its analysis takes the catalogued declarations.
+fn authored_binding(
+    installation: Installation,
+    operation: Option<super::compose::ResolvedObservation>,
+) -> Binding {
+    let invalidated = std::sync::Arc::<std::sync::Mutex<Option<UnavailableReason>>>::default();
+    let analysis = super::BoundAnalysis::new(
+        super::targets::test_declarations(),
+        None,
+        installation.clone(),
+        invalidated.clone(),
+    );
+
+    Binding {
+        analysis: std::sync::Arc::new(analysis),
+        operation,
+        installation,
+        invalidated,
+    }
+}
+
 /// An authored installation. Its executable is in no catalogue, so the binding has no operation;
 /// these tests concern only the integrity of the pinned inputs.
 fn installation() -> (TempDir, Binding) {
@@ -81,24 +102,13 @@ fn installation() -> (TempDir, Binding) {
     fs::write(directory.path().join("stellaris"), "authored test bytes").unwrap();
     fs::write(directory.path().join("common/traditions/test.txt"), "test").unwrap();
     let (installation, _) = Installation::open(directory.path()).unwrap();
-    let binding = Binding {
-        operation: None,
-        analysis: None,
-        installation: installation.with_default_registries(&registries),
-        invalidated: Default::default(),
-    };
+    let binding = authored_binding(installation.with_default_registries(&registries), None);
     (directory, binding)
 }
 
 #[test]
 fn executable_replacement_permanently_invalidates_the_context() {
-    let (directory, mut binding) = installation();
-    binding.analysis = Some(std::sync::Arc::new(super::BoundAnalysis::new(
-        None,
-        None,
-        binding.installation.clone(),
-        binding.invalidated.clone(),
-    )));
+    let (directory, binding) = installation();
     let context = crate::Native::from_binding(binding);
     assert_eq!(context.blocking_reasons(context.bound()), []);
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
@@ -113,7 +123,7 @@ fn executable_replacement_permanently_invalidates_the_context() {
             .blocking_reasons(context.bound())
             .contains(&UnavailableReason::TargetChanged)
     );
-    let analysis = context.bound().analysis.as_ref().unwrap();
+    let analysis = &context.bound().analysis;
     assert!(analysis.executable().is_err());
 }
 
@@ -212,12 +222,10 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     let (installation, _) = Installation::open(root.path()).unwrap();
     let operation = super::compose::synthetic_variation();
     let plan = super::ExecutionPlan {
-        binding: Binding {
-            installation: installation.with_default_registries(operation.default_registries),
-            operation: Some(operation),
-            analysis: None,
-            invalidated: Default::default(),
-        },
+        binding: authored_binding(
+            installation.with_default_registries(operation.default_registries),
+            Some(operation),
+        ),
     };
     let names = plan.binding.default_registries();
     let registries: std::collections::BTreeMap<_, _> = names
@@ -397,12 +405,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
     operation.strategy.prepare = inspect;
     let plan = ExecutionPlan {
-        binding: Binding {
-            operation: Some(operation),
-            analysis: None,
-            installation: installed,
-            invalidated: Default::default(),
-        },
+        binding: authored_binding(installed, Some(operation)),
     };
     // The strategy gets the hash bound at open and does not read the executable again; the
     // check before spawn and the worker refuse a changed file.

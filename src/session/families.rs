@@ -34,7 +34,7 @@ impl Native {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::ModifierFamilies, Some(registry), || {
             let operation = Operation::ModifierFamilies;
-            let analysis = self.declaration_analysis(operation)?;
+            let analysis = &self.bound().analysis;
             let index = analysis
                 .family_index()
                 .map_err(|failure| error(operation, failure))?;

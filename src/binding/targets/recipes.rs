@@ -22,7 +22,7 @@ pub(in crate::binding) struct Recipe {
     pub groups: &'static [BindingGroupId],
     pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
-    pub declarations: Option<&'static DeclarationRecipe>,
+    pub declarations: &'static DeclarationRecipe,
     pub script_checks: Option<fn() -> crate::protocol::script_check::ScriptCheckBinding>,
 }
 
@@ -131,7 +131,7 @@ pub(super) const M452: Recipe = Recipe {
     ],
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
-    declarations: Some(&M45_DECLARATIONS),
+    declarations: &M45_DECLARATIONS,
     script_checks: Some(m452_script_checks),
 };
 

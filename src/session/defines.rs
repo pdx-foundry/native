@@ -18,7 +18,8 @@ impl Native {
         self.answer(Operation::Defines, None, || {
             let operation = Operation::Defines;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .defines_input()
                 .map_err(|failure| error(operation, failure))?;
             Ok(normalize(defines::analyze(&input), self.build()))

@@ -1153,7 +1153,7 @@ mod string_tests {
             native.build().0,
             "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
         );
-        let analysis = native.bound().analysis.as_ref().unwrap();
+        let analysis = &native.bound().analysis;
         let (grammar, _) = analysis
             .grammar_input(crate::DeclarationKind::Effect)
             .unwrap();

@@ -16,7 +16,7 @@ use crate::{AnalysisError, UnavailableReason};
 mod fixtures;
 
 pub(crate) struct BoundAnalysis {
-    declarations: Option<&'static super::targets::DeclarationRecipe>,
+    declarations: &'static super::targets::DeclarationRecipe,
     /// Where a template database holds its items, when the build has a template layout.
     database: Option<DatabaseLayout>,
     installation: Installation,
@@ -103,7 +103,7 @@ pub(crate) struct PreparedDurations<'a> {
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Arc<[u8]>,
     catalog: &'a Catalog,
-    persistent: Option<&'static super::targets::PersistentRecipe>,
+    persistent: &'static super::targets::PersistentRecipe,
 }
 
 impl VerifiedAnalysis<'_> {
@@ -383,9 +383,6 @@ impl BoundAnalysis {
     pub(crate) fn defines_input(
         &self,
     ) -> Result<crate::engine::analysis::defines::DefineInput, AnalysisError> {
-        if self.declarations.is_none() {
-            return Err(AnalysisError::InvalidRange);
-        }
         let verified = self.verified()?;
         binary::defines::read(
             &verified.executable,
@@ -468,7 +465,7 @@ impl BoundAnalysis {
     }
 
     pub(super) fn new(
-        declarations: Option<&'static super::targets::DeclarationRecipe>,
+        declarations: &'static super::targets::DeclarationRecipe,
         database: Option<DatabaseLayout>,
         installation: Installation,
         invalidated: Arc<Mutex<Option<UnavailableReason>>>,
@@ -526,7 +523,7 @@ impl BoundAnalysis {
             .as_ref()
             .map_err(Clone::clone)?;
         Ok(VerifiedAnalysis {
-            persistent: self.declarations.map(|recipe| &recipe.persistent),
+            persistent: &self.declarations.persistent,
             executable,
             catalog,
         })
@@ -891,8 +888,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.numeric
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::numeric::read(&verified.image(), recipe)?;
+                let input = binary::numeric::read(&verified.image(), self.declarations)?;
                 Ok(crate::engine::analysis::numeric::analyze(&input))
             })
             .as_ref()
@@ -906,11 +902,10 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.modifier_blocks
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let input = binary::modifier_blocks::read(
                     &verified.image(),
                     &verified.catalog.candidates,
-                    recipe,
+                    self.declarations,
                 )?;
                 Ok(crate::engine::analysis::modifier_blocks::analyze(
                     &input,
@@ -928,12 +923,12 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.weight_blocks
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
                 )?;
-                let input = binary::weight_blocks::read(&verified.image(), &text, recipe)?;
+                let input =
+                    binary::weight_blocks::read(&verified.image(), &text, self.declarations)?;
                 let bodies = |address| binary::weight_blocks::body(&text, address);
                 Ok(crate::engine::analysis::weight_blocks::analyze(
                     &input, &bodies,
@@ -951,8 +946,8 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.triggered_modifiers
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::triggered_modifiers::read(&verified.image(), recipe)?;
+                let input =
+                    binary::triggered_modifiers::read(&verified.image(), self.declarations)?;
                 Ok(crate::engine::analysis::modifier_blocks::triggered::analyze(&input))
             })
             .as_ref()
@@ -966,8 +961,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.scoped_numeric
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = verified.scoped_numeric_input(recipe)?;
+                let input = verified.scoped_numeric_input(self.declarations)?;
                 Ok(crate::engine::analysis::scoped_numeric::analyze(&input))
             })
             .as_ref()
@@ -979,8 +973,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.block_facts
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = verified.block_input(recipe)?;
+                let input = verified.block_input(self.declarations)?;
                 Ok(BlockFacts {
                     entries: crate::engine::analysis::callbacks::blocks::analyze_blocks(&input),
                     scope_names: input.scope_names,
@@ -994,9 +987,7 @@ impl BoundAnalysis {
     pub(crate) fn scoped_numeric_input_for_test(
         &self,
     ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
-        let verified = self.verified()?;
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        verified.scoped_numeric_input(recipe)
+        self.verified()?.scoped_numeric_input(self.declarations)
     }
 
     /// The timed-flag execute body, decoded.
@@ -1018,16 +1009,11 @@ impl BoundAnalysis {
             .map_err(Clone::clone)
     }
 
-    pub(crate) fn has_declarations_method(&self) -> bool {
-        self.declarations.is_some()
-    }
-
     pub(crate) fn declaration_input(
         &self,
         kind: crate::DeclarationKind,
     ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.declaration_input(kind, recipe)
+        self.verified()?.declaration_input(kind, self.declarations)
     }
 
     pub(crate) fn grammar_input(
@@ -1043,9 +1029,8 @@ impl BoundAnalysis {
         kind: crate::DeclarationKind,
         verified: &VerifiedAnalysis<'_>,
     ) -> Result<&(GrammarInput, DeclarationResult), AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.grammar[grammar_slot(kind)]
-            .get_or_init(|| verified.grammar_input(kind, recipe))
+            .get_or_init(|| verified.grammar_input(kind, self.declarations))
             .as_ref()
             .map_err(Clone::clone)
     }
@@ -1092,12 +1077,11 @@ impl BoundAnalysis {
         use crate::DeclarationKind;
         use crate::engine::analysis::dynamic_names::{CommandFamily, DynamicNameInput};
 
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         let catalog = verified.catalog;
         let families = [
-            (DeclarationKind::Effect, recipe.effect_names),
-            (DeclarationKind::Trigger, recipe.trigger_names),
+            (DeclarationKind::Effect, self.declarations.effect_names),
+            (DeclarationKind::Trigger, self.declarations.trigger_names),
         ]
         .into_iter()
         .map(|(kind, slots)| {
@@ -1114,7 +1098,7 @@ impl BoundAnalysis {
         Ok(DynamicNameInput {
             families,
             functions: binary::dynamic_names::flag_functions(&catalog.symbols)?,
-            scope_type_offset: recipe.callbacks.scope_type_offset,
+            scope_type_offset: self.declarations.callbacks.scope_type_offset,
             names: binary::references::names(
                 &catalog.symbols,
                 &catalog.pointers,
@@ -1127,30 +1111,27 @@ impl BoundAnalysis {
     pub(crate) fn modifier_input(
         &self,
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.modifier_input(recipe)
+        self.verified()?.modifier_input(self.declarations)
     }
 
     /// The category switch, the reader checks after each call of it, and the token names.
     pub(crate) fn category_key_input(
         &self,
     ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::category_keys(
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
-            recipe,
+            self.declarations,
         )
     }
 
     /// The engine functions, classified callers and message sites of each script expansion
-    /// mechanism. The stated forms in the input belong to builds with a declaration recipe.
+    /// mechanism.
     pub(crate) fn expansion_input(
         &self,
     ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
-        self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::expansions::read(
             &verified.executable,
@@ -1168,12 +1149,12 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.modifier_nodes
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
                 )?;
-                let input = binary::modifier_nodes::read(&verified.image(), &text, recipe)?;
+                let input =
+                    binary::modifier_nodes::read(&verified.image(), &text, self.declarations)?;
                 let bodies = |start| text.code_from(start);
                 Ok(crate::engine::analysis::modifier_nodes::analyze(
                     &input, &bodies,
@@ -1190,11 +1171,10 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.category_input
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 binary::language::category_input(
                     &verified.executable,
                     &verified.catalog.symbols,
-                    recipe,
+                    self.declarations,
                 )
             })
             .as_ref()
@@ -1203,11 +1183,10 @@ impl BoundAnalysis {
 
     /// Every generation call, its joins to the named registries, and each registry's code.
     pub(crate) fn family_index(&self) -> Result<&FamilyIndex, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let database = self.database.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         self.families
-            .get_or_init(|| verified.family_index(recipe, database))
+            .get_or_init(|| verified.family_index(self.declarations, database))
             .as_ref()
             .map_err(Clone::clone)
     }
@@ -1215,13 +1194,12 @@ impl BoundAnalysis {
     pub(crate) fn scope_input(
         &self,
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::scopes(
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
-            recipe,
+            self.declarations,
         )
     }
 
@@ -1266,7 +1244,6 @@ impl BoundAnalysis {
     pub(crate) fn localization_input(
         &self,
     ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::localization(
             &verified.executable,
@@ -1274,14 +1251,13 @@ impl BoundAnalysis {
             &verified.catalog.strings,
             &verified.catalog.pointers,
             &verified.catalog.bound_slots,
-            recipe,
+            self.declarations,
         )
     }
 
     pub(crate) fn callbacks_input(
         &self,
     ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        binary::callbacks::callbacks(&self.verified()?.image(), recipe)
+        binary::callbacks::callbacks(&self.verified()?.image(), self.declarations)
     }
 }

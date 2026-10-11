@@ -110,7 +110,7 @@ fn registry_mod_descriptor(
 /// only binding value that the session and the supervisor see; target records and platform
 /// leaves stay below here.
 pub(crate) struct Binding {
-    pub(crate) analysis: Option<std::sync::Arc<BoundAnalysis>>,
+    pub(crate) analysis: std::sync::Arc<BoundAnalysis>,
     /// `None` only in tests that bind an authored installation.
     operation: Option<compose::ResolvedObservation>,
     installation: installation::Installation,
@@ -141,8 +141,6 @@ impl Binding {
         };
         let input = self
             .analysis
-            .as_ref()
-            .ok_or_else(|| crate::supervisor::SupervisorError("scope analysis unavailable".into()))?
             .scope_input()
             .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
         let scopes = crate::engine::analysis::scopes::scopes(&input)
@@ -165,11 +163,11 @@ impl Binding {
         let operation = compose::compose(&image)?;
         let installation = installation.with_default_registries(operation.default_registries);
         let invalidated = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let analysis = Some(std::sync::Arc::new(compose::analysis(
+        let analysis = std::sync::Arc::new(compose::analysis(
             &image,
             installation.clone(),
             invalidated.clone(),
-        )?));
+        )?);
         Ok(Self {
             analysis,
             operation: Some(operation),
@@ -214,8 +212,6 @@ impl Binding {
             .ok_or("this build has no registry observation layout")?;
         let verified = self
             .analysis
-            .as_ref()
-            .ok_or("this build has no static registry analysis")?
             .verified()
             .map_err(|error| error.to_string())?;
         directories
@@ -245,8 +241,6 @@ impl Binding {
         };
         let verified = self
             .analysis
-            .as_ref()
-            .ok_or("this build has no static registry analysis")?
             .verified()
             .map_err(|error| error.to_string())?;
         let table = verified.modifier_table_layout(layout.string_tag_offset())?;
@@ -275,19 +269,12 @@ impl Binding {
         self.operation
             .as_ref()
             .is_some_and(|operation| operation.registry_layout.is_some())
-            && self.has_declarations_method()
     }
 
     pub(crate) fn has_fixture_method(&self) -> bool {
         self.operation
             .as_ref()
             .is_some_and(|operation| operation.fixture.is_some())
-    }
-
-    pub(crate) fn has_declarations_method(&self) -> bool {
-        self.analysis
-            .as_ref()
-            .is_some_and(|analysis| analysis.has_declarations_method())
     }
 
     pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
@@ -570,9 +557,7 @@ impl ExecutionPlan {
             .fixture
             .clone()
             .ok_or_else(|| SupervisorError("No fixture binding for this build".into()))?;
-        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-            SupervisorError("No static reader authority for fixture questions".into())
-        })?;
+        let analysis = &self.binding.analysis;
         let validation_complete_entry =
             if fixture.window == crate::FixtureWindow::InitialFileLoadAndValidation {
                 if bindings.validation.is_none() {

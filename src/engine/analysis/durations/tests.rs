@@ -600,7 +600,7 @@ fn a_pair_load_from_owner_storage_clears_both_registers() {
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
 fn m452_duration_execution_proofs() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     let (input, _) = analysis
         .grammar_input(crate::DeclarationKind::Effect)
         .unwrap();

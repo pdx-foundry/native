@@ -501,8 +501,6 @@ mod tests {
         let input = native
             .bound()
             .analysis
-            .as_ref()
-            .unwrap()
             .scoped_numeric_input_for_test()
             .unwrap();
         let facts = native

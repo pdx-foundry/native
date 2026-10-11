@@ -53,7 +53,8 @@ impl Native {
         self.answer(Operation::ModifierCategoryKeys, None, || {
             let operation = Operation::ModifierCategoryKeys;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .category_key_input()
                 .map_err(|failure| error(operation, failure))?;
             Ok(normalized_category_keys(
@@ -72,7 +73,8 @@ impl Native {
         self.answer(Operation::Scopes, None, || {
             let operation = Operation::Scopes;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .scope_input()
                 .map_err(|failure| error(operation, failure))?;
             let result =
@@ -90,7 +92,8 @@ impl Native {
         self.answer(Operation::ScopeLinks, None, || {
             let operation = Operation::ScopeLinks;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .scope_input()
                 .map_err(|failure| error(operation, failure))?;
             let result = scopes::links(&input).map_err(|error| Error::Method(error.to_string()))?;
@@ -100,7 +103,8 @@ impl Native {
 
     fn modifier_result(&self, operation: Operation) -> Result<ModifierResult, Error> {
         let input = self
-            .declaration_analysis(operation)?
+            .bound()
+            .analysis
             .modifier_input()
             .map_err(|failure| error(operation, failure))?;
         modifiers::analyze(&input).map_err(|error| Error::Method(error.to_string()))

@@ -15,24 +15,22 @@ use crate::protocol::observation::{
 
 impl BoundAnalysis {
     pub(crate) fn has_inline_fixture(&self, directory: &str) -> bool {
-        self.declarations.is_some_and(|recipe| {
-            recipe
-                .inline_fixtures
-                .iter()
-                .any(|loader| loader.directory == directory)
-        })
+        self.declarations
+            .inline_fixtures
+            .iter()
+            .any(|loader| loader.directory == directory)
     }
 
     pub(crate) fn inline_fixture(
         &self,
         request: &crate::FixtureRequest,
     ) -> Result<Option<(FixtureOutcomeRegistryBinding, Vec<FixtureQuestionSetup>)>, String> {
-        let Some(recipe) = self.declarations.and_then(|recipe| {
-            recipe
-                .inline_fixtures
-                .iter()
-                .find(|loader| loader.directory == request.registry())
-        }) else {
+        let Some(recipe) = self
+            .declarations
+            .inline_fixtures
+            .iter()
+            .find(|loader| loader.directory == request.registry())
+        else {
             return Ok(None);
         };
         if request.window != crate::FixtureWindow::InitialFileLoad {

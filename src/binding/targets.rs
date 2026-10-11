@@ -41,6 +41,12 @@ fn lookup_in(
 #[cfg(test)]
 mod tests;
 
+/// The catalogued declarations, for tests of an authored image.
+#[cfg(test)]
+pub(super) fn test_declarations() -> &'static DeclarationRecipe {
+    records::CATALOGUE[0].recipe.declarations
+}
+
 #[cfg(test)]
 pub(super) fn test_identity() -> ImageIdentity {
     let record = &records::CATALOGUE[0];

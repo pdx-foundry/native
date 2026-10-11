@@ -435,29 +435,6 @@ impl Operation {
             Self::ScriptExpansions => "script_expansions",
         }
     }
-
-    /// Whether the operation reads engine declarations, which need a declaration recipe.
-    pub(crate) fn is_declaration(self) -> bool {
-        matches!(
-            self,
-            Self::Defines
-                | Self::Declarations
-                | Self::CommandGrammar
-                | Self::Modifiers
-                | Self::ModifierCategories
-                | Self::ModifierFamilies
-                | Self::Scopes
-                | Self::ScopeLinks
-                | Self::LocalizationDeclarations
-                | Self::OnActions
-                | Self::GameRules
-                | Self::DynamicNames
-                | Self::DerivedNames
-                | Self::ModifierNodes
-                | Self::ModifierCategoryKeys
-                | Self::ScriptExpansions
-        )
-    }
 }
 
 impl std::fmt::Display for Operation {

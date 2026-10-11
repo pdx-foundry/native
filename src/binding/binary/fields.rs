@@ -24,7 +24,7 @@ const INSERTION_LIMIT: u64 = 65_536;
 pub(in crate::binding) fn read(
     image: &Image<'_>,
     selection: CandidateRecord,
-    persistent_recipe: Option<&PersistentRecipe>,
+    persistent_recipe: &PersistentRecipe,
 ) -> Result<FieldInput, AnalysisError> {
     let Image {
         bytes,
@@ -83,24 +83,17 @@ pub(in crate::binding) fn read(
             &mut gaps,
         );
     }
-    let persistent = persistent_recipe
-        .map(|recipe| {
-            super::receivers::persistent(
-                image,
-                &text,
-                &data,
-                &names,
-                &selection.owner_candidate,
-                recipe,
-            )
-        })
-        .transpose()?;
+    let persistent = super::receivers::persistent(
+        image,
+        &text,
+        &data,
+        &names,
+        &selection.owner_candidate,
+        persistent_recipe,
+    )?;
     Ok(FieldInput {
-        key_readers: persistent_recipe
-            .map(|recipe| key_readers(symbols, recipe))
-            .transpose()?
-            .unwrap_or_default(),
-        persistent,
+        key_readers: key_readers(symbols, persistent_recipe)?,
+        persistent: Some(persistent),
         objects,
         selection,
         symbols: symbols.to_vec(),
@@ -119,7 +112,7 @@ fn collect_objects(
     pointers: &BTreeMap<u64, u64>,
     data: &ReadOnlyData,
     names: &Names<'_>,
-    recipe: Option<&PersistentRecipe>,
+    recipe: &PersistentRecipe,
     functions: &mut Vec<Function>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
     let Some(root) = functions.first() else {
@@ -169,19 +162,12 @@ fn collect_objects(
             continue;
         }
 
-        let reader = recipe
-            .zip(vtable.address_points.get(&0))
-            .and_then(|(recipe, &point)| {
-                Some(PointReader {
-                    point,
-                    reader: super::receivers::concrete_reader(
-                        recipe,
-                        pointers,
-                        point,
-                        &unique_name,
-                    )?,
-                })
-            });
+        let reader = vtable.address_points.get(&0).and_then(|&point| {
+            Some(PointReader {
+                point,
+                reader: super::receivers::concrete_reader(recipe, pointers, point, &unique_name)?,
+            })
+        });
         let member_name = format!("{class}::ReadMember(CReader&, int)");
         let mut bodies_available = match symbols.iter().find(|symbol| symbol.name == member_name) {
             Some(symbol) => push_function(text, functions, symbol),

@@ -26,7 +26,8 @@ impl Native {
         self.answer(Operation::ModifierNodes, None, || {
             let operation = Operation::ModifierNodes;
             let result = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .modifier_node_result()
                 .map_err(|failure| error(operation, failure))?;
             Ok(normalize(result, self.build()))

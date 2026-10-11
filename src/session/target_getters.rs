@@ -21,7 +21,8 @@ pub struct Census {
 pub fn run(native: &Native, kind: DeclarationKind) -> Result<Census, Error> {
     native.method_result(Operation::CommandGrammar, || {
         let (input, inventory) = native
-            .declaration_analysis(Operation::CommandGrammar)?
+            .bound()
+            .analysis
             .grammar_input(kind)
             .map_err(|error| super::questions::error(Operation::CommandGrammar, error))?;
         let names: BTreeSet<_> = inventory
