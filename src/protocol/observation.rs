@@ -289,8 +289,6 @@ pub(crate) struct FixtureValidationBinding {
     pub sourced_log_source_offset: u64,
     /// Bytes below `x29` of the instance source that the engine error generated.
     pub sourced_log_generated_frame_offset: u64,
-    pub source_file_prefix: String,
-    pub source_line_prefix: String,
 }
 
 /// Exact-build loader hooks for the fixture's registry.

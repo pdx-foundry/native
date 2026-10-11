@@ -1,10 +1,28 @@
 """Decode a proven owner storage slot into the wire shape of its public stored value, and the
-engine's CString layout for every reader of engine text. It also reads an argument register of a
-stopped frame, which the worker and the script checks both do.
+engine's CString layout and source-message format for every reader of engine text. It also reads
+an argument register of a stopped frame, which the worker and the script checks both do.
 
 The callers own memory access: `read_unsigned(address, size)` reads a little-endian integer and
 `read_string(address)` reads the text of the CString at `address`. Both raise on a failed read.
 """
+import re
+
+# How an engine message names its source: `file: <name> line: <n>`, or in a quoted error
+# `in file: "<name>" near line: <n>`. The line is optional. docs/native/script-expansion.md has
+# the build.
+SOURCE_MESSAGE = re.compile(r'(?:in file: "([^"]+)"|file: ([^\s]+))(?: (?:near )?line: (\d+))?')
+
+
+def message_sources(text):
+    """Each source that the engine message `text` names, in order, as `(name, line)`. `line` is
+    None when the message gives none."""
+    sources = []
+
+    for match in SOURCE_MESSAGE.finditer(text):
+        quoted_name, bare_name, line = match.groups()
+        sources.append((quoted_name or bare_name, int(line) if line else None))
+
+    return sources
 
 
 def register(frame, name):

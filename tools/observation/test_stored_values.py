@@ -22,6 +22,23 @@ def long_cstring(pointer, length):
     return (pointer.to_bytes(8, 'little') + length.to_bytes(8, 'little')).ljust(TAG, b'\0') + bytes([128])
 
 
+class SourceMessageTests(unittest.TestCase):
+    def test_both_forms_name_their_source_and_optional_line(self):
+        for text, expected in [
+            ('Wrong scope at  file: first.txt line: 7', [('first.txt', 7)]),
+            ('Error: "Unexpected token: x" in file: "first.txt" near line: 7', [('first.txt', 7)]),
+            ('Error: "x" in file: "dir/first file.txt" near line: 2', [('dir/first file.txt', 2)]),
+            ('error at file: first.txt', [('first.txt', None)]),
+            ('file: first.txt line: 2 file: second.txt line: 4', [('first.txt', 2), ('second.txt', 4)]),
+        ]:
+            self.assertEqual(stored_values.message_sources(text), expected, text)
+
+    def test_text_without_a_source_message_names_no_source(self):
+        for text in ['Invalid technology being referenced: "first.txt"',
+                     'unknown command x for MTTH in file first.txt line : 3']:
+            self.assertEqual(stored_values.message_sources(text), [], text)
+
+
 class RegisterTests(unittest.TestCase):
     def frame(self, valid, failed=False):
         value = Mock()

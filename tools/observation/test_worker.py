@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 SOURCE = Path(__file__).resolve().parents[2] / 'src/binding/platform/macos/observation'
 sys.path.insert(0, str(SOURCE))
 import protocol
+import script_checks
 
 spec = importlib.util.spec_from_file_location('worker', SOURCE / 'worker.py')
 worker = importlib.util.module_from_spec(spec)
@@ -438,8 +439,7 @@ class ParserObservationTests(unittest.TestCase):
 
     def test_engine_log_keeps_source_and_validation_stage(self):
         self.observer.validation = True
-        self.observer.bindings['validation'] = dict(log_text_register='x4',
-            source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.bindings['validation'] = dict(log_text_register='x4')
         for returned in [False, True]:
             self.observer.returned = returned
             self.observer.stored_string = Mock(return_value=f'Wrong scope file: {self.file} line: 3')
@@ -452,8 +452,7 @@ class ParserObservationTests(unittest.TestCase):
                 'engine-validation-log' if returned else 'engine-parser-log')
 
     def test_engine_log_callback_keeps_its_background_thread(self):
-        self.observer.bindings['validation'] = dict(log_text_register='x4',
-            source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.bindings['validation'] = dict(log_text_register='x4')
         self.observer.returned = True
         self.frame.GetThread.return_value.GetThreadID.return_value = 8
         self.observer.stored_string = Mock(return_value=f'file: {self.file} line: 3')
@@ -467,15 +466,14 @@ class ParserObservationTests(unittest.TestCase):
     def test_unresolved_or_ambiguous_log_source_is_retained(self):
         for text in [f'Unknown command @ {self.file}',
                      f'file: {self.file} line: 2 file: {self.file} line: 4']:
-            diagnostic = worker.interpret_fixture_log(text, self.file, 'file: ', ' line: ', True)
+            diagnostic = worker.interpret_fixture_log(text, self.file, True)
             self.assertEqual(diagnostic['text'], text)
             self.assertIsNone(diagnostic['line'])
         self.assertIsNone(worker.interpret_fixture_log(
-            'file: other.txt line: 3', self.file, 'file: ', ' line: ', True))
+            'file: other.txt line: 3', self.file, True))
 
     def test_stream_log_reads_the_formatted_c_string(self):
-        self.observer.bindings['validation'] = dict(stream_log_text_register='x1',
-            source_file_prefix='file: ', source_line_prefix=' line: ')
+        self.observer.bindings['validation'] = dict(stream_log_text_register='x1')
         self.observer.returned = True
         with patch.object(worker, 'register', return_value=1), \
                 patch.object(worker, 'string', return_value=f'[file: {self.file} line: 3]: Error'):
@@ -487,8 +485,7 @@ class ParserObservationTests(unittest.TestCase):
     def test_sourced_log_joins_the_bound_owner_source_and_its_generated_source(self):
         self.observer.bindings['validation'] = dict(sourced_log_text_register='x20',
             sourced_log_owner_register='x19', sourced_log_source_offset=0x28,
-            sourced_log_generated_frame_offset=0x50,
-            source_file_prefix='file: ', source_line_prefix=' line: ')
+            sourced_log_generated_frame_offset=0x50)
         self.observer.bindings['string_tag_offset'] = 23
         self.observer.returned = True
         self.observer.stored_string = Mock(side_effect=[f'file: {self.file} line: 3', 'Unexpected token'])
@@ -522,7 +519,6 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual(self.observer.stored_string.call_count, 1)
 
     def test_expanded_text_joins_the_line_of_its_call(self):
-        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
         inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
         generated = f'scripted effect example_effect at file: {self.file} line: 9'
         nested = f'{self.file}:4(inline_script) common/inline_scripts/a.txt:2(inline_script) common/inline_scripts/b.txt'
@@ -536,7 +532,6 @@ class ParserObservationTests(unittest.TestCase):
             self.assertIsNone(self.observer.fixture_line(unrelated, 3))
 
     def test_a_reader_report_from_expanded_text_keeps_its_own_line_in_the_text(self):
-        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
         inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
         for source, kept in [(inline, True), ('common/traditions/other.txt', False)]:
             self.observer.emit.reset_mock()
@@ -553,7 +548,6 @@ class ParserObservationTests(unittest.TestCase):
             self.assertEqual(call.kwargs['text'], f'Malformed token in {inline} near line 3')
 
     def test_a_member_read_from_an_inline_script_reports_the_call_line(self):
-        self.observer.bindings['validation'] = dict(source_file_prefix='file: ', source_line_prefix=' line: ')
         inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
         self.observer.location = Mock(side_effect=[(inline, 2), (inline, 4)])
         registers = dict(owner='x0', reader='x1', **{'field-token': 'x2'})
@@ -575,8 +569,16 @@ class ParserObservationTests(unittest.TestCase):
     def test_an_engine_log_from_expanded_text_joins_the_call_line(self):
         text = (f'Error: "Malformed token: x, near line: 3" in file: '
                 f'"{self.file}:5(inline_script) common/inline_scripts/a.txt" near line: 3')
-        diagnostic = worker.interpret_fixture_log(text, self.file, 'file: ', ' line: ', False)
+        diagnostic = worker.interpret_fixture_log(text, self.file, False)
         self.assertEqual(diagnostic['line'], 5)
+
+    def test_the_fixture_reader_and_the_script_checks_accept_both_source_message_forms(self):
+        for text in [f'Wrong scope at  file: {self.file} line: 7',
+                     f'Error: "Unexpected token: x" in file: "{self.file}" near line: 7']:
+            diagnostic = worker.interpret_fixture_log(text, self.file, True)
+            self.assertEqual(diagnostic['line'], 7, text)
+            check, line, _ = script_checks.attribute_message(text, {self.file: 1})
+            self.assertEqual((check, line), (1, 7), text)
 
     def test_validation_requires_a_returned_load_and_finishes_before_pause(self):
         self.observer.validation = True

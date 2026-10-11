@@ -4,7 +4,6 @@ The supervisor owns the absolute check deadline and disposal. Calls use LLDB's s
 continue path so that the returned stop has settled before registers are changed again.
 """
 from functools import partial
-import re
 import time
 
 import protocol
@@ -22,16 +21,13 @@ def capture_callback(frame, location, _):
 
 def attribute_message(text, sources):
     """Only a source-bearing engine message can join a retained check; tokens never suffice."""
-    matches = list(re.finditer(r'(?:in file: "([^"]+)"|file: ([^\s]+))(?: (?:near )?line: (\d+))?', text))
-    if len(matches) != 1:
+    named = stored_values.message_sources(text)
+    if len(named) != 1:
         return None, None, text
-    match = matches[0]
-    source = match.group(1) or match.group(2)
+    source, line = named[0]
     check = sources.get(source)
     if check is None:
         return None, None, text
-    line_text = match.group(3)
-    line = int(line_text) if line_text else None
     if line is not None and line < 1:
         line = None
     return check, line, text.replace(source, '<script>')

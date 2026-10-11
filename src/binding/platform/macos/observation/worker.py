@@ -300,27 +300,27 @@ def registry_callback(frame, name):
     return False
 
 
-def source_line_patterns(file, file_prefix, line_prefix):
-    """Patterns whose one group is a line of `file` in an engine source name: the engine's own
-    `<file prefix><file><line prefix><line>`, and an inline script that the file calls,
-    `<file>:<line>(inline_script) <script>`, which names the call's line."""
-    return [re.escape(file_prefix + file + line_prefix) + r'([0-9]+)',
-            re.escape(file) + r':([0-9]+)\(inline_script\) ']
+def fixture_source_line(text, file):
+    """The one line of `file` that the engine source name or message `text` points at, or None
+    when it points at no line or at several. A message names the line as
+    `stored_values.SOURCE_MESSAGE` says. An inline script that the file calls is named
+    `<file>:<line>(inline_script) <script>`, which gives the call's line."""
+    lines = {line for name, line in stored_values.message_sources(text)
+             if name == file and line is not None}
+    lines.update(int(call) for call in re.findall(re.escape(file) + r':([0-9]+)\(inline_script\) ', text))
+    return next(iter(lines)) if len(lines) == 1 else None
 
 
 # An engine error's generated instance source is evidence, not a value: keep a bounded prefix.
 GENERATED_SOURCE_LIMIT = 4096
 
 
-def interpret_fixture_log(text, file, file_prefix, line_prefix, returned):
+def interpret_fixture_log(text, file, returned):
     """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
     if file not in text:
         return None
-    patterns = source_line_patterns(file, file_prefix, line_prefix)
-    lines = {int(match) for pattern in patterns for match in re.findall(pattern, text)}
-    line = next(iter(lines)) if len(lines) == 1 else None
     stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
-    return dict(text=text, stage=stage, file=file, line=line)
+    return dict(text=text, stage=stage, file=file, line=fixture_source_line(text, file))
 
 
 class FixtureObserver:
@@ -399,16 +399,7 @@ class FixtureObserver:
         <line>`. None for any other source."""
         if file == self.config['file']:
             return line
-        binding = self.bindings['validation']
-        if binding is None:
-            return None
-        patterns = source_line_patterns(self.config['file'],
-            binding['source_file_prefix'], binding['source_line_prefix'])
-        for pattern in patterns:
-            match = re.search(pattern, file)
-            if match:
-                return int(match.group(1))
-        return None
+        return fixture_source_line(file, self.config['file'])
 
     def stored_value(self, process, owner, binding):
         return stored_values.decode(lambda address, size: uint(process, address, size),
@@ -632,9 +623,7 @@ class FixtureObserver:
         return self.emit_log(text + ' at ' + source + '\nresulting in source:\n' + generated, thread)
 
     def emit_log(self, text, thread):
-        binding = self.bindings['validation']
-        diagnostic = interpret_fixture_log(text, self.config['file'],
-            binding['source_file_prefix'], binding['source_line_prefix'], self.returned)
+        diagnostic = interpret_fixture_log(text, self.config['file'], self.returned)
         if diagnostic is None:
             return False
         if self.diagnostics >= 128:
