@@ -73,7 +73,8 @@ fn registry_binding_keeps_the_established_key_offset_or_refusal() {
 /// these tests concern only the integrity of the pinned inputs.
 fn installation() -> (TempDir, Binding) {
     let directory = tempdir().unwrap();
-    for relative in ["common/tradition_categories", "common/traditions"] {
+    let registries = ["common/tradition_categories", "common/traditions"];
+    for relative in registries {
         fs::create_dir_all(directory.path().join(relative)).unwrap();
     }
     fs::write(directory.path().join("launcher-settings.json"), "{}").unwrap();
@@ -83,7 +84,7 @@ fn installation() -> (TempDir, Binding) {
     let binding = Binding {
         operation: None,
         analysis: None,
-        installation,
+        installation: installation.with_default_registries(&registries),
         invalidated: Default::default(),
     };
     (directory, binding)
@@ -209,10 +210,11 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     fs::create_dir(root.path().join("common/traditions/nested")).unwrap();
     fs::write(root.path().join(added), "added before open").unwrap();
     let (installation, _) = Installation::open(root.path()).unwrap();
+    let operation = super::compose::synthetic_variation();
     let plan = super::ExecutionPlan {
         binding: Binding {
-            installation,
-            operation: Some(super::compose::synthetic_variation()),
+            installation: installation.with_default_registries(operation.default_registries),
+            operation: Some(operation),
             analysis: None,
             invalidated: Default::default(),
         },

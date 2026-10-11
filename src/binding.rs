@@ -163,6 +163,7 @@ impl Binding {
         let (installation, bytes) = installation::Installation::open(installation)?;
         let image = binary::identify(&bytes, installation.executable_hash())?;
         let operation = compose::compose(&image)?;
+        let installation = installation.with_default_registries(operation.default_registries);
         let invalidated = std::sync::Arc::new(std::sync::Mutex::new(None));
         let analysis = Some(std::sync::Arc::new(compose::analysis(
             &image,

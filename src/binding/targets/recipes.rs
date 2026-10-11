@@ -122,8 +122,7 @@ pub(in crate::binding) struct DeclarationRecipe {
 }
 
 const M45_EVENT_TARGET_SIZE: u64 = 0x190;
-pub(in crate::binding) const M45_DEFAULT_REGISTRIES: &[&str] =
-    &["common/traditions", "common/tradition_categories"];
+const M45_DEFAULT_REGISTRIES: &[&str] = &["common/traditions", "common/tradition_categories"];
 
 pub(super) const M452: Recipe = Recipe {
     groups: &[

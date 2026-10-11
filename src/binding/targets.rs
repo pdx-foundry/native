@@ -5,7 +5,6 @@ use super::binary::ImageIdentity;
 use crate::OpenError;
 
 pub(super) use recipes::InlineFixtureRecipe;
-pub(super) use recipes::M45_DEFAULT_REGISTRIES;
 pub(super) use recipes::{
     AnchorSlot, BindingGroupId, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId,
 };
