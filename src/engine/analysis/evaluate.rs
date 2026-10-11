@@ -637,11 +637,13 @@ impl<'a> Machine<'a> {
     }
 
     /// Initial-state reads, by object-relative offset and width, with their initial values.
+    /// Panics unless [`Machine::watch_reads`] came first: without a watch, no read is recorded.
     pub fn receiver_reads(&self) -> BTreeMap<(u64, u64), Option<u64>> {
         self.read_watch
             .as_ref()
-            .map(|watch| watch.reads.clone())
-            .unwrap_or_default()
+            .expect("watch_reads first")
+            .reads
+            .clone()
     }
 
     /// Include instruction loads of script-written bytes in the current watch.
@@ -3361,6 +3363,24 @@ mod tests {
         );
         machine.load(command - 4, 8);
         assert_eq!(machine.receiver_reads().len(), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "watch_reads first")]
+    fn receiver_reads_without_a_watch_fail_at_once() {
+        let code = super::Code::default();
+        let data = super::ReadOnlyData::default();
+
+        super::Machine::new(&code, &data).receiver_reads();
+    }
+
+    #[test]
+    #[should_panic(expected = "watch_reads first")]
+    fn decisions_without_a_watch_fail_at_once() {
+        let code = super::Code::default();
+        let data = super::ReadOnlyData::default();
+
+        super::Machine::new(&code, &data).decisions();
     }
 
     #[test]
