@@ -619,19 +619,13 @@ fn scoped_point(bytes: &BTreeMap<u64, u8>, offset: i64) -> Option<u64> {
     Some(u64::from_le_bytes(word))
 }
 
-/// The vtable point of each destination that a value form assigns its scoped operand to. A form
-/// that reads the operand through `CVariableValue::Read` earns none:
-/// `docs/native/scoped-numeric.md` holds that limit and the condition for a change.
+/// The vtable point of each destination that a value form reads its scoped operand into.
 fn scoped_form_points(forms: &forms::Result, bytes: &BTreeMap<u64, u8>) -> BTreeMap<i64, u64> {
     forms
         .alternatives
         .iter()
         .filter_map(|alternative| {
-            let join = alternative.value.reader.as_ref()?;
-            let ReaderJoin::Joined { callee, .. } = join else {
-                return None;
-            };
-            if callee != super::readers::SCOPED_ASSIGN {
+            if !super::readers::reads_scoped_numeric(alternative.value.reader.as_ref()?) {
                 return None;
             }
             let offset = alternative.value.destination? as i64;
@@ -1236,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    fn only_an_assign_form_earns_a_scoped_point() {
+    fn a_form_that_reads_a_scoped_operand_earns_a_scoped_point() {
         let forms = forms::Result {
             key: forms::CacheKey {
                 slots: [None; 6],
@@ -1264,9 +1258,10 @@ mod tests {
             })
             .collect();
 
+        // The integer read at 0xc0 is not a scoped operand.
         assert_eq!(
             scoped_form_points(&forms, &bytes),
-            BTreeMap::from([(0xa0, 0x9000)])
+            BTreeMap::from([(0xa0, 0x9000), (0xb0, 0x9000)])
         );
     }
 

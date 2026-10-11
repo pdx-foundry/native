@@ -65,15 +65,12 @@ outcomes and evaluation. A repeated operand `Merges`
 
 ### Command value forms
 
-A value form earns a destination point (`scoped_destinations`) only when its reader is
-`CVariableValue::Assign`; a form that reads the operand through `Read` earns none. On M452 neither
-case changes an answer. The forms chain records `Assign` of the value token before the shared
-reader join, as a form of unknown kind with no reader, so no form carries an `Assign` reader and
-the filter matches nothing. The one form with a scoped reader is `CHasResourceTrigger`'s
-`CVariableValue::Read` at `+0xa0`; it stays unresolved at `PostInit` (initializer not summarized)
-and is not an accepted form. Accepting `Read` for it leaves every expected file and population
-baseline unchanged. Accept `Read` in `scoped_form_points` when an accepted form reads the operand
-through it; until then such a form reports that its destination vtable is not established.
+A value form earns a destination point (`scoped_destinations`) when its reader is a scoped numeric
+reader, `CVariableValue::Read` or `Assign`. On M452 this changes no answer. The forms chain records
+`Assign` of the value token before the shared reader join, as a form of unknown kind with no
+reader, so no form carries an `Assign` reader. The one form with a scoped reader is
+`CHasResourceTrigger`'s `CVariableValue::Read` at `+0xa0`; it stays unresolved at `PostInit`
+(initializer not summarized) and is not an accepted form.
 
 ## Live fixture pitfalls
 
