@@ -99,9 +99,8 @@ pub(super) fn install_vtables(
 }
 
 /// Join the traces of the bytes that two paths do not agree on. Each side gives the bytes it
-/// knows and the traces of those it does not, by offset. A byte that neither knows merges both
-/// traces; a byte that one side knew, or that both knew differently, has `disagreement` first.
-/// Empty when untraced, as `disagreement` is then `None`.
+/// knows and the traces of those it does not, by offset; [`Trace::joined`] joins each byte with
+/// `disagreement` as its join cause. Empty when untraced, as `disagreement` is then `None`.
 pub(super) fn join_byte_traces(
     (bytes, traces): (&BTreeMap<u64, u8>, &BTreeMap<u64, Trace>),
     (other_bytes, other_traces): (&BTreeMap<u64, u8>, &BTreeMap<u64, Trace>),
@@ -126,14 +125,12 @@ pub(super) fn join_byte_traces(
         .into_iter()
         .filter(|offset| !agreed(offset))
         .map(|offset| {
-            let unknown = [traces.get(&offset), other_traces.get(&offset)];
-            let mut trace = match unknown {
-                [Some(_), Some(_)] => Trace::default(),
-                _ => disagreement,
-            };
-            for side in unknown.into_iter().flatten() {
-                trace.merge(side);
-            }
+            let trace = Trace::joined(
+                traces.get(&offset).copied(),
+                other_traces.get(&offset).copied(),
+                disagreement,
+            );
+
             (offset, trace)
         })
         .collect()
