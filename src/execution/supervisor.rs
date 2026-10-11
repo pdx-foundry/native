@@ -335,7 +335,6 @@ struct Session<'a> {
     /// Content directories of the registries that the session observes.
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
-    /// The field tokens that the bound category fixture window reads.
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
     build: crate::BuildId,
@@ -627,8 +626,8 @@ fn interruption(event: Input) -> SessionOutcome {
     }
 }
 
-/// A private game profile: a small window, no sound, no mods. The ordinary profile is never
-/// touched.
+/// The private game profile's settings: a small window and no sound. `prepare_registry_profile`
+/// adds the one mod. The ordinary profile is never touched.
 fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
     binding::private_directory(&work_directory.join("profile"))?;
     fs::write(
@@ -636,10 +635,6 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
         "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
     )?;
     fs::write(work_directory.join("profile/pdx_settings.txt"), "")?;
-    fs::write(
-        work_directory.join("profile/dlc_load.json"),
-        "{\"enabled_mods\":[],\"disabled_dlcs\":[]}",
-    )?;
     Ok(())
 }
 

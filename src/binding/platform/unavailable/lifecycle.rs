@@ -2,7 +2,7 @@ use crate::supervisor::SupervisorError;
 use std::{path::Path, time::Duration};
 fn unavailable<T>() -> Result<T, SupervisorError> {
     Err(SupervisorError(
-        "HostUnavailable: candidate lifecycle requires Apple Silicon macOS".into(),
+        "HostUnavailable: the game lifecycle requires Apple Silicon macOS".into(),
     ))
 }
 pub(crate) fn available() -> Result<(), SupervisorError> {

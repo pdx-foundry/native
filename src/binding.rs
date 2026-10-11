@@ -727,9 +727,9 @@ impl ExecutionPlan {
             &profile.join("mod/native_registry.mod"),
             registry_mod_descriptor(&mount, &replaced_directories(registries, fixture))?.as_bytes(),
         )?;
-        std::fs::write(
-            profile.join("dlc_load.json"),
-            r#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
+        files::write_new(
+            &profile.join("dlc_load.json"),
+            br#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
         )?;
         self.integrity()?;
         Ok(())
