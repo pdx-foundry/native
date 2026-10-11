@@ -367,42 +367,23 @@ pub fn directory(arguments: &[Argument], globals: &BTreeMap<u64, String>) -> Dir
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::assembler::{Arm64, arm64};
 
     const BASE: u64 = 0x1100;
     const STRING: u64 = 0x1200;
     const ENUMERATE: u64 = 0x1300;
-    const NOP: u32 = 0xd503_201f;
-    // adrp x1, one page after the function at 0x1000.
-    const ADRP_X1: u32 = 0xb000_0001;
-    const ADD_X0_SP_8: u32 = 0x9100_23e0;
-    const ADD_X1_SP_8: u32 = 0x9100_23e1;
-    const MOV_X0_X22: u32 = 0xaa16_03e0;
-    const RET: u32 = 0xd65f_03c0;
-    const BR_X8: u32 = 0xd61f_0100;
-    const BLR_X8: u32 = 0xd63f_0100;
-    // b to 0x100 bytes ahead.
-    const B_AHEAD: u32 = 0x1400_0040;
+    /// A function that is none of the anchors.
+    const HELPER: u64 = 0x1400;
+    /// The literals that `strings` holds.
+    const EXAMPLES: u64 = 0x2010;
+    const OTHER: u64 = 0x2020;
+    /// A global `CString` that an initializer builds.
+    const GLOBAL: u64 = 0x2828;
 
-    fn add_x1(immediate: u32) -> u32 {
-        0x9100_0021 | immediate << 10
-    }
-    // adrp x0, one page after the function at 0x1000.
-    const ADRP_X0: u32 = 0xb000_0000;
-    fn add_x0(immediate: u32) -> u32 {
-        0x9100_0000 | immediate << 10
-    }
-    /// A custom loader that enumerates the files under the literal at `literal`.
-    fn loader(literal: u32) -> Constructor {
-        function(&[ADRP_X0, add_x0(literal), bl(2, ENUMERATE)])
-    }
-    fn bl(from_index: u64, target: u64) -> u32 {
-        let offset = (target as i64 - (0x1000 + from_index as i64 * 4)) / 4;
-        0x9400_0000 | (offset as u32 & 0x03ff_ffff)
-    }
-    fn function(words: &[u32]) -> Constructor {
+    fn function(code: Vec<u8>) -> Constructor {
         Constructor {
             address: 0x1000,
-            code: words.iter().flat_map(|word| word.to_le_bytes()).collect(),
+            code,
         }
     }
     fn anchors() -> Anchors {
@@ -414,21 +395,48 @@ mod tests {
     }
     fn strings() -> BTreeMap<u64, String> {
         BTreeMap::from([
-            (0x2010, "common/examples".to_owned()),
-            (0x2020, "map/other/".to_owned()),
+            (EXAMPLES, "common/examples".to_owned()),
+            (OTHER, "map/other/".to_owned()),
         ])
     }
-    /// The ordinary shape: literal, stack `CString`, base constructor.
-    fn temporary(literal: u32) -> Constructor {
-        function(&[
-            ADRP_X1,
-            add_x1(literal),
-            ADD_X0_SP_8,
-            bl(3, STRING),
-            NOP,
-            ADD_X1_SP_8,
-            bl(6, BASE),
-        ])
+    /// A custom loader that enumerates the files under `literal`.
+    fn loader(literal: u64) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        code.address(0, literal).call(ENUMERATE);
+
+        function(code.bytes())
+    }
+    /// The ordinary shape, appended to `code`: literal, stack `CString`, base constructor.
+    fn temporary_in(code: &mut Arm64, literal: u64) {
+        code.address(1, literal);
+        arm64!(code; add x0, sp, #8);
+        code.call(STRING);
+        arm64!(code; nop; add x1, sp, #8);
+        code.call(BASE);
+    }
+    fn temporary(literal: u64) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        temporary_in(&mut code, literal);
+
+        function(code.bytes())
+    }
+    fn ret(code: &mut Arm64) {
+        arm64!(code; ret);
+    }
+    fn branch_register(code: &mut Arm64) {
+        arm64!(code; br x8);
+    }
+    fn jump(code: &mut Arm64) {
+        arm64!(code; b extern 0x1100);
+    }
+    /// A complete `temporary` of `EXAMPLES`, then the stop `end`, then `rest`.
+    fn stopped_after_temporary(end: fn(&mut Arm64), rest: fn(&mut Arm64)) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        temporary_in(&mut code, EXAMPLES);
+        end(&mut code);
+        rest(&mut code);
+
+        function(code.bytes())
     }
     fn resolve(constructors: &[Constructor], globals: &BTreeMap<u64, String>) -> Directory {
         let arguments: Vec<_> = constructors
@@ -440,22 +448,26 @@ mod tests {
 
     #[test]
     fn a_custom_loader_is_named_by_the_one_literal_it_enumerates() {
-        let named = loader_directory(&[loader(0x10), loader(0x10)], &anchors(), &strings());
+        let named = loader_directory(
+            &[loader(EXAMPLES), loader(EXAMPLES)],
+            &anchors(),
+            &strings(),
+        );
         assert_eq!(named, Directory::Named("common/examples".into()));
 
-        let several = loader_directory(&[loader(0x10), loader(0x20)], &anchors(), &strings());
+        let several = loader_directory(&[loader(EXAMPLES), loader(OTHER)], &anchors(), &strings());
         assert_eq!(
             several,
             Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
         );
 
-        let unknown = function(&[ADD_X0_SP_8, bl(1, ENUMERATE)]);
+        let unknown = function(arm64!(at 0x1000; add x0, sp, #8; bl extern ENUMERATE as usize));
         assert_eq!(
-            loader_directory(&[loader(0x10), unknown], &anchors(), &strings()),
+            loader_directory(&[loader(EXAMPLES), unknown], &anchors(), &strings()),
             Directory::Missing
         );
         assert_eq!(
-            loader_directory(&[temporary(0x10)], &anchors(), &strings()),
+            loader_directory(&[temporary(EXAMPLES)], &anchors(), &strings()),
             Directory::Missing
         );
     }
@@ -463,73 +475,74 @@ mod tests {
     #[test]
     fn a_temporary_built_from_a_literal_names_the_registry() {
         assert_eq!(
-            resolve(&[temporary(0x10)], &BTreeMap::new()),
+            resolve(&[temporary(EXAMPLES)], &BTreeMap::new()),
             Directory::Named("common/examples".into())
         );
         assert_eq!(
-            resolve(&[temporary(0x20)], &BTreeMap::new()),
+            resolve(&[temporary(OTHER)], &BTreeMap::new()),
             Directory::Named("map/other".into())
         );
     }
 
     #[test]
     fn a_temporary_at_a_frame_address_names_the_registry() {
-        // add x29, sp, #0x40; sub x0, x29, #0x20; sub x1, x29, #0x20
-        let add_x29_sp: u32 = 0x9101_03fd;
-        let sub_x0_x29: u32 = 0xd100_83a0;
-        let sub_x1_x29: u32 = 0xd100_83a1;
-        let framed = function(&[
-            add_x29_sp,
-            ADRP_X1,
-            add_x1(0x10),
-            sub_x0_x29,
-            bl(4, STRING),
-            sub_x1_x29,
-            bl(6, BASE),
-        ]);
+        let frame_with_string = || {
+            let mut code = Arm64::at(0x1000);
+            arm64!(code; add x29, sp, #0x40);
+            code.address(1, EXAMPLES);
+            arm64!(code; sub x0, x29, #0x20);
+            code.call(STRING);
+            code
+        };
+
+        let mut framed = frame_with_string();
+        arm64!(framed; sub x1, x29, #0x20);
+        framed.call(BASE);
         assert_eq!(
-            resolve(&[framed], &BTreeMap::new()),
+            resolve(&[function(framed.bytes())], &BTreeMap::new()),
             Directory::Named("common/examples".into())
         );
 
-        let elsewhere = function(&[
-            add_x29_sp,
-            ADRP_X1,
-            add_x1(0x10),
-            sub_x0_x29,
-            bl(4, STRING),
-            ADD_X1_SP_8,
-            bl(6, BASE),
-        ]);
-        assert_eq!(resolve(&[elsewhere], &BTreeMap::new()), Directory::Missing);
+        let mut elsewhere = frame_with_string();
+        arm64!(elsewhere; add x1, sp, #8);
+        elsewhere.call(BASE);
+        assert_eq!(
+            resolve(&[function(elsewhere.bytes())], &BTreeMap::new()),
+            Directory::Missing
+        );
     }
 
     #[test]
     fn a_literal_that_is_not_passed_to_the_base_constructor_names_nothing() {
-        let unrelated = function(&[ADRP_X1, add_x1(0x10), ADD_X0_SP_8, bl(3, STRING)]);
-        assert_eq!(resolve(&[unrelated], &BTreeMap::new()), Directory::Missing);
+        let mut unrelated = Arm64::at(0x1000);
+        unrelated.address(1, EXAMPLES);
+        arm64!(unrelated; add x0, sp, #8);
+        unrelated.call(STRING);
+
+        assert_eq!(
+            resolve(&[function(unrelated.bytes())], &BTreeMap::new()),
+            Directory::Missing
+        );
         assert_eq!(resolve(&[], &BTreeMap::new()), Directory::Missing);
     }
 
     #[test]
     fn a_global_argument_is_resolved_through_its_static_initializer() {
-        // adrp x19; add x19, x19, #0x800; add x22, x19, #0x28; literal in x1; mov x0, x22; bl.
-        let initializer = function(&[
-            0xb000_0013,
-            0x9120_0273,
-            0x9100_a276,
-            ADRP_X1,
-            add_x1(0x10),
-            MOV_X0_X22,
-            bl(6, STRING),
-        ]);
-        let globals = globals(&[initializer], &anchors(), &strings());
+        let mut initializer = Arm64::at(0x1000);
+        initializer.address(19, 0x2800);
+        arm64!(initializer; add x22, x19, #0x28);
+        initializer.address(1, EXAMPLES);
+        arm64!(initializer; mov x0, x22);
+        initializer.call(STRING);
+        let globals = globals(&[function(initializer.bytes())], &anchors(), &strings());
         assert_eq!(
             globals,
-            BTreeMap::from([(0x2828, "common/examples".into())])
+            BTreeMap::from([(GLOBAL, "common/examples".into())])
         );
-        // adrp x1; add x1, x1, #0x828; bl base.
-        let constructor = function(&[ADRP_X1, add_x1(0x828), bl(2, BASE)]);
+
+        let mut passes_global = Arm64::at(0x1000);
+        passes_global.address(1, GLOBAL).call(BASE);
+        let constructor = function(passes_global.bytes());
         assert_eq!(
             resolve(std::slice::from_ref(&constructor), &globals),
             Directory::Named("common/examples".into())
@@ -543,11 +556,14 @@ mod tests {
     #[test]
     fn several_directories_are_never_resolved_to_one() {
         assert_eq!(
-            resolve(&[temporary(0x10), temporary(0x20)], &BTreeMap::new()),
+            resolve(&[temporary(EXAMPLES), temporary(OTHER)], &BTreeMap::new()),
             Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
         );
         assert_eq!(
-            resolve(&[temporary(0x10), temporary(0x10)], &BTreeMap::new()),
+            resolve(
+                &[temporary(EXAMPLES), temporary(EXAMPLES)],
+                &BTreeMap::new()
+            ),
             Directory::Named("common/examples".into())
         );
     }
@@ -555,99 +571,78 @@ mod tests {
     #[test]
     fn a_call_or_a_write_between_the_steps_clears_the_tracked_value() {
         // A call between the literal and the CString constructor clears x1.
-        let call = function(&[
-            ADRP_X1,
-            add_x1(0x10),
-            bl(2, 0x1300),
-            ADD_X0_SP_8,
-            bl(4, STRING),
-        ]);
-        assert!(scan(&call, &anchors()).built.is_empty());
+        let mut call = Arm64::at(0x1000);
+        call.address(1, EXAMPLES).call(HELPER);
+        arm64!(call; add x0, sp, #8);
+        call.call(STRING);
+        assert!(scan(&function(call.bytes()), &anchors()).built.is_empty());
+
         // mov x1, x2 replaces the stack argument before the base constructor.
-        let mut words = vec![
-            ADRP_X1,
-            add_x1(0x10),
-            ADD_X0_SP_8,
-            bl(3, STRING),
-            ADD_X1_SP_8,
-        ];
-        words.extend([0xaa02_03e1, bl(6, BASE)]);
+        let mut overwritten = Arm64::at(0x1000);
+        overwritten.address(1, EXAMPLES);
+        arm64!(overwritten; add x0, sp, #8);
+        overwritten.call(STRING);
+        arm64!(overwritten; add x1, sp, #8; mov x1, x2);
+        overwritten.call(BASE);
         assert_eq!(
-            resolve(&[function(&words)], &BTreeMap::new()),
+            resolve(&[function(overwritten.bytes())], &BTreeMap::new()),
             Directory::Missing
         );
     }
 
     #[test]
     fn an_indirect_call_forgets_every_built_object() {
-        let words = [
-            ADRP_X1,
-            add_x1(0x10),
-            ADD_X0_SP_8,
-            bl(3, STRING),
-            BLR_X8,
-            ADD_X1_SP_8,
-            bl(6, BASE),
-        ];
+        let mut code = Arm64::at(0x1000);
+        code.address(1, EXAMPLES);
+        arm64!(code; add x0, sp, #8);
+        code.call(STRING);
+        arm64!(code; blr x8; add x1, sp, #8);
+        code.call(BASE);
+
         assert_eq!(
-            resolve(&[function(&words)], &BTreeMap::new()),
+            resolve(&[function(code.bytes())], &BTreeMap::new()),
             Directory::Missing
         );
     }
 
     #[test]
     fn a_base_constructor_call_after_a_jump_leaves_the_earlier_argument_unproven() {
-        let complete = temporary(0x10).code;
-        let skipped_call = [
-            ADRP_X1,
-            add_x1(0x20),
-            ADD_X0_SP_8,
-            bl(11, STRING),
-            NOP,
-            ADD_X1_SP_8,
-            bl(14, BASE),
-        ];
-        let ends = |end: u32, rest: &[u32]| {
-            let mut code = complete.clone();
-            code.extend(
-                std::iter::once(end)
-                    .chain(rest.iter().copied())
-                    .flat_map(u32::to_le_bytes),
-            );
-            Constructor {
-                address: 0x1000,
-                code,
-            }
-        };
+        let skipped_call: fn(&mut Arm64) = |code| temporary_in(code, OTHER);
+        let nothing_more: fn(&mut Arm64) = |code| arm64!(code; nop);
 
         assert_eq!(
-            resolve(&[ends(B_AHEAD, &skipped_call)], &BTreeMap::new()),
+            resolve(
+                &[stopped_after_temporary(jump, skipped_call)],
+                &BTreeMap::new()
+            ),
             Directory::Missing
         );
         assert_eq!(
-            resolve(&[ends(RET, &skipped_call)], &BTreeMap::new()),
+            resolve(
+                &[stopped_after_temporary(ret, skipped_call)],
+                &BTreeMap::new()
+            ),
             Directory::Named("common/examples".into())
         );
         assert_eq!(
-            resolve(&[ends(B_AHEAD, &[NOP])], &BTreeMap::new()),
+            resolve(
+                &[stopped_after_temporary(jump, nothing_more)],
+                &BTreeMap::new()
+            ),
             Directory::Named("common/examples".into())
         );
     }
 
     #[test]
     fn a_return_or_unconditional_branch_ends_the_scan() {
-        for stop in [RET, BR_X8, B_AHEAD] {
-            let words = [
-                stop,
-                ADRP_X1,
-                add_x1(0x10),
-                ADD_X0_SP_8,
-                bl(4, STRING),
-                ADD_X1_SP_8,
-                bl(6, BASE),
-            ];
+        let stops: [fn(&mut Arm64); 3] = [ret, branch_register, jump];
+        for stop in stops {
+            let mut code = Arm64::at(0x1000);
+            stop(&mut code);
+            temporary_in(&mut code, EXAMPLES);
+
             assert_eq!(
-                resolve(&[function(&words)], &BTreeMap::new()),
+                resolve(&[function(code.bytes())], &BTreeMap::new()),
                 Directory::Missing
             );
         }

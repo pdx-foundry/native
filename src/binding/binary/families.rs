@@ -943,6 +943,7 @@ pub(super) fn string_functions(symbols: &[Symbol]) -> StringFunctions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::assembler::arm64;
 
     fn symbol(address: u64, name: &str) -> Symbol {
         Symbol {
@@ -998,38 +999,37 @@ mod tests {
     /// other instructions and a copy, or not at all: an `add` that replaces the page ends it.
     #[test]
     fn functions_forming_an_address_are_found_through_one_or_two_additions() {
-        let words: [u32; 24] = [
+        let code = arm64!(at 0x1000;
             // 0x1000: adrp x8, 0x5000; add x8, x8, #0x10
-            0x9000_0028,
-            0x9100_4108,
-            0xd65f_03c0,
-            0xd503_201f,
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x10;
+            ret;
+            nop;
             // 0x1010: adrp x9, 0x5000; add x9, x9, #0x20
-            0x9000_0029,
-            0x9100_8129,
-            0xd65f_03c0,
-            0xd503_201f,
+            adrp x9, extern 0x5000;
+            add x9, x9, #0x20;
+            ret;
+            nop;
             // 0x1020: adrp x10, 0x5000; add x10, x10, #0; add x11, x10, #0x10
-            0x9000_002a,
-            0x9100_014a,
-            0x9100_414b,
-            0xd65f_03c0,
+            adrp x10, extern 0x5000;
+            add x10, x10, #0;
+            add x11, x10, #0x10;
+            ret;
             // 0x1030: adrp x8, 0x5000; add x8, x8, #0x158; add x8, x8, #0x10 forms 0x5168
-            0x9000_0028,
-            0x9105_6108,
-            0x9100_4108,
-            0xd65f_03c0,
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x158;
+            add x8, x8, #0x10;
+            ret;
             // 0x1040: adrp x8, 0x5000; four nops; mov x9, x8; add x10, x9, #0x10
-            0x9000_0028,
-            0xd503_201f,
-            0xd503_201f,
-            0xd503_201f,
-            0xd503_201f,
-            0xaa08_03e9,
-            0x9100_412a,
-            0xd65f_03c0,
-        ];
-        let code: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+            adrp x8, extern 0x5000;
+            nop;
+            nop;
+            nop;
+            nop;
+            mov x9, x8;
+            add x10, x9, #0x10;
+            ret
+        );
         let text = Text {
             address: 0x1000,
             code: &code,
