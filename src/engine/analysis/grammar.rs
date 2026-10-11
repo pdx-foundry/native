@@ -50,12 +50,6 @@ pub struct CommandBindings {
     pub token_copy: BTreeSet<u64>,
     /// All entry points for constructing a target from a scoped token.
     pub target_from_token: BTreeSet<u64>,
-    /// All entry points for constructing a target from a token id.
-    #[allow(dead_code)] // Bound, but this constructor form is not yet classified.
-    pub target_from_id: BTreeSet<u64>,
-    /// Wrapper that constructs a target at the indirect result address.
-    #[allow(dead_code)] // Bound, but this wrapper form is not yet classified.
-    pub target_create_from_token: u64,
     /// Move assignment into a target destination.
     pub target_move: u64,
     /// Resolver that writes a scope through its indirect result address.

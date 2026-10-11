@@ -225,8 +225,6 @@ fn command_bindings(
             symbols,
             "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
         )?,
-        target_from_id: required_signature(symbols, "CEventTarget::CEventTarget(int)")?,
-        target_create_from_token: unique(symbols, "CEventTarget::CreateFromToken(int)")?,
         target_move: unique(symbols, "CEventTarget::operator=(CEventTarget&&)")?,
         target_resolver: unique(
             symbols,

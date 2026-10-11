@@ -798,11 +798,6 @@ fn m452_command_grammar_foundations_resolve_and_reuse_inputs() {
                 "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
                 2,
             ),
-            (
-                &bindings.target_from_id,
-                "CEventTarget::CEventTarget(int)",
-                2,
-            ),
         ] {
             assert_eq!(addresses.len(), count, "{name}");
             for &address in addresses {
@@ -810,10 +805,6 @@ fn m452_command_grammar_foundations_resolve_and_reuse_inputs() {
             }
         }
         for (address, name) in [
-            (
-                bindings.target_create_from_token,
-                "CEventTarget::CreateFromToken(int)",
-            ),
             (
                 bindings.target_move,
                 "CEventTarget::operator=(CEventTarget&&)",
