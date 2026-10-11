@@ -993,16 +993,6 @@ impl<'a> Window<'a> {
             let terminal = self.field_terminals.remove(&index);
             let definition = self.definitions.get(&question.definition).cloned();
             let occurrences = self.occurrences.remove(&index).unwrap_or_default();
-            let reader = authority.as_ref().map_or(
-                Reader {
-                    numeric: crate::GrammarProperty::Unresolved,
-                    scoped_operand: crate::GrammarProperty::Unresolved,
-                    id: None,
-                    kind: ReaderKind::Unknown,
-                    family: crate::BlockFamily::Unknown,
-                },
-                |authority| authority.reader.clone(),
-            );
             let parsing = self.finish_parsing(
                 index,
                 &question,
@@ -1074,7 +1064,6 @@ impl<'a> Window<'a> {
                     .as_ref()
                     .map(|definition| definition.public_owner.clone()),
                 definition_line: definition.as_ref().map(|definition| definition.line),
-                reader,
                 parsing,
                 storage,
                 diagnostics: self.diagnostic_indices.remove(&index).unwrap_or_default(),
@@ -2242,19 +2231,9 @@ mod tests {
 
     #[test]
     fn unsupported_reader_kinds_return_typed_storage_gaps() {
-        for (reader_kind, gap_kind, expected_kind, completeness) in [
-            (
-                "Unknown",
-                GapKind::UnresolvedReader,
-                ReaderKind::Unknown,
-                Completeness::Partial,
-            ),
-            (
-                "Block",
-                GapKind::OutsideMethod,
-                ReaderKind::Block,
-                Completeness::Complete,
-            ),
+        for (reader_kind, gap_kind, completeness) in [
+            ("Unknown", GapKind::UnresolvedReader, Completeness::Partial),
+            ("Block", GapKind::OutsideMethod, Completeness::Complete),
         ] {
             let answer = reduce(
                 &field_request(),
@@ -2264,7 +2243,6 @@ mod tests {
             )
             .unwrap();
             assert_eq!(answer.completeness, completeness);
-            assert_eq!(answer.value.field_outcomes[0].reader.kind, expected_kind);
             assert!(matches!(
                 answer.value.field_outcomes[0].storage,
                 FixtureStorage::Unavailable(ref reason) if reason == "Storage decoder unavailable"

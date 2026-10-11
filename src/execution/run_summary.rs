@@ -808,8 +808,7 @@ mod tests {
     use super::*;
     use crate::{
         Answer, Basis, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,
-        FixtureFieldQuestion, Gap, GapKind, ParsedFieldOccurrence, Reader, ReaderKind, Source,
-        StoredFieldOccurrence,
+        FixtureFieldQuestion, Gap, GapKind, ParsedFieldOccurrence, Source, StoredFieldOccurrence,
     };
     use serde_json::{Value, json};
     use std::time::Duration;
@@ -1071,13 +1070,6 @@ mod tests {
             file: "common/tradition_categories/atlas.txt".into(),
             owner: None,
             definition_line: None,
-            reader: Reader {
-                numeric: crate::GrammarProperty::Unresolved,
-                scoped_operand: crate::GrammarProperty::Unresolved,
-                id: None,
-                kind: ReaderKind::Unknown,
-                family: crate::BlockFamily::Unknown,
-            },
             parsing,
             storage,
             diagnostics,

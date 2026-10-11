@@ -435,8 +435,6 @@ pub struct FixtureFieldOutcome {
     /// One-based definition source line, when established by the engine reader.
     #[serde(deserialize_with = "crate::answer::required_option")]
     pub definition_line: Option<u64>,
-    /// Shared reader established by Native's static method.
-    pub reader: crate::Reader,
     /// Parser entries and returns; independent of stored values and diagnostic coverage.
     pub parsing: FixtureParsing,
     /// Independently observed parser storage.
