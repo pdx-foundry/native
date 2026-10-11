@@ -16,6 +16,7 @@ use crate::engine::analysis::{
 
 use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, read_only_data, unique};
+use super::families::decoded;
 
 const DEFINE_MODIFIER: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::AddDefinition(int, ModifierType, CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, bool, CFixedPoint, bool)";
 /// The functions that register a modifier generated from content. The first registers a name
@@ -289,20 +290,6 @@ fn matching(symbols: &[Symbol], select: impl Fn(&str) -> bool) -> BTreeSet<u64> 
         .filter(|symbol| !symbol.name.contains(".cold.") && select(&symbol.name))
         .map(|symbol| symbol.address)
         .collect()
-}
-
-/// Decode each function on its own and keep the ones that decode completely.
-fn decoded<'a>(text: &Text, starts: impl IntoIterator<Item = &'a u64>) -> Code {
-    let mut rows = Vec::new();
-    for &start in starts {
-        let Ok((address, code)) = text.function(start) else {
-            continue;
-        };
-        if let Ok(function) = decode_arm64(code, address) {
-            rows.extend(function);
-        }
-    }
-    Code::from_rows(rows)
 }
 
 fn is_read_only(kind: SectionKind) -> bool {

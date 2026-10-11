@@ -1,3 +1,4 @@
+use super::declarations::Text;
 use crate::AnalysisError;
 use crate::engine::analysis::{
     directories::{self, Anchors, Constructor},
@@ -8,25 +9,15 @@ use std::collections::BTreeMap;
 /// Largest constructor body read. A larger extent is skipped, which leaves the registry unnamed.
 const LIMIT: u64 = 64 * 1024;
 
-/// Sorted, distinct function start addresses, used to bound each function body.
-fn starts(discovery: &StaticInput) -> Vec<u64> {
-    let mut starts: Vec<u64> = discovery.symbols.iter().map(|s| s.address).collect();
-    starts.sort_unstable();
-    starts.dedup();
-    starts
-}
+/// Read one bounded function body. `None` when `address` is not a function start or its extent is
+/// outside the limit.
+fn body(text: &Text, address: u64) -> Option<Constructor> {
+    let code = text.function_within(address, LIMIT)?;
 
-/// Read one bounded function body. `None` when its extent is outside the limit.
-fn body(bytes: &[u8], starts: &[u64], address: u64) -> Result<Option<Constructor>, AnalysisError> {
-    let Some(&end) = starts.get(starts.partition_point(|&a| a <= address)) else {
-        return Ok(None);
-    };
-    let length = end - address;
-    if length == 0 || length > LIMIT || !length.is_multiple_of(4) {
-        return Ok(None);
-    }
-    let code = super::code_range(bytes, address, length)?;
-    Ok(Some(Constructor { address, code }))
+    Some(Constructor {
+        address,
+        code: code.to_vec(),
+    })
 }
 
 /// Entry addresses of the base constructor and the literal `CString` constructor.
@@ -50,7 +41,7 @@ pub(in crate::binding) fn initializers(
     bytes: &[u8],
     discovery: &StaticInput,
 ) -> Result<Vec<Constructor>, AnalysisError> {
-    let starts = starts(discovery);
+    let text = Text::read(bytes, &discovery.symbols)?;
     let mut addresses: Vec<u64> = discovery
         .symbols
         .iter()
@@ -61,7 +52,7 @@ pub(in crate::binding) fn initializers(
     addresses.dedup();
     let mut found = Vec::new();
     for address in addresses {
-        found.extend(body(bytes, &starts, address)?);
+        found.extend(body(&text, address));
     }
     Ok(found)
 }
@@ -72,7 +63,7 @@ pub(in crate::binding) fn read(
     discovery: &StaticInput,
     candidates: &[CandidateRecord],
 ) -> Result<BTreeMap<String, Vec<Constructor>>, AnalysisError> {
-    let starts = starts(discovery);
+    let text = Text::read(bytes, &discovery.symbols)?;
     let wanted: BTreeMap<String, &str> = candidates
         .iter()
         .map(|c| (format!("{0}::{0}()", c.database), c.database.as_str()))
@@ -84,7 +75,7 @@ pub(in crate::binding) fn read(
         };
         let bodies = found.entry((*database).to_owned()).or_default();
         if !bodies.iter().any(|b| b.address == symbol.address) {
-            bodies.extend(body(bytes, &starts, symbol.address)?);
+            bodies.extend(body(&text, symbol.address));
         }
     }
     Ok(found)

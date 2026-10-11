@@ -7,6 +7,14 @@ use crate::engine::analysis::{
 use object::{Object, ObjectSection, SectionKind};
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::declarations::Text;
+
+/// Largest body of a reader function that the field reader collects.
+const FUNCTION_LIMIT: u64 = 1024 * 1024;
+
+/// Largest body of an array insertion specialization that the field reader inspects.
+const INSERTION_LIMIT: u64 = 65_536;
+
 /// Read the selected root, the shared engine token constructor and the read-only data that holds
 /// jump tables from the same verified buffer.
 pub(in crate::binding) fn read(
@@ -18,6 +26,7 @@ pub(in crate::binding) fn read(
     selection: CandidateRecord,
     persistent_recipe: Option<&PersistentRecipe>,
 ) -> Result<FieldInput, AnalysisError> {
+    let text = Text::read(bytes, symbols)?;
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
     let root = format!("{}::ReadMember(CReader&, int)", selection.owner_candidate);
@@ -36,28 +45,19 @@ pub(in crate::binding) fn read(
             continue;
         }
         let start = *starts.first().unwrap();
-        let Some(end) = symbols
-            .iter()
-            .filter(|s| s.address > start)
-            .map(|s| s.address)
-            .min()
-        else {
-            gaps.push(format!("unbounded function {name}"));
-            continue;
-        };
-        let length = end - start;
-        if length == 0 || length > 1024 * 1024 || !length.is_multiple_of(4) {
+        let Some(code) = text.function_within(start, FUNCTION_LIMIT) else {
             gaps.push(format!("unsupported function extent {name}"));
             continue;
-        }
+        };
         functions.push(Function {
             name: name.into(),
             address: start,
-            code: super::code_range(bytes, start, length)?,
+            code: code.to_vec(),
         });
     }
     let objects = collect_objects(
         bytes,
+        &text,
         symbols,
         pointers,
         bound_slots,
@@ -66,12 +66,12 @@ pub(in crate::binding) fn read(
     )?;
     if !objects.is_empty() {
         collect_owner_methods(
-            bytes,
+            &text,
             symbols,
             &selection.owner_candidate,
             &mut functions,
             &mut gaps,
-        )?;
+        );
     }
     let persistent = persistent_recipe
         .map(|recipe| {
@@ -120,6 +120,7 @@ pub(super) fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisE
 /// class to a field.
 fn collect_objects(
     bytes: &[u8],
+    text: &Text,
     symbols: &[Symbol],
     pointers: &BTreeMap<u64, u64>,
     bound_slots: &BTreeSet<u64>,
@@ -197,12 +198,12 @@ fn collect_objects(
             });
         let member_name = format!("{class}::ReadMember(CReader&, int)");
         let mut bodies_available = match symbols.iter().find(|symbol| symbol.name == member_name) {
-            Some(symbol) => push_function(bytes, symbols, functions, symbol)?,
+            Some(symbol) => push_function(text, functions, symbol),
             None => reader.is_some(),
         };
 
         for factory in &factories {
-            bodies_available &= push_function(bytes, symbols, functions, factory)?;
+            bodies_available &= push_function(text, functions, factory);
         }
 
         if !bodies_available {
@@ -237,10 +238,10 @@ fn collect_objects(
             ),
         )
         .into_iter()
-        .filter(|&start| clears_moved_source_at(bytes, symbols, start).unwrap_or(false))
+        .filter(|&start| clears_moved_source_at(text, start))
         .collect();
-        let data_offset = array_member_offset(bytes, symbols, &insert, array_pointer_offsets)?;
-        let count_offset = array_member_offset(bytes, symbols, &insert, array_count_offsets)?;
+        let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
+        let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
         objects.push(ObjectReader {
             data_offset,
             count_offset,
@@ -289,56 +290,34 @@ fn addresses(symbols: &[Symbol], name: &str) -> Vec<u64> {
 }
 
 /// Add a symbol's bounded body once; whether the body is available.
-fn push_function(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    functions: &mut Vec<Function>,
-    symbol: &Symbol,
-) -> Result<bool, AnalysisError> {
+fn push_function(text: &Text, functions: &mut Vec<Function>, symbol: &Symbol) -> bool {
     if functions
         .iter()
         .any(|function| function.address == symbol.address)
     {
-        return Ok(true);
+        return true;
     }
 
-    let end = symbols
-        .iter()
-        .map(|other| other.address)
-        .filter(|address| *address > symbol.address)
-        .min();
-    let Some(end) = end.filter(|end| end - symbol.address <= 1024 * 1024) else {
-        return Ok(false);
+    let Some(code) = text.function_within(symbol.address, FUNCTION_LIMIT) else {
+        return false;
     };
 
     functions.push(Function {
         name: symbol.name.clone(),
         address: symbol.address,
-        code: super::code_range(bytes, symbol.address, end - symbol.address)?,
+        code: code.to_vec(),
     });
-    Ok(true)
+    true
 }
 
 /// Whether the moving insertion at `start` clears its source pointer on every return.
-fn clears_moved_source_at(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    start: u64,
-) -> Result<bool, AnalysisError> {
-    let Some(end) = symbols
-        .iter()
-        .map(|symbol| symbol.address)
-        .filter(|address| *address > start)
-        .min()
-        .filter(|end| end - start <= 65536)
-    else {
-        return Ok(false);
+fn clears_moved_source_at(text: &Text, start: u64) -> bool {
+    let Some(code) = text.function_within(start, INSERTION_LIMIT) else {
+        return false;
     };
-    let code = super::code_range(bytes, start, end - start)?;
-    let rows = crate::engine::analysis::decode::decode_arm64(&code, start)
-        .map_err(|_| AnalysisError::InvalidRange)?;
 
-    Ok(clears_moved_source(&rows))
+    crate::engine::analysis::decode::decode_arm64(code, start)
+        .is_ok_and(|rows| clears_moved_source(&rows))
 }
 
 /// Whether every return leaves the 8-byte slot that `x2` names on entry holding zero, as the
@@ -481,12 +460,12 @@ fn branch_target(operands: &str) -> Option<u64> {
 }
 
 fn collect_owner_methods(
-    bytes: &[u8],
+    text: &Text,
     symbols: &[Symbol],
     owner: &str,
     functions: &mut Vec<Function>,
     gaps: &mut Vec<String>,
-) -> Result<(), AnalysisError> {
+) {
     for symbol in symbols
         .iter()
         .filter(|symbol| has_owner_receiver(&symbol.name, owner))
@@ -501,51 +480,35 @@ fn collect_owner_methods(
             gaps.push("owner method collection reached 128 functions".into());
             break;
         }
-        let Some(end) = symbols
-            .iter()
-            .map(|other| other.address)
-            .filter(|address| *address > symbol.address)
-            .min()
-        else {
+        let Ok((address, code)) = text.function(symbol.address) else {
             continue;
         };
-        if end - symbol.address > 1024 * 1024 {
+        if code.len() as u64 > FUNCTION_LIMIT {
             gaps.push(format!("owner method extent: {}", symbol.name));
             continue;
         }
         functions.push(Function {
             name: symbol.name.clone(),
-            address: symbol.address,
-            code: super::code_range(bytes, symbol.address, end - symbol.address)?,
+            address,
+            code: code.to_vec(),
         });
     }
-    Ok(())
 }
 
 /// The one offset of an array member that `find` reads from every insertion specialization, such
 /// as the pointer member that the specialization loads through its preserved receiver. Refuse
 /// ambiguous offsets, unfamiliar receiver copies, or an absent specialization.
 fn array_member_offset(
-    bytes: &[u8],
-    symbols: &[Symbol],
+    text: &Text,
     inserts: &[u64],
     find: fn(&[crate::engine::analysis::decode::Instruction]) -> Option<BTreeSet<u64>>,
 ) -> Result<Option<u64>, AnalysisError> {
     let mut offsets = BTreeSet::new();
     for &start in inserts {
-        let Some(end) = symbols
-            .iter()
-            .map(|symbol| symbol.address)
-            .filter(|address| *address > start)
-            .min()
-        else {
+        let Some(code) = text.function_within(start, INSERTION_LIMIT) else {
             return Ok(None);
         };
-        if end - start > 65536 {
-            return Ok(None);
-        }
-        let code = super::code_range(bytes, start, end - start)?;
-        let rows = crate::engine::analysis::decode::decode_arm64(&code, start)
+        let rows = crate::engine::analysis::decode::decode_arm64(code, start)
             .map_err(|_| AnalysisError::InvalidRange)?;
         let Some(found) = find(&rows) else {
             return Ok(None);
@@ -890,7 +853,13 @@ mod tests {
             code: vec![0; 4],
         }];
 
-        assert!(push_function(&[], std::slice::from_ref(&root), &mut functions, &root).unwrap());
+        let text = Text {
+            address: 0x1000,
+            code: &[],
+            starts: BTreeSet::new(),
+        };
+
+        assert!(push_function(&text, &mut functions, &root));
         assert_eq!(functions.len(), 1);
     }
 

@@ -46,7 +46,9 @@ can overlap, but the union must tile the full token range and every overlapping 
 established. A covered node has no gap, dynamic key, table gap or stop; every named key has a known
 reader kind after grouping its reader paths (disagreement gives `unknown-key-reader`). Coverage groups
 by token identity, not spelling (`ambiguous-key-token`). Missing member vtables, cycles, cut bodies
-(slot bodies keep up to 65,536 bytes) and the eight-level nesting bound leave coverage unresolved.
+(the declaration reader keeps up to 65,536 bytes of each function, `FUNCTION_BODY_LIMIT`, and
+the grammar reader records each longer function as a cut body) and the eight-level nesting bound
+leave coverage unresolved.
 
 - The factory contributes only allocation bytes that agree on every returning path; eight agreed
   bytes at a member destination supply its vtable.
@@ -211,6 +213,13 @@ the token at command `+0x20` and the file location at `+0x28`, checks the comman
   the getter analysis keeps them unresolved; treating any other return as acceptance would accept
   every scope bit. `GetDesign` uses `TPdxNullObject<CShipDesign>` and `GetDlcRecommendation`
   `TPdxNullObject<SDlcRecommendationScriptData>`: the method suffix does not name the null type.
+- **Recorded binding exceptions** (`src/binding/binary/grammar.rs` module comment). The binding
+  skips `GetLocalPointer`, `GetColonyCarrierRef`, `GetOpenerID` and `GetObjectName`: they are not
+  typed accessors. The `System` target getters use the `GetGalacticObject` accessor. Other
+  accessors use `TPdxNullObject<C{suffix}>`. An accessor with no single null object, and a getter
+  with no bound accessor, are bound `NoNullObject`. They become unresolved getter bits, and the
+  grammar read continues. Removal route: read the type compare and the null object from each
+  accessor body, and follow the call from each getter to its accessor.
 - `CEffect::CheckScopeSupport*` and `CTrigger::CheckScopeSupport*` test the command's own scope (the
   getter at effects `+0x80`), not a target argument.
 

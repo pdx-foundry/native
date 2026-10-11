@@ -833,9 +833,9 @@ fn is_composer(calls: &[CallKind]) -> bool {
 
 /// Decode each function on its own and keep the ones that decode completely. A run that
 /// reaches a function left out is unresolved there.
-pub(super) fn decoded(text: &Text, functions: &[u64]) -> Code {
+pub(super) fn decoded<'a>(text: &Text, functions: impl IntoIterator<Item = &'a u64>) -> Code {
     let mut rows = Vec::new();
-    for start in functions.iter().collect::<BTreeSet<_>>() {
+    for start in functions.into_iter().collect::<BTreeSet<_>>() {
         let Ok((address, code)) = text.function(*start) else {
             continue;
         };
