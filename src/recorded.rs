@@ -9,11 +9,18 @@
 //! the content directory, such as `common/traditions`. The language
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json`,
 //! `dynamic_names.json` and `modifier_nodes.json`, and
-//! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json` for
-//! plain names; other names use an injective hex component under `<kind>/encoded/`. Fixture answers use
-//! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
-//! The loaded modifier inventory uses `loaded_modifiers.json`, or
+//! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json`. Fixture
+//! answers use `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys,
+//! not provenance. The loaded modifier inventory uses `loaded_modifiers.json`, or
 //! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.
+//!
+//! A subject whose every `/`-separated segment holds only `[a-z0-9_]` names its file directly, as
+//! above. Any other subject (an uppercase, hyphenated, empty or `..` name, which a caller can
+//! pass and a method answers with an error) is recorded as `<operation>/hex-encoded/x<hex>.json`,
+//! where `<hex>` is the hex of the whole subject. No plain segment holds the `-` of `hex-encoded`,
+//! and the hex is injective, so no subject leaves the root or takes another subject's file. A
+//! subject over 124 bytes has an encoded name over the 255-byte file name limit, and recording
+//! it fails with `Error::Recorded`. Change this when a caller must record such a subject.
 //!
 //! Each write goes to its own `<file>.<process>.<count>.tmp` and is then renamed, so a reader never
 //! sees a partial file, even while two queries record at once. One recorder writes to a directory
@@ -105,26 +112,34 @@ fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
     std::fs::rename(&temporary, path).map_err(failed)
 }
 
-/// Location of one operation's file. A subject that could leave the directory is refused.
-fn path(root: &Path, operation: Operation, subject: Option<&str>) -> Result<PathBuf, Error> {
+/// The directory component of every encoded subject. Its `-` is outside the plain alphabet, so no
+/// plain subject names it.
+const ENCODED: &str = "hex-encoded";
+
+/// Location of one operation's file. Any subject has one, and it lies inside `root`.
+fn path(root: &Path, operation: Operation, subject: Option<&str>) -> PathBuf {
     let mut path = root.join(operation.name());
-    if let Some(subject) = subject {
-        let plain = |segment: &str| {
-            !segment.is_empty()
-                && segment
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-        };
-        let subject = subject.trim_end_matches('/');
-        if !subject.split('/').all(plain) {
-            return Err(Error::NotRecorded {
-                question: format!("{operation}/{subject}"),
-            });
+    match subject {
+        None => {}
+        Some(subject) if is_plain(subject) => path.push(subject),
+        Some(subject) => {
+            let hex: String = subject.bytes().map(|byte| format!("{byte:02x}")).collect();
+            path.push(ENCODED);
+            path.push(format!("x{hex}"));
         }
-        path.push(subject);
     }
     path.set_extension("json");
-    Ok(path)
+    path
+}
+
+/// Whether every segment of `subject` is a non-empty run of `[a-z0-9_]`.
+fn is_plain(subject: &str) -> bool {
+    subject.split('/').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    })
 }
 
 fn read<T: DeserializeOwned>(
@@ -132,7 +147,7 @@ fn read<T: DeserializeOwned>(
     operation: Operation,
     subject: Option<&str>,
 ) -> Result<Answer<T>, Error> {
-    let path = path(root, operation, subject)?;
+    let path = path(root, operation, subject);
     let named = || match subject {
         Some(subject) => format!("{operation}/{subject}"),
         None => operation.to_string(),
@@ -157,7 +172,7 @@ pub(crate) fn write<T: Serialize>(
     subject: Option<&str>,
     answer: &Result<Answer<T>, Error>,
 ) -> Result<(), Error> {
-    let path = path(root, operation, subject)?;
+    let path = path(root, operation, subject);
     record_build(root, build)?;
     let mut bytes = serde_json::to_vec_pretty(answer).expect("answers serialize");
     bytes.push(b'\n');
@@ -293,6 +308,84 @@ mod tests {
         for operation in [Operation::Registries, Operation::Scopes] {
             assert_eq!(recorded.read::<Vec<String>>(operation, None), answer);
         }
+    }
+
+    #[test]
+    fn plain_subjects_keep_their_file_names() {
+        let root = Path::new("recording");
+        assert_eq!(
+            path(root, Operation::RegistryFields, Some("common/traditions")),
+            root.join("registry_fields/common/traditions.json")
+        );
+        assert_eq!(
+            path(root, Operation::CommandGrammar, Some("effect/add_district")),
+            root.join("command_grammar/effect/add_district.json")
+        );
+        assert_eq!(
+            path(root, Operation::Registries, None),
+            root.join("registries.json")
+        );
+    }
+
+    #[test]
+    fn every_subject_gets_its_own_file_inside_the_root() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("recording");
+        let build = BuildId("original".into());
+        // The encoded name of "A" is `x41`; plain subjects that look like it are separate files.
+        let subjects = [
+            "common/traditions",
+            "Common/Traditions",
+            "common/some-thing",
+            "",
+            "/",
+            "common//traditions",
+            "common/traditions/",
+            "../escape",
+            "common/../../escape",
+            "A",
+            "x41",
+            "encoded/x41",
+            "hex-encoded/x41",
+            "hex-encoded",
+        ];
+        for subject in subjects {
+            let error: Result<Answer<Vec<String>>, Error> = Err(Error::UnknownRegistry {
+                name: subject.into(),
+            });
+            let operation = Operation::RegistryFields;
+
+            write(&root, &build, operation, Some(subject), &error).unwrap();
+        }
+
+        let recorded = Answers::open(root.clone()).unwrap();
+        for subject in subjects {
+            assert_eq!(
+                recorded.read::<Vec<String>>(Operation::RegistryFields, Some(subject)),
+                Err(Error::UnknownRegistry {
+                    name: subject.into()
+                }),
+                "{subject:?}"
+            );
+        }
+        let outside: Vec<_> = std::fs::read_dir(base.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(outside, ["recording"]);
+        let mut files = Vec::new();
+        let mut directories = vec![root];
+        while let Some(directory) = directories.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    directories.push(entry);
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        assert_eq!(files.len(), subjects.len() + 1, "{files:?}");
     }
 
     #[test]

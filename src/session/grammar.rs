@@ -75,18 +75,9 @@ pub(super) fn registered_grammar(
     }
 }
 
-/// Encode only non-plain names in a separate namespace so no path normalization aliases them.
+/// The recording subject of a command. The recorder encodes a name that is not a plain path.
 fn recorded_subject(kind: DeclarationKind, name: &str) -> String {
-    let plain = !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
-    if plain {
-        format!("{}/{}", kind.subject(), name)
-    } else {
-        let encoded: String = name.bytes().map(|byte| format!("{byte:02x}")).collect();
-        format!("{}/encoded/x{encoded}", kind.subject())
-    }
+    format!("{}/{}", kind.subject(), name)
 }
 
 pub(super) fn registered_factory(
@@ -1219,6 +1210,8 @@ mod tests {
             "IF",
             "encoded",
             "encoded/x69662f",
+            "hex-encoded",
+            "hex-encoded/x69662f",
         ];
         for name in names {
             let answer: Result<Answer<CommandGrammar>, Error> = Err(Error::UnknownCommand {
