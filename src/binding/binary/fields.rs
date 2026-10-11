@@ -2,12 +2,13 @@ use crate::AnalysisError;
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
+    evaluate::ReadOnlyData,
     fields::{DataSection, FieldInput, Function, ObjectReader, PointReader, has_owner_receiver},
 };
 use object::{Object, ObjectSection, SectionKind};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::declarations::Text;
+use super::{declarations::Text, references::Image};
 
 /// Largest body of a reader function that the field reader collects.
 const FUNCTION_LIMIT: u64 = 1024 * 1024;
@@ -18,15 +19,20 @@ const INSERTION_LIMIT: u64 = 65_536;
 /// Read the selected root, the shared engine token constructor and the read-only data that holds
 /// jump tables from the same verified buffer.
 pub(in crate::binding) fn read(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    strings: &BTreeMap<u64, String>,
-    pointers: &BTreeMap<u64, u64>,
-    bound_slots: &BTreeSet<u64>,
+    image: &Image<'_>,
     selection: CandidateRecord,
     persistent_recipe: Option<&PersistentRecipe>,
 ) -> Result<FieldInput, AnalysisError> {
+    let Image {
+        bytes,
+        symbols,
+        strings,
+        pointers,
+        bound_slots,
+        ..
+    } = *image;
     let text = Text::read(bytes, symbols)?;
+    let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
     let root = format!("{}::ReadMember(CReader&, int)", selection.owner_candidate);
@@ -56,11 +62,10 @@ pub(in crate::binding) fn read(
         });
     }
     let objects = collect_objects(
-        bytes,
         &text,
         symbols,
         pointers,
-        bound_slots,
+        &data,
         persistent_recipe,
         &mut functions,
     )?;
@@ -75,14 +80,7 @@ pub(in crate::binding) fn read(
     }
     let persistent = persistent_recipe
         .map(|recipe| {
-            super::receivers::persistent(
-                bytes,
-                symbols,
-                pointers,
-                bound_slots,
-                &selection.owner_candidate,
-                recipe,
-            )
+            super::receivers::persistent(image, &text, &data, &selection.owner_candidate, recipe)
         })
         .transpose()?;
     Ok(FieldInput {
@@ -119,11 +117,10 @@ pub(super) fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisE
 /// Follow direct constructor and factory calls only; a symbol alone does not attach a nested
 /// class to a field.
 fn collect_objects(
-    bytes: &[u8],
     text: &Text,
     symbols: &[Symbol],
     pointers: &BTreeMap<u64, u64>,
-    bound_slots: &BTreeSet<u64>,
+    data: &ReadOnlyData,
     recipe: Option<&PersistentRecipe>,
     functions: &mut Vec<Function>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
@@ -154,7 +151,6 @@ fn collect_objects(
         return Ok(Vec::new());
     }
 
-    let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let unique_name = |address: u64| {
         let names: BTreeSet<_> = symbols
             .iter()
@@ -167,7 +163,7 @@ fn collect_objects(
     let mut objects = Vec::new();
 
     for (class, factories) in classes {
-        let Some(vtable) = super::families::vtable_group(symbols, &data, &class) else {
+        let Some(vtable) = super::families::vtable_group(symbols, data, &class) else {
             continue;
         };
         let reads: BTreeSet<_> = symbols

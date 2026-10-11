@@ -9,10 +9,9 @@ use crate::{AnalysisError, BlockFamily};
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &std::collections::BTreeSet<u64>,
+    text: &Text<'_>,
     recipe: &DeclarationRecipe,
 ) -> Result<WeightBlockInput, AnalysisError> {
-    let text = Text::read(image.bytes, image.symbols)?;
     let names =
         super::references::names(image.symbols, image.pointers, image.imports, image.strings);
     let points = super::modifier_blocks::family_points(image, &names, recipe, BlockFamily::Weight);
@@ -30,11 +29,11 @@ pub(in crate::binding) fn read(
             });
         }
     }
+    let constants = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let constructors = super::receivers::constructors(
-        image.bytes,
+        text,
         image.symbols,
-        image.pointers,
-        bound_slots,
+        &constants,
         &roots.iter().collect::<Vec<_>>(),
     )?;
     let tokens = text.token_table(image.symbols, image.strings)?;

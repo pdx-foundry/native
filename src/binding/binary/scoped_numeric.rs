@@ -1,5 +1,5 @@
 //! Exact executable binding for shared scoped numeric bodies and vtable address points.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::{declarations::Text, numeric::READ_INT_VALUE, references::Image};
 use crate::AnalysisError;
@@ -10,7 +10,6 @@ use crate::engine::analysis::{
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     value_token_offset: u64,
 ) -> Result<Input, AnalysisError> {
     let text = Text::read(image.bytes, image.symbols)?;
@@ -49,7 +48,7 @@ pub(in crate::binding) fn read(
         );
     }
 
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)?;
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let mut points = BTreeMap::new();
     for (class, simple, kind, token_reader) in [
         (

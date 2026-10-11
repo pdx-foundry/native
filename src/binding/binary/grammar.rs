@@ -93,15 +93,10 @@ pub(in crate::binding) fn read(
             })
             .filter_map(|symbol| declarations.functions.get(&symbol.address)),
     );
-    declarations.constructors = super::receivers::constructors(
-        bytes,
-        symbols,
-        &declarations.pointers,
-        bound_slots,
-        &roots,
-    )?;
+    let constants = super::language::constant_data(bytes, &declarations.pointers, bound_slots)?;
+    declarations.constructors = super::receivers::constructors(&text, symbols, &constants, &roots)?;
 
-    declarations.constructor_calls = super::receivers::constructor_calls(bytes, symbols)?;
+    declarations.constructor_calls = super::receivers::constructor_calls(&text, symbols)?;
 
     let tokens = text.token_table(symbols, strings)?;
     let families = CHILD_FAMILIES

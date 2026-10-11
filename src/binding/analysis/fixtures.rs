@@ -222,16 +222,8 @@ impl VerifiedAnalysis<'_> {
             initial_loader: None,
             has_named_member_reader: true,
         };
-        binary::fields::read(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.pointers,
-            &self.catalog.bound_slots,
-            selection,
-            self.persistent,
-        )
-        .map_err(|error| error.to_string())
+        binary::fields::read(&self.image(), selection, self.persistent)
+            .map_err(|error| error.to_string())
     }
 }
 

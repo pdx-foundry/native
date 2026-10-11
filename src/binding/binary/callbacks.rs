@@ -147,7 +147,6 @@ const SCRIPT_FIRED: &str = "CFireOnActionEffect::";
 /// Read the callback method's input.
 pub(in crate::binding) fn callbacks(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     recipe: &DeclarationRecipe,
 ) -> Result<CallbacksInput, AnalysisError> {
     let Image {
@@ -228,7 +227,7 @@ pub(in crate::binding) fn callbacks(
         symbols,
         functions.values().flatten().chain(&scope_code),
     );
-    let instances = instances(&text, image, bound_slots, &functions)?;
+    let instances = instances(&text, image, &functions)?;
     Ok(CallbacksInput {
         functions,
         callers,
@@ -331,7 +330,6 @@ fn evaluator_names() -> Vec<(String, BlockFamily)> {
 /// Read the block method's input for the registry owner types `owners`.
 pub(in crate::binding) fn block_evaluations(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     owners: &BTreeSet<&str>,
     recipe: &DeclarationRecipe,
 ) -> Result<BlockInput, AnalysisError> {
@@ -341,6 +339,7 @@ pub(in crate::binding) fn block_evaluations(
         strings,
         imports,
         pointers,
+        bound_slots,
     } = *image;
     let text = Text::read(bytes, symbols)?;
     let names = Names::new(symbols);
@@ -419,7 +418,7 @@ pub(in crate::binding) fn block_evaluations(
         symbols,
         functions.values().flatten().chain(&scope_code),
     );
-    let instances = instances(&text, image, bound_slots, &functions)?;
+    let instances = instances(&text, image, &functions)?;
 
     Ok(BlockInput {
         sites,

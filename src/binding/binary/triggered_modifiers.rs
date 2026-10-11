@@ -6,11 +6,10 @@ use crate::engine::analysis::{
     declarations::Function, modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
 };
 use crate::{AnalysisError, BlockFamily};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     recipe: &DeclarationRecipe,
 ) -> Result<TriggeredInput, AnalysisError> {
     let text = Text::read(image.bytes, image.symbols)?;
@@ -41,22 +40,15 @@ pub(in crate::binding) fn read(
         );
     }
 
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)?;
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let classes = points
         .keys()
         .map(|&point| {
             let class = super::families::point_class(image.symbols, &data, point)
                 .ok_or_else(|| Unresolved::new("triggered-class"))
                 .and_then(|class| {
-                    super::receivers::persistent(
-                        image.bytes,
-                        image.symbols,
-                        image.pointers,
-                        bound_slots,
-                        &class,
-                        &recipe.persistent,
-                    )
-                    .map_err(|_| Unresolved::new("triggered-class-constructors"))
+                    super::receivers::persistent(image, &text, &data, &class, &recipe.persistent)
+                        .map_err(|_| Unresolved::new("triggered-class-constructors"))
                 });
 
             (point, class)

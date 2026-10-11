@@ -59,7 +59,6 @@ pub(super) fn family_points(
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     candidates: &[NamedCandidate],
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierBlockInput, AnalysisError> {
@@ -117,7 +116,7 @@ pub(in crate::binding) fn read(
     }
     let tokens = text.token_table(image.symbols, image.strings)?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
-    let name_reads = name_read_functions(image, bound_slots, &text, &base, recipe);
+    let name_reads = name_read_functions(image, &text, &base, recipe);
     let directories = super::references::database_directories(
         &text,
         image,
@@ -204,13 +203,12 @@ pub(in crate::binding) fn read(
 /// The bodies of the name object's read functions, for the base member's read slot.
 fn name_read_functions(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     text: &Text<'_>,
     base: &crate::engine::analysis::numeric::ModifierInput,
     recipe: &DeclarationRecipe,
 ) -> Result<Vec<Function>, Unresolved> {
     let tokens = crate::engine::analysis::numeric::modifier::member_tokens(base)?;
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)
         .map_err(|_| name_implementations_stop())?;
     let reads = name_reads(
         image.symbols,
