@@ -407,7 +407,7 @@ pub fn analyze(
     state: &BTreeMap<u64, u8>,
 ) -> Vec<Argument> {
     use super::forms::Verdict;
-    use crate::engine::analysis::declarations::{ScopeOutcome, scope_mask};
+    use crate::engine::analysis::declarations::{ScopeOutcome, declared_scopes};
     use crate::{ArgumentPath, ReaderKind, TargetCheckStage};
     let mut found = Vec::new();
     if let Some(forms) = &grammar.forms {
@@ -462,7 +462,7 @@ pub fn analyze(
         };
         let (scopes, stage, cause) = match combine(&checks) {
             Ok((mask, stage)) => {
-                let scopes = scope_mask(mask, input.declarations.scope_names.as_deref());
+                let scopes = declared_scopes(mask, input.declarations.scope_names.as_deref());
                 if matches!(scopes, ScopeOutcome::Unresolved(_)) {
                     (
                         scopes,

@@ -466,6 +466,28 @@ fn a_zero_scope_mask_is_any() {
 }
 
 #[test]
+fn a_declared_mask_of_zero_or_all_bits_allows_every_scope() {
+    for mask in [0, u64::MAX] {
+        assert_eq!(declared_scopes(mask, None), ScopeOutcome::Any, "{mask:#x}");
+    }
+}
+
+#[test]
+fn the_bit_mapper_gives_zero_and_all_bits_no_special_meaning() {
+    let names = ["none", "planet", "country"].map(String::from);
+
+    assert_eq!(scope_mask(0, Some(&names)), Ok(Vec::new()));
+    assert_eq!(
+        scope_mask(u64::MAX, Some(&names)),
+        Err(Unresolved::new("scope-name"))
+    );
+    assert_eq!(
+        scope_mask(0b110, None),
+        Err(Unresolved::new(SCOPE_TABLE_MISSING))
+    );
+}
+
+#[test]
 fn a_multi_bit_scope_mask_lists_each_scope_in_bit_order() {
     let create = create(|body| {
         body.address(8, VTABLE);

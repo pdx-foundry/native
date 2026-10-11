@@ -24,7 +24,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
-use super::declarations::{ScopeOutcome, ScopeType, named_scope_types, number, scope_mask};
+use super::declarations::{
+    ScopeOutcome, ScopeType, declared_scopes, named_scope_types, number, scope_mask,
+};
 use super::decode::{Instruction, wide_register, written_registers};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
@@ -142,7 +144,7 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
     let groups = groups
         .into_iter()
         .flat_map(|(scope_type, keywords)| {
-            let types = scope_mask(scope_type, input.scope_names.as_deref());
+            let types = ScopeOutcome::from(scope_mask(scope_type, input.scope_names.as_deref()));
             keywords
                 .into_iter()
                 .map(move |keyword| (keyword, types.clone()))
@@ -322,7 +324,7 @@ fn is_link(input: &ScopeInput, token: u64) -> Result<bool, Unresolved> {
 
 fn input_scopes(input: &ScopeInput, token: u64) -> ScopeOutcome {
     match supported_scopes(input, token, 0) {
-        Ok(mask) => scope_mask(mask, input.scope_names.as_deref()),
+        Ok(mask) => declared_scopes(mask, input.scope_names.as_deref()),
         Err(unresolved) => ScopeOutcome::Unresolved(unresolved),
     }
 }
@@ -385,9 +387,8 @@ fn output_scope(input: &ScopeInput, token: u64) -> Output {
 /// A link can declare more than one output type, such as `carrier` (planet or ship).
 fn output_names(input: &ScopeInput, scope_type: u64) -> Output {
     match scope_mask(scope_type, input.scope_names.as_deref()) {
-        ScopeOutcome::Listed(names) => Output::Listed(names),
-        ScopeOutcome::Any => Output::Unresolved(Unresolved::new("scope-type")),
-        ScopeOutcome::Unresolved(unresolved) => Output::Unresolved(unresolved),
+        Ok(names) => Output::Listed(names),
+        Err(unresolved) => Output::Unresolved(unresolved),
     }
 }
 
