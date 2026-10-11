@@ -1308,7 +1308,7 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
                 gaps,
                 [
                     "a call site has more paths than the method follows (path-limit)",
-                    "a path to a call site could not be followed (selected-block-identity)",
+                    "a path does not show which of several candidate blocks the call evaluates (selected-block-identity)",
                 ],
                 "{registry}/{name}"
             );

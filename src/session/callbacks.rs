@@ -319,6 +319,7 @@ pub(super) fn describe(reason: &str) -> String {
         }
         "no-site" => "the engine declares this rule, but no followed call site evaluates it",
         "name-not-a-literal" => "the name is not a text literal, such as a name built at run time",
+        "name-not-readable" => "the name is a text literal, but its text could not be read",
         "name-not-proved" => "no path proves which name the call site passes",
         "list-unknown" | "cached-list-unknown" => "the list that a call site fires is not known",
         "rule-outside-the-rule-set" => "a rule object outside the engine's rule set",
@@ -331,6 +332,21 @@ pub(super) fn describe(reason: &str) -> String {
         }
         "caller-depth" => "the scope comes from more callers than the method follows",
         "caller-not-decoded" => "a function that passes the scope on could not be decoded",
+        "block-and-scope-from-caller" => {
+            "a helper evaluates a block that its caller passes with a scope that its caller also passes, and the method does not follow both"
+        }
+        "selected-block-scope-from-caller" => {
+            "a call that evaluates one of several candidate blocks takes its scope from a caller, and the method does not follow it"
+        }
+        "selected-block-offset" => {
+            "a path evaluates an offset of the owner that none of the candidate blocks has"
+        }
+        "selected-block-identity" => {
+            "a path does not show which of several candidate blocks the call evaluates"
+        }
+        "selected-block-not-reached" => {
+            "no followed path evaluates one of the candidate blocks that the call may select"
+        }
         _ => "a path to a call site could not be followed",
     };
     format!("{text} ({reason})")
@@ -482,5 +498,54 @@ mod tests {
         assert_eq!(unnamed.len(), 1);
         assert!(unnamed[0].starts_with("2 call sites"));
         assert!(unnamed[0].contains("built at run time"));
+    }
+
+    /// The text of `describe` without its reason code, which stays at the end.
+    fn sentence(reason: &str) -> String {
+        describe(reason)
+            .strip_suffix(&format!(" ({reason})"))
+            .expect("the reason code ends the description")
+            .to_owned()
+    }
+
+    #[test]
+    fn each_reason_code_of_the_callback_methods_has_its_own_sentence() {
+        let generic = sentence("a-code-that-no-method-gives");
+        assert_eq!(generic, "a path to a call site could not be followed");
+
+        for reason in [
+            "path-limit",
+            "step-limit",
+            "loop-limit",
+            "left-the-site",
+            "site-not-reached",
+            "context-not-attributed",
+            "scope-built-by-callee",
+            "looked-up-only",
+            "cached-list-not-fired",
+            "no-site",
+            "name-not-a-literal",
+            "name-not-readable",
+            "name-not-proved",
+            "list-unknown",
+            "cached-list-unknown",
+            "rule-outside-the-rule-set",
+            "rule-unknown",
+            "rule-offset",
+            "rule-not-constant",
+            "rule-not-declared",
+            "forwarder-not-verified",
+            "site-not-decoded",
+            "no-caller",
+            "caller-depth",
+            "caller-not-decoded",
+            "block-and-scope-from-caller",
+            "selected-block-scope-from-caller",
+            "selected-block-offset",
+            "selected-block-identity",
+            "selected-block-not-reached",
+        ] {
+            assert_ne!(sentence(reason), generic, "{reason}");
+        }
     }
 }
