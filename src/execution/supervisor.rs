@@ -173,7 +173,7 @@ fn run(
             .map_err(|e| SupervisorError(e.to_string()))?
             .as_nanos()
     );
-    let mut reservation = Reservation::acquire(attempt.clone(), work.clone())?;
+    let mut reservation = Reservation::acquire()?;
     let mut report = SessionReport {
         attempt,
         outcome: SessionOutcome::Completed,
@@ -256,14 +256,9 @@ fn run(
         SessionOutcome::Failed(error.to_string())
     });
     run.end_session();
-    finish_session(
-        &mut report,
-        &mut reservation,
-        &mut game,
-        &mut observer,
-        &mut events,
-        || plan.integrity().map(|_| ()),
-    );
+    finish_session(&mut report, &mut game, &mut observer, &mut events, || {
+        plan.integrity().map(|_| ())
+    });
     run.end_cleanup();
     if owns_work_directory {
         write_report(&work, &reservation, &mut report, &run);
@@ -274,7 +269,6 @@ fn run(
 /// Stop the worker, reap the game and resolve the reservation.
 fn finish_session(
     report: &mut SessionReport,
-    reservation: &mut Reservation,
     game: &mut Option<binding::OwnedGame>,
     observer: &mut Option<binding::Observer>,
     events: &mut OwnerEvents,
@@ -319,7 +313,6 @@ fn finish_session(
         report.outcome = SessionOutcome::Failed(error.to_string());
     }
     if worker_stopped && !matches!(report.disposal, Disposal::Unconfirmed(_)) {
-        reservation.disposed();
         report.reservation_resolved = true;
     }
 }
@@ -648,12 +641,8 @@ mod tests {
         root
     }
 
-    fn reserve(root: &Path, attempt: &str, output: &Path) -> Result<Reservation, SupervisorError> {
-        Reservation::reserve(
-            binding::test_reservation(root)?,
-            attempt.into(),
-            output.into(),
-        )
+    fn reserve(root: &Path) -> Result<Reservation, SupervisorError> {
+        Reservation::reserve(binding::test_reservation(root)?)
     }
 
     #[test]
@@ -661,14 +650,18 @@ mod tests {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "owned", output.path()).unwrap();
+        let mut reservation = reserve(root.path()).unwrap();
         let mut child = binding::test_child(output.path()).unwrap();
         reservation.record_game(child.identity().unwrap());
         assert!(child.suspended().unwrap());
         child.dispose(DISPOSAL_BUDGET).unwrap();
         assert!(binding::process_identity(child.pid()).is_err());
-        reservation.disposed();
-        assert_eq!(reservation.snapshot().unwrap()["state"], "disposed");
+
+        let owner = reservation.snapshot().unwrap();
+        let mut recorded: Vec<_> = owner.as_object().unwrap().keys().collect();
+        recorded.sort();
+        assert_eq!(recorded, ["game", "owner"]);
+        assert_eq!(owner["game"]["pid"], child.pid());
     }
 
     /// One session with a suspended stand-in game and a shell worker, from the worker's start to
@@ -700,7 +693,7 @@ mod tests {
             let root = store();
             let output = store();
             let registry = "common/traditions";
-            let mut reservation = reserve(root.path(), "unit", output.path()).unwrap();
+            let mut reservation = reserve(root.path()).unwrap();
             let child = binding::test_child(output.path()).unwrap();
             let game_pid = child.pid();
             reservation.record_game(child.identity().unwrap());
@@ -755,7 +748,6 @@ mod tests {
             };
             finish_session(
                 &mut report,
-                &mut reservation,
                 &mut game,
                 &mut observer,
                 &mut events,
@@ -1185,8 +1177,7 @@ exec sleep 30
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
-        reservation.disposed();
+        let reservation = reserve(root.path()).unwrap();
         fs::write(output.path().join("report.json"), "existing file").unwrap();
         let mut report = SessionReport {
             attempt: "report".into(),
@@ -1216,13 +1207,9 @@ exec sleep 30
     fn earlier_session_files_do_not_block_a_new_reservation() {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
-        let output = store();
-        let reservation = reserve(root.path(), "prior", output.path()).unwrap();
-        drop(reservation);
+        drop(reserve(root.path()).unwrap());
         fs::write(root.path().join("prior.pending"), "old session").unwrap();
-        let mut next = reserve(root.path(), "next", output.path()).unwrap();
-        next.disposed();
-        assert_eq!(next.snapshot().unwrap()["state"], "disposed");
+        assert!(reserve(root.path()).is_ok());
     }
 
     #[test]
@@ -1230,8 +1217,7 @@ exec sleep 30
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
-        reservation.disposed();
+        let reservation = reserve(root.path()).unwrap();
         fs::write(output.path().join("owner.json"), "existing file").unwrap();
         let mut report = SessionReport {
             attempt: "report".into(),
@@ -1277,7 +1263,7 @@ exec sleep 30
         };
         let root = std::path::PathBuf::from(root);
         let output = std::path::PathBuf::from(std::env::var_os("NATIVE_TEST_READY").unwrap());
-        let _reservation = reserve(&root, "deadowner", output.parent().unwrap()).unwrap();
+        let _reservation = reserve(&root).unwrap();
         fs::write(&output, "reserved").unwrap();
         thread::sleep(Duration::from_secs(30));
     }
@@ -1305,12 +1291,12 @@ exec sleep 30
             thread::sleep(Duration::from_millis(10));
         }
         assert!(ready.exists());
-        assert!(reserve(root.path(), "competitor", output.path()).is_err());
+        assert!(reserve(root.path()).is_err());
         owner.kill().unwrap();
         owner.wait().unwrap();
         // The lock is free; the old owner no longer blocks a launch.
         assert!(binding::test_reservation(root.path()).is_ok());
-        assert!(reserve(root.path(), "afterdeath", output.path()).is_ok());
+        assert!(reserve(root.path()).is_ok());
     }
 }
 
