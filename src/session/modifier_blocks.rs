@@ -103,7 +103,7 @@ pub(super) fn block(
         });
     }
 
-    Some(normalize(variant, references, scope_names, path, gaps)?)
+    normalize(variant, references, scope_names, path, gaps)
 }
 
 /// The block grammar of the field at `path`. Fixed-key conditions name field paths from its last
@@ -280,7 +280,10 @@ mod tests {
         assert_eq!(gaps.len(), 1, "{gaps:?}");
         assert_eq!(
             gaps[0].subject,
-            Some(GapSubject::key_path(vec!["modifier".into(), "mystery".into()]))
+            Some(GapSubject::key_path(vec![
+                "modifier".into(),
+                "mystery".into()
+            ]))
         );
     }
 }
