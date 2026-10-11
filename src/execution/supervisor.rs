@@ -191,9 +191,6 @@ fn run(
         binding::private_directory(&work)?;
         owns_work_directory = true;
         files::write_json(&work.join("request.json"), &request)?;
-        if binding::conflicting_game(None)? {
-            return Err(SupervisorError("Conflicting ordinary game instance".into()));
-        }
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
         if !plan.session_content_unchanged(&request.registries, &content) {
