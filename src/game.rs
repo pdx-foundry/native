@@ -85,7 +85,7 @@ impl GameOptions {
 
 /// What `start` needs besides the request: the caller's names and where answers go.
 pub(crate) struct Session {
-    /// Content directory of each observed registry, with its internal name.
+    /// The content directory of each observed registry.
     pub observed: std::collections::BTreeSet<String>,
     pub build: crate::BuildId,
     /// Write every answer to this directory as it is returned.
@@ -104,7 +104,7 @@ pub(crate) struct Session {
 /// What the supervisor established when the game paused.
 #[derive(Debug, Clone)]
 struct Paused {
-    /// By internal registry name.
+    /// By content directory.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
     modifiers:
@@ -179,7 +179,7 @@ pub struct Game {
     state: watch::Receiver<State>,
     paused: Paused,
     closing: bool,
-    /// Content directory of each observed registry, with its internal name.
+    /// The content directory of each observed registry.
     observed: std::collections::BTreeSet<String>,
     build: crate::BuildId,
     backend: GameBackend,
@@ -426,9 +426,8 @@ impl Game {
 
     async fn registry_items_from_game(
         &mut self,
-        registry: &str,
+        directory: &str,
     ) -> Result<crate::Answer<Vec<String>>, Error> {
-        let directory = registry.trim_end_matches('/');
         if !self.observed.contains(directory) {
             return Err(Error::Unsupported {
                 operation: crate::Operation::Registries,
