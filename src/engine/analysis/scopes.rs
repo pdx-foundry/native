@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::declarations::{ScopeOutcome, ScopeType, number, scope_mask};
-use super::decode::{Instruction, general_register, written_registers};
+use super::decode::{Instruction, wide_register, written_registers};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
@@ -417,7 +417,7 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
         let written = written_registers(&row.operation, &row.operands);
         match (row.operation.as_str(), arguments.as_slice()) {
             ("adrp", [register, page]) => {
-                let Some(register) = general_register(register) else {
+                let Some(register) = wide_register(register) else {
                     continue;
                 };
                 pages.remove(&register);
@@ -430,7 +430,7 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
                 }
             }
             ("add", [_, base, offset]) => {
-                let address = general_register(base)
+                let address = wide_register(base)
                     .and_then(|base| pages.get(&base))
                     .zip(number(offset))
                     .map(|(page, offset)| page.address + offset);
@@ -478,6 +478,8 @@ fn branches(operation: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::assembler::arm64;
+    use crate::engine::analysis::decode::decode_arm64;
 
     fn scope(bit: usize, name: &str) -> ScopeType {
         ScopeType {
@@ -707,6 +709,17 @@ mod tests {
             row(0x508, "add", "x1,x19,#0x10"),
         ];
         assert_eq!(prefixes(preserved), ["event_target:"]);
+    }
+
+    #[test]
+    fn a_32_bit_add_loads_no_prefix() {
+        let bytes = arm64!(at 0x500;
+            adrp x1, extern 0x1000;
+            add w2, w1, #0x10
+        );
+        let rows = decode_arm64(&bytes, 0x500).unwrap();
+
+        assert_eq!(prefixes(rows), Vec::<String>::new());
     }
 
     #[test]

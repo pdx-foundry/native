@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use super::{
     InputError,
-    decode::{Instruction, decode_arm64, general_register, written_registers},
+    decode::{Instruction, decode_arm64, general_register, wide_register, written_registers},
     evaluate::ReadOnlyData,
     receivers::ConstructorImage,
     stop::Unresolved,
@@ -413,7 +413,7 @@ fn helper_factory(input: &DeclarationInput, helper: u64) -> Option<u64> {
             match (row.operation.as_str(), args.as_slice()) {
                 ("stp", [factory, second, "[x0]"]) if documentation.contains(second) => {
                     register_values(&rows[..index])
-                        .get(&general_register(factory)?)
+                        .get(&wide_register(factory)?)
                         .copied()
                 }
                 _ => None,
@@ -468,10 +468,10 @@ fn register_values(rows: &[Instruction]) -> BTreeMap<usize, u64> {
     for row in rows {
         let args: Vec<_> = row.operands.split(',').collect();
         let address = match (row.operation.as_str(), args.as_slice()) {
-            ("adrp", [destination, page]) => general_register(destination).zip(number(page)),
+            ("adrp", [destination, page]) => wide_register(destination).zip(number(page)),
             ("add", [destination, base, offset]) => {
-                let base = general_register(base).and_then(|base| values.get(&base));
-                general_register(destination).zip(added_address(base, offset))
+                let base = wide_register(base).and_then(|base| values.get(&base));
+                wide_register(destination).zip(added_address(base, offset))
             }
             _ => None,
         };

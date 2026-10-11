@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use super::{Caller, stand_in_command};
 use crate::engine::analysis::declarations::{Function, number};
 use crate::engine::analysis::decode::{
-    Instruction, decode_arm64, general_register, written_registers,
+    Instruction, decode_arm64, wide_register, written_registers,
 };
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use crate::engine::analysis::stop::Unresolved;
@@ -245,24 +245,24 @@ fn global_loads(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSet
     for row in rows {
         let operands: Vec<&str> = row.operands.split(',').collect();
         let formed = match (row.operation.as_str(), operands.as_slice()) {
-            ("adrp", [destination, page]) => general_register(destination).zip(number(page)),
+            ("adrp", [destination, page]) => wide_register(destination).zip(number(page)),
             ("add", [destination, base, offset]) => {
-                general_register(destination).zip(offset_from(&addresses, base, offset))
+                wide_register(destination).zip(offset_from(&addresses, base, offset))
             }
             ("ldr", [destination, base, offset]) if destination.starts_with('x') => {
                 let base = base.trim_start_matches('[');
                 let offset = offset.trim_end_matches(']');
                 offset_from(&addresses, base, offset).and_then(|address| {
                     loads.insert(address);
-                    general_register(destination).zip(pointers.get(&address).copied())
+                    wide_register(destination).zip(pointers.get(&address).copied())
                 })
             }
             ("ldr", [destination, base]) if destination.starts_with('x') => {
                 let base = base.trim_start_matches('[').trim_end_matches(']');
-                let base = general_register(base).and_then(|base| addresses.get(&base));
+                let base = wide_register(base).and_then(|base| addresses.get(&base));
                 base.copied().and_then(|address| {
                     loads.insert(address);
-                    general_register(destination).zip(pointers.get(&address).copied())
+                    wide_register(destination).zip(pointers.get(&address).copied())
                 })
             }
             _ => None,
@@ -280,6 +280,6 @@ fn global_loads(rows: &[Instruction], pointers: &BTreeMap<u64, u64>) -> BTreeSet
 /// The address `base` plus the immediate `offset`, when `base` holds a formed address.
 fn offset_from(addresses: &BTreeMap<usize, u64>, base: &str, offset: &str) -> Option<u64> {
     addresses
-        .get(&general_register(base)?)?
+        .get(&wide_register(base)?)?
         .checked_add(number(offset)?)
 }
