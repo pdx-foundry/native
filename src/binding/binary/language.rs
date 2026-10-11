@@ -264,6 +264,7 @@ pub(in crate::binding) fn localization(
         is_read_only(kind) || segment == "__DATA_CONST" || segment == "__DATA"
     })?;
 
+    let scope_names = text.scope_names(symbols, strings);
     Ok(LocalizationInput {
         functions: LocalizationFunctions {
             text_constructor,
@@ -280,7 +281,11 @@ pub(in crate::binding) fn localization(
         scope_object_code,
         data,
         rows,
-        scope_names: text.scope_names(symbols, strings).map(|table| table.names),
+        unread_scope_bits: scope_names
+            .as_ref()
+            .map(|table| table.unread.clone())
+            .unwrap_or_default(),
+        scope_names: scope_names.map(|table| table.names),
     })
 }
 

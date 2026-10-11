@@ -25,7 +25,8 @@ use std::sync::LazyLock;
 
 use super::commands::{OBJECT_SPAN, calls_any, forget_if_passed, stand_in_command};
 use super::declarations::{
-    self, DeclarationInput, DeclarationResult, ScopeOutcome, ScopeType, Site, number,
+    self, DeclarationInput, DeclarationResult, ScopeOutcome, ScopeType, Site, named_scope_types,
+    number,
 };
 use super::decode::{Instruction, decode_arm64};
 use super::evaluate::{Call, Code, Exit, Machine, Path};
@@ -582,15 +583,7 @@ impl<'a> Examiner<'a> {
                     .scope_names
                     .as_ref()
                     .ok_or(Unresolved::new("scope-set"))?;
-                Ok(names
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, name)| !name.is_empty())
-                    .map(|(bit, name)| ScopeType {
-                        bit,
-                        name: name.clone(),
-                    })
-                    .collect())
+                Ok(named_scope_types(names).collect())
             }
         }
     }

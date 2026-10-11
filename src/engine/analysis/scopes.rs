@@ -24,7 +24,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
-use super::declarations::{ScopeOutcome, ScopeType, number, scope_mask};
+use super::declarations::{ScopeOutcome, ScopeType, named_scope_types, number, scope_mask};
 use super::decode::{Instruction, wide_register, written_registers};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
@@ -131,16 +131,8 @@ pub fn scopes(input: &ScopeInput) -> Result<ScopeResult, InputError> {
 
     let names = input.scope_names.as_deref().unwrap_or_default();
     let mut scopes = Vec::new();
-    for (bit, name) in names
-        .iter()
-        .enumerate()
-        .filter(|(_, name)| !name.is_empty())
-    {
-        let keywords = keywords.remove(&(1u64 << bit)).unwrap_or_default();
-        let scope = ScopeType {
-            bit,
-            name: name.clone(),
-        };
+    for scope in named_scope_types(names) {
+        let keywords = keywords.remove(&(1u64 << scope.bit)).unwrap_or_default();
         scopes.push((scope, keywords));
     }
 

@@ -12,7 +12,7 @@ use crate::answer::{
 use crate::engine::analysis::callbacks::{
     self, CallbacksResult, Context, Family, Findings, METHOD, RuleFamily, Slot,
 };
-use crate::engine::analysis::declarations::ScopeType;
+use crate::engine::analysis::declarations::{ScopeType, scope_type};
 
 impl Native {
     /// The on_actions that the engine fires by name, each with the scopes that its call sites
@@ -180,15 +180,13 @@ impl<'a> Scopes<'a> {
         Self(names.as_deref())
     }
 
-    fn name(&self, bit: u32) -> Option<&'a String> {
-        self.0?.get(bit as usize).filter(|name| !name.is_empty())
+    fn scope(&self, bit: u32) -> Option<ScopeType> {
+        scope_type(self.0?, bit as usize)
     }
 
     fn reference(&self, bit: u32) -> Option<ScopeReference> {
-        let scope = ScopeType {
-            bit: bit as usize,
-            name: self.name(bit)?.clone(),
-        };
+        let scope = self.scope(bit)?;
+
         Some(ScopeReference {
             id: scope_id(&scope),
             name: scope.name,
@@ -254,7 +252,7 @@ pub(super) fn entries(
         .contexts
         .iter()
         .flat_map(slots)
-        .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.name(*bit).is_none()));
+        .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.scope(*bit).is_none()));
     if unreadable {
         gaps.push(gap(
             GapKind::UnreadableInput,

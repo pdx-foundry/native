@@ -414,14 +414,10 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
         ));
     }
     if !result.unread_types.is_empty() {
-        let bits: Vec<_> = result.unread_types.iter().map(usize::to_string).collect();
         gaps.push(gap(
             GapKind::UnresolvedPath,
             None,
-            format!(
-                "the scope name table tests bits {} but their names could not be read",
-                bits.join(", ")
-            ),
+            unread_scope_bits_detail(&result.unread_types),
         ));
     }
     if result.unnamed_keywords > 0 {
@@ -451,6 +447,16 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
     ));
 
     declared(ScopeInventory { types, groups }, gaps, build, SCOPE_METHOD)
+}
+
+/// The detail of a gap for scope-type bits that the scope name table tests but does not name.
+pub(super) fn unread_scope_bits_detail(bits: &[usize]) -> String {
+    let bits: Vec<_> = bits.iter().map(usize::to_string).collect();
+
+    format!(
+        "the scope name table tests bits {} but their names could not be read",
+        bits.join(", ")
+    )
 }
 
 pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Vec<ScopeLink>> {

@@ -225,6 +225,12 @@ contexts join scope types (`Ship (and Starbase)` joins `ship` and `starbase`; `S
 - `Planet` from `Deposit` selects planet or ship on some paths and returns without a new context
   on another.
 
+A scope type that the scope-name table tests but whose name the method cannot read has no join: the
+method cannot name it, and it may select any context. The answer then has an `UnreadableInput` gap
+that lists the bits, and every context is `Partial`, as for a missing table or an unresolved join.
+The `Partial` list keeps the joins of the readable scope types. M452 has no such bit. If a build
+does, run `join` for the unread bit and mark only the context that it selects.
+
 The prose of the dump names five unscoped forms. `GetYear` and `LastKilledCountryName` are also
 `Base Scope` rows and `GetDate` is a `Timeline Event` row; `GetMidGameDate` and `GetLateGameDate`
 are in no table. The unscoped forms are an `OutsideMethod` gap. Whether a command gives useful

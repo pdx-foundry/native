@@ -21,7 +21,7 @@
 use std::collections::BTreeSet;
 
 use super::InputError;
-use super::declarations::ScopeType;
+use super::declarations::{ScopeType, named_scope_types};
 use super::evaluate::{Call, Code, Exit, Machine, Path, ReadOnlyData};
 use super::stop::Unresolved;
 
@@ -88,6 +88,9 @@ pub struct LocalizationInput {
     pub rows: ReadOnlyData,
     /// Scope names indexed by scope-type bit, or `None` when the table was not read.
     pub scope_names: Option<Vec<String>>,
+    /// Scope-type bits that the table tests but whose names could not be read. Each has no
+    /// entry in `scope_names`.
+    pub unread_scope_bits: BTreeSet<usize>,
 }
 
 /// Every context with a table entry or selected by a link or a scope type, and the scope join.
@@ -97,6 +100,9 @@ pub struct LocalizationResult {
     /// Each named scope type and the context that it selects.
     pub joins: Vec<(ScopeType, Join)>,
     pub scope_table_missing: bool,
+    /// Scope-type bits that the table tests but whose names could not be read, in bit order. They
+    /// have no join: the method cannot say which context each selects.
+    pub unread_scope_bits: Vec<usize>,
 }
 
 /// One localization context and what it declares.
@@ -177,6 +183,7 @@ pub fn analyze(input: &LocalizationInput) -> Result<LocalizationResult, InputErr
         contexts,
         joins,
         scope_table_missing: input.scope_names.is_none(),
+        unread_scope_bits: input.unread_scope_bits.iter().copied().collect(),
     })
 }
 
@@ -374,16 +381,11 @@ fn output(input: &LocalizationInput, promote: u64, index: u64) -> Output {
 /// Run each scope type through the scope-object setter.
 fn joins(input: &LocalizationInput) -> Vec<(ScopeType, Join)> {
     let names = input.scope_names.as_deref().unwrap_or_default();
-    names
-        .iter()
-        .enumerate()
-        .filter(|(bit, name)| !name.is_empty() && *bit < 64)
-        .map(|(bit, name)| {
-            let scope = ScopeType {
-                bit,
-                name: name.clone(),
-            };
-            (scope, join(input, bit))
+    named_scope_types(names)
+        .filter(|scope| scope.bit < 64)
+        .map(|scope| {
+            let join = join(input, scope.bit);
+            (scope, join)
         })
         .collect()
 }
@@ -707,6 +709,7 @@ mod tests {
                 "split".into(),
                 "hidden".into(),
             ]),
+            unread_scope_bits: BTreeSet::new(),
         }
     }
 
@@ -822,6 +825,19 @@ mod tests {
             "a selected context without table entries is still a context of the result"
         );
         assert!(!result.scope_table_missing);
+    }
+
+    #[test]
+    fn an_unread_scope_bit_is_reported_and_the_named_bits_keep_their_joins() {
+        let control = analyze(&input()).unwrap();
+        let mut unread = input();
+        unread.unread_scope_bits = BTreeSet::from([1]);
+
+        let result = analyze(&unread).unwrap();
+
+        assert!(control.unread_scope_bits.is_empty());
+        assert_eq!(result.unread_scope_bits, [1]);
+        assert_eq!(result.joins, control.joins);
     }
 
     #[test]

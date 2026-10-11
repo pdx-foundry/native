@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 use super::Native;
-use super::language::{declared, gap, gap_for_subject};
+use super::language::{declared, gap, gap_for_subject, unread_scope_bits_detail};
 use super::questions::{error, scope_id};
 use crate::answer::{
     Answer, BuildId, ContextScopes, Error, Gap, GapKind, GapSubject, LocalizationCommand,
@@ -125,20 +125,28 @@ pub(crate) fn normalized_localization(
     )
 }
 
-/// Each context with the scope types that select it. With any scope type unresolved, no context
-/// can be `Joined` or `Missing`.
+/// Each context with the scope types that select it. With the scope name table missing, a scope
+/// type unresolved or a scope type unnamed, no context can be `Joined` or `Missing`.
 fn contexts(
     result: &LocalizationResult,
     names: &BTreeMap<u64, String>,
     gaps: &mut Vec<Gap>,
 ) -> Vec<LocalizationContext> {
     let mut selecting = BTreeMap::<u64, Vec<ScopeReference>>::new();
-    let mut unresolved = result.scope_table_missing;
+    let unnamed = !result.unread_scope_bits.is_empty();
+    let mut unresolved = result.scope_table_missing || unnamed;
     if result.scope_table_missing {
         gaps.push(gap(
             GapKind::UnreadableInput,
             None,
             "scope name table not found",
+        ));
+    }
+    if unnamed {
+        gaps.push(gap(
+            GapKind::UnreadableInput,
+            None,
+            unread_scope_bits_detail(&result.unread_scope_bits),
         ));
     }
 
@@ -297,6 +305,7 @@ fn sorted_references(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::answer::Completeness;
     use crate::engine::analysis::declarations::ScopeType;
     use crate::engine::analysis::localization::Context;
 
@@ -318,6 +327,7 @@ mod tests {
             }],
             joins: vec![(scope.clone(), Join::Unresolved(Unresolved::new("setter")))],
             scope_table_missing: false,
+            unread_scope_bits: Vec::new(),
         };
 
         let answer = normalized_localization(&result, BuildId("test".into()));
@@ -338,5 +348,77 @@ mod tests {
             id: scope_id(&scope),
             name: "Planet".into(),
         }));
+    }
+
+    fn context_with_name(value: u64, name: &str) -> Context {
+        Context {
+            value,
+            name: Some(name.into()),
+            commands: Ok(Vec::new()),
+            links: Ok(Vec::new()),
+        }
+    }
+
+    /// A context that the named scope type joins and a context that nothing joins.
+    fn joined_and_missing(unread_scope_bits: Vec<usize>) -> LocalizationResult {
+        let country = ScopeType {
+            bit: 2,
+            name: "country".into(),
+        };
+        LocalizationResult {
+            contexts: vec![
+                context_with_name(1, "Country"),
+                context_with_name(2, "Dead Object"),
+            ],
+            joins: vec![(country, Join::Context(1))],
+            scope_table_missing: false,
+            unread_scope_bits,
+        }
+    }
+
+    fn scopes_of(answer: &Answer<LocalizationDeclarations>, context: &str) -> ContextScopes {
+        answer
+            .value
+            .contexts
+            .iter()
+            .find(|candidate| candidate.name == context)
+            .expect("context is present")
+            .scopes
+            .clone()
+    }
+
+    #[test]
+    fn readable_scope_bits_leave_the_contexts_joined_or_missing() {
+        let answer =
+            normalized_localization(&joined_and_missing(Vec::new()), BuildId("test".into()));
+
+        assert_eq!(answer.completeness, Completeness::Complete);
+        assert!(
+            matches!(scopes_of(&answer, "Country"), ContextScopes::Joined(scopes) if scopes.len() == 1)
+        );
+        assert_eq!(scopes_of(&answer, "Dead Object"), ContextScopes::Missing);
+    }
+
+    #[test]
+    fn an_unread_scope_bit_makes_the_answer_partial_and_keeps_the_readable_joins() {
+        let answer = normalized_localization(&joined_and_missing(vec![5]), BuildId("test".into()));
+
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnreadableInput
+                    && gap.subject.is_none()
+                    && gap.detail.contains("bits 5"))
+        );
+        assert!(
+            matches!(scopes_of(&answer, "Country"), ContextScopes::Partial(scopes) if scopes.len() == 1 && scopes[0].name == "country")
+        );
+        assert_eq!(
+            scopes_of(&answer, "Dead Object"),
+            ContextScopes::Partial(Vec::new()),
+            "an unnamed scope type may select a context that no named type does"
+        );
     }
 }

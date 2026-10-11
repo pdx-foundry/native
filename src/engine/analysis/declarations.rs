@@ -645,15 +645,28 @@ pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
         if mask & (1u64 << index) == 0 {
             continue;
         }
-        let Some(name) = names.get(index).filter(|name| !name.is_empty()) else {
+        let Some(scope) = scope_type(names, index) else {
             return ScopeOutcome::Unresolved(Unresolved::new("scope-name"));
         };
-        listed.push(ScopeType {
-            bit: index,
-            name: name.clone(),
-        });
+        listed.push(scope);
     }
     ScopeOutcome::Listed(listed)
+}
+
+/// The scope type of `bit` when the scope-name table names it. An empty name marks a bit that
+/// the table does not test or whose name could not be read; the bit has no scope type.
+pub(crate) fn scope_type(names: &[String], bit: usize) -> Option<ScopeType> {
+    let name = names.get(bit).filter(|name| !name.is_empty())?;
+
+    Some(ScopeType {
+        bit,
+        name: name.clone(),
+    })
+}
+
+/// Every scope type that the scope-name table names, in bit order.
+pub(crate) fn named_scope_types(names: &[String]) -> impl Iterator<Item = ScopeType> + '_ {
+    (0..names.len()).filter_map(|bit| scope_type(names, bit))
 }
 
 fn create_rows(input: &DeclarationInput, address: u64, depth: usize) -> Option<Vec<Instruction>> {
