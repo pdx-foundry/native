@@ -27,9 +27,10 @@ pub struct DataSection {
 pub struct FieldInput {
     /// Bound signatures and layouts for compound key readers.
     pub key_readers: KeyReaders,
-    /// The template loader candidate whose fields are asked for.
+    /// The loader candidate whose fields are asked for. The binding establishes it:
+    /// `VerifiedAnalysis::field_input` refuses a record that the executable's catalog lacks.
     pub selection: CandidateRecord,
-    /// Executable symbol inventory used to verify selection and resolve calls.
+    /// Executable symbol inventory used to resolve calls.
     pub symbols: Vec<Symbol>,
     /// Root, token construction, rejection and bounded owner helper functions.
     pub functions: Vec<Function>,

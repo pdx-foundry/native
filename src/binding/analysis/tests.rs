@@ -200,6 +200,67 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
 }
 
 #[test]
+fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+
+    // The symbols that the key readers need, so that the held record reads.
+    let symbols = [
+        "CToken::CToken(CToken const&)",
+        "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
+        "CEventTarget::operator=(CEventTarget&&)",
+        "void CPdxArray<CString, int>::SetSizeAndEmplace<>(int, const&)",
+        "void CPdxOptional<CString>::SetEmplace<char const*>(char const*&&)",
+        "CReader::Read(CString&, bool)",
+        "CReader::Read(CPersistent&)",
+    ]
+    .into_iter()
+    .zip(0x9000..)
+    .map(|(name, address)| Symbol {
+        address,
+        name: name.into(),
+    })
+    .collect();
+    let held = CandidateRecord {
+        database: "CTraditionDatabase".into(),
+        owner_candidate: "CTraditionType".into(),
+        loader_class: "loader".into(),
+        address: 0x1000,
+        initial_loader: Some(0x2000),
+    };
+    let (_image, analysis) = fixture();
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: held.clone(),
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols,
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let verified = analysis.verified().unwrap();
+
+    assert!(verified.field_input(held.clone()).is_ok());
+    for foreign in [
+        CandidateRecord {
+            owner_candidate: "COther".into(),
+            ..held.clone()
+        },
+        CandidateRecord {
+            address: 0x1004,
+            ..held.clone()
+        },
+    ] {
+        assert!(matches!(
+            verified.field_input(foreign),
+            Err(AnalysisError::InvalidRange)
+        ));
+    }
+}
+
+#[test]
 fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root() {
     use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
     use crate::{Error, Native};

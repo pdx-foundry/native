@@ -436,13 +436,6 @@ fn altered_flags_and_external_branch_do_not_silently_drop_token_intervals() {
     }
 }
 #[test]
-fn a_foreign_selection_is_refused() {
-    let mut input = fixture();
-    input.selection.owner_candidate = "COther".into();
-    assert!(fields::analyze(&input).is_err());
-}
-
-#[test]
 fn conflicting_names_for_one_token_never_select_an_arbitrary_name() {
     let mut input = fixture();
     input.strings.insert(0x8010, "conflicting_field".into());
