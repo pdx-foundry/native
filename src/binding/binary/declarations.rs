@@ -204,15 +204,16 @@ fn parse_number(text: &str) -> Option<u64> {
     }
 }
 
+/// The one address of the symbol `name`. A name with no address or with several is an input
+/// error that says which.
 pub(super) fn unique(symbols: &[Symbol], name: &str) -> Result<u64, AnalysisError> {
-    let addresses: BTreeSet<_> = symbols
-        .iter()
-        .filter(|symbol| symbol.name == name)
-        .map(|symbol| symbol.address)
-        .collect();
-    (addresses.len() == 1)
-        .then(|| *addresses.first().unwrap())
-        .ok_or(AnalysisError::InvalidRange)
+    let addresses = addresses(symbols, name);
+
+    match addresses.len() {
+        0 => Err(InputError(format!("no symbol for {name}")).into()),
+        1 => Ok(addresses.into_iter().next().unwrap()),
+        count => Err(InputError(format!("{count} addresses for {name}")).into()),
+    }
 }
 
 /// Every address of one demangled symbol name. The same name can have several addresses, such as
@@ -570,6 +571,32 @@ mod tests {
         assert!(text.function(0x1004).is_err());
         assert_eq!(text.function_within(0x1004, 1024), None);
         assert_eq!(super::super::weight_blocks::body(&text, 0x1004), None);
+    }
+
+    #[test]
+    fn a_symbol_that_is_missing_or_has_several_addresses_is_an_input_error_that_names_it() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = [
+            symbol("One()", 0x10),
+            symbol("Alias()", 0x20),
+            symbol("Alias()", 0x20),
+            symbol("Two()", 0x30),
+            symbol("Two()", 0x40),
+        ];
+
+        assert_eq!(unique(&symbols, "One()"), Ok(0x10));
+        assert_eq!(unique(&symbols, "Alias()"), Ok(0x20));
+        assert_eq!(
+            unique(&symbols, "Missing()"),
+            Err(InputError("no symbol for Missing()".into()).into())
+        );
+        assert_eq!(
+            unique(&symbols, "Two()"),
+            Err(InputError("2 addresses for Two()".into()).into())
+        );
     }
 
     #[test]
