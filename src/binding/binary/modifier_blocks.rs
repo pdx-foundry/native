@@ -188,7 +188,7 @@ pub(in crate::binding) fn read(
         functions,
         symbols: image.symbols.to_vec(),
         pointers: image.pointers.clone(),
-        data: super::fields::read_only_data(image.bytes)?,
+        data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
         serializer_constructors,
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,

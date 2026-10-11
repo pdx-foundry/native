@@ -9,7 +9,7 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     families::StringLayout,
-    fields::{Token, recover_decoded},
+    fields::{DataSection, Token, recover_decoded},
 };
 use crate::{AnalysisError, DeclarationKind};
 
@@ -516,20 +516,30 @@ fn tested_name<'a>(rows: &[Instruction], strings: &'a BTreeMap<u64, String>) -> 
     strings.get(&(page + offset))
 }
 
-/// Read-only data that switch code loads: jump tables and string literals.
-pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError> {
+/// The read-only sections and string literals that code loads, as the file holds them: jump
+/// tables and text. Every static reader takes its constants from these sections.
+pub(super) fn read_only_sections(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
     let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
     let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
-    let mut sections = Vec::new();
-    for section in file.sections().filter(|section| {
-        matches!(
-            section.kind(),
-            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString
-        )
-    }) {
-        let data = section.data().map_err(|_| AnalysisError::InvalidRange)?;
-        sections.push((section.address(), data.to_vec()));
-    }
+    file.sections()
+        .filter(|section| super::language::is_read_only(section.kind()))
+        .map(|section| {
+            let data = section.data().map_err(|_| AnalysisError::InvalidRange)?;
+            Ok(DataSection {
+                address: section.address(),
+                bytes: data.to_vec(),
+            })
+        })
+        .collect()
+}
+
+/// [`read_only_sections`] as the memory that the evaluator loads from.
+pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError> {
+    let sections = read_only_sections(bytes)?
+        .into_iter()
+        .map(|section| (section.address, section.bytes))
+        .collect();
+
     Ok(ReadOnlyData::new(sections))
 }
 

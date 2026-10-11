@@ -3,12 +3,14 @@ use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
     evaluate::ReadOnlyData,
-    fields::{DataSection, FieldInput, Function, ObjectReader, PointReader, has_owner_receiver},
+    fields::{FieldInput, Function, ObjectReader, PointReader, has_owner_receiver},
 };
-use object::{Object, ObjectSection, SectionKind};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{declarations::Text, references::Image};
+use super::{
+    declarations::{Text, read_only_sections},
+    references::Image,
+};
 
 /// Largest body of a reader function that the field reader collects.
 const FUNCTION_LIMIT: u64 = 1024 * 1024;
@@ -94,24 +96,9 @@ pub(in crate::binding) fn read(
         symbols: symbols.to_vec(),
         functions,
         strings: strings.clone(),
-        read_only_data: read_only_data(bytes)?,
+        read_only_data: read_only_sections(bytes)?,
         gaps,
     })
-}
-
-pub(super) fn read_only_data(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
-    let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
-    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
-    file.sections()
-        .filter(|section| section.kind() == SectionKind::ReadOnlyData)
-        .map(|section| {
-            let bytes = section.data().map_err(|_| AnalysisError::InvalidRange)?;
-            Ok(DataSection {
-                address: section.address(),
-                bytes: bytes.to_vec(),
-            })
-        })
-        .collect()
 }
 
 /// Follow direct constructor and factory calls only; a symbol alone does not attach a nested
@@ -754,12 +741,14 @@ mod tests {
     use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_with_fixups};
 
     #[test]
-    fn the_field_input_holds_the_jump_tables_in_read_only_data() {
-        let sections = read_only_data(&macho_with_fixups(6)).unwrap();
+    fn the_read_only_sections_hold_the_jump_tables_and_the_string_literals() {
+        let sections = read_only_sections(&macho_with_fixups(6)).unwrap();
 
-        assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].address, 0x1_0000_3000);
-        assert_eq!(sections[0].bytes, IMAGE_JUMP_TABLE);
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].address, 0x1_0000_2000);
+        assert_eq!(sections[0].bytes, b"other\0\0\0entity_offset\0");
+        assert_eq!(sections[1].address, 0x1_0000_3000);
+        assert_eq!(sections[1].bytes, IMAGE_JUMP_TABLE);
     }
     /// The shape of the pointer insertion specialization: the count at `+0x14` is incremented
     /// on the path that has room and on the path that grows the buffer.

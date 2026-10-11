@@ -170,7 +170,7 @@ pub(in crate::binding) fn read(
         reader_token_offset: recipe.reader_token_offset,
         declarations,
         symbols: symbols.to_vec(),
-        data: super::fields::read_only_data(bytes)?,
+        data: super::declarations::read_only_sections(bytes)?,
         tokens,
         families,
     })
