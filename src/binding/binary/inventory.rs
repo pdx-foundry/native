@@ -7,6 +7,7 @@ use object::{Object, ObjectSection, ObjectSymbol, SectionKind, SymbolIndex};
 
 use super::{ImageIdentity, u32_at};
 use crate::engine::analysis::discovery::Symbol;
+use crate::work_directory::sha256;
 use crate::{AnalysisError, OpenError};
 
 /// One supported image, read without a layout, a recipe or fixups.
@@ -54,7 +55,7 @@ impl Inventory<'_> {
     /// The hashes, architecture and format of the image. Hashing reads every byte, so it is
     /// done only when asked.
     pub fn identity(&self) -> Result<ImageIdentity, OpenError> {
-        super::identify(self.bytes, &super::hash(self.bytes))
+        super::identify(self.bytes, &sha256(self.bytes))
     }
 
     /// `length` bytes at `address` from the one section that holds them.

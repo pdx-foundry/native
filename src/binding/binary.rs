@@ -2,8 +2,8 @@ use object::read::macho::{FatArch, MachOFatFile32, MachOFatFile64};
 use object::{
     Architecture, BinaryFormat, FileKind, Object, ObjectKind, ObjectSection, SectionKind,
 };
-use sha2::{Digest, Sha256};
 
+use crate::work_directory::sha256;
 use crate::{AnalysisError, OpenError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,17 +14,13 @@ pub(super) struct ImageIdentity {
     pub format: BinaryFormat,
 }
 
-pub(super) fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdentity, OpenError> {
     let slice = selected_slice(bytes)?;
     let file = object::File::parse(slice).map_err(|_| OpenError::MalformedExecutable)?;
     check_supported(&file)?;
     Ok(ImageIdentity {
         executable: executable_hash.into(),
-        slice: hash(slice),
+        slice: sha256(slice),
         architecture: file.architecture(),
         format: file.format(),
     })

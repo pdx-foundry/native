@@ -7,7 +7,8 @@ use std::{
     time::SystemTime,
 };
 
-use super::{binary::hash, targets::M45_DEFAULT_REGISTRIES};
+use super::targets::M45_DEFAULT_REGISTRIES;
+use crate::work_directory::sha256;
 use crate::{OpenError, UnavailableReason};
 
 /// SHA-256 of each content file, by its path relative to the installation root.
@@ -51,7 +52,7 @@ impl Installation {
             .collect();
         Ok((
             Self {
-                executable_hash: hash(&bytes),
+                executable_hash: sha256(&bytes),
                 executable_bytes: bytes.clone(),
                 executable_stamp,
                 content: content_snapshot(&root, &default_directories, false),
@@ -92,7 +93,7 @@ impl Installation {
 
     fn hashed(&self) -> Result<(), UnavailableReason> {
         let bytes = fs::read(&self.executable).map_err(|_| UnavailableReason::InputUnavailable)?;
-        if hash(&bytes) != self.executable_hash {
+        if sha256(&bytes) != self.executable_hash {
             return Err(UnavailableReason::TargetChanged);
         }
         Ok(())
@@ -276,7 +277,7 @@ fn content_snapshot(
                     .ok_or(UnavailableReason::InputUnavailable)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        snapshot.insert(components.join("/"), hash(&bytes));
+        snapshot.insert(components.join("/"), sha256(&bytes));
     }
     Ok(snapshot)
 }
