@@ -65,7 +65,6 @@ pub(crate) fn analyze(input: &ModifierBlockInput, numeric: &NumericFacts) -> Mod
         input.reader_token_offset,
         &input.key_readers,
     );
-    dispatch.bitwise_updates = true;
     dispatch.serializer_constructors = Some(&input.serializer_constructors);
     ModifierBlockFacts {
         points: input

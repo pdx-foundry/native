@@ -33,8 +33,8 @@
 //!   case that reaches a call is a `JumpTable` gap that names the table and the root. When a wide
 //!   interval that leaves through the table's guard does not end at the rejection, a case of
 //!   that table without a known reader is treated as the default.
-//! - Bit-field reads (`ubfx`, `and`) forget their result. A word integer read into a stack
-//!   temporary can join its reader; the join does not establish final member storage.
+//! - Bit-field reads and ORs (`ubfx`, `and`, `orr`) forget their result. A word integer read into
+//!   a stack temporary can join its reader; the join does not establish final member storage.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
 //! - Inputs: at most 128 functions and 4 MiB of aggregate code, with a 1 MiB per-function
