@@ -14,19 +14,24 @@
 //! A frame address, such as `x29 - 0x98` after the prologue sets `x29` from the stack pointer, is
 //! a stack address.
 //! A call clears the caller-saved registers, and any other instruction clears the register that
-//! it may write. It does not follow branches, so a value that arrives on another path is unknown.
+//! it may write. It does not follow branches, so a value that arrives on another path is unknown:
+//! the target of a conditional branch is a join, where the scan forgets every register and every
+//! built object. A loop before the literal is harmless, since the literal is built after it.
+//! The target of an unconditional `b` is not a join. If a constructor closes a loop with `b`
+//! before the base-constructor call, treat those targets as joins too.
 //! It stops at a return or an unconditional branch, since the next word is not reached from it.
-//! When a base-constructor call follows such a jump, the arguments found before it are not a
+//! When a base-constructor call follows the stop, the arguments found before it are not a
 //! proof: the call that the scan did not read may pass another directory.
 //! Exactly one distinct directory over all constructor bodies names the registry. None or several
 //! is a gap; the method never selects one of several.
 //!
 //! A database with a custom loader has no base-constructor directory. [`loader_directory`] takes
 //! the text literal that the database's own functions pass to the file enumeration instead, under
-//! the same rule: exactly one distinct literal, or a gap.
+//! the same rule: exactly one distinct literal, or a gap. An enumeration call after the stop is
+//! a literal that the scan did not read.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::decode::{add_immediate, adrp, sub_immediate};
+use super::decode::{add_immediate, adrp, conditional_branch_target, sub_immediate};
 
 /// Method revision recorded in each answer's source.
 pub const METHOD: &str = "registry-directories/v3";
@@ -114,9 +119,12 @@ struct Scan {
     passed: Vec<Passed>,
     /// What the first argument holds at each file-enumeration call.
     enumerated: Vec<Value>,
-    /// Whether a base-constructor call follows the jump that ended the scan, so the scan did not
+    /// Whether a base-constructor call follows the stop that ended the scan, so the scan did not
     /// read its argument.
     unread_base_call: bool,
+    /// Whether a file-enumeration call follows the stop that ended the scan, so the scan did not
+    /// read its first argument.
+    unread_enumeration: bool,
 }
 
 /// Linear scan of one function.
@@ -127,9 +135,14 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
     let mut objects: Vec<(Value, u64)> = Vec::new();
     let mut found = Scan::default();
     let words = function.code.as_chunks::<4>().0;
+    let joins = join_points(words, function.address);
     for (index, word) in words.iter().enumerate() {
         let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
+        if joins.contains(&address) {
+            registers.fill(Value::Unknown);
+            objects.clear();
+        }
         if let Some((destination, page)) = adrp(word, address) {
             registers[destination] = Value::Constant(page);
         } else if let Some((destination, source, offset, sign)) = add_immediate(word)
@@ -182,11 +195,12 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             registers[..=18].fill(Value::Unknown);
         } else if let Some(transfer) = unconditional_branch(word) {
             match transfer {
-                Transfer::Return => break,
-                Transfer::Jump => {
+                Transfer::Stop => {
                     let rest = &words[index + 1..];
                     found.unread_base_call =
                         calls_any(rest, address + 4, &anchors.base_constructors);
+                    found.unread_enumeration =
+                        calls_any(rest, address + 4, &anchors.file_enumerations);
                     break;
                 }
                 // The callee is unknown, so it may receive or change any object.
@@ -223,6 +237,19 @@ fn branch_with_link(word: u32, address: u64) -> Option<u64> {
     Some((address as i64).wrapping_add(offset) as u64)
 }
 
+/// The addresses in `words`, which start at `address`, that a conditional branch of the same
+/// function can reach.
+fn join_points(words: &[[u8; 4]], address: u64) -> BTreeSet<u64> {
+    words
+        .iter()
+        .enumerate()
+        .filter_map(|(index, word)| {
+            let at = address + index as u64 * 4;
+            conditional_branch_target(u32::from_le_bytes(*word), at)
+        })
+        .collect()
+}
+
 /// Whether any `bl` in `words`, which start at `address`, calls one of `targets`.
 fn calls_any(words: &[[u8; 4]], address: u64, targets: &BTreeSet<u64>) -> bool {
     words.iter().enumerate().any(|(index, word)| {
@@ -234,11 +261,9 @@ fn calls_any(words: &[[u8; 4]], address: u64, targets: &BTreeSet<u64>) -> bool {
 
 /// What an unconditional branch does to the scan.
 enum Transfer {
-    /// `ret` or an authenticated return: the function ends.
-    Return,
-    /// `b`, `br` or another register branch without link: the scan ends, but code after it may
-    /// still run.
-    Jump,
+    /// `ret`, `b`, `br` or another return or register branch without link: the scan ends, but
+    /// code after it may still run.
+    Stop,
     /// `blr` or an authenticated form: the scan continues after an unknown call.
     IndirectCall,
 }
@@ -246,18 +271,17 @@ enum Transfer {
 /// The transfer of an unconditional immediate or register branch word.
 fn unconditional_branch(word: u32) -> Option<Transfer> {
     if word & 0xfc00_0000 == 0x1400_0000 {
-        return Some(Transfer::Jump);
+        return Some(Transfer::Stop);
     }
     if word & 0xfe00_0000 != 0xd600_0000 {
         return None;
     }
 
-    // Bits 21 to 23 of the register-branch opcode are 001 for `blr` and 010 for `ret`, with
-    // their authenticated forms.
+    // Bits 21 to 23 of the register-branch opcode are 001 for `blr`, with its authenticated
+    // forms.
     Some(match word >> 21 & 0b111 {
         0b001 => Transfer::IndirectCall,
-        0b010 => Transfer::Return,
-        _ => Transfer::Jump,
+        _ => Transfer::Stop,
     })
 }
 
@@ -282,9 +306,9 @@ pub fn arguments(
     strings: &BTreeMap<u64, String>,
 ) -> Vec<Argument> {
     let scan = scan(constructor, anchors);
-    // Arguments read before a jump do not prove the directory when the code after it, which the
+    // Arguments read before a stop do not prove the directory when the code after it, which the
     // scan did not follow, calls the base constructor again.
-    let unread = (scan.unread_base_call && !scan.passed.is_empty()).then_some(Argument::Unknown);
+    let unread = scan.unread_base_call.then_some(Argument::Unknown);
     scan.passed
         .into_iter()
         .map(|passed| match passed {
@@ -331,12 +355,18 @@ pub fn loader_directory(
 ) -> Directory {
     let arguments: Vec<Argument> = functions
         .iter()
-        .flat_map(|function| scan(function, anchors).enumerated)
-        .map(|value| match value {
-            Value::Constant(literal) => {
-                directory_path(strings, literal).map_or(Argument::Unknown, Argument::Literal)
-            }
-            _ => Argument::Unknown,
+        .flat_map(|function| {
+            let scan = scan(function, anchors);
+            let unread = scan.unread_enumeration.then_some(Argument::Unknown);
+
+            scan.enumerated
+                .into_iter()
+                .map(|value| match value {
+                    Value::Constant(literal) => directory_path(strings, literal)
+                        .map_or(Argument::Unknown, Argument::Literal),
+                    _ => Argument::Unknown,
+                })
+                .chain(unread)
         })
         .collect();
 
@@ -406,13 +436,21 @@ mod tests {
 
         function(code.bytes())
     }
-    /// The ordinary shape, appended to `code`: literal, stack `CString`, base constructor.
-    fn temporary_in(code: &mut Arm64, literal: u64) {
+    /// A stack `CString` built from `literal`, appended to `code`.
+    fn build_in(code: &mut Arm64, literal: u64) {
         code.address(1, literal);
         arm64!(code; add x0, sp, #8);
         code.call(STRING);
+    }
+    /// The stack `CString` passed to the base constructor, appended to `code`.
+    fn pass_in(code: &mut Arm64) {
         arm64!(code; nop; add x1, sp, #8);
         code.call(BASE);
+    }
+    /// The ordinary shape, appended to `code`: literal, stack `CString`, base constructor.
+    fn temporary_in(code: &mut Arm64, literal: u64) {
+        build_in(code, literal);
+        pass_in(code);
     }
     fn temporary(literal: u64) -> Constructor {
         let mut code = Arm64::at(0x1000);
@@ -429,6 +467,13 @@ mod tests {
     fn jump(code: &mut Arm64) {
         arm64!(code; b extern 0x1100);
     }
+    const STOPS: [fn(&mut Arm64); 3] = [ret, branch_register, jump];
+    /// Conditional branches to the label `skip`, which the code defines further on.
+    const SKIPS: [fn(&mut Arm64); 3] = [
+        |code| arm64!(code; b.eq >skip),
+        |code| arm64!(code; cbz w0, >skip),
+        |code| arm64!(code; tbz w0, #3, >skip),
+    ];
     /// A complete `temporary` of `EXAMPLES`, then the stop `end`, then `rest`.
     fn stopped_after_temporary(end: fn(&mut Arm64), rest: fn(&mut Arm64)) -> Constructor {
         let mut code = Arm64::at(0x1000);
@@ -606,37 +651,69 @@ mod tests {
     }
 
     #[test]
-    fn a_base_constructor_call_after_a_jump_leaves_the_earlier_argument_unproven() {
+    fn a_base_constructor_call_after_a_stop_leaves_the_earlier_argument_unproven() {
         let skipped_call: fn(&mut Arm64) = |code| temporary_in(code, OTHER);
         let nothing_more: fn(&mut Arm64) = |code| arm64!(code; nop);
 
+        for stop in STOPS {
+            assert_eq!(
+                resolve(
+                    &[stopped_after_temporary(stop, skipped_call)],
+                    &BTreeMap::new()
+                ),
+                Directory::Missing
+            );
+            assert_eq!(
+                resolve(
+                    &[stopped_after_temporary(stop, nothing_more)],
+                    &BTreeMap::new()
+                ),
+                Directory::Named("common/examples".into())
+            );
+        }
+    }
+
+    #[test]
+    fn a_body_that_only_calls_the_base_constructor_after_a_stop_leaves_the_class_unnamed() {
+        let mut unread = Arm64::at(0x1000);
+        ret(&mut unread);
+        temporary_in(&mut unread, OTHER);
+
         assert_eq!(
             resolve(
-                &[stopped_after_temporary(jump, skipped_call)],
+                &[temporary(EXAMPLES), function(unread.bytes())],
                 &BTreeMap::new()
             ),
             Directory::Missing
         );
-        assert_eq!(
-            resolve(
-                &[stopped_after_temporary(ret, skipped_call)],
-                &BTreeMap::new()
-            ),
-            Directory::Named("common/examples".into())
-        );
-        assert_eq!(
-            resolve(
-                &[stopped_after_temporary(jump, nothing_more)],
-                &BTreeMap::new()
-            ),
-            Directory::Named("common/examples".into())
-        );
+    }
+
+    #[test]
+    fn an_enumeration_call_after_a_stop_leaves_the_loader_unproven() {
+        for stop in STOPS {
+            let mut skipped_call = Arm64::at(0x1000);
+            skipped_call.address(0, EXAMPLES).call(ENUMERATE);
+            stop(&mut skipped_call);
+            skipped_call.address(0, OTHER).call(ENUMERATE);
+            assert_eq!(
+                loader_directory(&[function(skipped_call.bytes())], &anchors(), &strings()),
+                Directory::Missing
+            );
+
+            let mut nothing_more = Arm64::at(0x1000);
+            nothing_more.address(0, EXAMPLES).call(ENUMERATE);
+            stop(&mut nothing_more);
+            arm64!(nothing_more; nop);
+            assert_eq!(
+                loader_directory(&[function(nothing_more.bytes())], &anchors(), &strings()),
+                Directory::Named("common/examples".into())
+            );
+        }
     }
 
     #[test]
     fn a_return_or_unconditional_branch_ends_the_scan() {
-        let stops: [fn(&mut Arm64); 3] = [ret, branch_register, jump];
-        for stop in stops {
+        for stop in STOPS {
             let mut code = Arm64::at(0x1000);
             stop(&mut code);
             temporary_in(&mut code, EXAMPLES);
@@ -646,5 +723,75 @@ mod tests {
                 Directory::Missing
             );
         }
+    }
+
+    #[test]
+    fn a_conditional_branch_that_skips_the_literal_leaves_the_registry_unnamed() {
+        for skip in SKIPS {
+            let mut code = Arm64::at(0x1000);
+            skip(&mut code);
+            build_in(&mut code, EXAMPLES);
+            arm64!(code; skip:);
+            pass_in(&mut code);
+
+            assert_eq!(
+                resolve(&[function(code.bytes())], &BTreeMap::new()),
+                Directory::Missing
+            );
+        }
+    }
+
+    #[test]
+    fn a_conditional_branch_that_skips_the_enumerated_literal_leaves_the_loader_unproven() {
+        for skip in SKIPS {
+            let mut code = Arm64::at(0x1000);
+            skip(&mut code);
+            code.address(0, EXAMPLES);
+            arm64!(code; skip:);
+            code.call(ENUMERATE);
+
+            assert_eq!(
+                loader_directory(&[function(code.bytes())], &anchors(), &strings()),
+                Directory::Missing
+            );
+        }
+    }
+
+    #[test]
+    fn a_conditional_branch_past_the_call_keeps_the_registry_named() {
+        for skip in SKIPS {
+            let mut code = Arm64::at(0x1000);
+            skip(&mut code);
+            temporary_in(&mut code, EXAMPLES);
+            arm64!(code; skip:; nop);
+
+            assert_eq!(
+                resolve(&[function(code.bytes())], &BTreeMap::new()),
+                Directory::Named("common/examples".into())
+            );
+        }
+    }
+
+    #[test]
+    fn a_loop_before_the_literal_keeps_the_directory_named() {
+        let loop_in = |code: &mut Arm64| {
+            arm64!(code; head:; sub w8, w8, #1; cbnz w8, <head);
+        };
+
+        let mut constructor = Arm64::at(0x1000);
+        loop_in(&mut constructor);
+        temporary_in(&mut constructor, EXAMPLES);
+        assert_eq!(
+            resolve(&[function(constructor.bytes())], &BTreeMap::new()),
+            Directory::Named("common/examples".into())
+        );
+
+        let mut enumerates = Arm64::at(0x1000);
+        loop_in(&mut enumerates);
+        enumerates.address(0, EXAMPLES).call(ENUMERATE);
+        assert_eq!(
+            loader_directory(&[function(enumerates.bytes())], &anchors(), &strings()),
+            Directory::Named("common/examples".into())
+        );
     }
 }
