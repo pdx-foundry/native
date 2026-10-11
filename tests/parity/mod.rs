@@ -356,7 +356,7 @@ fn declaration_inventory(answer: &Answer<Vec<Declaration>>) -> (Vec<String>, Val
 
 fn recovered_declarations(answer: &[Declaration], expected: &Value) -> Result<Value> {
     let mut recovered = expected.clone();
-    recovered["sdk_488_live_inventory"] = json!(answer.len());
+    recovered["static_declaration_count"] = json!(answer.len());
     for sample in recovered["recovered"]
         .as_array_mut()
         .ok_or("missing recovered samples")?
