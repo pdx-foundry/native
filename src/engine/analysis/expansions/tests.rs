@@ -50,11 +50,11 @@ fn message(literal: u64, target: u64) -> MessageSite {
     }
 }
 
-/// A function that forms the literal, then overwrites `x1` before the log call.
-fn overwritten_message() -> MessageSite {
+/// A function that forms the literal, then lets `overwrite` write `x1` before the log call.
+fn overwritten_message(overwrite: fn(&mut Arm64)) -> MessageSite {
     let mut code = Arm64::at(0x1000);
     code.address(1, MESSAGE);
-    arm64!(code; mov x1, x20);
+    overwrite(&mut code);
     code.call(LOG);
     MessageSite {
         rows: rows(code),
@@ -180,7 +180,8 @@ fn a_check_needs_its_literal_as_the_argument_of_a_message_call() {
     for site in [
         message(OTHER_MESSAGE, LOG),
         message(MESSAGE, OTHER_CALL),
-        overwritten_message(),
+        overwritten_message(|code| arm64!(code; mov x1, x20)),
+        overwritten_message(|code| arm64!(code; ldp x0, x1, [sp])),
         MessageSite {
             rows: Vec::new(),
             literal: MESSAGE,

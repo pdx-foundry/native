@@ -12,10 +12,11 @@
 //! Only these instructions keep facts: `adrp`, `add` and `sub` with an immediate or a register
 //! of known constants, `mov` of a register or an immediate, a 64-bit `ldr` from a constant, a
 //! loaded global or an address that an argument leads to, with or without pre-index writeback
-//! from a general register, and 64-bit stores and loads of stack slots. Any other instruction
-//! makes the registers that it may write unknown. A call makes `x0`–`x18` unknown and `x0` the
-//! result of that call; the result of a call to an offset getter, whose whole body is
-//! `add x0, x0, #k; ret`, is `x0` plus `k`. Stack offsets are relative to the stack pointer at
+//! from a general register, and 64-bit stores and loads of stack slots. A `mov`, `add` or `sub`
+//! to a 32-bit register keeps only the low half of constants; its other facts become unknown.
+//! Any other instruction makes the registers that it may write unknown. A call makes `x0`–`x18`
+//! unknown and `x0` the result of that call; the result of a call to an offset getter, whose
+//! whole body is `add x0, x0, #k; ret`, is `x0` plus `k`. Stack offsets are relative to the stack pointer at
 //! entry; the state also knows where the stack pointer is now, until it moves by an amount that is
 //! not known.
 //!
@@ -32,7 +33,7 @@
 //! fact even when a store or a call came between them.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::analysis::decode::{Instruction, general_register};
+use crate::engine::analysis::decode::{Instruction, general_register, written_registers};
 
 /// The most facts that one value holds before it becomes unknown.
 pub(super) const VALUE_LIMIT: usize = 16;
@@ -524,7 +525,7 @@ fn step(
                 }
                 (joined.len() <= VALUE_LIMIT).then_some(joined)
             });
-            state.set(destination, value);
+            state.set(destination, narrowed(value, operands[0]));
         }
         ("mov", ["sp", source]) => state.sp = moved_stack(state, source, "#0", &[], "add"),
         ("mov", [destination, source]) => {
@@ -532,13 +533,10 @@ fn step(
                 return;
             };
             let value = match immediate(source) {
-                Some(value) if source.starts_with('#') => single(Fact::Constant(truncate(
-                    value as u64,
-                    destination_is_wide(operands[0]),
-                ))),
+                Some(value) if source.starts_with('#') => single(Fact::Constant(value as u64)),
                 _ => offset(state, source, 0),
             };
-            state.set(destination, value);
+            state.set(destination, narrowed(value, operands[0]));
         }
         ("ldr", [destination, memory]) if destination.starts_with('x') && memory.ends_with(']') => {
             let Some(destination) = general_register(destination) else {
@@ -601,7 +599,7 @@ fn step(
             call(row.address, target, strings, offset_getters, state);
         }
         ("blr", _) => call(row.address, None, strings, offset_getters, state),
-        _ => clear_written(operation, &operands, strings, state),
+        _ => clear_written(row, &operands, strings, state),
     }
 }
 
@@ -838,47 +836,19 @@ fn load(state: &State, memory: &str) -> Value {
 }
 
 /// Make unknown every register that an instruction outside the followed forms may write.
-fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, state: &mut State) {
-    let writes_first = !(operation.starts_with("st") && !operation.contains("xr")
-        || operation.starts_with("b.")
-        || matches!(
-            operation,
-            "b" | "bl"
-                | "br"
-                | "blr"
-                | "cmp"
-                | "cmn"
-                | "tst"
-                | "ccmp"
-                | "ccmn"
-                | "fcmp"
-                | "fccmp"
-                | "cbz"
-                | "cbnz"
-                | "tbz"
-                | "tbnz"
-                | "ret"
-                | "nop"
-                | "brk"
-                | "prfm"
-                | "dmb"
-                | "dsb"
-                | "isb"
-                | "hint"
-        ));
-    if writes_first && let Some(first) = operands.first().and_then(|first| general_register(first))
-    {
-        state.clear(first);
-    }
-    if matches!(operation, "ldp" | "ldpsw" | "ldnp" | "ldaxp" | "ldxp")
-        && let Some(second) = operands.get(1).and_then(|second| general_register(second))
-    {
-        state.clear(second);
-    }
+fn clear_written(
+    row: &Instruction,
+    operands: &[&str],
+    strings: &StringFunctions,
+    state: &mut State,
+) {
+    let operation = row.operation.as_str();
     if operation.starts_with("st") && !operation.contains("xr") {
         forget_stored_strings(operation, operands, strings.object_size, state);
     }
+
     // Pre- or post-index addressing writes the base register back, moved by its offset.
+    let mut moved_bases = Vec::new();
     for position in 0..operands.len() {
         let Some(WriteBack { base, amount }) = write_back(operands, position) else {
             continue;
@@ -888,8 +858,15 @@ fn clear_written(operation: &str, operands: &[&str], strings: &StringFunctions, 
             state.sp = state.sp.map(|sp| sp + amount.unwrap_or(0));
         } else if let Some(index) = general_register(base) {
             let moved = amount.and_then(|amount| offset(state, base, amount));
-            state.set(index, moved);
+            moved_bases.push((index, moved));
         }
+    }
+
+    for register in written_registers(operation, &row.operands) {
+        state.clear(register);
+    }
+    for (index, moved) in moved_bases {
+        state.set(index, moved);
     }
 }
 
@@ -974,12 +951,20 @@ fn store_width(operation: &str, operands: &[&str]) -> i64 {
     }
 }
 
-fn destination_is_wide(text: &str) -> bool {
-    text.starts_with('x')
-}
+/// The value that a write to `destination` keeps. A 32-bit register keeps the low half of each
+/// constant; a symbolic fact names a 64-bit value, so its low half is unknown.
+fn narrowed(value: Value, destination: &str) -> Value {
+    if destination.starts_with('x') {
+        return value;
+    }
 
-fn truncate(value: u64, wide: bool) -> u64 {
-    if wide { value } else { value as u32 as u64 }
+    value?
+        .into_iter()
+        .map(|fact| match fact {
+            Fact::Constant(constant) => Some(Fact::Constant(constant as u32 as u64)),
+            _ => None,
+        })
+        .collect()
 }
 
 pub(super) fn immediate(text: &str) -> Option<i64> {
@@ -1015,4 +1000,70 @@ pub(super) fn split(text: &str) -> Vec<&str> {
         parts.push(&text[start..]);
     }
     parts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::analysis::assembler::arm64;
+    use crate::engine::analysis::decode::decode_arm64;
+
+    /// The state before the last instruction of `bytes`, authored at `0x1000`.
+    fn state_at_end(bytes: &[u8]) -> State {
+        let rows = decode_arm64(bytes, 0x1000).unwrap();
+        let last = rows.last().unwrap().address;
+        let mut end = None;
+        each_state(
+            &rows,
+            &StringFunctions::default(),
+            &BTreeMap::new(),
+            |row, state| {
+                if row.address == last {
+                    end = Some(state.clone());
+                }
+            },
+        );
+        end.unwrap()
+    }
+
+    #[test]
+    fn an_atomic_forgets_its_destination_and_keeps_its_source() {
+        let bytes = arm64!(at 0x1000;
+            mov x9, x1;
+            mov x8, x2;
+            ldaddal x9, x8, [x8];
+            ret
+        );
+        let state = state_at_end(&bytes);
+
+        assert_eq!(*state.register(9), single(Fact::Argument(1, 0)));
+        assert_eq!(*state.register(8), None);
+    }
+
+    #[test]
+    fn an_exclusive_pair_store_forgets_its_status_register() {
+        let bytes = arm64!(at 0x1000;
+            mov x9, x1;
+            stxp w9, x2, x3, [x0];
+            ret
+        );
+
+        assert_eq!(*state_at_end(&bytes).register(9), None);
+    }
+
+    #[test]
+    fn a_32_bit_write_keeps_the_low_half_of_a_constant_and_no_symbolic_fact() {
+        let bytes = arm64!(at 0x1000;
+            movn x11, #0;
+            mov w11, w11;
+            mov w9, w1;
+            add w12, w2, #8;
+            ret
+        );
+        let state = state_at_end(&bytes);
+
+        assert_eq!(*state.register(11), single(Fact::Constant(0xffff_ffff)));
+        assert_eq!(*state.register(9), None);
+        assert_eq!(*state.register(12), None);
+    }
 }

@@ -1,6 +1,6 @@
 //! Bounded reachability of token construction, with constant branch controls.
 use super::tokens::number;
-use crate::engine::analysis::decode::Instruction;
+use crate::engine::analysis::decode::{Instruction, general_register};
 use crate::engine::analysis::stop::{Bound, Obstacle, Unresolved};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -17,12 +17,7 @@ impl Constants {
         if matches!(operand, "xzr" | "wzr") {
             return Some(0);
         }
-        let index = operand
-            .strip_prefix('x')
-            .or_else(|| operand.strip_prefix('w'))?
-            .parse::<usize>()
-            .ok()?;
-        let value = (*self.registers.get(index)?)?;
+        let value = self.registers[general_register(operand)?]?;
         Some(if operand.starts_with('w') {
             value & 0xffff_ffff
         } else {
@@ -30,12 +25,7 @@ impl Constants {
         })
     }
     fn assign(&mut self, destination: &str, value: Option<u64>) {
-        let Some(index) = destination
-            .strip_prefix('x')
-            .or_else(|| destination.strip_prefix('w'))
-            .and_then(|s| s.parse::<usize>().ok())
-            .filter(|&i| i < 31)
-        else {
+        let Some(index) = general_register(destination) else {
             return;
         };
         self.registers[index] = value.map(|v| {

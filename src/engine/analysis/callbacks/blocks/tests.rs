@@ -2025,3 +2025,30 @@ fn a_truncated_virtual_target_does_not_prove_a_selected_blocks_evaluation() {
     );
     assert!(authored_selection(&bytes).analyze().blocks.is_empty());
 }
+
+#[test]
+fn a_32_bit_copy_of_the_vtable_does_not_name_a_virtual_evaluation() {
+    use crate::engine::analysis::assembler::{Arm64, arm64};
+    let evaluates = |narrow: bool| {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code;
+            mov x21, x0;
+            sub sp, sp, #0x200;
+            add x0, sp, #0x100;
+            bl extern FRESH as usize;
+            add x0, sp, #0x100;
+            bl extern SET_COUNTRY as usize;
+            add x0, x21, #0x40;
+            add x1, sp, #0x100;
+            ldr x8, [x0]
+        );
+        if narrow {
+            arm64!(code; mov w8, w8);
+        }
+        arm64!(code; ldr x8, [x8, #0x10]; blr x8; ret);
+        authored_selection(&code.bytes()).analyze()
+    };
+
+    assert_eq!(contexts(&evaluates(false), POTENTIAL), [fresh(COUNTRY)]);
+    assert!(evaluates(true).blocks.is_empty());
+}

@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::declarations::{ScopeOutcome, ScopeType, number, scope_mask};
-use super::decode::Instruction;
+use super::decode::{Instruction, general_register, written_registers};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
@@ -410,24 +410,28 @@ fn returned_value(machine: &Machine, exit: Exit) -> Result<u64, Unresolved> {
 /// that the code writes again no longer holds its page, unless a branch came between them: the
 /// write can be in code that the branch skips, and a missed prefix costs more than a false one.
 fn data_prefixes(input: &ScopeInput) -> Vec<String> {
-    let mut pages = BTreeMap::<String, Page>::new();
+    let mut pages = BTreeMap::<usize, Page>::new();
     let mut prefixes = BTreeSet::new();
     for row in &input.special_values {
         let arguments: Vec<_> = row.operands.split(',').collect();
+        let written = written_registers(&row.operation, &row.operands);
         match (row.operation.as_str(), arguments.as_slice()) {
             ("adrp", [register, page]) => {
-                pages.remove(*register);
+                let Some(register) = general_register(register) else {
+                    continue;
+                };
+                pages.remove(&register);
                 if let Some(address) = number(page) {
                     let page = Page {
                         address,
                         crossed_branch: false,
                     };
-                    pages.insert(register.to_string(), page);
+                    pages.insert(register, page);
                 }
             }
-            ("add", [destination, base, offset]) => {
-                let address = pages
-                    .get(*base)
+            ("add", [_, base, offset]) => {
+                let address = general_register(base)
+                    .and_then(|base| pages.get(&base))
                     .zip(number(offset))
                     .map(|(page, offset)| page.address + offset);
                 if let Some(text) = address.and_then(|address| input.data.string(address))
@@ -436,21 +440,15 @@ fn data_prefixes(input: &ScopeInput) -> Vec<String> {
                 {
                     prefixes.insert(text);
                 }
-                clear(&mut pages, &wide(destination));
+                clear(&mut pages, &written);
             }
-            ("bl" | "blr", _) => pages.retain(|register, _| !caller_saved(register)),
+            ("bl" | "blr", _) => pages.retain(|register, _| !written.contains(register)),
             (operation, _) if branches(operation) => {
                 for page in pages.values_mut() {
                     page.crossed_branch = true;
                 }
             }
-            (operation, [first, rest @ ..]) if writes_first_operand(operation) => {
-                let pair = rest.first().filter(|_| operation.starts_with("ldp"));
-                for register in std::iter::once(first).chain(pair) {
-                    clear(&mut pages, &wide(register));
-                }
-            }
-            _ => {}
+            _ => clear(&mut pages, &written),
         }
     }
     prefixes.into_iter().collect()
@@ -463,24 +461,9 @@ struct Page {
     crossed_branch: bool,
 }
 
-/// Forgets the page in `register` after a write, unless a branch may skip that write.
-fn clear(pages: &mut BTreeMap<String, Page>, register: &str) {
-    if pages.get(register).is_some_and(|page| !page.crossed_branch) {
-        pages.remove(register);
-    }
-}
-
-/// The 64-bit name of a general register, such as `x1` for `w1`.
-fn wide(register: &str) -> String {
-    register.replacen('w', "x", 1)
-}
-
-/// Whether a call may change `register`.
-fn caller_saved(register: &str) -> bool {
-    register
-        .strip_prefix('x')
-        .and_then(|index| index.parse::<u8>().ok())
-        .is_some_and(|index| index <= 18)
+/// Forgets the page in each `written` register, unless a branch may skip that write.
+fn clear(pages: &mut BTreeMap<usize, Page>, written: &[usize]) {
+    pages.retain(|register, page| page.crossed_branch || !written.contains(register));
 }
 
 /// Whether `operation` is a jump or a return, which can skip the instructions that follow it.
@@ -490,22 +473,6 @@ fn branches(operation: &str) -> bool {
             operation,
             "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
         )
-}
-
-/// Whether `operation` writes the register in its first operand. Stores, compares, branches and
-/// returns do not, but an exclusive store writes its status register there.
-fn writes_first_operand(operation: &str) -> bool {
-    let control = branches(operation) || matches!(operation, "brk" | "nop");
-    let compare = matches!(
-        operation,
-        "cmp" | "cmn" | "tst" | "ccmp" | "ccmn" | "fcmp" | "fccmp"
-    );
-    let exclusive_store = ["stxr", "stlxr", "stxp", "stlxp"]
-        .iter()
-        .any(|prefix| operation.starts_with(prefix));
-    let store = operation.starts_with("st") && !exclusive_store;
-
-    !control && !compare && !store && operation != "prfm"
 }
 
 #[cfg(test)]
