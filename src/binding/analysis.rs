@@ -91,6 +91,15 @@ impl FixtureLoader {
     }
 }
 
+/// The loaded modifier table's layout, with the two executable locations that it was read from.
+pub(in crate::binding) struct ModifierTable {
+    pub layout: crate::engine::analysis::modifier_table::Layout,
+    /// Entry of `CModifier::LogDefinitions`, which returns once the table is complete.
+    pub documentation_entry: u64,
+    /// Address of the definitions array header.
+    pub definitions: u64,
+}
+
 /// A registry's public root fields and the storage that the fixture reads for each.
 #[derive(Default)]
 pub(crate) struct FixtureRegistryFields {
@@ -191,22 +200,28 @@ impl VerifiedAnalysis<'_> {
 
     /// Derive the loaded arrays from the executable readers before authorizing live access.
     /// `string_tag_offset` is the bound CString length/long-form flag byte offset.
-    pub(in crate::binding) fn modifier_table_layout(
+    pub(in crate::binding) fn modifier_table(
         &self,
         string_tag_offset: u64,
-    ) -> Result<crate::engine::analysis::modifier_table::Layout, String> {
-        let input = binary::modifier_table::read(
+    ) -> Result<ModifierTable, String> {
+        let (input, documentation_entry) = binary::modifier_table::read(
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.pointers,
             string_tag_offset,
         )
         .map_err(|error| format!("modifier table input: {error}"))?;
-        crate::engine::analysis::modifier_table::derive(&input).map_err(|reason| {
+        let layout = crate::engine::analysis::modifier_table::derive(&input).map_err(|reason| {
             format!(
                 "modifier table layout was not established: {}",
                 reason.reason
             )
+        })?;
+
+        Ok(ModifierTable {
+            layout,
+            documentation_entry,
+            definitions: input.definitions,
         })
     }
 
@@ -331,8 +346,9 @@ impl VerifiedAnalysis<'_> {
             .filter_map(|(_, rows)| rows.last().map(|call| call.address))
             .collect();
         let table = self
-            .modifier_table_layout(recipe.short_string_length_offset)
-            .ok();
+            .modifier_table(recipe.short_string_length_offset)
+            .ok()
+            .map(|table| table.layout);
 
         binary::families::index(
             &self.executable,

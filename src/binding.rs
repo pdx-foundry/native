@@ -16,7 +16,6 @@ mod targets;
 mod tests;
 
 use crate::{OpenError, UnavailableReason};
-use binary::families::DEFINITIONS;
 
 /// Returns after content validation; the loaded modifier table is complete there.
 const MODIFIER_LOG_DEFINITIONS: &str = "CModifier::LogDefinitions()";
@@ -234,7 +233,7 @@ impl Binding {
             .analysis
             .verified()
             .map_err(|error| error.to_string())?;
-        let table = verified.modifier_table_layout(layout.string_tag_offset())?;
+        let table = verified.modifier_table(layout.string_tag_offset())?;
         let mut instances = std::collections::BTreeMap::new();
         for directory in registries {
             let candidate = named_candidate(verified.named_candidates(), directory)?;
@@ -246,11 +245,11 @@ impl Binding {
             instances.insert(directory.clone(), registry_instance(instance, key_offset));
         }
         Ok(groups::modifier_table_binding(
-            table,
+            table.layout,
             layout,
             groups::ModifierTableSymbols {
-                documentation_entry: verified.symbol(MODIFIER_LOG_DEFINITIONS)?,
-                definitions: verified.symbol(DEFINITIONS)?,
+                documentation_entry: table.documentation_entry,
+                definitions: table.definitions,
                 registries: instances,
             },
         ))
