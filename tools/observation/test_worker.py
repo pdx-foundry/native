@@ -294,12 +294,12 @@ class PauseTests(unittest.TestCase):
         self.assertEqual(worker.decide_pause(worker.progress), (True, None))
 
     def test_fixture_hooks_use_the_shared_names_for_field_outcomes(self):
-        outcome = dict(registry='common/traditions', load_entry=1, constructor_entry=2,
-                       reader_entry=3, member_entry=4, malformed_entry=5, unexpected_entry=6)
-        bindings = dict(outcome_registries=[outcome], validation=None)
+        outcome = dict(load_entry=1, constructor_entry=2, reader_entry=3, member_entry=4, inline=None)
+        bindings = dict(malformed_entry=5, unexpected_entry=6, validation=None)
         for diagnostics in [False, True]:
             with self.subTest(diagnostics=diagnostics):
-                config = dict(validation=False, bindings=bindings, file='common/traditions/example.txt',
+                config = dict(validation_complete_entry=None, registry=outcome, bindings=bindings,
+                              file='common/traditions/example.txt',
                               questions=[dict(index=0, definition='one', token=1, diagnostics=diagnostics)])
                 observer = worker.FixtureObserver(config)
                 expected = ['fixture_load', 'fixture_constructor', 'fixture_reader', 'fixture_member']
@@ -343,8 +343,11 @@ class ParserObservationTests(unittest.TestCase):
         question = dict(index=0, definition='one', field='potential', token=1,
                         parsing=True, diagnostics=True, reader_id='block', reader_family='Trigger',
                         reader_kind='Block', storage=None, storage_unavailable='No storage decoder')
-        self.observer = worker.FixtureObserver(dict(validation=False, file=self.file,
-            bindings=dict(fields=[], outcome_registries=[], validation=None), questions=[question]))
+        registry = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
+            reader_return=40, inline=None)
+        self.observer = worker.FixtureObserver(dict(validation_complete_entry=None, file=self.file,
+            registry=registry, bindings=dict(malformed_entry=50, unexpected_entry=60, validation=None),
+            questions=[question]))
         self.observer.loading = True
         self.observer.definitions['one'] = dict(owner=0x2000, line=1)
         self.observer.emit = Mock()
@@ -384,7 +387,7 @@ class ParserObservationTests(unittest.TestCase):
 
     def test_initial_file_load_enables_logs_without_the_validation_terminal(self):
         self.observer.bindings['validation'] = dict(log_entry=1, unformatted_log_entry=2,
-            stream_log_entry=3, sourced_log_entry=4, complete_entry=5)
+            stream_log_entry=3, sourced_log_entry=4)
         self.assertEqual(len(self.observer.diagnostic_hooks()), 4)
         self.assertEqual(self.observer.validation_hooks(), [])
         for name, _ in self.observer.diagnostic_hooks():
@@ -398,8 +401,9 @@ class ParserObservationTests(unittest.TestCase):
 
     def test_validation_return_keeps_all_bound_logs_and_disables_parser_entries(self):
         self.observer.validation = True
+        self.observer.config['validation_complete_entry'] = 5
         self.observer.bindings['validation'] = dict(log_entry=1, unformatted_log_entry=2,
-            stream_log_entry=3, sourced_log_entry=4, complete_entry=5)
+            stream_log_entry=3, sourced_log_entry=4)
         self.observer.finish_questions = Mock()
         retained = [name for name, _ in self.observer.diagnostic_hooks() + self.observer.validation_hooks()]
         retained += [protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']]
@@ -572,7 +576,7 @@ class ParserObservationTests(unittest.TestCase):
         self.observer.on_validated(7)
         self.assertFalse(worker.progress.fixture_pending)
         kinds = [call.args[0] for call in self.observer.emit.call_args_list]
-        self.assertEqual(kinds, ['validation-complete', 'diagnostics-unavailable', 'end'])
+        self.assertEqual(kinds, ['validation-complete', 'diagnostics-terminal', 'end'])
         with self.assertRaises(RuntimeError):
             self.observer.on_validated(7)
 
@@ -584,8 +588,8 @@ class NumericStorageTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
 
     def test_scoped_storage_keeps_literal_and_reference_slots_independent(self):
-        observer = worker.FixtureObserver(dict(validation=False, file='common/synthetic/test.txt',
-            bindings=dict(fields=[], outcome_registries=[]), questions=[]))
+        observer = worker.FixtureObserver(dict(validation_complete_entry=None, file='common/synthetic/test.txt',
+            registry=dict(inline=None), bindings=dict(), questions=[]))
         layout = dict(literal=80, location=16, trigger=48, script_value=56,
                       modifier=64, modifier_unset=999, variable=96)
         address = 0x2030
@@ -600,8 +604,8 @@ class NumericStorageTests(unittest.TestCase):
             has_modifier=False, variable='older_variable')})
 
     def test_signed_storage_uses_the_bound_width_and_owner_offset(self):
-        observer = worker.FixtureObserver(dict(validation=False, file='common/synthetic/test.txt',
-            bindings=dict(fields=[], outcome_registries=[]), questions=[]))
+        observer = worker.FixtureObserver(dict(validation_complete_entry=None, file='common/synthetic/test.txt',
+            registry=dict(inline=None), bindings=dict(), questions=[]))
         for decoder, width, raw, expected in [
             ('Integer', 4, 0x80000000, {'Integer': -2147483648}),
             ('Integer', 4, 0x7fffffff, {'Integer': 2147483647}),
@@ -632,12 +636,12 @@ class NestedFixtureTests(unittest.TestCase):
             storage=dict(offset=80, decoder={'FixedPoint': {'scale': 32768}}),
             storage_unavailable=None, reader_id='reader', reader_kind='FixedPoint', reader_family='NotApplicable',
             parsing=True, diagnostics=True)
-        binding = dict(registry='common/example', load_entry=10, reader_entry=20, constructor_entry=24,
-            member_entry=30, reader_return=40, malformed_entry=50, unexpected_entry=60, fields=[],
-            inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
-        config = dict(file='common/example/nested.txt', questions=[self.question], validation=False,
-            bindings=dict(outcome_registries=[binding], validation=dict(log_entry=1,
-                unformatted_log_entry=2, stream_log_entry=3, sourced_log_entry=4, complete_entry=5)))
+        binding = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
+            reader_return=40, inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
+        config = dict(file='common/example/nested.txt', questions=[self.question],
+            validation_complete_entry=None, registry=binding,
+            bindings=dict(malformed_entry=50, unexpected_entry=60, validation=dict(log_entry=1,
+                unformatted_log_entry=2, stream_log_entry=3, sourced_log_entry=4)))
         self.observer = worker.InlineFixtureObserver(config)
         self.observer.loading = True
         self.observer.thread = 7

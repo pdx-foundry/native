@@ -326,13 +326,12 @@ class FixtureObserver:
     def __init__(self, config):
         self.config = config
         self.bindings = config['bindings']
-        registry = config['file'].rsplit('/', 1)[0]
-        self.outcome_binding = next((item for item in self.bindings['outcome_registries'] if item['registry'] == registry), None)
+        self.outcome_binding = config['registry']
         self.questions = {item['index']: item for item in config['questions']}
         self.requested_definitions = {item['definition'] for item in config['questions']}
         self.question_by_token = {(item['definition'], item['token']): item for item in config['questions'] if item['token'] is not None}
         self.diagnostics_requested = any(item['diagnostics'] for item in config['questions'])
-        self.validation = config['validation']
+        self.validation = config['validation_complete_entry'] is not None
         self.validation_finished = False
         self.control = fault_control(request, 'fixture')
         self.loading = False
@@ -359,14 +358,14 @@ class FixtureObserver:
     def validation_hooks(self):
         if not self.validation:
             return []
-        return [(protocol.HOOK['fixture_validated'], self.bindings['validation']['complete_entry'])]
+        return [(protocol.HOOK['fixture_validated'], self.config['validation_complete_entry'])]
 
     def hooks(self):
         load_entry = self.outcome_binding['load_entry']
         hooks = [(protocol.HOOK['fixture_load'], load_entry)]
         hooks.extend(self.diagnostic_hooks())
         hooks.extend(self.validation_hooks())
-        if self.questions and self.outcome_binding:
+        if self.questions:
             hooks.extend([
                 (protocol.HOOK['fixture_constructor'], self.outcome_binding['constructor_entry']),
                 (protocol.HOOK['fixture_reader'], self.outcome_binding['reader_entry']),
@@ -374,8 +373,8 @@ class FixtureObserver:
             ])
             if self.diagnostics_requested:
                 hooks.extend([
-                    (protocol.HOOK['fixture_malformed'], self.outcome_binding['malformed_entry']),
-                    (protocol.HOOK['fixture_unexpected'], self.outcome_binding['unexpected_entry']),
+                    (protocol.HOOK['fixture_malformed'], self.bindings['malformed_entry']),
+                    (protocol.HOOK['fixture_unexpected'], self.bindings['unexpected_entry']),
                 ])
         return hooks
 
@@ -456,11 +455,7 @@ class FixtureObserver:
 
     def finish_diagnostics(self, thread):
         if self.diagnostics_requested:
-            if self.outcome_binding:
-                self.emit('diagnostics-terminal', thread, count=self.diagnostics)
-            else:
-                self.emit('diagnostics-unavailable', thread,
-                    reason='Parser diagnostics are outside this registry binding')
+            self.emit('diagnostics-terminal', thread, count=self.diagnostics)
 
     def on_load(self, frame, process, thread, registers):
         file = string(process, register(frame, registers['file']))
@@ -476,7 +471,7 @@ class FixtureObserver:
             self.emit('field-authority', thread, question=index,
                 reader_id=question['reader_id'], reader_kind=question['reader_kind'], reader_family=question['reader_family'],
                 storage_decoder=decoder, unavailable=question['storage_unavailable'])
-        if self.questions and self.outcome_binding:
+        if self.questions:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
         else:
@@ -762,8 +757,8 @@ class InlineFixtureObserver(FixtureObserver):
                      for entry in sorted({selector.member_entry for selector in self.selectors}))
         if self.diagnostics_requested:
             hooks.extend([
-                (protocol.HOOK['fixture_malformed'], binding['malformed_entry']),
-                (protocol.HOOK['fixture_unexpected'], binding['unexpected_entry']),
+                (protocol.HOOK['fixture_malformed'], self.bindings['malformed_entry']),
+                (protocol.HOOK['fixture_unexpected'], self.bindings['unexpected_entry']),
             ])
         hooks.extend(self.diagnostic_hooks())
         return hooks
@@ -1193,7 +1188,7 @@ def run(debugger):
     diagnostics.update()
     progress = SessionProgress()
     fixture = FixtureObserver(request['fixture']) if request['fixture'] else None
-    if fixture and fixture.outcome_binding and fixture.outcome_binding.get('inline'):
+    if fixture and fixture.outcome_binding['inline']:
         fixture = InlineFixtureObserver(request['fixture'])
     modifiers = ModifierObserver(request['modifiers']) if request['modifiers'] else None
     control = request['fault']['control'] if request['fault'] else protocol.CONTROL['normal']

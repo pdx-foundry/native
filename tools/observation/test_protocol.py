@@ -35,21 +35,19 @@ class ProtocolTests(unittest.TestCase):
                     durations=dict(complete=True, stored=[dict(stored, **{field: value})]))}))
 
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
-        outcome = dict(registry='common/traditions', load_entry=16384, reader_entry=16400,
-                       reader_return=16416, constructor_entry=16432, member_entry=16448,
-                       malformed_entry=16464, unexpected_entry=16480,
-                       fields=[dict(token=10001, name='custom_tooltip',
-                       storage=dict(offset=448, decoder="String"))])
-        fixture = dict(file='common/traditions/atlas.txt', validation=False, questions=[],
+        outcome = dict(load_entry=16384, reader_entry=16400, reader_return=16416,
+                       constructor_entry=16432, member_entry=16448, inline=None)
+        fixture = dict(file='common/traditions/atlas.txt', validation_complete_entry=None, questions=[],
+                       registry=outcome,
                        bindings=dict(validation=None, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
-                       outcome_registries=[outcome]))
+                       malformed_entry=16464, unexpected_entry=16480))
         request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
                        registries={}, fault=None, deadline_seconds=180,
                        fixture=fixture, modifiers=None, script_checks=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
-        outcome['fields'][0]['token'] = 'not an integer'
+        outcome['load_entry'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
 

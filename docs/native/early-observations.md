@@ -82,7 +82,9 @@ Pitfalls:
   the call's line ([script expansion](script-expansion.md)).
 - **Manual relationships remain per build.** The binding still supplies the parser diagnostic
   entry points, the `CString` representation, the reader and lexer source layout and the
-  launch-thread window. A new build must reverify them.
+  launch-thread window. A new build must reverify them. The loader hooks of every registry,
+  `common/traditions` included, come from the loader method, and the validation terminal from
+  the `CModifier::LogDefinitions()` symbol; do not pin them.
 
 ## Numeric fixture storage
 

@@ -17,6 +17,9 @@ mod tests;
 
 use crate::{OpenError, UnavailableReason};
 
+/// Returns after content validation; the loaded modifier table is complete there.
+const MODIFIER_LOG_DEFINITIONS: &str = "CModifier::LogDefinitions()";
+
 fn named_candidate<'a>(
     candidates: &'a [NamedCandidate],
     directory: &str,
@@ -259,7 +262,7 @@ impl Binding {
             table,
             layout,
             groups::ModifierTableSymbols {
-                documentation_entry: verified.symbol("CModifier::LogDefinitions()")?,
+                documentation_entry: verified.symbol(MODIFIER_LOG_DEFINITIONS)?,
                 definitions: verified.symbol(
                     "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions",
                 )?,
@@ -484,28 +487,20 @@ pub(crate) use platform::observation::Observer;
 
 impl ExecutionPlan {
     fn fixture_question_setup(
-        bindings: &crate::protocol::observation::FixtureBinding,
         fields: &[crate::Field],
+        fixture_fields: &[crate::protocol::observation::FixtureOutcomeFieldBinding],
         index: usize,
         question: &crate::FixtureFieldQuestion,
     ) -> crate::protocol::observation::FixtureQuestionSetup {
+        let mut setup =
+            crate::protocol::observation::FixtureQuestionSetup::unresolved(index, question);
         let field = fields
             .iter()
             .find(|field| question.parent_field.is_none() && field.name == question.field);
-        let exact = bindings
-            .outcome_registries
+        let exact = fixture_fields
             .iter()
-            .find(|binding| binding.registry == question.registry)
-            .and_then(|binding| {
-                binding
-                    .fields
-                    .iter()
-                    .find(|field| question.parent_field.is_none() && field.name == question.field)
-            });
-        let reader_kind = field
-            .map(|field| field.reader.kind)
-            .unwrap_or(crate::ReaderKind::Unknown);
-        let storage_unavailable = match (field, exact) {
+            .find(|field| question.parent_field.is_none() && field.name == question.field);
+        setup.storage_unavailable = match (field, exact) {
             (None, _) => Some("The field is not established by registry_fields".into()),
             (Some(_), None) => Some("No exact-build storage binding for this field".into()),
             (Some(_), Some(binding)) if binding.storage.is_none() => {
@@ -513,72 +508,56 @@ impl ExecutionPlan {
             }
             _ => None,
         };
-        crate::protocol::observation::FixtureQuestionSetup {
-            index: index as u64,
-            definition: question.definition.clone(),
-            field: question.field.clone(),
-            nested: None,
-            parent_field: question.parent_field.clone(),
-            parsing: question.parsing,
-            diagnostics: question.diagnostics,
-
-            reader_id: field.and_then(|field| field.reader.id.as_ref().map(|id| id.0.clone())),
-            reader_kind,
-            reader_family: field.map_or(crate::BlockFamily::Unknown, |field| field.reader.family),
-            token: exact.map(|field| field.token),
-            storage: exact.and_then(|field| field.storage),
-            storage_unavailable,
+        if let Some(field) = field {
+            setup.reader_id = field.reader.id.as_ref().map(|id| id.0.clone());
+            setup.reader_kind = field.reader.kind;
+            setup.reader_family = field.reader.family;
         }
+
+        if let Some(exact) = exact {
+            setup.token = Some(exact.token);
+            setup.storage = exact.storage;
+        }
+
+        setup
     }
 
-    /// Give field questions an outcome binding for the fixture registry: its loader, when the
-    /// build binding has none, and the storage that its reader arguments prove. Returns
-    /// the registry's analyzed fields.
-    fn bind_fixture_registry(
-        &self,
-        registry: &str,
-        bindings: &mut crate::protocol::observation::FixtureBinding,
-    ) -> Result<Vec<crate::Field>, crate::supervisor::SupervisorError> {
+    /// Derive the fixture registry's loader hooks and resolve each field question against the
+    /// storage that its reader arguments prove.
+    fn ordinary_fixture(
+        analysis: &BoundAnalysis,
+        fixture: &crate::FixtureRequest,
+    ) -> Result<
+        (
+            crate::protocol::observation::FixtureOutcomeRegistryBinding,
+            Vec<crate::protocol::observation::FixtureQuestionSetup>,
+        ),
+        crate::supervisor::SupervisorError,
+    > {
         use crate::supervisor::SupervisorError;
 
-        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-            SupervisorError("No static reader authority for fixture questions".into())
-        })?;
         let analysis_error = |error: crate::AnalysisError| SupervisorError(error.to_string());
-        let bound = bindings
-            .outcome_registries
-            .iter()
-            .any(|binding| binding.registry == registry);
-        if !bound {
-            let Some(loader) = analysis.fixture_loader(registry).map_err(analysis_error)? else {
-                return Err(SupervisorError(
-                    "Fixture registry has no verified loader and owner boundary".into(),
-                ));
-            };
-            let mut selected = bindings.outcome_registries[0].clone();
-            selected.registry = registry.into();
-            selected.load_entry = loader.load_entry;
-            selected.reader_entry = loader.reader_entry;
-            selected.reader_return = loader.reader_return;
-            selected.constructor_entry = loader.constructor_entry;
-            selected.member_entry = loader.member_entry;
-            bindings.outcome_registries.push(selected);
-        }
-
+        let registry = fixture.registry();
+        let Some(loader) = analysis.fixture_loader(registry).map_err(analysis_error)? else {
+            return Err(SupervisorError(
+                "Fixture registry has no verified loader and owner boundary".into(),
+            ));
+        };
         let fields = analysis
             .registry_fields(registry)
             .map_err(analysis_error)?
             .unwrap_or_default();
         let fixture_fields = analysis.fixture_fields(registry).map_err(analysis_error)?;
-        if let Some(binding) = bindings
-            .outcome_registries
-            .iter_mut()
-            .find(|binding| binding.registry == registry)
-        {
-            binding.fields = fixture_fields;
-        }
+        let questions = fixture
+            .field_questions
+            .iter()
+            .enumerate()
+            .map(|(index, question)| {
+                Self::fixture_question_setup(&fields, &fixture_fields, index, question)
+            })
+            .collect();
 
-        Ok(fields)
+        Ok((loader.outcome_binding(), questions))
     }
 
     fn fixture_setup(
@@ -586,41 +565,45 @@ impl ExecutionPlan {
         fixture: &crate::FixtureRequest,
     ) -> Result<crate::protocol::observation::FixtureSetup, crate::supervisor::SupervisorError>
     {
-        let mut bindings = self.operation().fixture.clone().ok_or_else(|| {
-            crate::supervisor::SupervisorError("No fixture binding for this build".into())
+        use crate::supervisor::SupervisorError;
+
+        let bindings = self
+            .operation()
+            .fixture
+            .clone()
+            .ok_or_else(|| SupervisorError("No fixture binding for this build".into()))?;
+        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
+            SupervisorError("No static reader authority for fixture questions".into())
         })?;
-        let validation = fixture.window == crate::FixtureWindow::InitialFileLoadAndValidation;
-        if validation && bindings.validation.is_none() {
-            return Err(crate::supervisor::SupervisorError(
-                "No fixture validation binding for this build".into(),
-            ));
-        }
-        if let Some(analysis) = &self.binding.analysis
-            && let Some((inline, questions)) = analysis
-                .inline_fixture(fixture, &bindings.outcome_registries[0])
-                .map_err(crate::supervisor::SupervisorError)?
-        {
-            bindings.outcome_registries.push(inline);
-            return Ok(crate::protocol::observation::FixtureSetup {
-                file: fixture.file().into(),
-                validation: false,
-                questions,
-                bindings,
-            });
-        }
-        let fields = self.bind_fixture_registry(fixture.registry(), &mut bindings)?;
-        let questions = fixture
-            .field_questions
-            .iter()
-            .enumerate()
-            .map(|(index, question)| {
-                Self::fixture_question_setup(&bindings, &fields, index, question)
-            })
-            .collect();
+        let validation_complete_entry =
+            if fixture.window == crate::FixtureWindow::InitialFileLoadAndValidation {
+                if bindings.validation.is_none() {
+                    return Err(SupervisorError(
+                        "No fixture validation binding for this build".into(),
+                    ));
+                }
+                let verified = analysis
+                    .verified()
+                    .map_err(|error| SupervisorError(error.to_string()))?;
+                Some(
+                    verified
+                        .symbol(MODIFIER_LOG_DEFINITIONS)
+                        .map_err(SupervisorError)?,
+                )
+            } else {
+                None
+            };
+        let (registry, questions) =
+            match analysis.inline_fixture(fixture).map_err(SupervisorError)? {
+                Some(inline) => inline,
+                None => Self::ordinary_fixture(analysis, fixture)?,
+            };
+
         Ok(crate::protocol::observation::FixtureSetup {
             file: fixture.file().into(),
-            validation,
+            validation_complete_entry,
             questions,
+            registry,
             bindings,
         })
     }

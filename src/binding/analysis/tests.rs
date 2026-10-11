@@ -42,6 +42,13 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let relic_fields = analysis.fixture_fields("common/relics").unwrap();
     assert!(relic_fields.iter().any(|field| field.name == "portrait"
         && field.storage.map(|storage| storage.offset) == Some(728)));
+    assert_eq!(
+        analysis
+            .verified()
+            .unwrap()
+            .symbol(super::super::MODIFIER_LOG_DEFINITIONS),
+        Ok(0x10097181c)
+    );
 }
 
 use crate::engine::analysis::analysis_support as support;
@@ -123,6 +130,64 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
     let mut unknown = names;
     unknown.push("common/undeclared".into());
     assert!(plan.registry_bindings(&unknown).is_err());
+}
+
+#[test]
+fn every_fixture_registry_refuses_without_a_derived_loader() {
+    use crate::binding::{Binding, ExecutionPlan, compose};
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+
+    // A loader body with no call to its LoadFromReader.
+    let loader = std::iter::repeat_n(0xd503201fu32, 64)
+        .flat_map(u32::to_le_bytes)
+        .collect::<Vec<_>>();
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("image");
+    fs::write(&path, support::macho_with_text(&loader)).unwrap();
+    let (installation, _) = Installation::open(&path).unwrap();
+    let analysis = BoundAnalysis::new(None, None, installation.clone(), Default::default());
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: CandidateRecord {
+                database: "CTraditionDatabase".into(),
+                owner_candidate: "CTraditionType".into(),
+                loader: "loader".into(),
+                address: "0x1000".into(),
+                initial_loader: Some("0x2000".into()),
+                has_named_member_reader: true,
+            },
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+
+    let plan = ExecutionPlan {
+        binding: Binding {
+            invalidated: analysis.invalidated.clone(),
+            analysis: Some(std::sync::Arc::new(analysis)),
+            operation: Some(compose::synthetic_variation()),
+            installation,
+        },
+    };
+    let request = crate::FixtureRequest::field_outcomes(
+        "common/traditions/native.txt",
+        "tr_native = { }",
+        vec![crate::FixtureFieldQuestion::new(
+            "common/traditions",
+            "tr_native",
+            "custom_tooltip",
+        )],
+    );
+    let error = plan.fixture_setup(&request).unwrap_err();
+    assert_eq!(
+        error.0,
+        "Fixture registry has no verified loader and owner boundary"
+    );
 }
 
 #[test]
@@ -1086,13 +1151,7 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
                 .with_parent_field("requirements"),
         ],
     );
-    let base = super::super::groups::fixture(&[
-        super::super::targets::BindingGroupId::M452CategoryFixture,
-    ])
-    .unwrap()
-    .outcome_registries
-    .remove(0);
-    let (binding, questions) = analysis.inline_fixture(&request, &base).unwrap().unwrap();
+    let (binding, questions) = analysis.inline_fixture(&request).unwrap().unwrap();
     assert_eq!(binding.inline.unwrap().key_storage.offset, 8);
     assert_eq!(binding.load_entry, 0x100b9df4c);
     assert_eq!(binding.reader_entry, 0x100b9dfbc);

@@ -21,6 +21,8 @@ fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
         file_name_offset: 0x20,
         string_tag_offset: M45_TEMPLATE_LAYOUT.string_tag_offset,
         file_line_offset: 8,
+        malformed_entry: 0x1025b5500,
+        unexpected_entry: 0x1025b5288,
         validation: Some(crate::protocol::observation::FixtureValidationBinding {
             log_entry: 0x10250b6f4,
             log_text_register: "x4".into(),
@@ -32,25 +34,9 @@ fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
             sourced_log_owner_register: "x19".into(),
             sourced_log_source_offset: 0x28,
             sourced_log_generated_frame_offset: 0x50,
-            complete_entry: 0x10097181c,
             source_file_prefix: "file: ".into(),
             source_line_prefix: " line: ".into(),
         }),
-
-        outcome_registries: vec![
-            crate::protocol::observation::FixtureOutcomeRegistryBinding {
-                registry: "common/traditions".into(),
-                load_entry: 0x100ce48ac,
-                reader_entry: 0x100ce5b8c,
-                reader_return: 0x100ce491c,
-                constructor_entry: 0x100cdd9c0,
-                member_entry: 0x100cddfc8,
-                malformed_entry: 0x1025b5500,
-                unexpected_entry: 0x1025b5288,
-                fields: Vec::new(),
-                inline: None,
-            },
-        ],
     }
 }
 
