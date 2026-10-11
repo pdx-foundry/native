@@ -16,6 +16,7 @@ use crate::engine::analysis::{
         loading::{Function, Loading},
     },
     modifier_table::Layout,
+    readers::thunk_target,
 };
 
 use super::super::targets::DeclarationRecipe;
@@ -620,20 +621,14 @@ fn function(address: u64, name: &str) -> Function {
     }
 }
 
-/// The thunks of each root in `roots`: `non-virtual thunk to <root>` and `{virtual override
-/// thunk(…, <root>)}`. A thunk adjusts `this` and runs its root; the compiler may give it a copy
-/// of the root's body instead of a branch to the root.
+/// The thunks of each root in `roots`. A thunk adjusts `this` and runs its root; the compiler may
+/// give it a copy of the root's body instead of a branch to the root.
 fn thunks(symbols: &[Symbol], names: &Names, roots: &BTreeSet<u64>) -> BTreeMap<u64, u64> {
     let mut thunks = BTreeMap::new();
     for &root in roots {
         for name in names.of(root) {
-            let non_virtual = format!("non-virtual thunk to {name}");
-            let virtual_override = format!(", {name})}}");
             for symbol in symbols {
-                let thunk = symbol.name == non_virtual
-                    || (symbol.name.starts_with("{virtual override thunk(")
-                        && symbol.name.ends_with(&virtual_override));
-                if thunk {
+                if thunk_target(&symbol.name) == Some(name) {
                     thunks.insert(symbol.address, root);
                 }
             }
@@ -1077,11 +1072,15 @@ mod tests {
                 "{virtual override thunk({offset(-56)}, CItem::InitPostRead())}",
             ),
             symbol(0x400, "non-virtual thunk to COther::InitPostRead()"),
+            symbol(
+                0x500,
+                "{virtual override thunk({offset(-56)}, {offset(8)}, CItem::InitPostRead())}",
+            ),
         ];
         let names = Names::new(&symbols);
         assert_eq!(
             thunks(&symbols, &names, &BTreeSet::from([0x100])),
-            BTreeMap::from([(0x200, 0x100), (0x300, 0x100)])
+            BTreeMap::from([(0x200, 0x100), (0x300, 0x100), (0x500, 0x100)])
         );
     }
 

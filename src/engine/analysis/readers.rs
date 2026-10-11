@@ -71,6 +71,34 @@ pub(crate) fn is_member(callee: &str) -> bool {
         || callee.ends_with("::ReadMember(CReader&, int, EScopeType)")
 }
 
+/// The function that the thunk symbol `name` runs, or `None` when `name` is not a thunk. A thunk
+/// is `non-virtual thunk to <target>` or `{virtual override thunk(<offset>, <target>)}`; a
+/// covariant return adds a second offset before the target.
+pub(crate) fn thunk_target(name: &str) -> Option<&str> {
+    if let Some(target) = name.strip_prefix("non-virtual thunk to ") {
+        return Some(target);
+    }
+
+    let offsets_and_target = name
+        .strip_prefix("{virtual override thunk(")?
+        .strip_suffix(")}")?;
+    let mut target = after_call_offset(offsets_and_target)?;
+    while let Some(after) = after_call_offset(target) {
+        target = after;
+    }
+
+    Some(target)
+}
+
+/// The text after a leading `{offset(…)}` or `{virtual offset(…)}` of a thunk symbol.
+fn after_call_offset(text: &str) -> Option<&str> {
+    let group = text
+        .strip_prefix("{offset(")
+        .or_else(|| text.strip_prefix("{virtual offset("))?;
+
+    Some(group.split_once("}, ")?.1)
+}
+
 /// Scope argument in the established scoped-reader ABI, after the token for a member reader.
 pub(crate) fn scope_argument<'a>(
     callee: &str,
@@ -325,6 +353,32 @@ mod tests {
     use super::*;
     use crate::engine::analysis::stop::Unresolved;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn a_thunk_name_gives_the_function_that_it_runs() {
+        let target = "A::ReadMember(CReader&, int)";
+
+        for name in [
+            "non-virtual thunk to A::ReadMember(CReader&, int)",
+            "{virtual override thunk({offset(-8)}, A::ReadMember(CReader&, int))}",
+            "{virtual override thunk({virtual offset(-8, -16)}, A::ReadMember(CReader&, int))}",
+            "{virtual override thunk({offset(-8)}, {offset(16)}, A::ReadMember(CReader&, int))}",
+        ] {
+            assert_eq!(thunk_target(name), Some(target), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_thunk_has_no_thunk_target() {
+        for name in [
+            "A::ReadMember(CReader&, int)",
+            "{virtual override thunk(A::ReadMember(CReader&, int))}",
+            "{virtual override thunk({offset(-8)}, A::ReadMember(CReader&, int))",
+            "{lambda(int)#1}::operator()(int) const",
+        ] {
+            assert_eq!(thunk_target(name), None, "{name}");
+        }
+    }
 
     #[test]
     fn a_word_integer_reader_can_join_a_stack_temporary() {

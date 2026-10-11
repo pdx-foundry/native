@@ -26,7 +26,8 @@ pub struct ReaderSpec {
 
 /// One helper's code. A failed decode is kept as one unresolved site.
 pub struct ReadSite {
-    pub symbol: String,
+    /// The namespace and name that the helper's symbol joins, such as `NCameraFOV`.
+    pub key: String,
     pub address: u64,
     pub rows: Result<Vec<Instruction>, &'static str>,
 }
@@ -178,19 +179,8 @@ fn read_key(
     };
     let namespace = (0..31)
         .filter_map(string)
-        .find(|namespace| helper_key(&site.symbol) == Some(format!("{namespace}{name}")))?;
+        .find(|namespace| site.key == format!("{namespace}{name}"))?;
     Some((namespace, name, spec.value_type))
-}
-
-fn helper_key(symbol: &str) -> Option<String> {
-    let helper = symbol
-        .strip_prefix("NDefines::CDefineRegistryHelper_")
-        .or_else(|| symbol.strip_prefix("NUncheckedDefines::CDefineRegistryHelper_"))?;
-    Some(
-        helper
-            .strip_suffix("::ReadDefine(CDefinesContainer const&)")?
-            .into(),
-    )
 }
 
 fn address(operand: &str) -> Option<u64> {
@@ -214,18 +204,18 @@ mod tests {
     fn input(rows: Vec<Instruction>, value_type: Option<DefineValueType>) -> DefineInput {
         DefineInput {
             sites: vec![ReadSite {
-                symbol: "NDefines::CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesContainer const&)".into(),
+                key: "NCameraFOV".into(),
                 address: 0x1000,
                 rows: Ok(rows),
             }],
             readers: BTreeMap::from([(
                 0x5000,
-                ReaderSpec { value_type, source: ReaderSource::Container },
+                ReaderSpec {
+                    value_type,
+                    source: ReaderSource::Container,
+                },
             )]),
-            strings: BTreeMap::from([
-                (0x2100, "NCamera".into()),
-                (0x3100, "FOV".into()),
-            ]),
+            strings: BTreeMap::from([(0x2100, "NCamera".into()), (0x3100, "FOV".into())]),
             data: ReadOnlyData::default(),
         }
     }
