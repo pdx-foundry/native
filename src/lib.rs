@@ -47,7 +47,6 @@ pub use dynamic_name::{
     CommandReference, DynamicNameForm, DynamicNameKind, DynamicNamespace, DynamicNamespaceId,
     NamespaceOwner,
 };
-pub(crate) use engine::operations::registry_items::GameReadiness;
 pub use expansion::{
     CallForm, ExpansionCheck, ExpansionDefinitions, ExpansionHost, ExpansionMechanism,
     ExpansionStage, MissingParameter, ParameterForm, ScriptExpansion,
@@ -74,6 +73,7 @@ pub use numeric::{
     NumericBound, NumericConversion, NumericLiteralSyntax, NumericRange, NumericRepresentation,
     NumericSignedness,
 };
+pub(crate) use protocol::session::GameReadiness;
 pub use scoped_numeric::{ScopedOperand, ScopedOperandForm, ScopedReferenceKind};
 pub use script::{
     ForeignScriptDiagnostic, ScriptCheck, ScriptDiagnostic, ScriptObservation, ScriptStage,

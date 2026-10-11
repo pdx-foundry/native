@@ -64,20 +64,10 @@ pub(crate) enum Reply {
     Ready,
     /// The game is held at its pause, with what the session established about each registry.
     Paused {
-        readiness: crate::GameReadiness,
+        readiness: session::GameReadiness,
         fixture: Box<Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>>,
-        modifiers: Box<
-            Option<
-                Result<
-                    crate::engine::operations::loaded_modifiers::ObservedModifiers,
-                    crate::Error,
-                >,
-            >,
-        >,
-        registries: std::collections::BTreeMap<
-            String,
-            crate::engine::operations::registry_items::RegistryItems,
-        >,
+        modifiers: Box<Option<Result<session::ObservedModifiers, crate::Error>>>,
+        registries: std::collections::BTreeMap<String, session::RegistryItems>,
     },
     /// Acknowledges a registry, fixture or modifier read.
     ObservationRead { request: u64 },

@@ -64,7 +64,8 @@ The private `binding` subtree contains composition, target records, platform lea
 leaves. Its root exposes only the bound interfaces that the API, supervision, and engine operations
 need. Shared operation logic receives bound interfaces and cannot name the concrete descendants.
 Platform services do not import game-build records. Binary and machine code does not import Atlas
-concepts.
+concepts. `protocol` defines the wire types and imports nothing from `engine::operations`, whose
+reducers read them.
 
 Enforce this with module privacy. `binding::targets` is private to `binding`; lookup functions use
 `pub(super)` or `pub(in crate::binding)`. Platform leaves are private children of

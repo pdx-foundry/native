@@ -805,10 +805,9 @@ mod tests {
             "the launched stub did not join the worker group"
         );
         let raw = fs::read(root.path().join("raw-trace.jsonl")).unwrap();
-        let record: crate::engine::operations::event_stream::WorkerRecord =
-            serde_json::from_slice(&raw).unwrap();
+        let record: observation::WorkerRecord = serde_json::from_slice(&raw).unwrap();
         assert!(
-            matches!(record.event, crate::engine::operations::event_stream::WorkerEvent::CapabilityUnavailable { reason } if reason.contains("debugger attach timed out"))
+            matches!(record.event, observation::WorkerEvent::CapabilityUnavailable { reason } if reason.contains("debugger attach timed out"))
         );
         assert!(
             group_members(group, Duration::from_secs(1))

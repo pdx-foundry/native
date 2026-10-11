@@ -19,54 +19,12 @@
 //! No diagnostic gives a complete answer. Any diagnostic gives a partial answer that keeps the
 //! accepted items, or no answer when the registry was not observed at all. An empty complete
 //! answer therefore means an empty registry, never "could not look".
-use super::event_stream::{OwnerEvent, PauseCause, WorkerEvent, WorkerRecord, single};
-use serde::{Deserialize, Serialize};
+use super::event_stream::{OwnerEvent, single};
+use crate::protocol::{
+    observation::{PauseCause, WorkerEvent, WorkerRecord},
+    session::{GameReadiness, Observed, RegistryItems},
+};
 use std::collections::BTreeSet;
-
-/// Where the supervised game is held.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum GameReadiness {
-    /// Every observed registry returned from its initial loader; the game stays paused.
-    AfterRegistryInitialization,
-    /// Only a part of the observed registries returned before the pause.
-    DuringRegistryInitialization,
-    /// All content has loaded: the game is held where the engine documents its modifiers,
-    /// before it shows its main menu. Requested with `GameOptions::loaded_modifiers`.
-    AfterContentLoad,
-}
-
-/// How much of one registry's collection the session established.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum Observed {
-    /// Every slot was read and every witness agrees.
-    Complete,
-    /// The registry was observed, but a witness is missing. The accepted items are kept.
-    Partial,
-    /// The hook was active, but this loader did not return before the session paused. The
-    /// diagnostic says what ended the session first.
-    NotLoaded,
-    /// The loader ran, but the binding cannot read this registry's item layout.
-    Unsupported,
-    /// The registry was not observed: no activation or no access.
-    Unavailable,
-}
-
-impl Observed {
-    /// Whether the registry has an answer for the caller: its items were read, with or without
-    /// a gap.
-    pub(crate) fn has_answer(self) -> bool {
-        matches!(self, Self::Complete | Self::Partial)
-    }
-}
-
-/// The items of one registry, in the engine's collection order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct RegistryItems {
-    pub items: Vec<String>,
-    pub observed: Observed,
-    /// Each missing or inconsistent witness. Empty exactly when `observed` is `Complete`.
-    pub diagnostics: Vec<String>,
-}
 
 /// Reduce the streams to the items of the registry `name`.
 pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent]) -> RegistryItems {

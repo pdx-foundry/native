@@ -5,173 +5,11 @@
 //! starts at 1 and has no holes. The supervisor keeps its own owner events: what it did to the
 //! game and worker processes, and what it confirmed about them.
 //!
-//! The operations in this module's siblings join the two streams. A record that is missing,
-//! damaged, or from another session can only make an answer less complete, never more complete.
+//! The worker's records are wire types, which [`crate::protocol::observation`] defines. The
+//! operations in this module's siblings join the two streams. A record that is missing, damaged,
+//! or from another session can only make an answer less complete, never more complete.
+use crate::protocol::observation::{FixtureEvent, Hook, WorkerEvent, WorkerRecord};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-
-/// One record of the worker's stream.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct WorkerRecord {
-    /// Position in the stream, from 1. A hole means that a record was lost.
-    pub seq: u64,
-    /// Game thread on which the event occurred, when the event has one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thread: Option<u64>,
-    /// Attempt identity of the session that wrote the record.
-    pub run: String,
-    #[serde(flatten)]
-    pub event: WorkerEvent,
-}
-
-/// State of one debugger hook immediately before the game resumes.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Hook {
-    pub enabled: bool,
-    pub locations: u64,
-    pub resolved: u64,
-    pub hits: u64,
-}
-impl Hook {
-    /// Whether the hook is enabled at exactly one resolved location and has not been hit.
-    pub fn active_before_resume(&self) -> bool {
-        self.enabled && self.locations == 1 && self.resolved == 1 && self.hits == 0
-    }
-}
-
-/// The top stack frame of one game thread at the suspended launch.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub(crate) struct Frame {
-    pub function: String,
-}
-
-/// What the worker saw. `owner` and `object` are engine addresses as hexadecimal text; they
-/// join records to each other and never leave the supervisor.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub(crate) enum WorkerEvent {
-    /// Events of the bounded consumer fixture window.
-    Fixture { event: super::fixture::FixtureEvent },
-    /// The worker set its hooks; the debugger has not attached yet. `hooks` names every hook the
-    /// session requires, including one that a fault control leaves out.
-    HooksRequested { hooks: Vec<String> },
-    /// The debugger attached to the game while it was still suspended at its first instruction.
-    LaunchStopped {
-        error: String,
-        pid: u64,
-        triple: String,
-        frames: Vec<Frame>,
-    },
-    /// Every hook in this map was in place before the game ran any code.
-    HooksActiveBeforeResume { hooks: BTreeMap<String, Hook> },
-    /// The worker let the game run.
-    Resume { error: String },
-    /// A registry's loader was entered. `owner` is the loader's receiver.
-    RegistryLoadStart {
-        name: String,
-        owner: String,
-        directory: String,
-    },
-    /// The same loader returned to its caller.
-    RegistryLoadReturned { name: String, owner: String },
-    /// The worker started to read the collection, which holds `count` slots.
-    RegistrySnapshot {
-        name: String,
-        owner: String,
-        directory: String,
-        count: u64,
-    },
-    /// One slot of the collection.
-    RegistryEntry {
-        name: String,
-        owner: String,
-        index: u64,
-        object: String,
-        key: String,
-    },
-    /// The terminal of one registry: the worker's own count of entries, and the sequence number
-    /// that the worker gave this record.
-    RegistryEnd {
-        name: String,
-        owner: String,
-        count: u64,
-        #[serde(rename = "producerLastSequence")]
-        producer_last_sequence: u64,
-    },
-    /// The worker could not observe this registry.
-    RegistryUnavailable { name: String, reason: String },
-    /// The collection was reached, but this binding cannot read its item keys.
-    RegistryUnsupported { name: String, reason: String },
-    /// The engine entered the function that documents its modifiers.
-    ModifierDocumentationEntered,
-    /// The worker read the modifier table when that function returned, and wrote it once to
-    /// `loaded-modifiers.json`: `count` entries, in a file of `bytes` bytes with this SHA-256.
-    ModifierTable {
-        count: u64,
-        bytes: u64,
-        sha256: String,
-    },
-    /// The terminal of the modifier observation, and the sequence number that the worker gave
-    /// this record.
-    ModifierTableEnd {
-        count: u64,
-        #[serde(rename = "producerLastSequence")]
-        producer_last_sequence: u64,
-    },
-    /// The worker could not read the modifier table.
-    ModifierUnavailable { reason: String },
-    /// The game is held at a safe pause, after these registries returned from their loaders.
-    /// `cause` says what ended the observation and left the game held.
-    SessionPaused {
-        returned: Vec<String>,
-        cause: PauseCause,
-    },
-    /// The debugger could not attach, a hook was missing or late, or the supervisor's permission
-    /// to resume did not arrive.
-    CapabilityUnavailable { reason: String },
-    /// The game was not suspended at its first instruction when the debugger attached.
-    EarlyActivationUnavailable { reason: String },
-    /// A hook callback failed outside the observation of one registry.
-    CallbackError {
-        #[serde(default)]
-        error: String,
-    },
-    /// The game stopped on a native exception.
-    NativeException {
-        #[serde(default)]
-        reason: String,
-    },
-    /// The worker reached the point where the worker-loss fault stops it.
-    WorkerLossReady,
-    /// The worker ended in order.
-    WorkerFinished,
-}
-
-impl WorkerEvent {
-    /// The cause that the worker named when it failed: an unavailable capability or early
-    /// activation, a callback error or a native exception. Any other event names none.
-    pub(crate) fn failure_reason(&self) -> Option<&str> {
-        match self {
-            Self::CapabilityUnavailable { reason }
-            | Self::EarlyActivationUnavailable { reason }
-            | Self::NativeException { reason } => Some(reason),
-            Self::CallbackError { error } => Some(error),
-            _ => None,
-        }
-    }
-}
-
-/// Why the worker held the game where it did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum PauseCause {
-    /// Every registry whose hook was active returned from its initial loader.
-    LoadersReturned,
-    /// The engine's modifier documentation returned, after all content loaded.
-    ContentLoaded,
-    /// The worker's deadline passed first, and the worker stopped the game where it was.
-    Deadline,
-}
 
 /// What the supervisor did and confirmed, in order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,7 +52,7 @@ pub(crate) fn read_worker_stream(raw: &[u8], attempt: &str) -> (Vec<WorkerRecord
                 WorkerEvent::RegistryEnd { .. }
                     | WorkerEvent::ModifierTableEnd { .. }
                     | WorkerEvent::Fixture {
-                        event: super::fixture::FixtureEvent::End { .. }
+                        event: FixtureEvent::End { .. }
                     }
             )
         });

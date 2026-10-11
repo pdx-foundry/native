@@ -336,7 +336,7 @@ fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, Supervi
 }
 
 fn worker_exit_result(
-    records: &[event_stream::WorkerRecord],
+    records: &[protocol::observation::WorkerRecord],
 ) -> Result<SessionOutcome, SupervisorError> {
     let cause = records
         .iter()
@@ -624,7 +624,7 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 mod tests {
     use super::*;
-    use crate::engine::operations::registry_items::Observed;
+    use crate::protocol::session::Observed;
     use std::{
         os::unix::fs::PermissionsExt,
         process::{Command, Stdio},

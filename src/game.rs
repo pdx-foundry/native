@@ -5,9 +5,9 @@
 //! fixture and modifier query returns from them.
 use crate::{
     Disposal, Error, Operation,
-    engine::operations::registry_items::{Observed, RegistryItems},
     protocol::session::{
-        Fault, ObservationControl, ObservationTarget, SessionOutcome, SessionRequest,
+        Fault, ObservationControl, ObservationTarget, Observed, ObservedModifiers, RegistryItems,
+        SessionOutcome, SessionRequest,
     },
 };
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -107,8 +107,7 @@ struct Paused {
     /// By content directory.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
-    modifiers:
-        Option<Result<crate::engine::operations::loaded_modifiers::ObservedModifiers, Error>>,
+    modifiers: Option<Result<ObservedModifiers, Error>>,
 }
 
 /// How a session ended, from the supervisor's final report.
