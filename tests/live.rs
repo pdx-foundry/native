@@ -1296,8 +1296,9 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
     result
 }
 
-/// One initial reader invocation covers the fixed keys and both entry forms. Deferred
-/// completion and runtime application are outside this observation.
+/// One initial reader invocation covers the fixed keys and both entry forms; `name` is given
+/// once as a scalar and once as a block, which the engine skips. Deferred completion and runtime
+/// application are outside this observation.
 async fn fixture_modifier_block(native: &Native) -> Outcome {
     use pdx_native::{
         DiagnosticCoverage, DiagnosticWindow, FieldMembers, FixtureFieldQuestion, FixtureParsing,
@@ -1306,6 +1307,7 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
     let text = r#"native_modifier_block = {
  modifier = {
   name = native_modifier_block
+  name = { native_modifier_block = yes }
   data = 1
   icon = mod_country_resource_max_add
   icon_frame = 1

@@ -63,6 +63,8 @@ pub(super) fn analyze(
 pub(crate) struct MemberTokens {
     pub name: i64,
     pub data: i64,
+    /// The vtable slot of the name object that reads the `name` token.
+    pub name_read_slot: u64,
 }
 
 /// Reserved tokens proved by the same complete member shape as the numeric entry.
@@ -79,5 +81,7 @@ pub(crate) fn member_tokens(input: &ModifierInput) -> Result<MemberTokens, Unres
     Ok(MemberTokens {
         name: token("other_token_a")?,
         data: token("other_token_b")?,
+        name_read_slot: number(&binding, "name_read_slot")
+            .ok_or(Unresolved::new("modifier-base-token"))?,
     })
 }

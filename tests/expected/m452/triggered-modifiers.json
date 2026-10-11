@@ -13,21 +13,6 @@
     },
     "gaps": [
       [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "key"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "divide_over_pop_groups"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
-      ],
-      [
         "OutsideMethod",
         {"kind": "key_path", "path": ["triggered_country_modifier", "modifier", "data"]},
         "The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
@@ -71,21 +56,6 @@
         "UnresolvedPath",
         {"kind": "key_path", "path": ["triggered_country_modifier", "potential"]},
         "read-scope: stored-scope"
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name, at `key`: The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name, at `divide_over_pop_groups`: The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_country_modifier"},
-        "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
       ],
       [
         "OutsideMethod",
@@ -193,11 +163,6 @@
     "gaps": [
       [
         "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "key"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
         "The modifier block analysis stopped at reader-routing."
       ],
@@ -215,16 +180,6 @@
         "UnresolvedReader",
         {"kind": "key_path", "path": ["triggered_modifier", "modifier", "description_parameters"]},
         "The modifier block analysis stopped at instruction."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "divide_over_pop_groups"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["triggered_modifier", "modifier", "name"]},
-        "The modifier block analysis stopped at modifier-name-reader."
       ],
       [
         "OutsideMethod",
@@ -274,27 +229,12 @@
       [
         "UnresolvedReader",
         {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name, at `key`: The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_modifier"},
         "Keys that the triggered modifier does not name, at `description_parameters`: The modifier block analysis stopped at reader-routing."
       ],
       [
         "UnresolvedReader",
         {"kind": "field", "name": "triggered_modifier"},
         "Keys that the triggered modifier does not name, at `description_parameters`: The modifier block analysis stopped at instruction."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name, at `divide_over_pop_groups`: The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "field", "name": "triggered_modifier"},
-        "Keys that the triggered modifier does not name, at `name`: The modifier block analysis stopped at modifier-name-reader."
       ],
       [
         "OutsideMethod",

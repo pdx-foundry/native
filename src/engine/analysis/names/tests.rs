@@ -898,7 +898,7 @@ fn stored(name: &str, token: i64, kind: crate::ReaderKind, offset: i64) -> RootF
         readers: vec![ReaderJoin::Stored {
             callee: "reader".into(),
             kind,
-            destination: offset,
+            destination: Some(offset),
             repeat: crate::RepeatBehavior::Replace,
         }],
     }

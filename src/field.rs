@@ -19,6 +19,8 @@ pub enum ValueShape {
     Scalar,
     /// A block of child entries.
     Block,
+    /// Either one scalar value or a block.
+    Any,
     /// The accepted input form is not established.
     Unknown,
 }

@@ -335,29 +335,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "is_ruined_orbital_ring",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -750,56 +774,104 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "rotate_to_center",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "scale_offset",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -890,29 +962,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "generate_borders",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3068,29 +3164,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "tooltip_show_star_resources",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3222,56 +3342,104 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "place_entity_on_planet_plane",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "use_planet_resource",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3539,56 +3707,104 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "show_galactic_map_icon",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "hide_name",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -3735,29 +3951,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "show_in_outliner",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -4086,29 +4326,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "show_prereqs",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -4164,29 +4428,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "scales_with_planet",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -4269,137 +4557,257 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "overlord_can_upgrade",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "is_grand_archive",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "must_select_ship_design",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "is_shroud_seal",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "can_be_dismantled_by_non_owner",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -4927,29 +5335,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "can_prevent_crisis_terraformation",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },
@@ -5118,29 +5550,53 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": "None",
   "name": "nomad_reactivatable",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "b894933b2b2853a5",
+       "kind": "Boolean",
+       "family": "NotApplicable",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Scalar"
+      }
+     }
+    }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": []
+  },
   "reader": {
-   "id": null,
-   "kind": "Unknown",
-   "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "id": "b894933b2b2853a5",
+   "kind": "Boolean",
+   "family": "NotApplicable",
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Scalar"
   },
   "uses": []
  },

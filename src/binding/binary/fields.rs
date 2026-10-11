@@ -783,6 +783,9 @@ pub(super) fn key_readers(
         )?),
         string_read: Some(unique(symbols, "CReader::Read(CString&, bool)")?),
         persistent_read: Some(unique(symbols, "CReader::Read(CPersistent&)")?),
+        string_from_text: addresses(symbols, "CString::CString(char const*)")
+            .into_iter()
+            .collect(),
     })
 }
 

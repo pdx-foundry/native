@@ -71,6 +71,9 @@ pub(in crate::binding) struct DeclarationRecipe {
     /// Concrete modifier parser and numeric-entry insertion functions.
     pub numeric_modifier_member: &'static str,
     pub modifier_serializer_constructor: &'static str,
+    /// The class that every object in a modifier's name slot derives from. Stated, not derived:
+    /// no method follows the stores to that slot (`docs/native/modifier-blocks.md`).
+    pub modifier_name_base: &'static str,
     pub modifier_reference_database: &'static str,
     pub modifier_reference_member: &'static str,
     pub numeric_modifier_insert: &'static str,
@@ -229,6 +232,7 @@ fn m452_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
 const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     numeric_modifier_member: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)",
     modifier_serializer_constructor: "CCustomDescription::CSerializer::CSerializer(CCustomDescription&)",
+    modifier_name_base: "CPdxModifierNameImplBase",
     modifier_reference_database: "CStaticModifierDatabase",
     modifier_reference_member: "CModifier::TryReadMember(CReader&, int)",
     numeric_modifier_insert: "CPdxModifierEntry<ModifierType>& CPdxArray<CPdxModifierEntry<ModifierType>, int>::InsertAtEmplace<ModifierType, CFixedPoint&>(int, ModifierType, CFixedPoint&)",

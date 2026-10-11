@@ -105,6 +105,7 @@ fn shape(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> Fie
     let value = match reader.kind {
         ReaderKind::Unknown => ValueShape::Unknown,
         ReaderKind::Block => ValueShape::Block,
+        ReaderKind::Skipped => ValueShape::Any,
         _ => ValueShape::Scalar,
     };
 
@@ -386,7 +387,7 @@ fn ordinary_field(
         reader,
         shape,
         read,
-        members: if shape.value == ValueShape::Scalar {
+        members: if matches!(shape.value, ValueShape::Scalar | ValueShape::Any) {
             FieldMembers::None
         } else {
             FieldMembers::Unresolved
