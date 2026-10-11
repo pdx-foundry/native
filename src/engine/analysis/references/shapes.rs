@@ -204,6 +204,12 @@ impl Shape {
         Self { lines }
     }
 
+    /// The captures when the first lines of `lines` match this shape, in order and in full. The
+    /// lines after the shape are not qualified.
+    pub fn matches_prefix(&self, lines: &[Line]) -> Option<Bindings> {
+        self.matches(lines.get(..self.lines.len())?)
+    }
+
     /// The captures when every line of `lines` matches this shape, in order and in full.
     pub fn matches(&self, lines: &[Line]) -> Option<Bindings> {
         if lines.len() != self.lines.len() {
@@ -564,6 +570,25 @@ mod tests {
         assert_eq!(bindings["input"], "0x10");
         assert_eq!(bindings["callee"], "_memcmp");
         assert!(shape.matches(&lines("str xr0,[x0,#0x18]")).is_none());
+    }
+
+    #[test]
+    fn a_prefix_shape_leaves_the_later_lines_unqualified() {
+        let shape = Shape::parse("mov x0,x1\nret\n");
+        let line = |text: &str| Line {
+            text: text.into(),
+            value: None,
+        };
+        let longer = [line("mov x0,x1"), line("ret"), line("anything")];
+
+        assert!(shape.matches_prefix(&longer).is_some());
+        assert!(shape.matches(&longer).is_none());
+        assert!(shape.matches_prefix(&longer[..1]).is_none(), "too short");
+        assert!(
+            shape
+                .matches_prefix(&[line("mov x0,x2"), line("ret")])
+                .is_none()
+        );
     }
 
     #[test]

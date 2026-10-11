@@ -1,5 +1,14 @@
-# Lookup anchors: argument provenance, key equality, hit/miss routes and base fallback.
-# Frame setup/restoration and all subsequent insertion/cleanup code are checked separately or omitted.
+# The modifier reader up to its base-member fallback: frame, argument provenance, key equality,
+# hit/miss routes and the tail call to the base reader. The insertion and cleanup code after it
+# is not matched.
+sub sp,sp,#0xa0
+stp xr0,xr1,[sp,#0x40]
+stp xr2,xr3,[sp,#0x50]
+stp xr4,xr5,[sp,#0x60]
+stp xr6,xr7,[sp,#0x70]
+stp xr8,xr9,[sp,#0x80]
+stp x29,x30,[sp,#0x90]
+add x29,sp,#0x90
 mov xr7,x2
 mov xr8,x1
 mov xr9,x0
@@ -41,6 +50,14 @@ b @+43
 mov x0,xr9
 mov x1,xr8
 mov x2,xr7
+ldp x29,x30,[sp,#0x90]
+ldp xr8,xr9,[sp,#0x80]
+ldp xr6,xr7,[sp,#0x70]
+ldp xr4,xr5,[sp,#0x60]
+ldp xr2,xr3,[sp,#0x50]
+ldp xr0,xr1,[sp,#0x40]
+add sp,sp,#0xa0
+b CALL = base_member
 ldr x0,[xr11]
 mov x1,xr3
 mov x2,xr4

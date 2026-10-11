@@ -1,6 +1,6 @@
-//! The inline database search that precedes the base modifier reader. The anchors cover
-//! key provenance, string equality, the value-token conversion, and the two fallback routes.
-//! Allocation, insertion and cleanup after those routes do not qualify conversion limits.
+//! The inline database search that precedes the base modifier reader. The shape covers the
+//! frame, key provenance, string equality, the value-token conversion, and the two fallback
+//! routes. Allocation, insertion and cleanup after those routes do not qualify conversion limits.
 use crate::engine::analysis::{
     decode::Instruction,
     references::shapes::{Shape, canonical},
@@ -20,21 +20,8 @@ pub(crate) struct Input {
 pub(crate) fn analyze(input: &Input) -> Result<(), Unresolved> {
     let failed = || Unresolved::new("modifier-reference-flow");
     let lines = canonical(&input.member, &input.names);
-    if lines.len() < 105
-        || !input.member[..8].iter().all(frame_setup)
-        || !input.member[49..56].iter().all(frame_restore)
-        || lines[56].text != "b CALL"
-        || lines[56].value.as_deref() != Some("base_member")
-    {
-        return Err(failed());
-    }
-    let anchors: Vec<_> = lines[8..49]
-        .iter()
-        .chain(&lines[57..105])
-        .cloned()
-        .collect();
     let binding = Shape::parse(include_str!("reference_lookup.txt"))
-        .matches(&anchors)
+        .matches_prefix(&lines)
         .ok_or_else(failed)?;
     let offset = |name: &str| {
         binding
@@ -55,23 +42,6 @@ pub(crate) fn analyze(input: &Input) -> Result<(), Unresolved> {
         .matches(&conversion)
         .ok_or_else(failed)?;
     Ok(())
-}
-
-fn frame_setup(row: &Instruction) -> bool {
-    (row.operation == "sub" && row.operands.starts_with("sp,sp,#"))
-        || (row.operation == "add" && row.operands.starts_with("x29,sp,#"))
-        || (row.operation == "stp" && row.operands.contains(",[sp,"))
-}
-
-fn frame_restore(row: &Instruction) -> bool {
-    (row.operation == "add" && row.operands.starts_with("sp,sp,#"))
-        || (row.operation == "ldp"
-            && row.operands.contains(",[sp,")
-            && row
-                .operands
-                .split(',')
-                .take(2)
-                .all(|reg| !matches!(reg, "x0" | "x1" | "x2")))
 }
 
 #[cfg(test)]

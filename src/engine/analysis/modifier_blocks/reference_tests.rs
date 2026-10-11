@@ -214,7 +214,7 @@ fn lookup_of_a_different_string_and_changed_hit_miss_routes_fail() {
 
 #[test]
 fn every_required_lookup_instruction_is_checked_but_later_cleanup_is_not() {
-    for index in (8..49).chain(57..105) {
+    for index in 0..105 {
         let mut input = input();
         input.member[index].operation = "nop".into();
         input.member[index].operands.clear();
