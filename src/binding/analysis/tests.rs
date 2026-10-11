@@ -7,7 +7,10 @@ use std::fs;
 fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = &native.bound().analysis;
-    let fields = analysis.fixture_fields("common/traditions").unwrap();
+    let fields = analysis
+        .fixture_registry_fields("common/traditions")
+        .unwrap()
+        .bindings;
     let found: Vec<_> = fields
         .iter()
         .filter_map(|field| Some((field.name.as_str(), field.token, field.storage?.offset)))
@@ -40,7 +43,10 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
             member_entry: 0x100ae1e84,
         })
     );
-    let relic_fields = analysis.fixture_fields("common/relics").unwrap();
+    let relic_fields = analysis
+        .fixture_registry_fields("common/relics")
+        .unwrap()
+        .bindings;
     assert!(relic_fields.iter().any(|field| field.name == "portrait"
         && field.storage.map(|storage| storage.offset) == Some(728)));
     assert_eq!(
@@ -517,9 +523,9 @@ fn repeated_public_and_binding_queries_agree() {
         let fixture_fields = native
             .bound()
             .analysis
-            .registry_fields(registry)
+            .fixture_registry_fields(registry)
             .unwrap()
-            .unwrap();
+            .fields;
         assert_eq!(readers(&fixture_fields), readers(&fields.value));
     }
     let selected = [
@@ -1331,11 +1337,8 @@ fn numeric_fixture_storage_population() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
     let analysis = &native.bound().analysis;
     for registry in native.registries().unwrap().value {
-        let fields = analysis
-            .registry_fields(&registry.name)
-            .unwrap()
-            .unwrap_or_default();
-        let bindings = analysis.fixture_fields(&registry.name).unwrap();
+        let FixtureRegistryFields { fields, bindings } =
+            analysis.fixture_registry_fields(&registry.name).unwrap();
         let numeric: Vec<_> = fields.iter().filter(|field|
             matches!(field.reader.kind, crate::ReaderKind::Integer | crate::ReaderKind::FixedPoint | crate::ReaderKind::Float))
             .map(|field| serde_json::json!({"field": field.name, "reader": field.reader,
@@ -1391,7 +1394,7 @@ fn scoped_fixture_destinations() {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
         let input = verified.field_input(candidate.record.clone()).unwrap();
         let result = crate::engine::analysis::fields::analyze(&input).unwrap();
-        let bindings = analysis.fixture_fields(registry).unwrap();
+        let bindings = analysis.fixture_registry_fields(registry).unwrap().bindings;
         for field in &result.fields {
             if matches!(
                 field.name.as_str(),
@@ -1453,7 +1456,7 @@ fn m452_float_and_short_fixture_storage_bindings() {
             FixtureStorageDecoder::Integer16,
         ),
     ] {
-        let bindings = analysis.fixture_fields(registry).unwrap();
+        let bindings = analysis.fixture_registry_fields(registry).unwrap().bindings;
         assert!(
             analysis.fixture_loader(registry).unwrap().is_some(),
             "{registry}"

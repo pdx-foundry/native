@@ -91,6 +91,13 @@ impl FixtureLoader {
     }
 }
 
+/// A registry's public root fields and the storage that the fixture reads for each.
+#[derive(Default)]
+pub(crate) struct FixtureRegistryFields {
+    pub fields: Vec<crate::Field>,
+    pub bindings: Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>,
+}
+
 /// One fresh integrity check and the immutable analysis derived from this installation.
 /// Verified static facts that a live session reads for its script-check duration tables.
 pub(crate) struct PreparedDurations<'a> {
@@ -432,21 +439,26 @@ impl BoundAnalysis {
         }))
     }
 
-    /// Bind root field tokens, with storage only when reader arguments prove it.
-    pub(crate) fn fixture_fields(
+    /// A registry's root fields and the storage that the fixture reads for each, from one run of
+    /// the field method. The method analyzes the bare field input, without the `requested_words`
+    /// and `initialized_words` that `Native::registry_fields` adds to its own input. A storage
+    /// binding exists only when reader arguments prove it. A registry without one candidate has
+    /// no fields.
+    pub(crate) fn fixture_registry_fields(
         &self,
         registry: &str,
-    ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
+    ) -> Result<FixtureRegistryFields, AnalysisError> {
         let verified = self.verified()?;
         let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
-            return Ok(Vec::new());
+            return Ok(FixtureRegistryFields::default());
         };
         let input = verified.field_input(candidate.record.clone())?;
         let result = crate::engine::analysis::fields::analyze(&input)?;
 
+        let references = self.reference_facts()?;
         let scoped = self.scoped_numeric_facts()?;
         let numeric = self.numeric_facts()?;
-        Ok(result
+        let bindings = result
             .fields
             .iter()
             .filter_map(|field| {
@@ -457,7 +469,12 @@ impl BoundAnalysis {
                         .or_else(|| scoped_fixture_storage(field, &result, scoped, numeric)),
                 })
             })
-            .collect())
+            .collect();
+
+        Ok(FixtureRegistryFields {
+            fields: crate::session::questions::normalized_fields(&result, references),
+            bindings,
+        })
     }
 
     pub(super) fn new(
@@ -774,28 +791,6 @@ fn known_scale(
 
 #[cfg(test)]
 mod tests;
-
-impl BoundAnalysis {
-    /// Resolve public field readers from the same executable analysis used by
-    /// `Native::registry_fields`.
-    pub(crate) fn registry_fields(
-        &self,
-        registry: &str,
-    ) -> Result<Option<Vec<crate::Field>>, AnalysisError> {
-        use crate::engine::analysis::fields;
-
-        let verified = self.verified()?;
-        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
-            return Ok(None);
-        };
-        let input = verified.field_input(candidate.record.clone())?;
-        let result = fields::analyze(&input)?;
-        let references = self.reference_facts()?;
-        Ok(Some(crate::session::questions::normalized_fields(
-            &result, references,
-        )))
-    }
-}
 
 /// The contexts of registry field blocks, with the scope names that name their types.
 pub(crate) struct BlockFacts {

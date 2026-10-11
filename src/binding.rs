@@ -1,7 +1,7 @@
 mod analysis;
 pub(crate) use analysis::{
-    BlockFacts, BoundAnalysis, NamedCandidate, PreparedDurations, VerifiedAnalysis,
-    scoped_operand_decoder, unique_named_candidate,
+    BlockFacts, BoundAnalysis, FixtureRegistryFields, NamedCandidate, PreparedDurations,
+    VerifiedAnalysis, scoped_operand_decoder, unique_named_candidate,
 };
 mod binary;
 mod compose;
@@ -510,17 +510,15 @@ impl ExecutionPlan {
                 "Fixture registry has no verified loader and owner boundary".into(),
             ));
         };
-        let fields = analysis
-            .registry_fields(registry)
-            .map_err(analysis_error)?
-            .unwrap_or_default();
-        let fixture_fields = analysis.fixture_fields(registry).map_err(analysis_error)?;
+        let FixtureRegistryFields { fields, bindings } = analysis
+            .fixture_registry_fields(registry)
+            .map_err(analysis_error)?;
         let questions = fixture
             .field_questions
             .iter()
             .enumerate()
             .map(|(index, question)| {
-                Self::fixture_question_setup(&fields, &fixture_fields, index, question)
+                Self::fixture_question_setup(&fields, &bindings, index, question)
             })
             .collect();
 
