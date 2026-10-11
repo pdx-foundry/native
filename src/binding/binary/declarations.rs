@@ -385,8 +385,11 @@ impl<'a> Text<'a> {
         })
     }
 
-    /// The engine's token table: every token that `GetTokenArray` constructs, by identity. A gap
-    /// in the table is an error, because a table that could not be read is not an empty one.
+    /// The engine's token table: every token that `GetTokenArray` constructs, by identity. A
+    /// constructor that cannot be read leaves its token out, and the readable tokens stay: each
+    /// reader reports a token it cannot find as its own gap, and the registry-field method reports
+    /// the table's gaps. A table with gaps and no readable token is an error, because a table that
+    /// could not be read is not an empty one.
     pub fn token_table(
         &self,
         symbols: &[Symbol],
@@ -397,10 +400,10 @@ impl<'a> Text<'a> {
         let (tokens, gaps) = recover_decoded(&rows, symbols, strings);
 
         match gaps.first() {
-            Some(gap) => {
+            Some(gap) if tokens.is_empty() => {
                 Err(InputError(format!("The token table has a gap: {}", gap.reason)).into())
             }
-            None => Ok(tokens),
+            _ => Ok(tokens),
         }
     }
 
@@ -600,11 +603,12 @@ mod tests {
     }
 
     #[test]
-    fn a_gap_in_the_token_table_is_an_error_and_not_an_empty_table() {
+    fn a_token_table_keeps_its_readable_tokens_and_is_an_error_only_when_none_is_readable() {
         use crate::engine::analysis::assembler::{Arm64, arm64};
         const START: u64 = 0x1000;
         const CONSTRUCTOR: u64 = 0x2000;
         const YES: u64 = 0x8000;
+        const UNREAD: u64 = 0x8010;
 
         // GetTokenArray names token 7 "yes" and then runs `rest`.
         let token_array = |rest: fn(&mut Arm64)| {
@@ -641,6 +645,19 @@ mod tests {
         assert_eq!(tokens.unwrap()[&7].name.as_deref(), Some("yes"));
         assert_eq!(names.unwrap(), BTreeMap::from([(7, "yes".to_owned())]));
 
+        // Token 8's literal cannot be read, so token 8 is left out and token 7 stays.
+        let one_unreadable = token_array(|code| {
+            arm64!(code; mov w1, #8); // token 8
+            code.address(2, UNREAD).call(CONSTRUCTOR);
+            arm64!(code; ret);
+        });
+        let (tokens, names) = table(&one_unreadable, &strings);
+        let tokens = tokens.unwrap();
+        assert_eq!(tokens[&7].name.as_deref(), Some("yes"));
+        assert!(!tokens.contains_key(&8));
+        assert_eq!(names.unwrap(), BTreeMap::from([(7, "yes".to_owned())]));
+
+        // A branch the recovery cannot follow leaves no readable token: not an empty table.
         let unresolved_branch = token_array(|code| arm64!(code; br x8));
         let (tokens, names) = table(&unresolved_branch, &strings);
         let gap =
