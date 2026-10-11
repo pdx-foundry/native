@@ -48,10 +48,7 @@ fn a_registry_without_an_instance_gets_no_key_read() {
 
 #[test]
 fn registry_binding_keeps_the_established_key_offset_or_refusal() {
-    let layout = super::groups::registry_layout(&[
-        super::targets::BindingGroupId::M45TemplateRegistryLayout,
-    ])
-    .unwrap();
+    let layout = super::groups::M45_TEMPLATE_LAYOUT;
     let bypass = super::groups::registry_binding(layout, "common/bypass", 0x1234, Ok(0x18));
     assert_eq!(bypass.key_offset, Some(0x18));
     assert_eq!(bypass.key_unavailable, None);

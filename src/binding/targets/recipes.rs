@@ -1,17 +1,10 @@
-//! Recipes: which binding groups, live strategy and static layout make up one build's
-//! operations. A recipe is host-neutral data.
-use crate::binding::groups::M45_TEMPLATE_LAYOUT;
+//! Recipes: which layouts, bindings and live strategy make up one build's operations. A recipe is
+//! host-neutral data; a function value in it builds a binding that owns `String` or `Vec` data.
+use crate::binding::groups::{M45_TEMPLATE_LAYOUT, RegistryLayout, m452_fixture};
 use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
 use crate::engine::analysis::declarations::ParserSlots;
 use crate::engine::analysis::dynamic_names::CommandSlots;
 use crate::engine::analysis::localization::TextLayout;
-
-// Each group is one build's bindings, so its name starts with the build.
-#[derive(Debug, Clone, Copy)]
-pub(in crate::binding) enum BindingGroupId {
-    M45TemplateRegistryLayout,
-    M452CategoryFixture,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::binding) enum StrategyId {
@@ -19,7 +12,11 @@ pub(in crate::binding) enum StrategyId {
 }
 
 pub(in crate::binding) struct Recipe {
-    pub groups: &'static [BindingGroupId],
+    /// Where the build's template databases keep their items and key text.
+    pub registry_layout: Option<RegistryLayout>,
+    /// Builds the fixture observation binding. A binding owns `String` and `Vec`, so a function
+    /// holds it, as it holds `script_checks`.
+    pub fixture: Option<fn() -> crate::protocol::observation::FixtureBinding>,
     pub default_registries: &'static [&'static str],
     pub strategy: StrategyId,
     pub declarations: &'static DeclarationRecipe,
@@ -125,10 +122,8 @@ const M45_EVENT_TARGET_SIZE: u64 = 0x190;
 const M45_DEFAULT_REGISTRIES: &[&str] = &["common/traditions", "common/tradition_categories"];
 
 pub(super) const M452: Recipe = Recipe {
-    groups: &[
-        BindingGroupId::M45TemplateRegistryLayout,
-        BindingGroupId::M452CategoryFixture,
-    ],
+    registry_layout: Some(M45_TEMPLATE_LAYOUT),
+    fixture: Some(m452_fixture),
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: &M45_DECLARATIONS,

@@ -45,7 +45,7 @@ pub(super) fn compose(
     let installation = installation.with_default_registries(operation.default_registries);
     let analysis = super::BoundAnalysis::new(
         recipe.declarations,
-        groups::registry_layout(recipe.groups).map(groups::RegistryLayout::database),
+        recipe.registry_layout.map(groups::RegistryLayout::database),
         installation.clone(),
         invalidated,
     );
@@ -64,9 +64,9 @@ fn assemble(
     Ok(ResolvedObservation {
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
-        registry_layout: groups::registry_layout(recipe.groups),
+        registry_layout: recipe.registry_layout,
         default_registries: recipe.default_registries,
-        fixture: groups::fixture(recipe.groups),
+        fixture: recipe.fixture.map(|bind| bind()),
         script_checks: recipe.script_checks.map(|bind| bind()),
     })
 }

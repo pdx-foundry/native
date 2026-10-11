@@ -5,9 +5,7 @@ use super::binary::ImageIdentity;
 use crate::OpenError;
 
 pub(super) use recipes::InlineFixtureRecipe;
-pub(super) use recipes::{
-    AnchorSlot, BindingGroupId, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId,
-};
+pub(super) use recipes::{AnchorSlot, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId};
 
 pub(super) struct TargetRecord {
     pub executable: &'static str,
