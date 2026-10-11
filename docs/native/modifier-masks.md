@@ -406,8 +406,9 @@ starbase has seven nodes.
   off the end after a call to `__Unwind_Resume`.
 - **Path count.** An owner constructor splits on each `cset` of an unknown comparison (one for each
   node that it constructs; 7 in `CStarbase::CStarbase()`) and on each loop pass. The second country
-  node needs 1,296 paths. The method raises the run's path limit to 4,096. Read the mask word once
-  for each distinct address, not once for each path: an initializer search for each path took
-  5 seconds on one galactic-object call.
+  node on M451-hotfix needs 1,296 paths. The method raises the run's path limit to 4,096. Read the
+  mask word once for each distinct address, not once for each path: an initializer search for each
+  path took 5 seconds on one galactic-object call. The scratch memory of an owner and of a node is
+  0x10000 bytes; constructors on M451-hotfix write below 0x1000 of their object.
 - **Replicating loads.** The ship, fleet, megastructure and galactic-community constructors run
   `ld1r` before the call. The shared evaluator now runs it; before, it stopped those paths.
