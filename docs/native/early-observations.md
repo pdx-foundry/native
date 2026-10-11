@@ -57,7 +57,9 @@ states its witness chain. The public item query is in Git at `d8f9d8a`.
 The fixture's loader-return callback ends its observation window without stopping the session;
 the registry callbacks then establish the pause. Missing or late fixture hooks give an
 observation error; dropped records, missing terminals and an access failure give partial
-answers; worker loss before the pause gives a startup error with confirmed disposal.
+answers; worker loss before the pause gives a startup error with confirmed disposal. A dropped
+occurrence of a field leaves the later occurrences, their parser pairs and the terminal in the
+answer, with a gap for the lost one.
 
 The tradition method joins the exact `CTraditionType` constructor, root member reader,
 String-reader return, malformed-report routine, and the return from `LoadFromReader` while its

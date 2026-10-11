@@ -1,5 +1,8 @@
 //! Reduce the bounded fixture window. Native joins addresses internally, then replaces them
 //! with session-local owner identities. Only witnessed read entries leave this module.
+//!
+//! The producer numbers the occurrences of a field. A record whose number skips ahead of the last
+//! kept one stays, with a gap for the lost occurrence; a repeated or earlier number is refused.
 use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
 use crate::protocol::{
     hooks,
@@ -545,10 +548,11 @@ impl<'a> Window<'a> {
             self.window_gap("A storage event names an unknown question");
             return;
         };
-        let next_occurrence = self
+        let last_occurrence = self
             .occurrences
             .get(question)
-            .map_or(1, |items| items.len() as u64 + 1);
+            .and_then(|items| items.last())
+            .map_or(0, |item| item.occurrence);
         let in_window =
             self.loading && !self.returned && !self.field_terminals.contains_key(question);
         let in_source = self.is_fixture_line(file, *line);
@@ -566,7 +570,7 @@ impl<'a> Window<'a> {
             .get(question)
             .and_then(|authority| authority.storage_decoder)
             .is_some_and(|decoder| decoder.accepts(value));
-        let in_order = *occurrence == next_occurrence;
+        let in_order = *occurrence > last_occurrence;
 
         if !(in_window
             && in_source
@@ -590,6 +594,9 @@ impl<'a> Window<'a> {
                 occurrence: *occurrence,
                 value: value.clone(),
             });
+        if *occurrence - last_occurrence > 1 {
+            self.field_gap(*question, "A stored occurrence is missing");
+        }
     }
 
     fn accept_field_parse(&mut self, event: &FixtureEvent) {
@@ -643,11 +650,11 @@ impl<'a> Window<'a> {
             };
             entry.return_line = Some(*line);
         } else {
-            if *occurrence != invocations.len() as u64 + 1
+            let last = invocations.last();
+            let last_occurrence = last.map_or(0, |entry| entry.occurrence);
+            if *occurrence <= last_occurrence
                 || *occurrence > 128
-                || invocations
-                    .last()
-                    .is_some_and(|entry| entry.return_line.is_none())
+                || last.is_some_and(|entry| entry.return_line.is_none())
             {
                 self.parsing_gap(
                     *question,
@@ -660,6 +667,9 @@ impl<'a> Window<'a> {
                 occurrence: *occurrence,
                 return_line: None,
             });
+            if *occurrence - last_occurrence > 1 {
+                self.parsing_gap(*question, "A parser invocation is missing");
+            }
         }
     }
 
@@ -1962,6 +1972,161 @@ mod tests {
         later_loss.push(json!({"kind":"callback-error", "run":"attempt", "seq":16,
             "error":"a later observation failed"}));
         assert_eq!(answer(later_loss), expected);
+    }
+
+    fn parsed_field_request() -> FixtureRequest {
+        let mut request = field_request();
+        request.field_questions[0] = request.field_questions[0].clone().with_parsing();
+        request
+    }
+
+    /// Two occurrences of one field, each with its parser entry, storage and return, and a
+    /// diagnostic on the second. Row numbers, from 0: 6 to 8 are occurrence 1 (entry, storage,
+    /// return), 9 to 12 are occurrence 2 (entry, storage, diagnostic, return), 13 the field
+    /// terminal and 14 the parser terminal.
+    fn parsed_field_events() -> Vec<Value> {
+        let source = "common/traditions/sample.txt";
+        let parse = |line, occurrence, returned| json!({"kind":"field-parse","question":0,"file":source,"line":line,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":occurrence,"returned":returned});
+        let storage = |line, occurrence, value| json!({"kind":"field-storage","question":0,"file":source,"line":line,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":occurrence,"value":{"String":value}});
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":source}),
+                json!({"kind":"field-authority","question":0,"reader_id":"325efaa17499c32d","reader_kind":"String","storage_decoder":"String","unavailable":null}),
+                json!({"kind":"definition","file":source,"line":1,"definition":"sample","owner":"0x2000"}),
+                parse(2, 1, false),
+                storage(2, 1, "one"),
+                parse(2, 1, true),
+                parse(3, 2, false),
+                storage(3, 2, "two"),
+                json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":source,"line":3,"definition":"sample","field":"unlocks_agenda","occurrence":2}),
+                parse(3, 2, true),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"reader_id":"325efaa17499c32d","reader_kind":"String","final_value":{"String":"two"},"unavailable":null}),
+                json!({"kind":"parsing-terminal","question":0,"count":2,"unavailable":null}),
+                json!({"kind":"diagnostics-terminal","count":1}),
+                json!({"kind":"load-returned","file":source}),
+            ],
+            json!({"kind":"end","field_outcomes":1,"diagnostics":1}),
+        )
+    }
+
+    fn parsed_field_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
+        reduce(
+            &parsed_field_request(),
+            &records(events),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap()
+    }
+
+    /// The stored and parsed occurrence numbers that the answer keeps for the one question.
+    fn kept_occurrences(answer: &Answer<FixtureObservation>) -> (Vec<u64>, Vec<u64>) {
+        let outcome = &answer.value.field_outcomes[0];
+        let (
+            FixtureStorage::Observed {
+                occurrences: stored,
+                ..
+            },
+            FixtureParsing::Observed {
+                occurrences: parsed,
+                ..
+            },
+        ) = (&outcome.storage, &outcome.parsing)
+        else {
+            panic!("{outcome:?}")
+        };
+
+        (
+            stored.iter().map(|item| item.occurrence).collect(),
+            parsed.iter().map(|item| item.occurrence).collect(),
+        )
+    }
+
+    #[test]
+    fn a_lost_first_occurrence_keeps_the_later_one_with_its_parser_pair_and_terminal() {
+        let complete = parsed_field_answer(parsed_field_events());
+        assert_eq!(complete.completeness, Completeness::Complete);
+        assert_eq!(kept_occurrences(&complete), (vec![1, 2], vec![1, 2]));
+
+        // The dropped-record fault leaves out the storage and the parser entry of occurrence 1,
+        // and the stream keeps their sequence numbers.
+        let mut dropped = parsed_field_events();
+        dropped.drain(6..8);
+        let partial = parsed_field_answer(dropped);
+
+        assert_eq!(partial.completeness, Completeness::Partial);
+        let outcome = &partial.value.field_outcomes[0];
+        assert_eq!(
+            outcome.storage,
+            FixtureStorage::Observed {
+                occurrences: vec![StoredFieldOccurrence {
+                    line: 3,
+                    occurrence: 2,
+                    value: FixtureValue::String("two".into()),
+                }],
+                final_value: Some(FixtureValue::String("two".into())),
+                completeness: Completeness::Partial,
+            }
+        );
+        assert_eq!(
+            outcome.parsing,
+            FixtureParsing::Observed {
+                occurrences: vec![ParsedFieldOccurrence {
+                    line: 3,
+                    occurrence: 2,
+                    return_line: Some(3),
+                }],
+                completeness: Completeness::Partial,
+            }
+        );
+        assert_eq!(outcome.diagnostics, [0]);
+    }
+
+    #[test]
+    fn an_occurrence_number_that_skips_ahead_is_kept_with_a_gap() {
+        // Without the sequence gap of a dropped record, only the occurrence number shows the hole.
+        let mut skipped = parsed_field_events();
+        skipped.drain(6..9);
+        renumber(&mut skipped);
+        let partial = parsed_field_answer(skipped);
+
+        assert_eq!(kept_occurrences(&partial), (vec![2], vec![2]));
+        let outcome = &partial.value.field_outcomes[0];
+        assert!(matches!(
+            &outcome.storage,
+            FixtureStorage::Observed {
+                completeness: Completeness::Partial,
+                ..
+            }
+        ));
+        for detail in [
+            "A stored occurrence is missing",
+            "A parser invocation is missing",
+        ] {
+            assert!(
+                partial.gaps.iter().any(|gap| gap.detail == detail),
+                "{detail}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_repeated_or_earlier_occurrence_number_is_refused() {
+        for (row, occurrence, kept) in [
+            // Occurrence 2 repeats occurrence 1.
+            (10, 1, (vec![1], vec![1, 2])),
+            (9, 1, (vec![1, 2], vec![1])),
+            // The first kept occurrence skips ahead to 3, and the next one is earlier.
+            (7, 3, (vec![3], vec![1, 2])),
+            (6, 3, (vec![1, 2], vec![3])),
+        ] {
+            let mut events = parsed_field_events();
+            events[row]["event"]["occurrence"] = json!(occurrence);
+            let answer = parsed_field_answer(events);
+
+            assert_eq!(kept_occurrences(&answer), kept, "row {row}");
+            assert_eq!(answer.completeness, Completeness::Partial, "row {row}");
+        }
     }
 
     #[test]
