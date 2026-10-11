@@ -57,11 +57,6 @@ impl Report {
             .any(|entry| entry.category == Category::Input)
     }
 
-    /// Append another file's report without changing its comparison outcome.
-    pub fn extend(&mut self, report: Report) {
-        self.differences.extend(report.differences);
-    }
-
     fn record_failure(
         &mut self,
         file: &str,
