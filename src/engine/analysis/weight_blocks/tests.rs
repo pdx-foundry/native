@@ -860,6 +860,75 @@ fn a_value_that_the_post_read_hook_reports_and_replaces_is_not_in_the_domain() {
 }
 
 #[test]
+fn a_post_read_hook_that_is_ambiguous_or_incomplete_leaves_the_domain_unknown() {
+    let incomplete = arm64!(at POST_READ;
+        ldr w8, [x0, #0x2e0];
+        cmp w8, #3; b.ne >done;
+        blr x9;
+        mov w8, #1;
+        str w8, [x0, #0x2e0];
+        done:;
+        ret
+    );
+    for (hook, duplicated) in [(post_read(), true), (incomplete, false)] {
+        let mut input = modifier_input();
+        input.symbols.push(Symbol {
+            name: "Modifier::InitPostRead()".into(),
+            address: POST_READ,
+        });
+        if duplicated {
+            input.symbols.push(Symbol {
+                name: "Modifier::InitPostRead()".into(),
+                address: POST_READ + 0x1000,
+            });
+        }
+        let mut bodies = bodies(Variation::default(), ReadVariation::default());
+        bodies.insert(POST_READ, hook);
+        let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+
+        let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
+
+        assert!(!grammar.keyword_domains.contains_key("mode"));
+        assert_eq!(
+            key(&grammar, "mode").readers,
+            [stored(
+                "EOperation TokenToEnum<EOperation>(int const&)",
+                ReaderKind::Keyword,
+                0x2e0
+            )]
+        );
+    }
+}
+
+#[test]
+fn a_post_read_call_that_receives_no_owner_does_not_hide_the_recovery() {
+    let hook = arm64!(at POST_READ;
+        ldr w8, [x0, #0x2e0];
+        cmp w8, #3; b.ne >done;
+        mov x19, x0;
+        bl extern LOG as usize;
+        ldr x0, [x19, #0x88];
+        blr x9;
+        mov w8, #1;
+        str w8, [x19, #0x2e0];
+        done:;
+        ret
+    );
+    let mut input = modifier_input();
+    input.symbols.push(Symbol {
+        name: "Modifier::InitPostRead()".into(),
+        address: POST_READ,
+    });
+    let mut bodies = bodies(Variation::default(), ReadVariation::default());
+    bodies.insert(POST_READ, hook);
+    let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
+
+    let grammar = analyze(&input, &body).points[&POINT].clone().unwrap();
+
+    assert_eq!(grammar.keyword_domains["mode"], ["add"]);
+}
+
+#[test]
 fn a_trigger_lookup_of_the_value_is_a_reference() {
     let grammar = modifier_grammar(Variation::default());
 
