@@ -73,6 +73,30 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(registers=registers), self.assertRaises(ValueError):
                 wire.validate(dict(MACHINE, registers=registers), machine_schema, root)
 
+    def test_registry_key_storage_is_one_offset_or_one_reason(self):
+        root = wire.SCHEMAS['request']
+        bindings = {
+            'RegistryBinding': dict(name='traditions', directory='common/traditions', load_entry=1,
+                                    directory_offset=2, data_offset=3, count_offset=4, pointer_size=8,
+                                    string_tag_offset=23),
+            'ModifierRegistryBinding': dict(instance=1, directory_offset=2, data_offset=3, count_offset=4,
+                                            pointer_size=8),
+        }
+        for name, binding in bindings.items():
+            schema = root['$defs'][name]
+            for storage in [dict(offset=16), dict(unavailable='item key storage was not established')]:
+                with self.subTest(binding=name, storage=storage):
+                    wire.validate(dict(binding, key_storage=storage), schema, root)
+            for storage in [dict(offset=16, unavailable='both'), dict(), dict(offset=None), dict(offset=-1),
+                            dict(unavailable=None), None, 16]:
+                with self.subTest(binding=name, storage=storage), self.assertRaises(ValueError):
+                    wire.validate(dict(binding, key_storage=storage), schema, root)
+            for legacy in [dict(key_offset=16), dict(key_unavailable=None)]:
+                with self.subTest(binding=name, legacy=legacy), self.assertRaises(ValueError):
+                    wire.validate(dict(binding, key_storage=dict(offset=16), **legacy), schema, root)
+            with self.subTest(binding=name), self.assertRaises(ValueError):
+                wire.validate(binding, schema, root)
+
     def test_nested_fixture_binding_and_diagnostic_codec(self):
         root = wire.SCHEMAS['request']
         nested = dict(parent_token=7, owner_offset=64, member_entry=4096)

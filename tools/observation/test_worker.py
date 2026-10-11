@@ -226,7 +226,7 @@ class PauseTests(unittest.TestCase):
     def test_registry_return_waits_for_modifier_boundary(self):
         worker.progress = worker.SessionProgress(['one'], modifier_active=True)
         worker.request['registries']['one'] = dict(name='one', directory='common/example',
-            directory_offset=8, string_tag_offset=23, key_offset=8, count_offset=16,
+            directory_offset=8, string_tag_offset=23, key_storage=dict(offset=8), count_offset=16,
             data_offset=24, pointer_size=8)
         worker.registry_owners['one'] = 0x1000
         with patch.object(worker, 'uint', return_value=0), \
@@ -235,6 +235,18 @@ class PauseTests(unittest.TestCase):
         self.assertEqual(worker.progress.returned_registries, ['one'])
         self.assertEqual(worker.decide_pause(worker.progress), (False, None))
         self.assertIn('registry-end', [call.args[0] for call in self.emit.call_args_list])
+
+    def test_a_registry_without_key_storage_is_unsupported_for_the_bindings_reason(self):
+        worker.request['registries']['one'] = dict(name='one', directory='common/example',
+            directory_offset=8, string_tag_offset=23, key_storage=dict(unavailable='binding reason'),
+            count_offset=16, data_offset=24, pointer_size=8)
+        worker.registry_owners['one'] = 0x1000
+        with patch.object(worker, 'cstring', return_value='common/example'):
+            self.callback(protocol.HOOK['registry_return'] + 'one')
+        unsupported = [call.kwargs['reason'] for call in self.emit.call_args_list
+                       if call.args[0] == 'registry-unsupported']
+        self.assertEqual(unsupported, ['binding reason'])
+        self.assertEqual(worker.progress.returned_registries, ['one'])
 
     def test_modifier_read_success_or_failure_pauses_at_its_return(self):
         for failure in [None, RuntimeError('bad table')]:
@@ -626,8 +638,8 @@ class NumericStorageTests(unittest.TestCase):
 class ModifierRegistryKeyTests(unittest.TestCase):
     """The keys of a registry are read through the bound CString tag offset, not a fixed size."""
     INSTANCE, DATABASE, POINTERS, ITEMS = 0x100, 0x200, 0x400, (0x500, 0x600)
-    REGISTRY = dict(instance=0x9000, pointer_size=8, directory_offset=0x10, key_offset=0x10,
-                    count_offset=0x54, data_offset=0x48, key_unavailable=None)
+    REGISTRY = dict(instance=0x9000, pointer_size=8, directory_offset=0x10, key_storage=dict(offset=0x10),
+                    count_offset=0x54, data_offset=0x48)
 
     @staticmethod
     def short_string(text, tag_offset):
@@ -645,7 +657,7 @@ class ModifierRegistryKeyTests(unittest.TestCase):
         put(self.DATABASE + self.REGISTRY['data_offset'], self.POINTERS.to_bytes(8, 'little'))
         for item, key in zip(self.ITEMS, keys):
             put(self.POINTERS + 8 * self.ITEMS.index(item), item.to_bytes(8, 'little'))
-            put(item + self.REGISTRY['key_offset'], self.short_string(key, tag_offset))
+            put(item + self.REGISTRY['key_storage']['offset'], self.short_string(key, tag_offset))
 
         def read(process, address, size):
             if address + size > len(image):
@@ -666,6 +678,13 @@ class ModifierRegistryKeyTests(unittest.TestCase):
         for tag_offset in [23, 31]:
             with self.subTest(tag_offset=tag_offset):
                 self.assertEqual(self.registry_keys(tag_offset), {'keys': ['one', 'two']})
+
+    def test_a_registry_without_key_storage_returns_the_bindings_reason(self):
+        registry = dict(self.REGISTRY, key_storage=dict(unavailable='binding reason'))
+        with patch.object(worker, 'request', dict(fault=None)):
+            observer = worker.ModifierObserver(dict(string_tag_offset=23))
+            keys = observer.registry_keys(Mock(), Mock(), 'common/example', registry)
+        self.assertEqual(keys, {'unavailable': 'binding reason'})
 
 
 if __name__ == '__main__':

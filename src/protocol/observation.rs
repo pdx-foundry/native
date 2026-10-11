@@ -245,10 +245,17 @@ pub(crate) struct RegistryBinding {
     pub directory_offset: u64,
     pub data_offset: u64,
     pub count_offset: u64,
-    pub key_offset: Option<u64>,
-    pub key_unavailable: Option<String>,
+    pub key_storage: KeyStorage,
     pub pointer_size: u64,
     pub string_tag_offset: u64,
+}
+
+/// Where each item of a registry keeps its key, or why the binding does not establish that.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum KeyStorage {
+    Offset(u64),
+    Unavailable(String),
 }
 
 /// Exact-build entry points and source-location layout for fixture outcomes.
@@ -489,8 +496,7 @@ pub(crate) struct ModifierRegistryBinding {
     pub data_offset: u64,
     pub count_offset: u64,
     pub pointer_size: u64,
-    pub key_offset: Option<u64>,
-    pub key_unavailable: Option<String>,
+    pub key_storage: KeyStorage,
 }
 
 /// What the worker read at the documentation point. It writes this once to

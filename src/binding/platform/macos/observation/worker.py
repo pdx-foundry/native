@@ -103,6 +103,14 @@ class TraceStorageBound(Exception):
     pass
 
 
+def item_key_offset(registry):
+    """Where the registry's items keep their key, or why the binding does not establish it."""
+    storage = registry['key_storage']
+    if 'unavailable' in storage:
+        raise UnsupportedKeyLayout(storage['unavailable'])
+    return storage['offset']
+
+
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -237,8 +245,7 @@ def registry_snapshot(frame, registry, registry_owner, control):
         raise RuntimeError('registry receiver directory mismatch: ' + directory)
     emit('registry-load-returned', name=registry['name'], owner=hex(owner), thread=thread)
     progress.returned_registries.append(registry['name'])
-    if registry['key_offset'] is None:
-        raise UnsupportedKeyLayout(registry['key_unavailable'] or 'item key storage was not established')
+    key_offset = item_key_offset(registry)
     if control == protocol.CONTROL['access_failure']:
         uint(process, 0)
         raise RuntimeError('access failure unexpectedly read zero')
@@ -252,7 +259,7 @@ def registry_snapshot(frame, registry, registry_owner, control):
         obj = uint(process, data + registry['pointer_size'] * index)
         if not obj or obj % registry['pointer_size'] or obj in objects:
             raise RuntimeError('invalid or duplicate registry object')
-        key = cstring(process, obj + registry['key_offset'], registry['string_tag_offset'])
+        key = cstring(process, obj + key_offset, registry['string_tag_offset'])
         if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
             raise UnsupportedKeyLayout('item key layout not established: empty, duplicate, or invalid item key')
         keys.add(key)
@@ -1027,10 +1034,9 @@ class ModifierObserver:
         return entries
 
     def registry_keys(self, process, target, directory, registry):
-        if registry['key_offset'] is None:
-            return {'unavailable': registry['key_unavailable'] or 'item key storage was not established'}
         tag_offset = self.binding['string_tag_offset']
         try:
+            key_offset = item_key_offset(registry)
             database = uint(process, self.load(target, registry['instance']))
             if not database or database % registry['pointer_size']:
                 raise RuntimeError('registry database instance is null')
@@ -1047,7 +1053,7 @@ class ModifierObserver:
                 item = int.from_bytes(pointers[index * size:index * size + size], 'little')
                 if not item or item % registry['pointer_size']:
                     raise RuntimeError('invalid registry object')
-                key = cstring(process, item + registry['key_offset'], tag_offset)
+                key = cstring(process, item + key_offset, tag_offset)
                 if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
                     raise RuntimeError('item key layout not established: empty, duplicate, or invalid item key')
                 keys.append(key)

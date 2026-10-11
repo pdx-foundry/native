@@ -1,5 +1,5 @@
 use super::*;
-use crate::GrammarProperty;
+use crate::{GrammarProperty, protocol::observation::KeyStorage};
 use std::fs;
 
 #[test]
@@ -438,8 +438,14 @@ fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
     assert_eq!(table.lookup_size, 0x10379b908);
     assert_eq!(table.lookup_stride, 0x28);
     assert_eq!(table.registries["common/buildings"].instance, 0x1032a2dc0);
-    assert_eq!(table.registries["common/bypass"].key_offset, Some(0x18));
-    assert_eq!(table.registries["common/zones"].key_offset, Some(0x10));
+    assert_eq!(
+        table.registries["common/bypass"].key_storage,
+        KeyStorage::Offset(0x18)
+    );
+    assert_eq!(
+        table.registries["common/zones"].key_storage,
+        KeyStorage::Offset(0x10)
+    );
     assert!(
         binding
             .modifier_table_binding(&["common/no_such_registry".into()])
@@ -455,8 +461,14 @@ fn m452_registry_keys_follow_their_item_constructors() {
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
     let selected = ["common/bypass".into(), "common/traditions".into()];
     let bindings = binding.registry_bindings(&selected).unwrap();
-    assert_eq!(bindings["common/bypass"].key_offset, Some(0x18));
-    assert_eq!(bindings["common/traditions"].key_offset, Some(0x10));
+    assert_eq!(
+        bindings["common/bypass"].key_storage,
+        KeyStorage::Offset(0x18)
+    );
+    assert_eq!(
+        bindings["common/traditions"].key_storage,
+        KeyStorage::Offset(0x10)
+    );
 }
 
 #[test]
@@ -478,15 +490,16 @@ fn m452_registry_key_storage_sweep() {
     let mut established = 0;
     let mut refused = std::collections::BTreeMap::<String, usize>::new();
     for registry in bindings.values() {
-        match (registry.key_offset, registry.key_unavailable.as_deref()) {
-            (Some(offset), None) => {
+        match &registry.key_storage {
+            KeyStorage::Offset(offset) => {
                 established += 1;
-                if offset != 0x10 {
+                if *offset != 0x10 {
                     println!("{}: key offset {offset:#x}", registry.name);
                 }
             }
-            (None, Some(reason)) => *refused.entry(reason.into()).or_default() += 1,
-            other => panic!("invalid key binding: {other:?}"),
+            KeyStorage::Unavailable(reason) => {
+                *refused.entry(reason.clone()).or_default() += 1;
+            }
         }
     }
     println!("established={established}, refused={refused:?}");

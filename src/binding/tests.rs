@@ -1,5 +1,5 @@
 use super::{Binding, installation::Installation, registry_instance};
-use crate::UnavailableReason;
+use crate::{UnavailableReason, protocol::observation::KeyStorage};
 use std::fs;
 use tempfile::{TempDir, tempdir};
 
@@ -42,8 +42,7 @@ fn a_registry_without_an_instance_gets_no_key_read() {
 fn registry_binding_keeps_the_established_key_offset_or_refusal() {
     let layout = super::groups::M45_TEMPLATE_LAYOUT;
     let bypass = super::groups::registry_binding(layout, "common/bypass", 0x1234, Ok(0x18));
-    assert_eq!(bypass.key_offset, Some(0x18));
-    assert_eq!(bypass.key_unavailable, None);
+    assert_eq!(bypass.key_storage, KeyStorage::Offset(0x18));
 
     let unknown = super::groups::registry_binding(
         layout,
@@ -51,10 +50,9 @@ fn registry_binding_keeps_the_established_key_offset_or_refusal() {
         0x1234,
         Err("item key storage was not established".into()),
     );
-    assert_eq!(unknown.key_offset, None);
     assert_eq!(
-        unknown.key_unavailable.as_deref(),
-        Some("item key storage was not established")
+        unknown.key_storage,
+        KeyStorage::Unavailable("item key storage was not established".into())
     );
 }
 
