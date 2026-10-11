@@ -83,8 +83,7 @@ pub(crate) fn literal_token_names(
     let (tokens, _) = tokens::recover_decoded(&rows, symbols, strings);
     Ok(tokens
         .into_iter()
-        .filter(|(_, token)| !token.ambiguous)
-        .map(|(number, token)| (number as u32 as u64, token.name))
+        .filter_map(|(number, token)| Some((number as u32 as u64, token.name?)))
         .collect())
 }
 

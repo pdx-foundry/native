@@ -333,15 +333,15 @@ fn analyze_reader_with_state(
             Ok(None) => {}
         }
         if let Ok(Some(child)) = numeric::constructed(input, entry, &path)
-            && let Some(token) = input
+            && let Some(name) = input
                 .tokens
                 .get(&path.domain[0])
-                .filter(|token| !token.ambiguous)
+                .and_then(|token| token.name.clone())
         {
             // Two paths can construct the same key's child with different agreed bytes. Coverage
             // walks one child per key, so a second, different construction is not established.
             if constructed_from
-                .get(&token.name)
+                .get(&name)
                 .is_some_and(|known| known != &child)
             {
                 nodes[node]
@@ -350,7 +350,7 @@ fn analyze_reader_with_state(
                 leaves.push(path);
                 continue;
             }
-            constructed_from.insert(token.name.clone(), child.clone());
+            constructed_from.insert(name.clone(), child.clone());
             match analyze_reader_with_state(input, child.reader, depth + 1, &child.bytes) {
                 Ok(grammar) => {
                     let mut path = path;
@@ -363,10 +363,10 @@ fn analyze_reader_with_state(
                         domain: path.domain,
                         disposition: Disposition::Field {
                             token: path.domain[0],
-                            name: token.name.clone(),
+                            name: name.clone(),
                         },
                     });
-                    constructed.insert(token.name.clone(), Box::new(grammar));
+                    constructed.insert(name, Box::new(grammar));
                     leaves.push(path);
                     continue;
                 }
@@ -836,9 +836,8 @@ mod tests {
             tokens: BTreeMap::from([(
                 7,
                 Token {
-                    name: "limit".into(),
+                    name: Some("limit".into()),
                     constructor: 1,
-                    ambiguous: false,
                 },
             )]),
             families: BTreeMap::from([(
@@ -945,9 +944,8 @@ mod tests {
             input.tokens.insert(
                 token,
                 Token {
-                    name: name.into(),
+                    name: Some(name.into()),
                     constructor: 1,
-                    ambiguous: false,
                 },
             );
         }
@@ -1000,7 +998,7 @@ mod tests {
         input.child_layout.count += 4;
         assert!(analyze(&input, FACTORY).unwrap().ordering.is_empty());
         let mut input = ordered_input();
-        input.tokens.get_mut(&7).unwrap().ambiguous = true;
+        input.tokens.get_mut(&7).unwrap().name = None;
         let result = analyze(&input, FACTORY).unwrap();
         assert_eq!(result.ordering.len(), 1);
         assert_eq!(
@@ -1026,9 +1024,8 @@ mod tests {
         input.tokens.insert(
             8,
             Token {
-                name: "second_key".into(),
+                name: Some("second_key".into()),
                 constructor: 1,
-                ambiguous: false,
             },
         );
         let result = analyze(&input, FACTORY).unwrap();
@@ -1176,9 +1173,8 @@ mod tests {
             input.tokens.insert(
                 token,
                 Token {
-                    name: name.into(),
+                    name: Some(name.into()),
                     constructor: 1,
-                    ambiguous: false,
                 },
             );
         }
@@ -1237,7 +1233,7 @@ mod tests {
         for duplicate in [false, true] {
             let mut input = nested_input();
             input.tokens.get_mut(&8).unwrap().name =
-                if duplicate { "parent" } else { "other" }.into();
+                Some(if duplicate { "parent" } else { "other" }.into());
             input.symbols.push(Symbol {
                 address: 0xd000,
                 name: "CReader::Read(bool&)".into(),
@@ -1456,9 +1452,8 @@ mod tests {
         input.tokens.insert(
             12,
             Token {
-                name: "child".into(),
+                name: Some("child".into()),
                 constructor: 1,
-                ambiguous: false,
             },
         );
         let mut root = Arm64::at(ROOT);

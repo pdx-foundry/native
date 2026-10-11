@@ -377,9 +377,8 @@ mod tests {
             tokens: BTreeMap::from([(
                 7,
                 Token {
-                    name: "authored_key".into(),
+                    name: Some("authored_key".into()),
                     constructor: 0,
-                    ambiguous: false,
                 },
             )]),
             key_readers: KeyReaders::default(),
@@ -418,7 +417,7 @@ mod tests {
     #[test]
     fn ambiguous_tokens_and_missing_default_routes_remain_gaps() {
         let mut input = input();
-        input.tokens.get_mut(&7).unwrap().ambiguous = true;
+        input.tokens.get_mut(&7).unwrap().name = None;
         input.symbols.retain(|symbol| symbol.address != 0x3000);
         let facts = analyze(&input, &NumericFacts::default());
         let variant = facts.points[&0x8000].as_ref().unwrap();

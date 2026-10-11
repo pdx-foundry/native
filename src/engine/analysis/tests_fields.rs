@@ -455,16 +455,20 @@ fn conflicting_names_for_one_token_never_select_an_arbitrary_name() {
         adrp x2, extern 0x8000;
         add x2, x2, #0x10; // "conflicting_field"
         bl extern 0x3000;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0; // the first name again
+        bl extern 0x3000;
         ret
     );
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(
-        result
-            .gaps
-            .iter()
-            .any(|g| g.reason.contains("conflicting names"))
-    );
+    let conflicts = result
+        .gaps
+        .iter()
+        .filter(|g| g.reason.contains("conflicting names"))
+        .count();
+    assert_eq!(conflicts, 1);
 }
 
 #[test]

@@ -12,9 +12,11 @@ pub(crate) fn fields_and_gaps(
         if path.domain[0] != path.domain[1] || !matches!(path.outcome, PathOutcome::Reader(_)) {
             continue;
         }
-        if let Some(token) = tokens.get(&path.domain[0]).filter(|t| !t.ambiguous) {
+        if let Some(token) = tokens.get(&path.domain[0])
+            && let Some(name) = &token.name
+        {
             fields.entry(path.domain[0]).or_insert_with(|| RootField {
-                name: token.name.clone(),
+                name: name.clone(),
                 token: path.domain[0],
                 constructor: token.constructor,
                 paths: vec![],
@@ -105,9 +107,8 @@ mod tests {
     /// The derived storage of a registry whose only named token 5 has these paths.
     fn derived(paths: Vec<TokenPath>) -> (Option<i64>, usize) {
         let token = Token {
-            name: "name".into(),
+            name: Some("name".into()),
             constructor: 0,
-            ambiguous: false,
         };
         let (fields, gaps) = fields_and_gaps(&paths, &BTreeMap::from([(5, token)]));
         let partition_accounted = partition_accounted(&paths);

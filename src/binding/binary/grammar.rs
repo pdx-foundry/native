@@ -192,7 +192,7 @@ fn command_bindings(
     let boolean_tokens: [Result<i64, AnalysisError>; 2] = recipe.boolean_tokens.map(|name| {
         let mut matches = tokens
             .iter()
-            .filter(|(_, token)| token.name == name && !token.ambiguous);
+            .filter(|(_, token)| token.name.as_deref() == Some(name));
         match (matches.next(), matches.next()) {
             (Some((&id, _)), None) => Ok(id),
             _ => Err(InputError(format!("Boolean token {name} is missing or ambiguous")).into()),

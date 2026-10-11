@@ -55,8 +55,8 @@ impl ReaderNode {
     ) -> Disposition {
         let name = tokens
             .get(&domain[0])
-            .filter(|token| !token.ambiguous && domain[0] == domain[1])
-            .map(|token| token.name.clone());
+            .filter(|_| domain[0] == domain[1])
+            .and_then(|token| token.name.clone());
         Disposition::Gap { name, stop }
     }
 
@@ -74,11 +74,12 @@ impl ReaderNode {
             PathOutcome::Reader(_) => {
                 match tokens
                     .get(&path.domain[0])
-                    .filter(|token| !token.ambiguous && path.domain[0] == path.domain[1])
+                    .filter(|_| path.domain[0] == path.domain[1])
+                    .and_then(|token| token.name.clone())
                 {
-                    Some(token) => Disposition::Field {
+                    Some(name) => Disposition::Field {
                         token: path.domain[0],
-                        name: token.name.clone(),
+                        name,
                     },
                     None => Disposition::Dynamic,
                 }

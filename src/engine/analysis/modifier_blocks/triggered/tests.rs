@@ -108,9 +108,8 @@ fn symbol(name: &str, address: u64) -> Symbol {
 
 fn token(name: &str) -> Token {
     Token {
-        name: name.into(),
+        name: Some(name.into()),
         constructor: 0,
-        ambiguous: false,
     }
 }
 
