@@ -32,6 +32,8 @@ pub(in crate::binding) struct ObservationSetup<'a> {
     pub work_directory: &'a std::path::Path,
     pub attempt: &'a str,
     pub executable: &'a std::path::Path,
+    /// SHA-256 of the executable as the installation was bound; the worker refuses any other.
+    pub executable_hash: &'a str,
     pub registries:
         &'a std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
     pub fault: Option<&'a crate::protocol::session::Fault>,

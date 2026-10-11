@@ -375,6 +375,10 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
             crate::protocol::session::ObservationTarget::Registry("common/traditions".into())
         );
         assert_eq!(setup.startup_seconds, 7);
+        assert_eq!(
+            setup.executable_hash,
+            crate::work_directory::sha256(b"authored test bytes")
+        );
         Err(SupervisorError("selected strategy reached".into()))
     }
     let (directory, _) = installation();
@@ -398,6 +402,9 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
             invalidated: Default::default(),
         },
     };
+    // The strategy gets the hash bound at open and does not read the executable again; the
+    // check before spawn and the worker refuse a changed file.
+    fs::write(directory.path().join("stellaris"), "changed test bytes!").unwrap();
     let mut request = SessionRequest {
         installation: directory.path().into(),
         build: "unused".into(),

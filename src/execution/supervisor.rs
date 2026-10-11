@@ -203,7 +203,6 @@ fn run(
         }
         let observer =
             observer.insert(plan.observer(&work, &report.attempt, &request, &registries)?);
-        plan.integrity()?;
         match input.try_recv() {
             Ok(event) => return Ok(interruption(event)),
             Err(mpsc::TryRecvError::Disconnected) => return Ok(SessionOutcome::CallerLost),

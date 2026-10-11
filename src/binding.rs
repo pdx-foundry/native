@@ -348,9 +348,7 @@ impl ExecutionPlan {
         platform::lifecycle::available()?;
         let binding = Binding::open(installation)
             .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
-        let plan = Self { binding };
-        plan.integrity()?;
-        Ok(plan)
+        Ok(Self { binding })
     }
     pub fn build(&self) -> &str {
         self.binding.build()
@@ -618,7 +616,6 @@ impl ExecutionPlan {
             crate::protocol::observation::RegistryBinding,
         >,
     ) -> Result<Observer, crate::supervisor::SupervisorError> {
-        self.integrity()?;
         let operation = self.operation();
         if let Some(fault) = &request.fault
             && let crate::protocol::session::ObservationTarget::Registry(registry) = &fault.target
@@ -632,6 +629,7 @@ impl ExecutionPlan {
             work_directory,
             attempt,
             executable: self.installation().executable(),
+            executable_hash: self.build(),
             registries,
             fault: request.fault.as_ref(),
             fixture: request
@@ -686,7 +684,6 @@ impl ExecutionPlan {
         content: &installation::ContentIdentity,
     ) -> Result<(), crate::supervisor::SupervisorError> {
         use crate::{supervisor::SupervisorError, work_directory as files};
-        self.integrity()?;
         let profile = work_directory.join("profile");
         platform::lifecycle::private_directory(&profile.join("mod"))?;
         let mount = profile.join("mod/native_registry");
@@ -730,8 +727,6 @@ impl ExecutionPlan {
         files::write_new(
             &profile.join("dlc_load.json"),
             br#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
-        )?;
-        self.integrity()?;
-        Ok(())
+        )
     }
 }
