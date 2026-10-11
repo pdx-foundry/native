@@ -54,7 +54,7 @@ class ProtocolTests(unittest.TestCase):
                        bindings=dict(validation=None, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
                        malformed_entry=16464, unexpected_entry=16480))
-        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
+        request = dict(attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180,
                        fixture=fixture, modifiers=None, script_checks=None)
@@ -102,7 +102,7 @@ class ProtocolTests(unittest.TestCase):
                 wire.encode('reader_kind', kind)
 
     def test_fault_wire_has_one_target_and_kind(self):
-        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
+        request = dict(attempt='a', game=1, executable='/game', target='build',
                        source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None, script_checks=None)
         for target in [{'registry': 'common/traditions'}, 'fixture', 'modifiers']:
@@ -169,8 +169,14 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 wire.encode('record', dict(row, **changes))
 
+    def test_no_wire_message_carries_a_version(self):
+        self.assertFalse(hasattr(wire, 'VERSION'))
+        for name in ['request', 'hello', 'grant']:
+            with self.subTest(schema=name):
+                self.assertNotIn('version', wire.SCHEMAS[name]['properties'])
+
     def test_handshake_and_grant_reject_unknown_fields(self):
-        grant = dict(version=wire.VERSION, attempt='a', game=10, worker=11)
+        grant = dict(attempt='a', game=10, worker=11)
         self.assertEqual(wire.decode('grant', wire.encode('grant', grant)), grant)
         for value in [dict(grant, bypass=True), dict(grant, game=-1), dict(grant, worker='11')]:
             with self.assertRaises(ValueError):

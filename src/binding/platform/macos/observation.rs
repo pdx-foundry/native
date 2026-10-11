@@ -169,7 +169,6 @@ impl Observer {
         files::write_new(&work_directory.join("raw-trace.jsonl"), b"")?;
         files::write_json(&work_directory.join("tool.json"), &tool)?;
         let request = WorkerRequest {
-            version: observation::VERSION.into(),
             attempt: attempt.into(),
             game: 0,
             executable: executable
@@ -264,7 +263,6 @@ impl Observer {
                 files::publish_json(
                     &self.output.join("resume-granted.json"),
                     &ResumeGrant {
-                        version: observation::VERSION.into(),
                         attempt: self.request.attempt.clone(),
                         game: self.request.game,
                         worker: pid,
@@ -448,8 +446,7 @@ impl Observer {
     }
 
     fn validate_hello(&self, hello: &WorkerHello, pid: u32) -> Result<(), SupervisorError> {
-        if hello.version != observation::VERSION
-            || hello.attempt != self.request.attempt
+        if hello.attempt != self.request.attempt
             || hello.game != self.request.game
             || hello.worker != pid
             || hello.target != self.request.target
@@ -588,7 +585,6 @@ pub(crate) fn test_observer(
     Observer {
         output: root.into(),
         request: WorkerRequest {
-            version: observation::VERSION.into(),
             attempt: "unit".into(),
             game,
             executable: "/not-used".into(),
@@ -874,14 +870,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         let pid = observer.worker.as_ref().unwrap().id();
-        let hello = serde_json::json!({"version": observation::VERSION, "attempt":"unit", "game":123, "worker":pid, "target":"target", "source_hashes":{}, "python":"python", "lldb":"lldb", "module":"module"});
+        let hello = serde_json::json!({"attempt":"unit", "game":123, "worker":pid, "target":"target", "source_hashes":{}, "python":"python", "lldb":"lldb", "module":"module"});
         assert!(
             observer
                 .validate_hello(&serde_json::from_value(hello.clone()).unwrap(), pid)
                 .is_ok()
         );
         for field in [
-            "version",
             "attempt",
             "target",
             "python",

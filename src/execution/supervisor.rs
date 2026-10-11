@@ -808,7 +808,7 @@ mod tests {
         }
         let script = format!(
             r#"
-printf '{{"version":"%s","attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{{}},"python":"python","lldb":"lldb","module":"module"}}' "$NATIVE_VERSION" "$GAME_PID" "$$" > hello.json.pending
+printf '{{"attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{{}},"python":"python","lldb":"lldb","module":"module"}}' "$GAME_PID" "$$" > hello.json.pending
 mv hello.json.pending hello.json
 while [ ! -f resume-granted.json ]; do sleep 0.01; done
 {after_resume}
@@ -819,7 +819,6 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
             .arg("-c")
             .arg(script)
             .current_dir(directory)
-            .env("NATIVE_VERSION", crate::protocol::observation::VERSION)
             .env("GAME_PID", game_pid.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null());

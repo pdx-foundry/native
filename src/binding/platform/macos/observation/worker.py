@@ -1191,9 +1191,9 @@ def run(debugger):
     active_registries = set()
     source_hashes = {name: sha(ROOT / 'source' / name) for name in request['source_hashes']}
     target_hash = sha(request['executable'])
-    if request['version'] != protocol.VERSION or source_hashes != request['source_hashes'] or target_hash != request['target']:
+    if source_hashes != request['source_hashes'] or target_hash != request['target']:
         raise RuntimeError('worker package or target mismatch')
-    atomic('hello', 'hello.json', dict(version=protocol.VERSION, attempt=request['attempt'],
+    atomic('hello', 'hello.json', dict(attempt=request['attempt'],
         game=request['game'], worker=os.getpid(), target=target_hash, source_hashes=source_hashes,
         python=sys.version, lldb=lldb.SBDebugger.GetVersionString(), module=lldb.__file__))
     if control == protocol.CONTROL['worker_loss_before_activation']:
@@ -1258,7 +1258,7 @@ def run(debugger):
             return
         time.sleep(.02)
     grant = protocol.decode('grant', (ROOT / 'resume-granted.json').read_bytes())
-    if grant != dict(version=protocol.VERSION, attempt=request['attempt'], game=request['game'], worker=os.getpid()):
+    if grant != dict(attempt=request['attempt'], game=request['game'], worker=os.getpid()):
         raise RuntimeError('foreign resume acknowledgement')
     emit('resume', error=str(process.Continue()))
     deadline = time.monotonic() + request['deadline_seconds']
