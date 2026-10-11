@@ -60,6 +60,7 @@ pub struct ScriptDiagnostic {
     pub stage: ScriptStage,
     /// One-based line in the attributed snippet, when established.
     #[serde(deserialize_with = "crate::answer::required_option")]
+    #[schemars(required, extend("type" = ["integer", "null"]))]
     pub line: Option<u32>,
 }
 
@@ -109,6 +110,7 @@ pub struct StoredDuration {
     pub count: crate::FixtureValue,
     /// The shared factor slot, for a shared-factor group.
     #[serde(deserialize_with = "crate::answer::required_option")]
+    #[schemars(required, extend("type" = ["integer", "null"]))]
     pub factor: Option<i32>,
 }
 
