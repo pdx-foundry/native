@@ -16,8 +16,7 @@
 //! that code are not followed.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::engine::analysis::declarations::number;
-use crate::engine::analysis::decode::{Instruction, general_register, written_registers};
+use crate::engine::analysis::decode::{Instruction, general_register, number, written_registers};
 use crate::engine::analysis::evaluate::{
     Call, Code, DATA_OBJECT_BASE, Exit, Machine, ReadOnlyData,
 };

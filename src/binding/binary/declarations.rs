@@ -4,7 +4,7 @@ use object::{Object, ObjectSection, SectionKind};
 
 use crate::engine::analysis::{
     declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
-    decode::{Instruction, decode_arm64},
+    decode::{Instruction, blr_register, call_or_jump_target, call_target, decode_arm64},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     families::StringLayout,
@@ -214,26 +214,6 @@ pub(super) fn unique(symbols: &[Symbol], name: &str) -> Result<u64, AnalysisErro
         .ok_or(AnalysisError::InvalidRange)
 }
 
-fn branch_target(word: u32, address: u64) -> Option<u64> {
-    if word >> 26 != 0b100101 {
-        return None;
-    }
-    immediate_target(word, address)
-}
-
-/// The target of a `bl` or of a `b`, which a tail call uses.
-pub(super) fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
-    if word >> 26 != 0b100101 && word >> 26 != 0b000101 {
-        return None;
-    }
-    immediate_target(word, address)
-}
-
-fn immediate_target(word: u32, address: u64) -> Option<u64> {
-    let signed = ((word << 6) as i32 >> 6) as i64;
-    address.checked_add_signed(signed * 4)
-}
-
 /// Every address of one demangled symbol name. The same name can have several addresses, such as
 /// the complete and base-object constructors.
 pub(super) fn addresses(symbols: &[Symbol], name: &str) -> BTreeSet<u64> {
@@ -346,7 +326,7 @@ impl<'a> Text<'a> {
             .iter()
             .enumerate()
             .map(|(index, word)| (self.address + (index * 4) as u64, u32::from_le_bytes(*word)))
-            .filter(|(at, word)| branch_target(*word, *at) == Some(target))
+            .filter(|(at, word)| call_target(*word, *at) == Some(target))
             .map(|(at, _)| at)
             .collect()
     }
@@ -388,9 +368,8 @@ impl<'a> Text<'a> {
             .iter()
             .enumerate()
             .filter_map(|(index, word)| {
-                let word = u32::from_le_bytes(*word);
                 let at = self.address + (index * 4) as u64;
-                (word & 0xffff_fc1f == 0xd63f_0000).then_some((at, (word >> 5) as usize & 0x1f))
+                Some((at, blr_register(u32::from_le_bytes(*word))?))
             })
             .collect()
     }

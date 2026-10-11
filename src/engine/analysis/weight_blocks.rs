@@ -319,7 +319,7 @@ impl<'a> Context<'a> {
                 .iter()
                 .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
             {
-                let Some(target) = super::declarations::number(&row.operands) else {
+                let Some(target) = super::decode::number(&row.operands) else {
                     continue;
                 };
                 let callee = self.name(target);

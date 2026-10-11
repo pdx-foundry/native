@@ -10,7 +10,9 @@ use std::sync::OnceLock;
 
 use super::{
     InputError,
-    decode::{Instruction, decode_arm64, general_register, wide_register, written_registers},
+    decode::{
+        Instruction, decode_arm64, general_register, number, wide_register, written_registers,
+    },
     evaluate::ReadOnlyData,
     receivers::ConstructorImage,
     stop::Unresolved,
@@ -302,18 +304,6 @@ pub(crate) fn alias_target(functions: &BTreeMap<u64, Function>, address: u64) ->
     }
 
     address
-}
-
-pub(crate) fn number(text: &str) -> Option<u64> {
-    let text = text.strip_prefix('#').unwrap_or(text);
-    if let Some(negative) = text.strip_prefix('-') {
-        return number(negative).map(|value| 0u64.wrapping_sub(value));
-    }
-    if let Some(hex) = text.strip_prefix("0x") {
-        u64::from_str_radix(hex, 16).ok()
-    } else {
-        text.parse().ok()
-    }
 }
 
 fn site(input: &DeclarationInput, rows: &[Instruction]) -> Site {

@@ -25,9 +25,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::InputError;
 use super::declarations::{
-    ScopeOutcome, ScopeType, declared_scopes, named_scope_types, number, scope_mask,
+    ScopeOutcome, ScopeType, declared_scopes, named_scope_types, scope_mask,
 };
-use super::decode::{Instruction, wide_register, written_registers};
+use super::decode::{Instruction, number, wide_register, written_registers};
 use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 

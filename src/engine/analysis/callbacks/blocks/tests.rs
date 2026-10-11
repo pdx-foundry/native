@@ -7,7 +7,7 @@ use super::super::tests::{
 };
 use super::*;
 use crate::engine::analysis::callbacks::{Context, Slot};
-use crate::engine::analysis::declarations::number;
+use crate::engine::analysis::decode::number;
 
 // Rows call the evaluator at 0x9400, the weight evaluator at 0x9408, a tooltip builder at
 // 0x9410, a function that never returns at 0x9420 and an unknown function at 0x9900. Owner

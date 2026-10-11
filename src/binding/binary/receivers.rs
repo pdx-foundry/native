@@ -69,8 +69,7 @@ pub(super) fn constructors(
                 .iter()
                 .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
             {
-                let Some(address) = crate::engine::analysis::declarations::number(&row.operands)
-                else {
+                let Some(address) = crate::engine::analysis::decode::number(&row.operands) else {
                     continue;
                 };
                 calls.insert(address);
@@ -289,7 +288,7 @@ pub(super) fn persistent(
         {
             if matches!(row.operation.as_str(), "adrp" | "adr")
                 && let Some((_, operand)) = row.operands.split_once(',')
-                && let Some(address) = crate::engine::analysis::declarations::number(operand)
+                && let Some(address) = crate::engine::analysis::decode::number(operand)
             {
                 pages.insert(address & !0xfff);
             }

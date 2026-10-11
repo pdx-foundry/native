@@ -474,7 +474,7 @@ fn code(
         pending.extend(
             body.iter()
                 .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
-                .filter_map(|row| crate::engine::analysis::declarations::number(&row.operands))
+                .filter_map(|row| crate::engine::analysis::decode::number(&row.operands))
                 .filter(|target| input.forms.assignments.contains(target)),
         );
         rows.extend(body);

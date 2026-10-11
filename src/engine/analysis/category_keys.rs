@@ -13,8 +13,7 @@
 //! Economy category that economic-category generation adds.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::declarations::number;
-use super::decode::{Instruction, is_control_transfer};
+use super::decode::{Instruction, is_control_transfer, number};
 use super::evaluate::{Code, Exit, Machine, ReadOnlyData};
 use super::modifiers::{CategoryInput, CategoryNames, EVERY_CATEGORY, category_names};
 use super::stop::Unresolved;

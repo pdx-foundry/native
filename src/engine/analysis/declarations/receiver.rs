@@ -3,9 +3,9 @@
 //! A create method may tail-call an out-of-line factory that allocates and returns the command.
 //! The walk runs that callee's code in place of the tail call, since the callee's return is the
 //! create method's return.
-use super::{DeclarationInput, Function, decode, number};
+use super::{DeclarationInput, Function, decode};
 use crate::engine::analysis::{
-    decode::general_register,
+    decode::{general_register, number},
     evaluate::{Call, Code, Exit, Machine, ReturnTaint},
     receivers::{Constructors, accept_entered_path, install_vtables, join_byte_traces},
     stop::{CauseKind, Trace, Unresolved},

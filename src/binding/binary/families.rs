@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::{Instruction, add_immediate, adrp, decode_arm64, general_register, written_registers},
+    decode::{
+        Instruction, add_immediate, adrp, blr_register, call_or_jump_target, decode_arm64,
+        general_register, written_registers,
+    },
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     families::{
@@ -16,7 +19,7 @@ use crate::engine::analysis::{
 };
 
 use super::super::targets::DeclarationRecipe;
-use super::declarations::{Text, addresses, call_or_jump_target, unique};
+use super::declarations::{Text, addresses, unique};
 use super::language::{GENERATE_MODIFIER, constant_data, generation_calls};
 
 /// Import stubs keep their raw name when it does not demangle.
@@ -772,7 +775,7 @@ pub(super) fn calls(text: &Text, start: u64) -> Result<Vec<(u64, Call)>, Analysi
         .filter_map(|(index, word)| {
             let at = address + (index * 4) as u64;
             let word = u32::from_le_bytes(*word);
-            if word & 0xffff_fc1f == 0xd63f_0000 {
+            if blr_register(word).is_some() {
                 return Some((at, Call::Indirect));
             }
             let target = call_or_jump_target(word, at)?;

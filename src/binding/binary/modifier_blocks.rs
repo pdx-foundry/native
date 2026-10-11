@@ -96,7 +96,7 @@ pub(in crate::binding) fn read(
             if !matches!(row.operation.as_str(), "bl" | "b") {
                 continue;
             }
-            let Some(callee) = crate::engine::analysis::declarations::number(&row.operands)
+            let Some(callee) = crate::engine::analysis::decode::number(&row.operands)
                 .and_then(|target| names.get(&target))
             else {
                 continue;
