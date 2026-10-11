@@ -22,9 +22,9 @@
 //! subject over 124 bytes has an encoded name over the 255-byte file name limit, and recording
 //! it fails with `Error::Recorded`. Change this when a caller must record such a subject.
 //!
-//! Each write goes to its own `<file>.<process>.<count>.tmp` and is then renamed, so a reader never
-//! sees a partial file, even while two queries record at once. One recorder writes to a directory
-//! at a time.
+//! Each write goes to its own `.<process>.<count>.tmp` beside the file and is then renamed, so a
+//! reader never sees a partial file, even while two queries record at once. One recorder writes to
+//! a directory at a time.
 use crate::answer::{Answer, Basis, BuildId, Error, Operation};
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::{Path, PathBuf};
@@ -105,9 +105,9 @@ fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
 
+    // The temporary name is short and its own, so a final name near the file name limit fits.
     let write = WRITES.fetch_add(1, Ordering::Relaxed);
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(format!(".{}.{write}.tmp", std::process::id()));
+    let temporary = path.with_file_name(format!(".{}.{write}.tmp", std::process::id()));
     std::fs::write(&temporary, bytes).map_err(failed)?;
     std::fs::rename(&temporary, path).map_err(failed)
 }
@@ -324,6 +324,31 @@ mod tests {
         assert_eq!(
             path(root, Operation::Registries, None),
             root.join("registries.json")
+        );
+    }
+
+    #[test]
+    fn a_subject_at_the_encoded_length_limit_is_recorded() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("recording");
+        let build = BuildId("original".into());
+        let subject = "A".repeat(124);
+        let error: Result<Answer<Vec<String>>, Error> = Err(Error::UnknownRegistry {
+            name: subject.clone(),
+        });
+
+        write(
+            &root,
+            &build,
+            Operation::RegistryFields,
+            Some(&subject),
+            &error,
+        )
+        .unwrap();
+        let recorded = Answers::open(root).unwrap();
+        assert_eq!(
+            recorded.read::<Vec<String>>(Operation::RegistryFields, Some(&subject)),
+            error
         );
     }
 
