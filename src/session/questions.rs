@@ -245,8 +245,8 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        let subject = registry.trim_end_matches('/');
-        self.answer(Operation::RegistryFields, Some(subject), || {
+        let registry = registry.trim_end_matches('/');
+        self.answer(Operation::RegistryFields, Some(registry), || {
             self.registry_fields_from_executable(registry)
         })
     }

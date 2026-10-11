@@ -240,6 +240,12 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
         );
     }
 
+    // A trailing slash names the same registry, so "/" is the empty name live and recorded.
+    assert_eq!(
+        native.registry_fields("/"),
+        Err(Error::UnknownRegistry { name: "".into() })
+    );
+
     let replay = Native::from_recorded_answers(&recording).unwrap();
     for name in names {
         assert_eq!(
@@ -248,6 +254,10 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
             "{name:?}"
         );
     }
+    assert_eq!(
+        replay.registry_fields("/"),
+        Err(Error::UnknownRegistry { name: "".into() })
+    );
     let beside: Vec<_> = fs::read_dir(base.path())
         .unwrap()
         .map(|entry| entry.unwrap().file_name())
