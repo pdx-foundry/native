@@ -115,15 +115,7 @@ pub(in crate::binding) fn read(
             },
         );
     }
-    let token_address = image
-        .symbols
-        .iter()
-        .find(|symbol| symbol.name == "GetTokenArray()")
-        .ok_or(AnalysisError::InvalidRange)?
-        .address;
-    let (address, code) = text.function(token_address)?;
-    let rows = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, image.symbols, image.strings);
+    let tokens = text.token_table(image.symbols, image.strings)?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
     let name_reads = name_read_functions(image, bound_slots, &text, &base, recipe);
     let directories = super::references::database_directories(

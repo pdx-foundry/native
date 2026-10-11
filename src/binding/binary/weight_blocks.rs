@@ -3,8 +3,7 @@
 use super::{declarations::Text, grammar::CHILD_FAMILIES, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
-    declarations::Function, decode::decode_arm64, evaluate::ReadOnlyData, fields,
-    weight_blocks::WeightBlockInput,
+    declarations::Function, evaluate::ReadOnlyData, weight_blocks::WeightBlockInput,
 };
 use crate::{AnalysisError, BlockFamily};
 
@@ -38,12 +37,7 @@ pub(in crate::binding) fn read(
         bound_slots,
         &roots.iter().collect::<Vec<_>>(),
     )?;
-    let (address, code) = text.function(super::declarations::unique(
-        image.symbols,
-        "GetTokenArray()",
-    )?)?;
-    let rows = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, image.symbols, image.strings);
+    let tokens = text.token_table(image.symbols, image.strings)?;
     let sections = super::fields::read_only_data(image.bytes)?
         .into_iter()
         .map(|section| (section.address, section.bytes))

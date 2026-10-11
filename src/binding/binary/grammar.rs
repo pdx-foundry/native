@@ -18,7 +18,6 @@ use super::super::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     InputError,
     declarations::{DeclarationInput, DeclarationResult, tail_callees},
-    decode::decode_arm64,
     discovery::Symbol,
     fields,
     grammar::{AccessorNullObject, CommandBindings, GrammarInput},
@@ -104,10 +103,7 @@ pub(in crate::binding) fn read(
 
     declarations.constructor_calls = super::receivers::constructor_calls(bytes, symbols)?;
 
-    let token_start = super::declarations::unique(symbols, "GetTokenArray()")?;
-    let (_, token_code) = text.function(token_start)?;
-    let rows = decode_arm64(token_code, token_start).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, symbols, strings);
+    let tokens = text.token_table(symbols, strings)?;
     let families = CHILD_FAMILIES
         .iter()
         .map(|&(name, family)| (name.into(), family))
