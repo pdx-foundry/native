@@ -427,9 +427,11 @@ fn payload(bytes: &[u8]) -> Result<&[u8], FixupDiagnostic> {
             continue;
         }
 
-        let data = command.raw_data();
-        let offset = u32_at(data, 8).ok_or(Malformed("fixups command"))? as usize;
-        let size = u32_at(data, 12).ok_or(Malformed("fixups command"))? as usize;
+        let fixups = command
+            .data::<object::macho::LinkeditDataCommand<object::Endianness>>()
+            .map_err(|_| Malformed("fixups command"))?;
+        let offset = fixups.dataoff.get(macho.endian()) as usize;
+        let size = fixups.datasize.get(macho.endian()) as usize;
         let range = bytes
             .get(offset..offset.saturating_add(size))
             .ok_or(Malformed("fixups range"))?;

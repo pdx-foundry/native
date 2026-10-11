@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use object::read::macho::{MachHeader, MachOFile64};
 use object::{BinaryFormat, Object, ObjectSection, ObjectSymbol, SectionKind, SymbolIndex};
 
-use super::{ImageIdentity, u32_at, u64_at};
+use super::{ImageIdentity, u32_at};
 use crate::engine::analysis::discovery::Symbol;
 use crate::{AnalysisError, OpenError};
 
@@ -150,42 +150,33 @@ fn indirect_stubs(bytes: &[u8], file: &object::File<'_>) -> Option<BTreeMap<u64,
     let mut stub_sections = Vec::new();
 
     while let Some(command) = commands.next().ok()? {
-        let data = command.raw_data();
+        let Some(dysymtab) = command.dysymtab().ok()? else {
+            continue;
+        };
+        let offset = dysymtab.indirectsymoff.get(endian) as usize;
+        let count = dysymtab.nindirectsyms.get(endian) as usize;
 
-        if command.cmd() == object::macho::LC_DYSYMTAB {
-            let offset = u32_at(data, 56)? as usize;
-            let count = u32_at(data, 60)? as usize;
-
-            if count > 1_000_000 || indirect.replace((offset, count)).is_some() {
-                return None;
-            }
+        if count > 1_000_000 || indirect.replace((offset, count)).is_some() {
+            return None;
         }
+    }
 
-        if command.cmd() != object::macho::LC_SEGMENT_64 {
+    for section in macho.sections() {
+        let section = section.macho_section();
+        if section.flags.get(endian) & object::macho::SECTION_TYPE != object::macho::S_SYMBOL_STUBS
+        {
             continue;
         }
 
-        let section_count = u32_at(data, 64)? as usize;
-        if section_count > 10_000 || data.len() < 72 + section_count * 80 {
+        let address = section.addr.get(endian);
+        let size = section.size.get(endian);
+        let first = section.reserved1.get(endian) as usize;
+        let stride = u64::from(section.reserved2.get(endian));
+        if stride == 0 || !size.is_multiple_of(stride) || size / stride > 100_000 {
             return None;
         }
 
-        for index in 0..section_count {
-            let section = &data[72 + index * 80..72 + (index + 1) * 80];
-            if u32_at(section, 64)? & 0xff != object::macho::S_SYMBOL_STUBS {
-                continue;
-            }
-
-            let address = u64_at(section, 32)?;
-            let size = u64_at(section, 40)?;
-            let first = u32_at(section, 68)? as usize;
-            let stride = u32_at(section, 72)? as u64;
-            if stride == 0 || !size.is_multiple_of(stride) || size / stride > 100_000 {
-                return None;
-            }
-
-            stub_sections.push((address, size / stride, first, stride));
-        }
+        stub_sections.push((address, size / stride, first, stride));
     }
 
     let Some((offset, count)) = indirect else {
