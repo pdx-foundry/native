@@ -896,19 +896,35 @@ fn a_name_that_a_fixed_buffer_bounds_is_a_gap() {
     assert_eq!(result.failures.get("name-limit"), Some(&1));
 }
 
-/// A root field with the token `token` that `kind`'s reader stores at `offset`.
+/// A root field with the token `token` that `kind`'s reader stores at `offset`. A string is read
+/// by the plain string reader; the other kinds have a compound reader.
 fn stored(name: &str, token: i64, kind: crate::ReaderKind, offset: i64) -> RootField {
+    use crate::engine::analysis::fields::Value;
+
+    let reader = if kind == crate::ReaderKind::String {
+        ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: BTreeMap::from([
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(offset)),
+            ]),
+            tail: true,
+        }
+    } else {
+        ReaderJoin::Stored {
+            callee: "reader".into(),
+            kind,
+            destination: Some(offset),
+            repeat: crate::RepeatBehavior::Replace,
+        }
+    };
+
     RootField {
         name: name.into(),
         token,
         constructor: 0,
         paths: Vec::new(),
-        readers: vec![ReaderJoin::Stored {
-            callee: "reader".into(),
-            kind,
-            destination: Some(offset),
-            repeat: crate::RepeatBehavior::Replace,
-        }],
+        readers: vec![reader],
     }
 }
 

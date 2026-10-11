@@ -71,9 +71,8 @@ pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{RegistryFieldResult, storage_offset};
+    use super::super::{RegistryFieldResult, Value, storage_offset};
     use super::*;
-    use crate::ReaderKind;
     use crate::engine::analysis::names;
     use crate::engine::analysis::stop::Unresolved;
 
@@ -90,11 +89,13 @@ mod tests {
     }
 
     fn string_field() -> PathOutcome {
-        PathOutcome::Reader(ReaderJoin::Stored {
-            callee: "reader".into(),
-            kind: ReaderKind::String,
-            destination: Some(STORED_AT),
-            repeat: crate::RepeatBehavior::Replace,
+        PathOutcome::Reader(ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: BTreeMap::from([
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(STORED_AT)),
+            ]),
+            tail: true,
         })
     }
 

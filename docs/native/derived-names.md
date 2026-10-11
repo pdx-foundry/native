@@ -272,6 +272,14 @@ with a field part has an `Unresolved` miss in the answer; the hand-read miss is 
   paths after the null swap object's unknown name, and `GetDesc` hit the path bound.
 - **Model `CString::CString(char const*, int)`.** Unmodelled, it left the strings that `GetDesc`
   builds after its lookup unknown, and each destructor's flag test forked.
+- **Plant a string only where a plain `CString` is read.** A template run plants text at the
+  offset of each string field. A compound reader's string (`ReaderJoin::Stored`) is not a plain
+  `CString`: the `CString` array emplace read by the shared string reader (`String/Accumulate`,
+  for example `common/asteroid_belts.mesh`) reports the array header, whose data and count are
+  at other offsets, so a planted `CString` there gave the run a made-up pointer and count. Only
+  a field that `CReader::Read(CString&, bool)` reads into an owner offset is planted. The
+  optional `CString` set from token text (`Stored`, repeat unknown) is not planted either: the
+  method does not establish its layout.
 - **Prove a fallback on every path that checks the name.** In `GetDesc` another path (no valid
   swap) uses key + suffix at the same check site in the found run too, so a comparison of whole
   runs saw no replacement. A union over paths was wrong the other way: a check whose result is

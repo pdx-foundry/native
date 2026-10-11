@@ -53,7 +53,7 @@ use super::families::{
     Node, NotEstablished, Part, Sources, StringFunctions, StringLayout, ending,
     every_returned_path, key_storage, loading, write_source,
 };
-use super::fields::{RegistryFieldResult, StorageSelection, storage_offset};
+use super::fields::{ReaderJoin, RegistryFieldResult, RootField, StorageSelection, storage_offset};
 use super::stop::Unresolved;
 use crate::NameLookup;
 
@@ -305,11 +305,21 @@ fn collect_fields(
             element,
         };
         match super::readers::classify(&field.readers).kind {
-            crate::ReaderKind::String => storage.strings.push(stored),
+            crate::ReaderKind::String if reads_plain_string(field) => storage.strings.push(stored),
             crate::ReaderKind::Boolean => storage.flags.push(stored),
             _ => {}
         }
     }
+}
+
+/// Whether the reader of the string `field` writes a plain `CString` at its offset. A compound
+/// reader (`ReaderJoin::Stored`) reports the kind of a value that is not a plain `CString`: a
+/// string array's destination holds the array header, not a string.
+fn reads_plain_string(field: &RootField) -> bool {
+    field
+        .readers
+        .iter()
+        .all(|join| matches!(join, ReaderJoin::Joined { .. }))
 }
 
 /// Follow every root of the registry.
