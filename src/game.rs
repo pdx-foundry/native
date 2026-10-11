@@ -458,11 +458,12 @@ impl Game {
 
     /// Record a read error so that `close` keeps the work directory. The error is returned
     /// unchanged, so a recorded answer replays it exactly; `work_directory` gives the path.
-    /// `Error::Closed` after the caller began to close adds nothing to inspect. `Error::Closed`
-    /// because the supervisor ended the session does.
+    /// `Error::Closed` after the caller asked to stop (a close, a cancel or a dropped check) adds
+    /// nothing to inspect. `Error::Closed` because the supervisor ended the session does.
     fn keep_on_error<T>(&mut self, result: Result<T, Error>) -> Result<T, Error> {
+        let caller_stopped = self.closing || self.stop.load(Ordering::SeqCst) != 0;
         if let Err(error) = &result
-            && !(self.closing && *error == Error::Closed)
+            && !(caller_stopped && *error == Error::Closed)
         {
             self.read_failed = true;
         }
@@ -871,6 +872,12 @@ mod tests {
             game.check_script(&input).await,
             Err(Error::Closed)
         ));
+        // The cancellation closed the session; a later read is no read failure to keep.
+        assert_eq!(
+            game.loader_items("common/traditions").await,
+            Err(Error::Closed)
+        );
+        assert!(!game.read_failed);
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
     }
