@@ -148,10 +148,9 @@ fn collect_read_evidence(
                     }
                     _ => evidence.failure = Some("reader key arguments could not be resolved"),
                 },
-                Err(super::stop::Unresolved {
-                    reason: "loop-limit" | "path-limit",
-                    ..
-                }) => evidence.failure = Some("reader path exceeds the table-search limit"),
+                Err(stop) if stop.is_bound() => {
+                    evidence.failure = Some("reader path exceeds the table-search limit");
+                }
                 _ => evidence.failure = Some("reader call path could not be followed"),
             }
         }
@@ -250,6 +249,24 @@ mod tests {
         assert_eq!(define.namespace, "NCamera");
         assert_eq!(define.name, "FOV");
         assert_eq!(define.value_type, DefineValueType::Float);
+    }
+
+    #[test]
+    fn a_step_limit_is_a_search_bound_like_the_loop_and_path_limits() {
+        let steps = 25_000;
+        let mut rows: Vec<_> = (0..steps)
+            .map(|step| row(0x1000 + 4 * step, "nop", ""))
+            .collect();
+        rows.push(row(0x1000 + 4 * steps, "b", "#0x5000"));
+        let input = input(rows, Some(DefineValueType::Float));
+
+        assert!(matches!(
+            analyze(&input).as_slice(),
+            [SiteOutcome::Unresolved {
+                reason: "reader path exceeds the table-search limit",
+                ..
+            }]
+        ));
     }
 
     #[test]
