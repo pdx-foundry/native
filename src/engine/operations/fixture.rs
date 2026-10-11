@@ -1202,11 +1202,7 @@ impl<'a> Window<'a> {
         self.finish_diagnostics();
         self.finish_fields();
         Answer {
-            completeness: if self.gaps.is_empty() {
-                Completeness::Complete
-            } else {
-                Completeness::Partial
-            },
+            completeness: Completeness::from_gaps(&self.gaps),
             value: self.value,
             gaps: self.gaps,
             source: Source::new(build, "observe-fixture/v7", Basis::LiveObservation),
@@ -2241,9 +2237,19 @@ mod tests {
 
     #[test]
     fn unsupported_reader_kinds_return_typed_storage_gaps() {
-        for (reader_kind, gap_kind, expected_kind) in [
-            ("Unknown", GapKind::UnresolvedReader, ReaderKind::Unknown),
-            ("Block", GapKind::OutsideMethod, ReaderKind::Block),
+        for (reader_kind, gap_kind, expected_kind, completeness) in [
+            (
+                "Unknown",
+                GapKind::UnresolvedReader,
+                ReaderKind::Unknown,
+                Completeness::Partial,
+            ),
+            (
+                "Block",
+                GapKind::OutsideMethod,
+                ReaderKind::Block,
+                Completeness::Complete,
+            ),
         ] {
             let answer = reduce(
                 &field_request(),
@@ -2252,7 +2258,7 @@ mod tests {
                 BuildId("b".into()),
             )
             .unwrap();
-            assert_eq!(answer.completeness, Completeness::Partial);
+            assert_eq!(answer.completeness, completeness);
             assert_eq!(answer.value.field_outcomes[0].reader.kind, expected_kind);
             assert!(matches!(
                 answer.value.field_outcomes[0].storage,
@@ -2272,7 +2278,7 @@ mod tests {
         });
         renumber(&mut events);
         let answer = reduce(&request, &records(events), &owner(), BuildId("b".into())).unwrap();
-        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(answer.completeness, Completeness::Complete);
         assert!(
             answer
                 .gaps
@@ -2309,7 +2315,7 @@ mod tests {
             BuildId("b".into()),
         )
         .unwrap();
-        assert_eq!(unsupported.completeness, Completeness::Partial);
+        assert_eq!(unsupported.completeness, Completeness::Complete);
         assert!(matches!(
             unsupported.value.diagnostic_coverage,
             DiagnosticCoverage::Unavailable(_)
