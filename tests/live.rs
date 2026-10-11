@@ -24,9 +24,9 @@
 //! writes to the standard output that the supervisor protocol owns. Only one Native-owned game
 //! may run on a host, so the cases run one at a time.
 //!
-//! The fault cases use the hidden `GameOptions::fault`. A fault applies to one registry; the
-//! other registry must stay complete. The tests stop only their own unrelated sentinel process. They check that every
-//! game, supervisor and worker-group process that a case started is gone when the case ends.
+//! The fault cases use the hidden `GameOptions::fault`. A fault applies to one registry. The tests
+//! stop only their own unrelated sentinel process. They check that every game, supervisor and
+//! worker-group process that a case started is gone when the case ends.
 use pdx_native::internals::{ObservationControl as Fault, ObservationTarget};
 use pdx_native::{
     Answer, Basis, Completeness, Disposal, Error, Game, GameOptions, GapKind, Native,
@@ -221,7 +221,6 @@ enum Case {
     DropWithoutClose,
     Fault {
         registry: &'static str,
-        other: &'static str,
         control: Fault,
         expect: Expect,
     },
@@ -350,25 +349,22 @@ fn cases() -> Vec<(String, Case)> {
             Expect::PartialAnswer,
         ),
     ];
-    for (registry, other) in [(TRADITIONS, CATEGORIES)] {
-        let short = registry.rsplit('/').next().unwrap();
-        for (name, control, expect) in faults {
-            let case = Case::Fault {
-                registry,
-                other,
-                control,
-                expect,
-            };
-            cases.push((format!("{name}_in_{short}"), case));
-        }
-        cases.push((
-            format!("worker_loss_in_{short}"),
-            Case::WorkerLoss {
-                registry,
-                control: Fault::WorkerLoss,
-            },
-        ));
+    let short = TRADITIONS.rsplit('/').next().unwrap();
+    for (name, control, expect) in faults {
+        let case = Case::Fault {
+            registry: TRADITIONS,
+            control,
+            expect,
+        };
+        cases.push((format!("{name}_in_{short}"), case));
     }
+    cases.push((
+        format!("worker_loss_in_{short}"),
+        Case::WorkerLoss {
+            registry: TRADITIONS,
+            control: Fault::WorkerLoss,
+        },
+    ));
     cases.push((
         "worker_loss_before_activation".into(),
         Case::WorkerLoss {
@@ -785,10 +781,9 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::DropWithoutClose => drop_without_close(native).await,
         Case::Fault {
             registry,
-            other,
             control,
             expect,
-        } => fault(native, registry, other, control, expect).await,
+        } => fault(native, registry, control, expect).await,
         Case::WorkerLoss { registry, control } => worker_loss(native, registry, control).await,
     }
 }
@@ -2815,13 +2810,7 @@ async fn and_close(result: &mut Outcome, game: &mut Game) {
     }
 }
 
-async fn fault(
-    native: &Native,
-    registry: &'static str,
-    _other: &'static str,
-    control: Fault,
-    expect: Expect,
-) -> Outcome {
+async fn fault(native: &Native, registry: &'static str, control: Fault, expect: Expect) -> Outcome {
     let result = pdx_native::internals::check_registry_load(
         native,
         options().fault(ObservationTarget::Registry(registry.into()), control),
