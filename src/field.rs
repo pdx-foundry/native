@@ -204,6 +204,7 @@ pub struct WeightOperation {
     /// The key, such as `add` or `factor`.
     pub key: String,
     /// The reader of the operand, or `None` when the engine reads no value for this key.
+    #[serde(deserialize_with = "crate::answer::required_option")]
     pub operand: Option<Reader>,
 }
 

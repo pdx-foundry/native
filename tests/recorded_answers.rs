@@ -917,6 +917,90 @@ fn recorded_answer_properties_must_be_present() {
     }
 }
 
+/// Paths of the object keys whose value is `null`, which a recording must still state.
+fn null_key_paths(value: &serde_json::Value, path: &mut Vec<String>, found: &mut Vec<Vec<String>>) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, child) in object {
+                path.push(key.clone());
+
+                if child.is_null() {
+                    found.push(path.clone());
+                }
+
+                null_key_paths(child, path, found);
+                path.pop();
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                path.push(index.to_string());
+                null_key_paths(item, path, found);
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+#[test]
+fn recorded_answers_state_each_nullable_property() {
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "build.json", json!("example-build"));
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+    let fields = json!({ "Ok": {
+        "value": [recorded_field("unknown", "Unknown")],
+        "completeness": "Partial",
+        "gaps": [{ "kind": "OutsideMethod", "subject": null, "detail": "Example." }],
+        "source": source()
+    }});
+    let families = json!({ "Ok": {
+        "value": [{
+            "name": ["ItemKey", { "Literal": "_ship_windup_mult" }],
+            "category_tags": { "Listed": ["Ships"] },
+            "condition": "Always",
+            "name_limit": null
+        }],
+        "completeness": "Complete", "gaps": [], "source": source()
+    }});
+    let recordings = [
+        ("registry_fields/common/traditions.json", fields),
+        ("modifier_families/common/bypass.json", families),
+    ];
+
+    for (file, recording) in recordings {
+        let read = || match file.split('/').next().unwrap() {
+            "registry_fields" => native.registry_fields("common/traditions").map(drop),
+            _ => native.modifier_families("common/bypass").map(drop),
+        };
+        let mut nulls = vec![];
+
+        null_key_paths(&recording, &mut vec![], &mut nulls);
+        write(root.path(), file, recording.clone());
+        assert!(read().is_ok(), "{file} with explicit nulls");
+        assert!(!nulls.is_empty(), "{file} has nullable properties");
+
+        for null in nulls {
+            let mut missing = recording.clone();
+            let (key, parents) = null.split_last().unwrap();
+            let parent =
+                parents
+                    .iter()
+                    .fold(&mut missing, |value, step| match step.parse::<usize>() {
+                        Ok(index) if value.is_array() => &mut value[index],
+                        _ => &mut value[step.as_str()],
+                    });
+
+            parent.as_object_mut().unwrap().remove(key);
+            write(root.path(), file, missing);
+            assert!(
+                matches!(read(), Err(Error::Recorded(_))),
+                "{file}: {null:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn recorded_numeric_facts_keep_partial_properties_and_exact_bounds() {
     use pdx_native::{GrammarProperty, NumericBound, NumericConversion, NumericRange};
