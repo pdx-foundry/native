@@ -593,6 +593,47 @@ fn conditional_or_unestablished_initializers_are_not_summarized() {
     }
 }
 #[test]
+fn a_stage_that_cannot_run_ends_the_chain_before_validation() {
+    let stages_of = |input: &GrammarInput| {
+        analyze(input).alternatives[0].paths[0]
+            .stages
+            .iter()
+            .map(|result| (result.stage, result.cause))
+            .collect::<Vec<_>>()
+    };
+    let whole = input(string_read(), false_assign(), true_validation());
+    assert_eq!(
+        stages_of(&whole),
+        [
+            (Stage::Read, None),
+            (Stage::PostInit, None),
+            (Stage::PostValidate, None)
+        ]
+    );
+
+    let mut unbound = input(string_read(), false_assign(), true_validation());
+    unbound.declarations.pointers.remove(&(VTABLE + 0x90));
+    let mut cut = input(string_read(), false_assign(), true_validation());
+    cut.forms.cut_bodies.insert(INIT);
+    let mut unsummarized = input(string_read(), false_assign(), true_validation());
+    unsummarized
+        .forms
+        .initializers
+        .insert(INIT, Initializer::Unresolved);
+    for (input, cause) in [
+        (unbound, "missing stage"),
+        (cut, "form-cut-body"),
+        (unsummarized, "initializer not summarized"),
+    ] {
+        assert_eq!(
+            stages_of(&input),
+            [(Stage::Read, None), (Stage::PostInit, Some(cause))],
+            "{cause}"
+        );
+    }
+}
+
+#[test]
 fn called_lookup_runs_its_caller_and_stores_the_intercepted_result() {
     let mut input = input(string_read(), false_assign(), found_validation());
     let mut init = Arm64::at(INIT);

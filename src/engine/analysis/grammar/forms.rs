@@ -31,6 +31,8 @@ const STAGE_TARGET_TYPE: u64 = 51;
 const PROBE_TRAPPED: u64 = 52;
 /// The cause of a stage that more paths than [`PATH_LIMIT`] leave unfinished.
 const PATH_LIMIT_CAUSE: &str = "path limit";
+/// The cause of a result-bearing stage that returned false and logged nothing.
+const FALSE_WITHOUT_DIAGNOSTIC: &str = "false without diagnostic";
 const TOKEN_TEXT: u64 = FOUND + 0x30000;
 const FOUND: u64 = 0x7000_0000_0000;
 const MISSING: u64 = FOUND + 0x10000;
@@ -675,7 +677,7 @@ fn run(
             if path.end == Ok(Exit::Returned) && !first.diagnostic {
                 first.cause = match first.returned {
                     Some(true) => None,
-                    Some(false) => Some("false without diagnostic"),
+                    Some(false) => Some(FALSE_WITHOUT_DIAGNOSTIC),
                     None => Some("unknown result"),
                 };
             }
@@ -766,7 +768,7 @@ fn stage_result(path: &Path<'_>, stage: Stage, has_result: bool) -> StageResult 
             if has_result && !diagnostic {
                 match returned {
                     Some(true) => None,
-                    Some(false) => Some("false without diagnostic"),
+                    Some(false) => Some(FALSE_WITHOUT_DIAGNOSTIC),
                     None => Some("unknown result"),
                 }
             } else {
@@ -814,58 +816,38 @@ fn stages<'a>(
         if let Some(null) = value.deferred_null {
             machine.write(null, 8, MISSING);
         } else if missing {
-            stages.push(StageResult {
-                stage: Stage::PostInit,
-                returned: None,
-                diagnostic: false,
-                cause: Some("missing-key null object not bound"),
-            });
+            stages.push(unfinished(
+                Stage::PostInit,
+                "missing-key null object not bound",
+            ));
         }
         if let Some(offset) = value.destination {
             machine.write(calls.command + offset, 8, selected);
         }
     }
-    let mut pending = vec![(machine, stages, stops)];
+    let mut pending = vec![(machine, stages, stops, false)];
     for (stage, function) in [
         (Stage::PostInit, functions[INITIALIZER_FUNCTION]),
         (Stage::PostValidate, functions[VALIDATION_FUNCTION]),
     ] {
         let mut next = Vec::new();
-        for (mut machine, mut stages, stops) in pending {
-            if calls.probe.is_some() && machine.labelled(PROBE_TRAPPED).is_some() {
-                next.push((machine, stages, stops));
+        for (mut machine, mut stages, stops, halted) in pending {
+            let trapped = calls.probe.is_some() && machine.labelled(PROBE_TRAPPED).is_some();
+
+            if trapped || halted || !stops.is_empty() {
+                next.push((machine, stages, stops, halted));
                 continue;
             }
-            if !stops.is_empty()
-                || stages.iter().any(|stage| {
-                    matches!(
-                        stage.cause,
-                        Some("initializer not summarized" | "missing stage" | "form-cut-body")
-                    )
-                })
-            {
-                next.push((machine, stages, stops));
-                continue;
-            }
+
             machine.unlabel(DIAGNOSED);
             let Some(function) = function else {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some("missing stage"),
-                });
-                next.push((machine, stages, stops));
+                stages.push(unfinished(stage, "missing stage"));
+                next.push((machine, stages, stops, true));
                 continue;
             };
             if calls.input.forms.cut_bodies.contains(&function) {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some("form-cut-body"),
-                });
-                next.push((machine, stages, stops));
+                stages.push(unfinished(stage, "form-cut-body"));
+                next.push((machine, stages, stops, true));
                 continue;
             }
             if stage == Stage::PostInit {
@@ -890,7 +872,7 @@ fn stages<'a>(
                             diagnostic: false,
                             cause: None,
                         });
-                        next.push((machine, stages, stops));
+                        next.push((machine, stages, stops, false));
                         continue;
                     }
                     Some(
@@ -901,13 +883,8 @@ fn stages<'a>(
                         },
                     ) => {}
                     _ => {
-                        stages.push(StageResult {
-                            stage,
-                            returned: None,
-                            diagnostic: false,
-                            cause: Some("initializer not summarized"),
-                        });
-                        next.push((machine, stages, stops));
+                        stages.push(unfinished(stage, "initializer not summarized"));
+                        next.push((machine, stages, stops, true));
                         continue;
                     }
                 }
@@ -934,17 +911,12 @@ fn stages<'a>(
                 if let Err(stop) = path.end {
                     stops.push(stop);
                 }
-                next.push((path.machine, stages, stops));
+                next.push((path.machine, stages, stops, false));
             }
         }
         if next.len() > PATH_LIMIT {
-            for (_, stages, _) in &mut next {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some(PATH_LIMIT_CAUSE),
-                });
+            for (_, stages, _, _) in &mut next {
+                stages.push(unfinished(stage, PATH_LIMIT_CAUSE));
             }
             pending = next;
             break;
@@ -953,8 +925,18 @@ fn stages<'a>(
     }
     pending
         .into_iter()
-        .map(|(machine, stages, stops)| (machine, chain(stages, stops)))
+        .map(|(machine, stages, stops, _)| (machine, chain(stages, stops)))
         .collect()
+}
+
+/// A stage that did not finish, for `cause`.
+fn unfinished(stage: Stage, cause: &'static str) -> StageResult {
+    StageResult {
+        stage,
+        returned: None,
+        diagnostic: false,
+        cause: Some(cause),
+    }
 }
 
 struct Calls<'a> {
@@ -1436,10 +1418,10 @@ pub(super) fn target_checks(
                     path.chain
                         .stages
                         .iter()
-                        .any(|stage| stage.cause == Some("false without diagnostic"))
+                        .any(|stage| stage.cause == Some(FALSE_WITHOUT_DIAGNOSTIC))
                 });
                 return Check::Unresolved(if false_without_log {
-                    "false without diagnostic"
+                    FALSE_WITHOUT_DIAGNOSTIC
                 } else {
                     "target chain unresolved or mixed"
                 });
