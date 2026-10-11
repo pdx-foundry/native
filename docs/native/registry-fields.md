@@ -27,6 +27,14 @@ fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifi
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
+A reference member is an answer, not a default. Compared with reports from before default-member
+normalization (regenerated at `f184f08` and `ab9cc7f`), 20 registries change, not 12: twelve
+change readers, shapes or gaps, and eight change only non-default reference lookups
+(`common/anomalies`, `common/archaeological_site_types`, `common/astral_rifts`,
+`common/council_agendas`, `common/event_chains`, `common/planet_modifiers`, `common/situations` and
+`common/starbase_levels`). Dropping every reference member gives 12, but hides those established
+lookups, so the diff drops only members that match their serde defaults.
+
 - **Council agendas (SDK-600).** All ten fields are found, but the answer is partial: `agenda_cost`
   uses `CVariableValue::Read`, a scoped operand. `ai_weight` has the shared weight grammar
   ([weight blocks](weight-blocks.md)) and reads in `country`; every key has a reader kind, and
