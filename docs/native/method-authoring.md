@@ -343,7 +343,10 @@ cargo run --release --example registry-field-sweep -- --diff tests/population/m4
 
 The tracked [M452 population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
-build and basis, and reports once which absent members matched their serde defaults.
+build and basis, and reports once which absent members matched their serde defaults. It fails on a
+report that is of another kind, has no `cases` or `inventories` array, has a row without a name or
+repeats a subject, and on a compact baseline without its build; `tools/population/compare.py`
+rejects the same inputs. An empty report still compares.
 
 For command grammars, run and compare the whole population. `command-population` reads
 `STELLARIS_PATH`:
