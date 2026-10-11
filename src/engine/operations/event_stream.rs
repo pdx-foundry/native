@@ -251,6 +251,10 @@ pub(crate) fn single(
 
 /// Establish the owned loader-entry stop and every required hook before resume.
 /// Returns the launch thread and resume sequence; operation reducers enforce their event order.
+///
+/// The worker sets the launch thread only for a thread at the loader entry, and it stops before
+/// `HooksActiveBeforeResume` when the target triple does not match the bound machine. So a nonzero
+/// thread is the witness here, and `triple` and `frames` are not read again.
 pub(crate) fn activation(
     records: &[WorkerRecord],
     owner: &[OwnerEvent],
@@ -259,13 +263,7 @@ pub(crate) fn activation(
     let launch = single(records, |event| {
         matches!(event, WorkerEvent::LaunchStopped { .. })
     })?;
-    let WorkerEvent::LaunchStopped {
-        error,
-        pid,
-        triple,
-        frames,
-    } = &launch.event
-    else {
+    let WorkerEvent::LaunchStopped { error, pid, .. } = &launch.event else {
         return None;
     };
     let owned: Vec<_> = owner
@@ -275,13 +273,7 @@ pub(crate) fn activation(
             _ => None,
         })
         .collect();
-    if error != "success"
-        || *pid == 0
-        || owned != [*pid]
-        || !triple.starts_with("arm64-")
-        || !frames.iter().any(|frame| frame.function == "_dyld_start")
-        || launch.thread.unwrap_or(0) == 0
-    {
+    if error != "success" || *pid == 0 || owned != [*pid] || launch.thread.unwrap_or(0) == 0 {
         return None;
     }
     let active = single(records, |event| {

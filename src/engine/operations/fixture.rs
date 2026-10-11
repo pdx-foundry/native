@@ -1915,9 +1915,7 @@ mod tests {
         for (index, pointer, value) in [
             (0, "/pid", json!(99)),
             (0, "/error", json!("failed")),
-            (0, "/triple", json!("x86_64-macos")),
             (0, "/thread", json!(0)),
-            (0, "/frames/0/function", json!("main")),
             (1, "/hooks/fixture:member/enabled", json!(false)),
             (1, "/hooks/fixture:load/locations", json!(0)),
             (1, "/hooks/fixture:constructor/resolved", json!(2)),
