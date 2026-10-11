@@ -33,6 +33,15 @@ use std::time::Instant;
 
 const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
+/// Whether a gap's subject is `field`, or a key path that starts at it.
+fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
+    match subject {
+        Some(GapSubject::Field { name }) => name == field,
+        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
+        _ => false,
+    }
+}
+
 struct ReaderFields {
     kind: ReaderKind,
     fields: Vec<String>,

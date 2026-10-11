@@ -1,7 +1,7 @@
 //! Constructor-bound weight variants, by reader identity, with the status and gaps of each field.
+use super::applies;
 use pdx_native::{
-    Answer, BlockFamily, Field, FieldMembers, GapSubject, GrammarProperty, WeightBlock,
-    WeightOtherKeys,
+    Answer, BlockFamily, Field, FieldMembers, GrammarProperty, WeightBlock, WeightOtherKeys,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -15,14 +15,6 @@ pub struct Tally {
 struct Variant {
     fields: BTreeMap<String, &'static str>,
     failure_shapes: BTreeMap<String, usize>,
-}
-
-fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
-    match subject {
-        Some(GapSubject::Field { name }) => name == field,
-        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
-        _ => false,
-    }
 }
 
 /// Complete when every property of the block and of each nested entry is known.

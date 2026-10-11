@@ -60,22 +60,9 @@ pub fn modifier_blocks(native: &Native) -> super::Result<Value> {
             GrammarProperty::Partial(fields) => json!({"Partial": keys(fields)}),
             GrammarProperty::Unresolved => json!("Unresolved"),
         };
-        let gaps: Vec<_> = answer
-            .gaps
-            .iter()
-            .filter(|gap| match &gap.subject {
-                Some(GapSubject::Field { name }) => name == &field.name,
-                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
-                _ => false,
-            })
-            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-            .collect();
-        let id = serde_json::to_value(&field.reader.id)?
-            .as_str()
-            .ok_or("missing modifier identity")?
-            .to_owned();
+        let gaps = field_gaps(&answer.gaps, field);
         variants.insert(
-            id,
+            identity(field)?,
             json!({"fixed_keys":fixed_keys,"entries":block.entries,"gaps":gaps}),
         );
     }
@@ -98,16 +85,7 @@ pub fn weight_blocks(native: &Native) -> super::Result<Value> {
         let FieldMembers::WeightBlock(block) = &field.members else {
             return Err(format!("{registry}: weight grammar missing").into());
         };
-        let gaps: Vec<_> = answer
-            .gaps
-            .iter()
-            .filter(|gap| match &gap.subject {
-                Some(GapSubject::Field { name }) => name == &field.name,
-                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
-                _ => false,
-            })
-            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-            .collect();
+        let gaps = field_gaps(&answer.gaps, field);
         let id = identity(field)?;
         let mut entries = BTreeMap::new();
         let block = compact_weight(block, &mut entries)?;
@@ -170,16 +148,7 @@ pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
                     .collect::<Vec<_>>()
             )
         };
-        let gaps: Vec<_> = answer
-            .gaps
-            .iter()
-            .filter(|gap| match &gap.subject {
-                Some(GapSubject::Field { name }) => name == &field.name,
-                Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
-                _ => false,
-            })
-            .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
-            .collect();
+        let gaps = field_gaps(&answer.gaps, field);
         variants.insert(
             identity(field)?,
             json!({
@@ -191,6 +160,18 @@ pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
         );
     }
     Ok(json!(variants))
+}
+
+/// The gaps whose subject is `field` or a key path that starts at it, as `[kind, subject, detail]`.
+fn field_gaps(gaps: &[Gap], field: &Field) -> Vec<Value> {
+    gaps.iter()
+        .filter(|gap| match &gap.subject {
+            Some(GapSubject::Field { name }) => name == &field.name,
+            Some(GapSubject::KeyPath { path }) => path.first() == Some(&field.name),
+            _ => false,
+        })
+        .map(|gap| json!([gap.kind, gap.subject, gap.detail]))
+        .collect()
 }
 
 fn identity(field: &Field) -> super::Result<String> {
