@@ -90,6 +90,12 @@ needs it.
   registries kept, the footprint after a `registry_fields` loop is 20–50 MB higher (415 and
   447 MB in two runs, against 395 MB; index and shared input included). Bound the kept results
   if a host must hold a `Native` in less memory than that.
+- **Accepted limit:** the map lock is not held while a registry is analyzed, so callers that miss
+  the same registry at the same time each run the field method, and the first result is kept.
+  The answers are the same; only work repeats. The three all-registry parity tests walk the
+  registries in the same order on parallel threads, so they can repeat each other's work. Give
+  each registry a once-cell (keeping the rule that a failed run is not kept) if this becomes the
+  slowest part of a parity run or a multi-threaded consumer appears; Atlas asks on one thread.
 - **Accepted limit:** each field input still reads its text function starts (`Text::read`) and
   its constant data, and copies the symbols and strings into the `FieldInput` that the engine
   owns: about 7 ms of a 270 ms `registry_fields` call. Share them if they grow past about 10% of
@@ -97,48 +103,64 @@ needs it.
 
 ## Parity costs
 
-Measured on M452 at `13c94ba` (SDK-769), on one Apple Silicon host with 18 cores and 24 GB, release
-build, nothing else running. `cargo parity` runs two test binaries one after the other:
+Measured on M452 at `5edf7e4` (SDK-774 on top of SDK-771 and SDK-770; `pull/212/head`), on one
+Apple Silicon host with 18 cores and 24 GB, release build, nothing else running. `cargo parity` runs two test binaries one after the
+other:
 
-| Binary | Wall | CPU | Peak resident | Peak footprint | Slowest test (alone) |
+| Binary | Wall | CPU | Peak resident | Peak footprint | Slowest tests (in the run) |
 | --- | --- | --- | --- | --- | --- |
-| lib, 26 ignored tests | 79 s | 334 s | 8.7 GB | 10.3 GB | `numeric_fixture_storage_population`, 65 s |
-| `static_questions`, 40 cases | 172 s | 1,254 s | 9.8 GB | 13.2 GB | `known_target_lists_have_covered_arguments`, 137 s |
+| lib, 26 ignored tests | 51 s | 145 s | 5.3 GB | 3.4 GB | `numeric_fixture_storage_population` 51 s; the rest 20 s or less |
+| `static_questions`, 40 cases | 89 s | 422 s | 6.9 GB | 4.0 GB | `traced_questions_match_untraced_questions` 79 s, `every_tracked_candidate_matches_the_reviewed_tree` 72 s, the three all-registry block tests 49–59 s |
+
+At `13c94ba`, before those three changes, the walls were 79 s and 172 s, the CPU 334 s and
+1,254 s, and the peak footprints 10.3 GB and 13.2 GB.
 
 - **The slowest test sets the wall time.** Each binary runs its tests on all cores, so it ends with
-  its slowest test. With 6 test threads the walls stay at 84 s and 173 s and the peaks fall only
-  to 6.3 GB and 8.5 GB resident: a few heavy tests hold most of the memory.
-- **Each test opens its own `Native`; no test shares one.** About 64 opens run per parity run.
-  Opening costs 0.5 s; the first question then builds the catalog in about 0.5 s, and the two
-  together keep about 280 MB (the executable and the catalog). What repeats is the analysis after
-  them. One `Native` measured step by step:
+  its slowest test. Fewer test threads do not lower the wall time.
+- **Each binary shares one `Native`.** The lib tests take `installed_native()` (`src/session.rs`)
+  and `static_questions` takes `native()`, so the shared fact sets and grammar inputs are
+  computed once per binary; kept registry results can be computed more than once (see
+  [registry field input](#registry-field-input)). Seven tests open their own, because they need a
+  fresh or different instance: in `static_questions` the two recorders (`record_answers_to` takes
+  the `Native`) and the traced half of each traced pair (`own_native()`); in the lib
+  `cached_static_answers_refuse_changed_or_missing_executables` (it changes a copy of the
+  executable), `repeated_public_and_binding_queries_agree` and
+  `m452_checks_carry_the_named_receivers_and_their_count_slots` (both need empty caches). They
+  build different amounts: `every_tracked_candidate_matches_the_reviewed_tree` computes every
+  tracked file, with the full facts and both grammar kinds, while
+  `recorded_answers_equal_the_real_answers_apart_from_the_basis` builds only the effect grammar
+  and `repeated_public_and_binding_queries_agree` and
+  `cached_static_answers_refuse_changed_or_missing_executables` build no command grammar. The
+  peak is not attributed per test.
+  One `Native` measured step by step at `13c94ba` (the later-registry row with SDK-774, one
+  thread):
 
   | First call on a `Native` | Time | Footprint after |
   | --- | --- | --- |
   | `open` | 0.5 s | 314 MB |
   | `registries` (builds the catalog) | 0.5 s | 270 MB |
-  | `registry_fields`, first registry (the shared fact sets, block facts included) | 15.3 s | 751 MB (falls to about 280 MB after) |
-  | `registry_fields`, any later registry | 0.7 s | about 340 MB |
+  | `registry_fields`, first registry (the shared fact sets, block facts included) | 15 s | 751 MB (falls to about 280 MB after) |
+  | `registry_fields`, any later registry | 0.27 s | 415–447 MB after all 164 |
   | `command_grammar`, first effect | 2.9 s | 661 MB |
   | `command_grammar`, first trigger | 2.7 s | 919 MB |
   | `command_grammar`, any later command | 0.02–0.05 s | — |
 
   The grammar input of each kind keeps about 300 MB, because it copies the symbol list and the
-  read-only sections (`binding/binary/grammar.rs`). A test with full facts and both grammar
-  kinds holds about 0.9 GB; alone, the heavy tests peak at 1.3–3.2 GB resident. A parity run's
-  10–13 GB is several such tests at once.
-- **Per-command and per-registry work rebuilds whole-symbol tables.** In
-  `known_target_lists_have_covered_arguments`, which walks the 2,178 commands,
-  `fields::tokens::names_by_address` rebuilt a map of every symbol for each member exploration:
-  half of the test. Built once, the test took 64 s instead of 137 s with the same answers. Of the
-  rest, `DispatchInput::command` rebuilding the list of every function for each command is 60%.
-  In `numeric_fixture_storage_population`, the field input of each registry scans every symbol
-  for persistent constructors (`binding/binary/receivers.rs`, `constructor_class`), and
-  `fields::persistent::constructor_points` copies the read-only sections.
-- **The same costs reach Atlas.** The Atlas live snapshot takes 432 s with 3.8 GB resident. Its
-  three game sessions take about 75 s; the rest is Native static analysis on one thread.
-  `names_by_address` alone takes about 67 s, and `derived_names` computes each registry's field
-  input again after `registry_fields` did (about 69 s).
+  read-only sections (`binding/binary/grammar.rs`). Borrow them from the catalog if a `Native`
+  must hold less memory.
+- **Whole-symbol tables are built once per input.** `SymbolIndex`
+  (`engine/analysis/discovery/symbol_index.rs`) sorts the symbol positions by address and by name
+  hash; the grammar input builds it on first use and every command shares it, and each field,
+  modifier-block and triggered-modifier analysis builds one. `DispatchInput` borrows the function
+  bodies instead of copying a view of every function. Before this, a map of every symbol was
+  rebuilt for each member exploration and a list of every function for each command:
+  `known_target_lists_have_covered_arguments`, which walks the 2,178 commands, took 137 s alone
+  and now takes 19 s. Do not add a per-command or per-member path that scans or rebuilds a
+  whole-symbol table. The per-registry part is in [registry field input](#registry-field-input).
+- **The same costs reach Atlas.** At `13c94ba` the Atlas live snapshot took 432 s with 3.8 GB
+  resident. Its three game sessions took about 75 s; the rest was Native static analysis on one
+  thread, of which the per-member symbol map took about 67 s and `derived_names` repeating each
+  registry's field method about 69 s. Both are gone; the new snapshot time is not measured.
 
 ## Live costs
 
