@@ -1550,6 +1550,10 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
                 .with_parent_field("requirements"),
         ],
     );
+    let two_files = request
+        .clone()
+        .with_file("common/special_projects/second.txt", "special_project = {}");
+    assert!(analysis.inline_fixture(&two_files).is_err());
     let (binding, questions) = analysis.inline_fixture(&request).unwrap().unwrap();
     assert_eq!(binding.inline.unwrap().key_storage.offset, 8);
     assert_eq!(binding.load_entry, 0x100b9df4c);

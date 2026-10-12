@@ -201,7 +201,8 @@ So a mod's file with the same path below the folder as a game file replaces it, 
 join the game's files in one sorted list. Then the duplicate rule applies to keys across the
 files.
 
-Limits: no fixture verifies these rules (decision D3; SDK-803 may add a second mount). The order
+Limits: no fixture verifies these rules. A fixture has no second mount (decision D3; see
+[second mount](early-observations.md#second-mount-decision-d3)). The order
 between two mods (`CDLCGreater`) and the effect of a suppressed folder on the enumeration are not
 established.
 

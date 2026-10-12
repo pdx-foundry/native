@@ -4,8 +4,9 @@
 //! The producer numbers the occurrences of a field. A record whose number skips ahead of the last
 //! kept one stays, with a gap for the lost occurrence; a repeated or earlier number is refused.
 //!
-//! A repeated definition key keeps each construction. Field events join the owner of the key's
-//! latest construction, and the final value is read once from the one owner of all of them.
+//! A repeated definition key, in one file or across files, keeps each construction. Field events
+//! join the owner of the key's latest construction, and the final value is read once, after the
+//! last file, from the one owner of all of them.
 use super::event_stream::{self, OwnerEvent};
 use crate::protocol::{
     hooks,
@@ -112,6 +113,11 @@ pub(crate) fn reduce(
     if !window.ended {
         window.window_gap("The fixture terminal is missing");
     }
+    for file in request.files.keys() {
+        if !window.loads.contains(file) {
+            window.file_gap(file, "The fixture file's load window is missing");
+        }
+    }
     if !window.returned {
         window.window_gap("The matching fixture loader return is missing");
     }
@@ -129,7 +135,10 @@ pub(crate) fn reduce(
 struct DefinitionState {
     native_owner: String,
     public_owner: FixtureOwnerId,
+    file: String,
     line: u64,
+    /// The position of `file` in the load order, which orders constructions across files.
+    load: usize,
 }
 
 struct FieldTerminalState {
@@ -163,8 +172,10 @@ enum DiagnosticTerminalState {
     Unavailable(String),
 }
 
-fn parsed_line(occurrence: &ParsedFieldOccurrence, line: u64) -> bool {
-    line >= occurrence.line && occurrence.return_line.is_some_and(|end| line <= end)
+fn parsed_line(occurrence: &ParsedFieldOccurrence, file: &str, line: u64) -> bool {
+    file == occurrence.file
+        && line >= occurrence.line
+        && occurrence.return_line.is_some_and(|end| line <= end)
 }
 
 struct Window<'a> {
@@ -173,7 +184,11 @@ struct Window<'a> {
     thread: u64,
     resumed: u64,
     next_sequence: u64,
-    loading: bool,
+    /// Fixture files whose load started, in load order.
+    loads: Vec<String>,
+    /// The fixture file that is loading now.
+    current: Option<String>,
+    /// Whether every requested file has returned.
     returned: bool,
     validated: bool,
     ended: bool,
@@ -209,7 +224,8 @@ impl<'a> Window<'a> {
             thread,
             resumed,
             next_sequence: 1,
-            loading: false,
+            loads: Vec::new(),
+            current: None,
             returned: false,
             validated: false,
             ended: false,
@@ -248,17 +264,22 @@ impl<'a> Window<'a> {
     }
 
     fn window_gap(&mut self, detail: &str) {
+        self.incomplete_window(GapSubject::registry(self.request.registry()), detail);
+    }
+
+    /// A window gap that one fixture file owns.
+    fn file_gap(&mut self, file: &str, detail: &str) {
+        self.incomplete_window(GapSubject::fixture_file(file), detail);
+    }
+
+    fn incomplete_window(&mut self, subject: GapSubject, detail: &str) {
         self.stream_intact = false;
         self.field_issues
             .extend(0..self.request.field_questions.len() as u64);
         if self.diagnostics_requested {
             self.diagnostic_issue = true;
         }
-        self.push_gap(
-            GapKind::IncompleteObservation,
-            Some(GapSubject::fixture_file(self.request.file())),
-            detail,
-        );
+        self.push_gap(GapKind::IncompleteObservation, Some(subject), detail);
     }
 
     fn field_gap(&mut self, question: u64, detail: &str) {
@@ -268,7 +289,7 @@ impl<'a> Window<'a> {
             .field_questions
             .get(question as usize)
             .map(|question| GapSubject::field(question.field.clone()))
-            .or_else(|| Some(GapSubject::fixture_file(self.request.file())));
+            .or_else(|| Some(GapSubject::registry(self.request.registry())));
         self.push_gap(GapKind::IncompleteObservation, subject, detail);
     }
 
@@ -276,7 +297,7 @@ impl<'a> Window<'a> {
         self.diagnostic_issue = true;
         self.push_gap(
             GapKind::IncompleteObservation,
-            Some(GapSubject::fixture_file(self.request.file())),
+            Some(GapSubject::registry(self.request.registry())),
             detail,
         );
     }
@@ -301,11 +322,28 @@ impl<'a> Window<'a> {
         owner
     }
 
-    /// Whether `line` is a line of the requested fixture file.
+    /// Whether `line` is a line of a requested fixture file.
     fn is_fixture_line(&self, file: &str, line: u64) -> bool {
-        file == self.request.file()
-            && line > 0
-            && line <= self.request.files[file].lines().count() as u64
+        self.request
+            .files
+            .get(file)
+            .is_some_and(|text| line > 0 && line <= text.lines().count() as u64)
+    }
+
+    /// Whether `line` is a line of the fixture file that is loading now.
+    fn is_loading_line(&self, file: &str, line: u64) -> bool {
+        self.current.as_deref() == Some(file) && self.is_fixture_line(file, line)
+    }
+
+    /// Whether the last requested fixture file is loading, the window of the terminals that read
+    /// each question's final value.
+    fn loading_last_file(&self) -> bool {
+        self.current.is_some() && self.loads.len() == self.request.files.len()
+    }
+
+    /// Whether the first fixture file started to load.
+    fn started(&self) -> bool {
+        !self.loads.is_empty()
     }
 
     fn accept(&mut self, record: &WorkerRecord, event: &FixtureEvent) {
@@ -317,7 +355,7 @@ impl<'a> Window<'a> {
                 stage, file: Some(file), definition: None, field: None, occurrence: None, ..
             } if (stage == diagnostic_stage::ENGINE_PARSER
                 || (stage == diagnostic_stage::ENGINE_VALIDATION && self.validation_requested()))
-                && file == self.request.file());
+                && self.request.files.contains_key(file));
         let matching_thread = record.thread == Some(self.thread)
             || (sourced_engine_log && record.thread.is_some_and(|thread| thread != 0));
         if !matching_thread || record.seq <= self.resumed || self.ended {
@@ -345,12 +383,11 @@ impl<'a> Window<'a> {
             FixtureEvent::DiagnosticsUnavailable { reason } => {
                 self.accept_diagnostics_unavailable(reason)
             }
-            FixtureEvent::ValidationComplete { file } => {
+            FixtureEvent::ValidationComplete => {
                 if !self.validation_requested()
                     || !self.returned
                     || self.validated
                     || self.diagnostic_terminal.is_some()
-                    || file != self.request.file()
                 {
                     self.diagnostic_gap(
                         "The validation boundary has no matching completed fixture load",
@@ -375,26 +412,29 @@ impl<'a> Window<'a> {
     }
 
     fn accept_load_start(&mut self, file: &str) {
-        if self.loading || file != self.request.file() {
+        if self.current.is_some()
+            || !self.request.files.contains_key(file)
+            || self.loads.iter().any(|loaded| loaded == file)
+        {
             self.window_gap("The fixture loader entry is repeated or names another file");
             return;
         }
-        self.loading = true;
+        self.loads.push(file.into());
+        self.current = Some(file.into());
     }
 
     fn accept_definition(&mut self, file: &str, line: u64, definition: &str, owner: &str) {
         // One line can hold several definitions, so a repeat may share its line; record loss and
         // replay are the sequence check's.
+        let load = self.loads.len().saturating_sub(1);
         let in_source_order = self
             .definitions
             .get(definition)
             .and_then(|constructions| constructions.last())
-            .is_none_or(|last| line >= last.line);
+            .is_none_or(|last| (load, line) >= (last.load, last.line));
         // The field terminals read the final value, so a later construction would replace it unseen.
         let before_terminals = self.field_terminals.is_empty();
-        let valid = self.loading
-            && !self.returned
-            && self.is_fixture_line(file, line)
+        let valid = self.is_loading_line(file, line)
             && super::registry_items::pointer(owner)
             && in_source_order
             && before_terminals;
@@ -409,7 +449,9 @@ impl<'a> Window<'a> {
             .push(DefinitionState {
                 native_owner: owner.into(),
                 public_owner,
+                file: file.into(),
                 line,
+                load,
             });
     }
 
@@ -445,9 +487,8 @@ impl<'a> Window<'a> {
             .get(question)
             .and_then(|items| items.last())
             .map_or(0, |item| item.occurrence);
-        let in_window =
-            self.loading && !self.returned && !self.field_terminals.contains_key(question);
-        let in_source = self.is_fixture_line(file, *line);
+        let in_window = !self.field_terminals.contains_key(question);
+        let in_source = self.is_loading_line(file, *line);
         let asked_field = definition == &asked.definition && field == &asked.field;
         let owner_joins = self.latest_owner_is(definition, owner);
         let decoder = self.questions[*question as usize].storage.decoder();
@@ -473,6 +514,7 @@ impl<'a> Window<'a> {
             .entry(*question)
             .or_default()
             .push(StoredFieldOccurrence {
+                file: file.clone(),
                 line: *line,
                 occurrence: *occurrence,
                 value: value.clone(),
@@ -502,11 +544,9 @@ impl<'a> Window<'a> {
         };
         let owner_joins = self.latest_owner_is(definition, owner);
         if !asked.parsing
-            || !self.loading
-            || self.returned
             || self.parsing_terminals.contains_key(question)
             || self.field_terminals.contains_key(question)
-            || !self.is_fixture_line(file, *line)
+            || !self.is_loading_line(file, *line)
             || definition != &asked.definition
             || field != &asked.field
             || !owner_joins
@@ -522,6 +562,7 @@ impl<'a> Window<'a> {
             let Some(entry) = invocations.last_mut().filter(|entry| {
                 entry.occurrence == *occurrence
                     && entry.return_line.is_none()
+                    && entry.file == *file
                     && *line >= entry.line
             }) else {
                 self.parsing_gap(*question, "A parser return has no matching open invocation");
@@ -541,6 +582,7 @@ impl<'a> Window<'a> {
                 return;
             }
             invocations.push(ParsedFieldOccurrence {
+                file: file.clone(),
                 line: *line,
                 occurrence: *occurrence,
                 return_line: None,
@@ -568,8 +610,7 @@ impl<'a> Window<'a> {
                 && occurrences.iter().all(|entry| entry.return_line.is_some())
         };
         if !asked.parsing
-            || !self.loading
-            || self.returned
+            || !self.loading_last_file()
             || self.parsing_terminals.contains_key(&question)
             || !witnessed
         {
@@ -598,7 +639,7 @@ impl<'a> Window<'a> {
             unreachable!("diagnostic handler received another event")
         };
         if !self.diagnostics_requested
-            || !self.loading
+            || !self.started()
             || self.validated
             || (self.returned && !self.validation_requested())
         {
@@ -645,8 +686,8 @@ impl<'a> Window<'a> {
             self.window_gap("A field terminal names an unknown question");
             return;
         };
-        if !self.loading || self.returned || self.field_terminals.contains_key(question) {
-            self.field_gap(*question, "A field terminal is late or repeated");
+        if !self.loading_last_file() || self.field_terminals.contains_key(question) {
+            self.field_gap(*question, "A field terminal is early, late or repeated");
             return;
         }
         let owner_joined = owner.as_ref().is_some_and(|pointer| {
@@ -685,7 +726,6 @@ impl<'a> Window<'a> {
 
     fn accept_diagnostics_terminal(&mut self, count: u64) {
         if !self.diagnostics_requested
-            || !self.loading
             || !self.at_diagnostic_terminal()
             || self.diagnostic_terminal.is_some()
             || count != self.raw_diagnostics.len() as u64
@@ -699,7 +739,6 @@ impl<'a> Window<'a> {
 
     fn accept_diagnostics_unavailable(&mut self, reason: &str) {
         if !self.diagnostics_requested
-            || !self.loading
             || !self.at_diagnostic_terminal()
             || self.diagnostic_terminal.is_some()
             || !self.raw_diagnostics.is_empty()
@@ -712,11 +751,12 @@ impl<'a> Window<'a> {
     }
 
     fn accept_load_returned(&mut self, file: &str) {
-        if !self.loading || self.returned || file != self.request.file() {
+        if self.current.as_deref() != Some(file) {
             self.window_gap("The fixture return has no unique matching loader entry");
             return;
         }
-        self.returned = true;
+        self.returned = self.loading_last_file();
+        self.current = None;
     }
 
     fn validation_requested(&self) -> bool {
@@ -727,7 +767,7 @@ impl<'a> Window<'a> {
         if self.validation_requested() {
             self.validated
         } else {
-            !self.returned
+            self.loading_last_file()
         }
     }
 
@@ -776,12 +816,18 @@ impl<'a> Window<'a> {
                         .is_some_and(|items| {
                             items.iter().any(|item| {
                                 item.occurrence == occurrence
-                                    && raw.line.is_some_and(|line| parsed_line(item, line))
+                                    && raw
+                                        .file
+                                        .as_ref()
+                                        .zip(raw.line)
+                                        .is_some_and(|(file, line)| parsed_line(item, file, line))
                             })
                         })
                         || self.occurrences.get(&(*index as u64)).is_some_and(|items| {
                             items.iter().any(|item| {
-                                item.occurrence == occurrence && raw.line == Some(item.line)
+                                item.occurrence == occurrence
+                                    && raw.file.as_ref() == Some(&item.file)
+                                    && raw.line == Some(item.line)
                             })
                         }))
             })
@@ -898,7 +944,8 @@ impl<'a> Window<'a> {
             .iter()
             .flat_map(|(question, occurrences)| {
                 occurrences.iter().filter_map(move |occurrence| {
-                    parsed_line(occurrence, line).then_some((*question, occurrence.occurrence))
+                    parsed_line(occurrence, file, line)
+                        .then_some((*question, occurrence.occurrence))
                 })
             });
         let Some((index, occurrence)) = matches.next() else {
@@ -925,6 +972,7 @@ impl<'a> Window<'a> {
                 .into_iter()
                 .flatten()
                 .map(|construction| FixtureDefinition {
+                    file: construction.file.clone(),
                     line: construction.line,
                     owner: construction.public_owner.clone(),
                 })
@@ -944,7 +992,6 @@ impl<'a> Window<'a> {
             };
             self.value.field_outcomes.push(FixtureFieldOutcome {
                 question,
-                file: self.request.file().into(),
                 definitions,
                 parsing,
                 storage,
@@ -1048,11 +1095,12 @@ impl<'a> Window<'a> {
     fn finish(mut self, build: BuildId) -> Answer<FixtureObservation> {
         self.finish_diagnostics();
         self.finish_fields();
+        self.value.loaded_files = std::mem::take(&mut self.loads);
         Answer {
             completeness: Completeness::from_gaps(&self.gaps),
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v8", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v9", Basis::LiveObservation),
         }
     }
 }
@@ -1062,6 +1110,8 @@ mod tests {
     use super::*;
     use crate::protocol::observation::{FixtureStorageBinding, FixtureStorageDecoder};
     use serde_json::{Value, json};
+
+    const SAMPLE: &str = "common/traditions/sample.txt";
 
     /// Parse authored worker events as worker records.
     fn records(events: Vec<Value>) -> Vec<WorkerRecord> {
@@ -1204,8 +1254,7 @@ mod tests {
         let end = events.pop().unwrap();
         events.push(diagnostic);
         let mut validated = terminal.clone();
-        validated["event"] =
-            json!({"kind":"validation-complete","file":"common/traditions/sample.txt"});
+        validated["event"] = json!({"kind":"validation-complete"});
         events.extend([validated, terminal, end]);
         renumber(&mut events);
         events
@@ -1417,7 +1466,6 @@ mod tests {
         for (kind, key, value) in [
             ("diagnostic", "line", Value::Null),
             ("diagnostic", "stage", json!("engine-parser-log")),
-            ("validation-complete", "file", json!("other.txt")),
             ("diagnostics-terminal", "count", json!(0)),
         ] {
             let mut events = validation_events();
@@ -1445,6 +1493,7 @@ mod tests {
             field.parsing,
             FixtureParsing::Observed {
                 occurrences: vec![ParsedFieldOccurrence {
+                    file: SAMPLE.into(),
                     line: 2,
                     occurrence: 1,
                     return_line: Some(4)
@@ -2056,6 +2105,7 @@ mod tests {
             outcome.storage,
             FixtureStorage::Observed {
                 occurrences: vec![StoredFieldOccurrence {
+                    file: SAMPLE.into(),
                     line: 3,
                     occurrence: 2,
                     value: FixtureValue::String("two".into()),
@@ -2068,6 +2118,7 @@ mod tests {
             outcome.parsing,
             FixtureParsing::Observed {
                 occurrences: vec![ParsedFieldOccurrence {
+                    file: SAMPLE.into(),
                     line: 3,
                     occurrence: 2,
                     return_line: Some(3),
@@ -2216,7 +2267,7 @@ mod tests {
         assert_eq!(
             partial.value.diagnostics[0].join,
             DiagnosticJoin::Source {
-                file: "common/traditions/sample.txt".into(),
+                file: SAMPLE.into(),
                 line: 3,
                 definition: None,
                 field: None,
@@ -2777,6 +2828,7 @@ mod tests {
         assert_eq!(
             outcome.definitions,
             [1, 4, 4].map(|line| FixtureDefinition {
+                file: SAMPLE.into(),
                 line,
                 owner: owner.clone(),
             })
@@ -2786,11 +2838,13 @@ mod tests {
             FixtureStorage::Observed {
                 occurrences: vec![
                     StoredFieldOccurrence {
+                        file: SAMPLE.into(),
                         line: 2,
                         occurrence: 1,
                         value: FixtureValue::String("one".into()),
                     },
                     StoredFieldOccurrence {
+                        file: SAMPLE.into(),
                         line: 4,
                         occurrence: 2,
                         value: FixtureValue::String("two".into()),
@@ -2855,5 +2909,215 @@ mod tests {
             panic!("storage: {:?}", outcome.storage);
         };
         assert_eq!(occurrences.len(), 2);
+    }
+
+    const FIRST: &str = "common/traditions/a.txt";
+    const SECOND: &str = "common/traditions/b.txt";
+
+    /// One key in two files: the second file's definition replaces the first.
+    fn two_file_request() -> FixtureRequest {
+        FixtureRequest::field_outcomes(
+            FIRST,
+            "sample = {\n unlocks_agenda = \"one\"\n}\n",
+            [
+                crate::FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda")
+                    .with_parsing(),
+            ],
+        )
+        .with_file(SECOND, "sample = {\n unlocks_agenda = \"two\"\n}\n")
+    }
+
+    /// The window of one file: its definition at line 1 and its field at line 2.
+    fn file_window(file: &str, occurrence: u64, value: &str) -> Vec<Value> {
+        let parse = |returned| json!({"kind":"field-parse","question":0,"file":file,"line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":occurrence,"returned":returned});
+        vec![
+            json!({"kind":"load-start","file":file}),
+            json!({"kind":"definition","file":file,"line":1,"definition":"sample","owner":"0x2000"}),
+            parse(false),
+            parse(true),
+            json!({"kind":"field-storage","question":0,"file":file,"line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":occurrence,"value":{"String":value}}),
+        ]
+    }
+
+    /// The last file also logs the repeated key and ends every terminal before its return.
+    fn two_file_events() -> Vec<Value> {
+        let mut window = file_window(FIRST, 1, "one");
+        window.push(json!({"kind":"load-returned","file":FIRST}));
+        window.extend(file_window(SECOND, 2, "two"));
+        window.extend([
+            json!({"kind":"diagnostic","text":"Object with key: sample already exists","stage":"engine-parser-log","file":SECOND,"line":1,"definition":null,"field":null,"occurrence":null}),
+            json!({"kind":"field-terminal","question":0,"owner":"0x2000","final_value":{"String":"two"},"unavailable":null}),
+            json!({"kind":"parsing-terminal","question":0,"count":2,"unavailable":null}),
+            json!({"kind":"diagnostics-terminal","count":1}),
+            json!({"kind":"load-returned","file":SECOND}),
+        ]);
+
+        field_outcome_session(
+            window,
+            json!({"kind":"end","field_outcomes":1,"diagnostics":1}),
+        )
+    }
+
+    fn two_file_answer(request: &FixtureRequest, events: Vec<Value>) -> Answer<FixtureObservation> {
+        reduce(request, &records(events), &owner(), BuildId("b".into())).unwrap()
+    }
+
+    fn position(events: &[Value], kind: &str, file: &str) -> usize {
+        events
+            .iter()
+            .position(|event| event["event"]["kind"] == kind && event["event"]["file"] == file)
+            .unwrap()
+    }
+
+    #[test]
+    fn two_files_report_their_load_order_and_attribute_each_occurrence_to_its_file() {
+        let answer = two_file_answer(&two_file_request(), two_file_events());
+
+        assert_eq!(answer.completeness, Completeness::Complete, "{answer:?}");
+        assert_eq!(answer.value.loaded_files, [FIRST, SECOND]);
+        let outcome = &answer.value.field_outcomes[0];
+        assert_eq!(
+            outcome.definitions,
+            [FIRST, SECOND].map(|file| FixtureDefinition {
+                file: file.into(),
+                line: 1,
+                owner: FixtureOwnerId(1),
+            })
+        );
+        assert_eq!(
+            outcome.storage,
+            FixtureStorage::Observed {
+                occurrences: [(FIRST, 1, "one"), (SECOND, 2, "two")]
+                    .map(|(file, occurrence, value)| StoredFieldOccurrence {
+                        file: file.into(),
+                        line: 2,
+                        occurrence,
+                        value: FixtureValue::String(value.into()),
+                    })
+                    .to_vec(),
+                final_value: Some(FixtureValue::String("two".into())),
+                completeness: Completeness::Complete,
+            }
+        );
+        assert_eq!(
+            outcome.parsing,
+            FixtureParsing::Observed {
+                occurrences: [(FIRST, 1), (SECOND, 2)]
+                    .map(|(file, occurrence)| ParsedFieldOccurrence {
+                        file: file.into(),
+                        line: 2,
+                        occurrence,
+                        return_line: Some(2),
+                    })
+                    .to_vec(),
+                completeness: Completeness::Complete,
+            }
+        );
+        assert!(matches!(
+            &answer.value.diagnostics[0].join,
+            DiagnosticJoin::Source { file, line: 1, .. } if file == SECOND
+        ));
+    }
+
+    #[test]
+    fn a_missing_second_load_window_gives_a_partial_answer_that_names_the_file() {
+        let mut events = two_file_events();
+        events.truncate(position(&events, "load-start", SECOND));
+        renumber(&mut events);
+
+        let answer = two_file_answer(&two_file_request(), events);
+
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(answer.value.loaded_files, [FIRST]);
+        assert!(answer.gaps.iter().any(|gap| {
+            gap.subject == Some(GapSubject::fixture_file(SECOND))
+                && gap.detail == "The fixture file's load window is missing"
+        }));
+        let FixtureStorage::Observed {
+            final_value: None,
+            completeness: Completeness::Partial,
+            ..
+        } = &answer.value.field_outcomes[0].storage
+        else {
+            panic!("storage: {answer:?}");
+        };
+    }
+
+    #[test]
+    fn events_outside_the_loading_file_or_terminals_before_the_last_file_are_partial() {
+        let mut other_file = two_file_events();
+        let definition = position(&other_file, "definition", SECOND);
+        other_file[definition]["event"]["file"] = json!(FIRST);
+
+        let mut early_terminal = two_file_events();
+        let terminal = early_terminal
+            .iter()
+            .position(|event| event["event"]["kind"] == "field-terminal")
+            .unwrap();
+        let terminal = early_terminal.remove(terminal);
+        early_terminal.insert(position(&early_terminal, "load-returned", FIRST), terminal);
+        renumber(&mut early_terminal);
+
+        // The first file's invocation never returns; a return with its number in the second file
+        // must not close it.
+        let mut crossed_return = two_file_events();
+        let first_return = crossed_return
+            .iter()
+            .position(|event| event["event"]["returned"] == true)
+            .unwrap();
+        let mut moved = crossed_return.remove(first_return);
+        moved["event"]["file"] = json!(SECOND);
+        crossed_return.insert(position(&crossed_return, "definition", SECOND) + 1, moved);
+        renumber(&mut crossed_return);
+
+        for (case, events) in [
+            ("other file", other_file),
+            ("early terminal", early_terminal),
+            ("crossed return", crossed_return),
+        ] {
+            let answer = two_file_answer(&two_file_request(), events);
+
+            assert_eq!(answer.completeness, Completeness::Partial, "{case}");
+        }
+    }
+
+    #[test]
+    fn validation_keeps_a_late_diagnostic_from_the_first_file_after_both_files_return() {
+        let mut events = two_file_events();
+        let hooks = &mut events[1]["hooks"];
+        hooks["fixture:validated"] = hooks["fixture:malformed"].clone();
+        let log = events
+            .iter()
+            .position(|event| event["event"]["kind"] == "diagnostic")
+            .unwrap();
+        let mut diagnostic = events.remove(log);
+        diagnostic["event"]["stage"] = json!("engine-validation-log");
+        diagnostic["event"]["file"] = json!(FIRST);
+        diagnostic["event"]["line"] = json!(2);
+        let terminal = events
+            .iter()
+            .position(|event| event["event"]["kind"] == "diagnostics-terminal")
+            .unwrap();
+        let mut terminal = events.remove(terminal);
+        let end = events.pop().unwrap();
+        let mut validated = terminal.clone();
+        validated["event"] = json!({"kind":"validation-complete"});
+        terminal["event"] = json!({"kind":"diagnostics-terminal","count":1});
+        events.extend([diagnostic, validated, terminal, end]);
+        renumber(&mut events);
+
+        let answer = two_file_answer(&two_file_request().through_validation(), events);
+
+        assert_eq!(answer.completeness, Completeness::Complete, "{answer:?}");
+        assert_eq!(
+            answer.value.diagnostic_coverage,
+            DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoadAndValidation
+            }
+        );
+        assert!(matches!(
+            &answer.value.diagnostics[0].join,
+            DiagnosticJoin::Source { file, line: 2, occurrence: Some(1), .. } if file == FIRST
+        ));
     }
 }

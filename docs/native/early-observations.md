@@ -115,7 +115,46 @@ of `common/special_projects` still refuses a repeated root key.
 The live case `fixture_outcome_repeated_definition` (M452) repeats a tradition whose second
 occurrence omits `custom_tooltip`: both occurrences have one owner, `unlocks_agenda` keeps both
 values and ends with the second, `custom_tooltip` ends empty, and the engine log joins the
-repeat's line. Several files and the cross-file duplicate belong to SDK-803.
+repeat's line.
+
+## Several fixture files
+
+A request can hold up to 8 files of one template registry directory. The private profile writes
+them all into the mod mount that replaces the directory, so the loader reads only the fixture
+files. The worker opens one load window per file: a load of a requested file while another loads,
+or a second load of one file, is an error. Definitions, field occurrences and reader diagnostics
+carry the file that the loader is reading; the source order of a repeated key compares the load
+order first and the line second. The field terminals run once, at the last file's reader return,
+so the final value is read after every file. `FixtureObservation::loaded_files` is the observed
+load order. A requested file with no load window gets a `FixtureFile` gap and the answer is
+partial; the terminals then never run, and the registry return still pauses the session. Window
+gaps that no single file owns have the registry as subject. The inline loader of
+`common/special_projects` takes one file.
+
+An engine log joins a file and line only when exactly one requested file and line is its source. A
+reader of expanded text joins the one fixture file whose call its source names.
+
+The live case `fixture_outcome_two_files` (M452) defines `native_fixture_tradition` in
+`native_fixture_a.txt` and again, without `custom_tooltip`, in `native_fixture_b.txt`, with one
+other key in each file. SDK-795 uses this support for the cross-file duplicate and file-order
+controls.
+
+### Second mount (decision D3)
+
+Not taken; the mod-over-vanilla rule on [loader rules](loader-rules.md#mod-over-vanilla) keeps its
+stated limit. A second mount would need three things that a fixture does not have now:
+
+- **The game's files in the directory.** The profile replaces the fixture directory with
+  `replace_path`. A second mount needs a request option that leaves the directory to the game
+  mount, and the content check must then cover the game's files, which the loader reads in place
+  instead of as pinned copies.
+- **The mount of each load.** A mod file that replaces a game file has the same path, so the load
+  window's file name cannot say which mount the loader opened.
+- **The game's construction.** A key that a game file defines is constructed in a file that the
+  worker does not observe, so only the mod side of a cross-mount duplicate is attributed.
+
+That is a new public option and a partly attributed observation for one stated rule. Revisit when
+Atlas needs a verified mod-over-vanilla rule.
 
 ## Numeric fixture storage
 

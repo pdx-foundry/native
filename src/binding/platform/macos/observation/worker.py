@@ -326,18 +326,28 @@ def fixture_source_line(text, file):
 GENERATED_SOURCE_LIMIT = 4096
 
 
-def interpret_fixture_log(text, file, returned):
-    """Keep a matching file's diagnostic, with a line only when its source is unambiguous."""
-    if file not in text:
+def interpret_fixture_log(text, files, returned):
+    """Keep a diagnostic that names a fixture file, with a file and line only when exactly one
+    fixture line is its source."""
+    named = [file for file in files if file in text]
+    if not named:
         return None
     stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
-    return dict(text=text, stage=stage, file=file, line=fixture_source_line(text, file))
+    sources = [(file, line) for file in named
+               if (line := fixture_source_line(text, file)) is not None]
+    if len(sources) == 1:
+        [(file, line)] = sources
+    else:
+        file, line = (named[0] if len(named) == 1 else None), None
+    return dict(text=text, stage=stage, file=file, line=line)
 
 
 class FixtureObserver:
-    """One file's parser window; registry callbacks own the eventual session pause."""
+    """The parser window of the fixture's files, one load at a time, from the first file's load to
+    the last file's return; registry callbacks own the eventual session pause."""
     def __init__(self, config):
         self.config = config
+        self.files = config['files']
         self.bindings = config['bindings']
         self.outcome_binding = config['registry']
         self.questions = {item['index']: item for item in config['questions']}
@@ -347,7 +357,10 @@ class FixtureObserver:
         self.validation = config['validation_complete_entry'] is not None
         self.validation_finished = False
         self.control = fault_control(request, 'fixture')
-        self.loading = False
+        # The fixture file that is loading now, the files whose load started, and whether every
+        # file has returned.
+        self.current = None
+        self.loaded = []
         self.returned = False
         self.definitions = {}
         self.constructor_count = 0
@@ -404,13 +417,28 @@ class FixtureObserver:
         return cstring(process, storage, self.bindings['string_tag_offset'])
 
     def fixture_line(self, file, line):
-        """The fixture line of a reader location: its own line in the fixture, or the line of the
-        fixture's call when the reader reads expanded text, which names the call in its source:
-        `<file>:<line>(inline_script) <script>` or `scripted effect <name> at file: <file> line:
-        <line>`. None for any other source."""
-        if file == self.config['file']:
-            return line
-        return fixture_source_line(file, self.config['file'])
+        """The fixture file and line of a reader location: its own line in a fixture file, or the
+        line of a fixture file's call when the reader reads expanded text, which names the call in
+        its source: `<file>:<line>(inline_script) <script>` or `scripted effect <name> at file:
+        <file> line: <line>`. None for any other source, or when several fixture calls match."""
+        if file in self.files:
+            return file, line
+        calls = [(fixture, call) for fixture in self.files
+                 if (call := fixture_source_line(file, fixture)) is not None]
+        return calls[0] if len(calls) == 1 else None
+
+    def start_file(self, file, thread):
+        """Open the load window of one fixture file."""
+        if self.current is not None:
+            raise RuntimeError('fixture loader entered while another fixture file loads')
+        if file in self.loaded:
+            raise RuntimeError('fixture file loaded more than once')
+        self.current = file
+        self.loaded.append(file)
+        self.emit('load-start', thread, file=file)
+
+    def last_file(self):
+        return len(self.loaded) == len(self.files)
 
     def stored_value(self, process, owner, binding):
         return stored_values.decode(lambda address, size: uint(process, address, size),
@@ -464,12 +492,9 @@ class FixtureObserver:
 
     def on_load(self, frame, process, thread, registers):
         file = string(process, register(frame, registers['file']))
-        if file != self.config['file']:
+        if file not in self.files:
             return False
-        if self.loading:
-            raise RuntimeError('fixture loader entered more than once')
-        self.loading = True
-        self.emit('load-start', thread, file=file)
+        self.start_file(file, thread)
         if self.questions:
             return_address = process.GetTarget().ResolveFileAddress(self.outcome_binding['reader_return'])
             hook = process.GetTarget().BreakpointCreateBySBAddress(return_address)
@@ -487,7 +512,7 @@ class FixtureObserver:
         return False
 
     def on_constructor(self, frame, process, registers):
-        if not self.loading or self.returned:
+        if self.current is None:
             return False
         key = self.stored_string(process, register(frame, 'x2'))
         if key not in self.requested_definitions:
@@ -498,11 +523,11 @@ class FixtureObserver:
         if self.active_reader is None:
             raise RuntimeError('fixture constructor has no active file reader')
         file, line = self.location(process, self.active_reader)
-        if file != self.config['file']:
+        if file != self.current:
             return False
         self.constructor_count += 1
         dynamic = protocol.HOOK['fixture_constructor_return'] + str(self.constructor_count)
-        self.pending_constructors[dynamic] = dict(owner=owner, definition=key, line=line)
+        self.pending_constructors[dynamic] = dict(owner=owner, definition=key, file=file, line=line)
         self.return_hook(frame, dynamic)
         return False
 
@@ -512,12 +537,12 @@ class FixtureObserver:
         if definition is None:
             return False
         self.definitions.setdefault(definition['definition'], []).append(definition)
-        self.emit('definition', thread, file=self.config['file'], line=definition['line'],
+        self.emit('definition', thread, file=definition['file'], line=definition['line'],
             definition=definition['definition'], owner=hex(definition['owner']))
         return False
 
     def on_member(self, frame, process, registers):
-        if not self.loading or self.returned:
+        if self.current is None:
             return False
         owner = register(frame, registers['owner'])
         definition = next((key for key, occurrences in self.definitions.items() if occurrences[-1]['owner'] == owner), None)
@@ -532,14 +557,13 @@ class FixtureObserver:
         if self.occurrences[index] > 128:
             raise RuntimeError('fixture field occurrence bound exceeded')
         reader = register(frame, registers['reader'])
-        file, line = self.location(process, reader)
-        line = self.fixture_line(file, line)
-        if line is None:
-            raise RuntimeError('fixture member source differs from selected file')
-        file = self.config['file']
+        source = self.fixture_line(*self.location(process, reader))
+        if source is None or source[0] != self.current:
+            raise RuntimeError('fixture member source differs from the loading fixture file')
+        file, line = source
         dynamic = protocol.HOOK['fixture_member_return'] + str(index) + ':' + str(self.occurrences[index])
         self.pending_fields[dynamic] = dict(question=index, owner=owner, reader=reader,
-            line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
+            file=file, line=line, occurrence=self.occurrences[index], field=question['field'], definition=definition)
         if question['parsing']:
             self.emit('field-parse', frame.GetThread().GetThreadID(), question=index,
                 file=file, line=line, definition=definition, field=question['field'],
@@ -558,21 +582,21 @@ class FixtureObserver:
             return False
         question = self.questions[pending['question']]
         if question['parsing']:
-            file, line = self.location(process, pending['reader'])
-            line = self.fixture_line(file, line)
-            self.emit('field-parse', thread, question=pending['question'], file=self.config['file'], line=line,
+            source = self.fixture_line(*self.location(process, pending['reader']))
+            line = source[1] if source and source[0] == pending['file'] else None
+            self.emit('field-parse', thread, question=pending['question'], file=pending['file'], line=line,
                 definition=pending['definition'], field=pending['field'], owner=hex(pending['owner']),
                 occurrence=pending['occurrence'], returned=True)
         if storage_reason(question) is not None:
             return False
         value = self.stored_value(process, pending['owner'], storage_binding(question))
-        self.emit('field-storage', thread, question=pending['question'], file=self.config['file'],
+        self.emit('field-storage', thread, question=pending['question'], file=pending['file'],
             line=pending['line'], definition=pending['definition'], field=pending['field'],
             owner=hex(pending['owner']), occurrence=pending['occurrence'], value=value)
         return False
 
     def on_diagnostic(self, frame, process, thread, registers, stage):
-        if not self.loading or self.validation_finished or (self.returned and not self.validation):
+        if not self.loaded or self.validation_finished or (self.returned and not self.validation):
             return False
         if self.diagnostics >= 128:
             raise RuntimeError('fixture diagnostic bound exceeded')
@@ -581,10 +605,10 @@ class FixtureObserver:
         file, line = None, None
         try:
             observed_file, observed_line = self.location(process, reader)
-            line = self.fixture_line(observed_file, observed_line)
-            if line is None:
+            source = self.fixture_line(observed_file, observed_line)
+            if source is None:
                 return False
-            file = self.config['file']
+            file, line = source
             if observed_file != file:
                 text += ' in ' + observed_file + ' near line ' + str(observed_line)
         except Exception:
@@ -599,7 +623,7 @@ class FixtureObserver:
         return False
 
     def on_log(self, frame, process, thread, stream=False):
-        if not self.loading or self.validation_finished:
+        if not self.loaded or self.validation_finished:
             return False
         binding = self.bindings['validation']
         if stream:
@@ -610,12 +634,12 @@ class FixtureObserver:
 
     def on_sourced_log(self, frame, process, thread):
         """An engine error with its owner's source and the instance source that it generated."""
-        if not self.loading or self.validation_finished:
+        if not self.loaded or self.validation_finished:
             return False
         binding = self.bindings['validation']
         owner = register(frame, binding['sourced_log_owner_register'])
         source = self.stored_string(process, owner + binding['sourced_log_source_offset'])
-        if self.config['file'] not in source:
+        if not any(file in source for file in self.files):
             return False
         text = self.stored_string(process, register(frame, binding['sourced_log_text_register']))
         storage = register(frame, 'x29') - binding['sourced_log_generated_frame_offset']
@@ -627,7 +651,7 @@ class FixtureObserver:
         return self.emit_log(text + ' at ' + source + '\nresulting in source:\n' + generated, thread)
 
     def emit_log(self, text, thread):
-        diagnostic = interpret_fixture_log(text, self.config['file'], self.returned)
+        diagnostic = interpret_fixture_log(text, self.files, self.returned)
         if diagnostic is None:
             return False
         if self.diagnostics >= 128:
@@ -641,20 +665,27 @@ class FixtureObserver:
         if not self.validation or not self.returned or self.validation_finished:
             raise RuntimeError('fixture validation has no completed file load')
         self.validation_finished = True
-        self.emit('validation-complete', thread, file=self.config['file'])
+        self.emit('validation-complete', thread)
         self.finish_diagnostics(thread)
         self.finish(thread)
         progress.fixture_pending = False
         return False
 
     def on_return(self, process, thread):
-        if not self.loading or self.returned:
+        file = self.current
+        if file is None:
             raise RuntimeError('fixture return has no matching loader entry')
+        self.current = None
+        self.active_reader = None
+        if not self.last_file():
+            self.emit('load-returned', thread, file=file)
+            return False
+        # The final values are read once, after the last file.
         self.returned = True
         self.finish_questions(process, thread)
         if not self.validation:
             self.finish_diagnostics(thread)
-        self.emit('load-returned', thread, file=self.config['file'])
+        self.emit('load-returned', thread, file=file)
         if self.validation:
             retained = {name for name, _ in self.diagnostic_hooks() + self.validation_hooks()}
             retained.update([protocol.HOOK['fixture_malformed'], protocol.HOOK['fixture_unexpected']])
@@ -685,7 +716,7 @@ class FixtureObserver:
         if name == protocol.HOOK['fixture_sourced_log']:
             return self.on_sourced_log(frame, process, thread)
         if name == protocol.HOOK['fixture_unformatted_log']:
-            if self.loading and not self.validation_finished:
+            if self.loaded and not self.validation_finished:
                 raise RuntimeError('engine diagnostic formatting failed inside the observation window')
             return False
         if thread != entry_thread:
@@ -695,7 +726,7 @@ class FixtureObserver:
         if name == protocol.HOOK['fixture_constructor']:
             return self.on_constructor(frame, process, registers)
         if name == protocol.HOOK['fixture_reader']:
-            if self.loading and not self.returned:
+            if self.current is not None:
                 self.active_reader = register(frame, registers['reader'])
             return False
         if name.startswith(protocol.HOOK['fixture_constructor_return']):
@@ -722,6 +753,7 @@ class InlineFixtureObserver(FixtureObserver):
     """One inline file loop; keys become known only when each root read returns."""
     def __init__(self, config):
         super().__init__(config)
+        [self.file] = self.files
         self.inline = self.outcome_binding['inline']
         self.root = None
         self.parent = None
@@ -762,28 +794,25 @@ class InlineFixtureObserver(FixtureObserver):
         lexer = register(frame, 'x1')
         source = uint(process, lexer + self.bindings['lexer_file_offset'])
         file = self.stored_string(process, source + self.bindings['file_name_offset'])
-        if file != self.config['file']:
+        if file != self.file:
             return False
-        if self.loading:
-            raise RuntimeError('fixture loader entered more than once')
-        self.loading = True
+        self.start_file(file, thread)
         self.thread = thread
         self.active_reader = register(frame, 'x0')
-        self.emit('load-start', thread, file=file)
         if self.control == protocol.CONTROL['access_failure']:
             uint(process, 0)
             raise RuntimeError('access failure unexpectedly read zero')
         return False
 
     def begin_root(self, frame, process):
-        if not self.loading or self.returned:
+        if self.current is None:
             return False
         if register(frame, 'x1') != self.active_reader:
             raise RuntimeError('inline definition has a different file reader')
         if self.root is not None or self.parent is not None or self.leaf is not None:
             raise RuntimeError('inline definition overlaps an unfinished read')
         file, line = self.location(process, self.active_reader)
-        if file != self.config['file']:
+        if file != self.file:
             raise RuntimeError('inline definition source differs from selected file')
         self.root_count += 1
         if self.root_count > 256:
@@ -804,7 +833,7 @@ class InlineFixtureObserver(FixtureObserver):
         if self.parent is not None or self.leaf is not None:
             raise RuntimeError('nested parent overlaps an unfinished read')
         reader = register(frame, 'x1')
-        if reader != self.active_reader or self.location(process, reader)[0] != self.config['file']:
+        if reader != self.active_reader or self.location(process, reader)[0] != self.file:
             for selector in selectors:
                 self.root_unavailable[selector] = 'Nested parent source or reader does not match the file reader'
             return False
@@ -839,7 +868,7 @@ class InlineFixtureObserver(FixtureObserver):
                 self.root_unavailable[selector] = 'Nested member uses a different source reader'
                 continue
             file, line = self.location(process, reader)
-            if file != self.config['file']:
+            if file != self.file:
                 self.root_unavailable[selector] = 'Nested member source differs from selected file'
                 continue
             occurrence = self.root_occurrences.get(selector, 0) + 1
@@ -860,7 +889,7 @@ class InlineFixtureObserver(FixtureObserver):
         if self.leaf is None or self.leaf['name'] != name or self.root is None:
             raise RuntimeError('nested member return has no matching entry')
         file, line = self.location(process, self.leaf['reader'])
-        if file != self.config['file']:
+        if file != self.file:
             self.root_unavailable[self.leaf['selector']] = 'Nested member return source differs from selected file'
         else:
             question = self.selectors[self.leaf['selector']][0]
@@ -871,7 +900,7 @@ class InlineFixtureObserver(FixtureObserver):
         return False
 
     def finish_root(self, process, thread):
-        if not self.loading or self.returned:
+        if self.current is None:
             return False
         if self.root is None or self.parent is not None or self.leaf is not None:
             raise RuntimeError('inline definition returned with an unfinished owner join')
@@ -881,7 +910,7 @@ class InlineFixtureObserver(FixtureObserver):
             if key in self.definitions:
                 raise RuntimeError('fixture definition key read more than once')
             self.definitions[key] = [dict(self.root, definition=key)]
-            self.emit('definition', thread, file=self.config['file'], line=self.root['line'],
+            self.emit('definition', thread, file=self.file, line=self.root['line'],
                 definition=key, owner=hex(self.root['owner']))
         for selector, reason in self.root_unavailable.items():
             for question in self.selectors[selector]:
@@ -902,7 +931,7 @@ class InlineFixtureObserver(FixtureObserver):
                 continue
             index = question['index']
             self.occurrences[index] = self.root_occurrences[selector]
-            fields = dict(question=index, file=self.config['file'], line=event['line'],
+            fields = dict(question=index, file=self.file, line=event['line'],
                 definition=key, field=question['field'], owner=hex(self.root['owner']), occurrence=event['occurrence'])
             if kind == 'parse' and question['parsing']:
                 self.emit('field-parse', thread, **fields, returned=event['returned'])
@@ -913,11 +942,11 @@ class InlineFixtureObserver(FixtureObserver):
         return False
 
     def on_diagnostic(self, frame, process, thread, registers, stage):
-        if not self.loading or self.returned:
+        if self.current is None:
             return False
         reader = register(frame, registers['owner'])
         file, line = self.location(process, reader)
-        if file != self.config['file']:
+        if file != self.file:
             return False
         if self.diagnostics >= 128:
             raise RuntimeError('fixture diagnostic bound exceeded')
@@ -939,7 +968,7 @@ class InlineFixtureObserver(FixtureObserver):
         thread = frame.GetThread().GetThreadID()
         if name in {hook for hook, _ in self.diagnostic_hooks()}:
             return super().callback(frame, name)
-        if self.loading and not self.returned and thread != self.thread:
+        if self.current is not None and thread != self.thread:
             raise RuntimeError('nested fixture callback moved to another thread')
         if name == protocol.HOOK['fixture_load']:
             return self.begin_file(frame, process, thread)
@@ -960,7 +989,7 @@ class InlineFixtureObserver(FixtureObserver):
             self.parent = None
             return False
         if name == protocol.HOOK['fixture_return']:
-            if not self.loading or self.returned or register(frame, 'x0') != self.active_reader:
+            if self.current is None or register(frame, 'x0') != self.active_reader:
                 return False
             if self.root is not None or self.parent is not None or self.leaf is not None:
                 raise RuntimeError('fixture file ended with an unfinished owner join')

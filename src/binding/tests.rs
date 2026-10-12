@@ -293,27 +293,27 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
             crate::FixtureFieldQuestion::new("common/tradition_categories", "test", "traditions")
                 .with_parsing(),
         ],
-    );
+    )
+    .with_file("common/tradition_categories/beta.txt", "beta = {}\n");
     let fixture_work = tempdir().unwrap();
     fs::create_dir(fixture_work.path().join("profile")).unwrap();
     plan.prepare_registry_profile(fixture_work.path(), Some(&fixture), &registries, content)
         .unwrap();
     let fixture_mount = fixture_work.path().join("profile/mod/native_registry");
-    assert_eq!(
-        fs::read_to_string(fixture_mount.join(fixture.file())).unwrap(),
-        "atlas = {}\n"
-    );
+    for (path, text) in &fixture.files {
+        assert_eq!(&fs::read_to_string(fixture_mount.join(path)).unwrap(), text);
+        assert!(!root.path().join(path).exists());
+    }
     assert_eq!(
         fs::read_dir(fixture_mount.join("common/tradition_categories"))
             .unwrap()
             .count(),
-        1
+        2
     );
     assert_eq!(
         fs::read(fixture_mount.join(modified)).unwrap(),
         fs::read(root.path().join(modified)).unwrap()
     );
-    assert!(!root.path().join(fixture.file()).exists());
 
     let selected = std::collections::BTreeMap::from([(
         "common/traditions".into(),
@@ -340,8 +340,7 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     assert!(
         fixture_only_work
             .path()
-            .join("profile/mod/native_registry")
-            .join(fixture.file())
+            .join("profile/mod/native_registry/common/tradition_categories/beta.txt")
             .is_file()
     );
 

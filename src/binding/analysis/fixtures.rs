@@ -35,6 +35,9 @@ impl BoundAnalysis {
         if request.window != crate::FixtureWindow::InitialFileLoad {
             return Err("Inline fixture loaders support the initial file-load window only".into());
         }
+        if request.files.len() != 1 {
+            return Err("Inline fixture loaders support one fixture file".into());
+        }
         let verified = self.verified().map_err(|error| error.to_string())?;
         let numeric = self.numeric_facts().map_err(|error| error.to_string())?;
         let loader = verified.verify_inline_loader(recipe)?;
