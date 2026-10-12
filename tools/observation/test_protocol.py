@@ -55,7 +55,7 @@ class ProtocolTests(unittest.TestCase):
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(load_entry=16384, reader_entry=16400, reader_return=16416,
                        constructor_entry=16432, member_entry=16448, inline=None)
-        fixture = dict(file='common/traditions/atlas.txt', validation_complete_entry=None, questions=[],
+        fixture = dict(files=['common/traditions/atlas.txt'], validation_complete_entry=None, questions=[],
                        registry=outcome,
                        bindings=dict(validation=None, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,

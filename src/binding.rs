@@ -217,7 +217,8 @@ impl Binding {
     }
 
     /// Where this session reads the loaded modifier table, and the database instance of each
-    /// registry in `registries` whose item keys it reads there.
+    /// registry in `registries` whose item keys it reads there. A registry with no template
+    /// loader gets no key read, with the reason.
     pub(crate) fn modifier_table_binding(
         &self,
         registries: &[String],
@@ -233,7 +234,16 @@ impl Binding {
         let table = verified.modifier_table(layout.string_tag_offset())?;
         let mut instances = std::collections::BTreeMap::new();
         for directory in registries {
-            let candidate = named_candidate(verified.named_candidates(), directory)?;
+            let candidate = match unique_named_candidate(verified.named_candidates(), directory) {
+                Some(candidate) => candidate,
+                None if matches!(verified.registry_owner(directory), Some(Ok(_))) => {
+                    let unread =
+                        "the registry has no template loader, so its item keys are not read";
+                    instances.insert(directory.clone(), (0, Err(unread.into())));
+                    continue;
+                }
+                None => return Err(format!("{directory}: no unique static registry candidate")),
+            };
             let instance = verified.symbol(&format!(
                 "TGameDatabase<{}>::_pInstance",
                 candidate.record.database
@@ -537,7 +547,7 @@ impl ExecutionPlan {
             };
 
         Ok(crate::protocol::observation::FixtureSetup {
-            file: fixture.file().into(),
+            files: fixture.files.keys().cloned().collect(),
             validation_complete_entry,
             questions,
             registry,

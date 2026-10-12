@@ -1537,7 +1537,6 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     use std::collections::BTreeSet;
 
     let native = native();
-    let loader_named: BTreeSet<String> = LOADER_NAMED.map(String::from).into();
     let mut unsupported: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for registry in native.registries().unwrap().value {
         let name = registry.name;
@@ -1547,6 +1546,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
             native.modifier_families(&name).map(drop),
         ] {
             match result {
+                Ok(()) => {}
                 Err(Error::Unsupported { operation, .. }) => {
                     let operation = operation.to_string();
                     unsupported
@@ -1554,13 +1554,12 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
                         .or_default()
                         .insert(name.clone());
                 }
-                Err(error @ Error::UnknownRegistry { .. }) => panic!("{name}: {error}"),
-                _ => {}
+                Err(error) => panic!("{name}: {error}"),
             }
         }
     }
 
-    // The field method reads every loader registry whose loader builds one owner.
+    // Each registry query reads every loader registry whose loader builds one owner.
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
@@ -1571,15 +1570,15 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     ]
     .map(String::from)
     .into();
-    assert_eq!(
-        unsupported.get(&Operation::RegistryFields.to_string()),
-        Some(&without_owner)
-    );
-    for operation in [Operation::DerivedNames, Operation::ModifierFamilies] {
+    for operation in [
+        Operation::RegistryFields,
+        Operation::DerivedNames,
+        Operation::ModifierFamilies,
+    ] {
         let operation = operation.to_string();
         assert_eq!(
             unsupported.get(&operation),
-            Some(&loader_named),
+            Some(&without_owner),
             "{operation}"
         );
     }
@@ -1816,6 +1815,42 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
             operation: Operation::RegistryFields,
             reason: "2 databases load this directory".into(),
         })
+    );
+}
+
+/// The derived-name and family methods read a custom loader's owner as they read a template
+/// owner. `CStaticModifier` has no template key constructor, so the key place stays a gap
+/// (`docs/native/derived-names.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn a_custom_loader_registry_answers_derived_names_and_modifier_families() {
+    let native = native();
+    let registry = Some(pdx_native::GapSubject::Registry {
+        name: "common/static_modifiers".into(),
+    });
+    let key_place = |gaps: &[pdx_native::Gap]| {
+        gaps.iter().any(|gap| {
+            gap.kind == GapKind::UnresolvedPath
+                && gap.subject == registry
+                && gap.detail.starts_with("the place of the item key")
+        })
+    };
+
+    let names = native.derived_names("common/static_modifiers").unwrap();
+    assert!(names.value.is_empty());
+    assert_eq!(names.completeness, Completeness::Partial);
+    assert!(key_place(&names.gaps), "{:?}", names.gaps);
+
+    // No generation call is reached from `CStaticModifier`'s code, so the method does not run.
+    let families = native.modifier_families("common/static_modifiers").unwrap();
+    assert!(families.value.is_empty());
+    assert_eq!(families.completeness, Completeness::Partial);
+    assert!(!key_place(&families.gaps), "{:?}", families.gaps);
+    assert!(
+        families
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::UnnamedDeclaration && gap.subject.is_none())
     );
 }
 

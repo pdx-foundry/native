@@ -85,8 +85,9 @@ impl FixtureFieldQuestion {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FixtureRequest {
-    /// One UTF-8 `.txt` file under a bounded relative registry path, at most 64 KiB.
-    /// Paths are relative to the game content root; values are the exact file contents.
+    /// One to 8 UTF-8 `.txt` files directly under one bounded relative registry path, each at most
+    /// 64 KiB. Paths are relative to the game content root; values are the exact file contents.
+    /// An inline loader, such as `common/special_projects`, takes one file.
     pub files: BTreeMap<String, String>,
     /// One to 32 field-outcome questions, sorted in ascending `Ord` order. Each
     /// `(registry, definition, parent_field, field)` identity must be unique. `field_outcomes` sorts its
@@ -112,6 +113,24 @@ impl FixtureRequest {
         }
     }
 
+    /// Add another file of the same registry directory, or replace the text of a file with this
+    /// path. The loader reads the files in its own order, which
+    /// `FixtureObservation::loaded_files` reports.
+    ///
+    /// ```
+    /// use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+    /// let request = FixtureRequest::field_outcomes(
+    ///     "common/traditions/a.txt",
+    ///     "sample = { unlocks_agenda = \"first\" }",
+    ///     [FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda")],
+    /// )
+    /// .with_file("common/traditions/b.txt", "sample = { unlocks_agenda = \"second\" }");
+    /// ```
+    pub fn with_file(mut self, path: impl Into<String>, text: impl Into<String>) -> Self {
+        self.files.insert(path.into(), text.into());
+        self
+    }
+
     /// Keep diagnostic observation open through the engine's content-loaded boundary.
     /// Requires at least one field question with diagnostics enabled. No world is loaded.
     pub fn through_validation(mut self) -> Self {
@@ -123,29 +142,17 @@ impl FixtureRequest {
         let reject = |reason: &str| Error::FixtureRequest {
             reason: reason.into(),
         };
-        if self.files.len() != 1 {
-            return Err(reject("Exactly one fixture file is supported"));
+        if self.files.is_empty() || self.files.len() > 8 {
+            return Err(reject("Supply one to 8 fixture files"));
         }
-        let (path, text) = self.files.first_key_value().unwrap();
-        let Some((registry, filename)) = path.rsplit_once('/') else {
-            return Err(reject("Fixture files must be under a registry directory"));
+        let registries = self
+            .files
+            .iter()
+            .map(|(path, text)| validate_file(path, text).map_err(reject))
+            .collect::<Result<BTreeSet<_>, _>>()?;
+        let [registry] = Vec::from_iter(registries)[..] else {
+            return Err(reject("Fixture files must share one registry directory"));
         };
-        if registry.len() > 256 || !registry.split('/').all(is_path_component) {
-            return Err(reject("Fixture registry path has an invalid component"));
-        }
-        let Some(stem) = filename.strip_suffix(".txt") else {
-            return Err(reject("The fixture must have a .txt extension"));
-        };
-        if !is_path_component(stem) {
-            return Err(reject(
-                "The fixture filename must contain only letters, digits, underscores or hyphens",
-            ));
-        }
-        if text.is_empty() || text.len() > 64 * 1024 || text.contains('\0') {
-            return Err(reject(
-                "Fixture text must be nonempty UTF-8 without NUL, at most 64 KiB",
-            ));
-        }
         if self.field_questions.is_empty() {
             return Err(reject("Request at least one field outcome"));
         }
@@ -206,12 +213,10 @@ impl FixtureRequest {
         Ok(())
     }
 
-    pub(crate) fn file(&self) -> &str {
-        self.files.first_key_value().expect("validated fixture").0
-    }
-
+    /// The one registry directory of every fixture file.
     pub(crate) fn registry(&self) -> &str {
-        self.file().rsplit_once('/').expect("validated fixture").0
+        let (path, _) = self.files.first_key_value().expect("validated fixture");
+        path.rsplit_once('/').expect("validated fixture").0
     }
 
     /// Files select the recording directory. The question selects a file within it.
@@ -227,6 +232,29 @@ impl FixtureRequest {
         let question = serde_json::to_vec(&(questions, self.window)).expect("fixture serializes");
         format!("{:x}/{:x}", files.finalize(), Sha256::digest(question))
     }
+}
+
+/// The registry directory of one fixture file, or why the file is refused.
+fn validate_file<'a>(path: &'a str, text: &str) -> Result<&'a str, &'static str> {
+    let Some((registry, filename)) = path.rsplit_once('/') else {
+        return Err("Fixture files must be under a registry directory");
+    };
+    if registry.len() > 256 || !registry.split('/').all(is_path_component) {
+        return Err("Fixture registry path has an invalid component");
+    }
+    let Some(stem) = filename.strip_suffix(".txt") else {
+        return Err("The fixture must have a .txt extension");
+    };
+    if !is_path_component(stem) {
+        return Err(
+            "The fixture filename must contain only letters, digits, underscores or hyphens",
+        );
+    }
+    if text.is_empty() || text.len() > 64 * 1024 || text.contains('\0') {
+        return Err("Fixture text must be nonempty UTF-8 without NUL, at most 64 KiB");
+    }
+
+    Ok(registry)
 }
 
 /// A nonempty directory or filename stem of at most 128 ASCII letters, digits, `_` or `-`.
@@ -308,6 +336,8 @@ pub struct ScopedNumericStorage {
 /// One constructed occurrence of the requested definition key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureDefinition {
+    /// Fixture-relative file that held the definition.
+    pub file: String,
     /// One-based source line where the engine constructed the definition.
     pub line: u64,
     /// Session-local identity of the constructed object.
@@ -317,6 +347,8 @@ pub struct FixtureDefinition {
 /// One stored value read after a source occurrence returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredFieldOccurrence {
+    /// Fixture-relative file that held the occurrence.
+    pub file: String,
     /// One-based source line reported by the engine.
     pub line: u64,
     /// One-based occurrence of this field under the definition key, counted across repeats of
@@ -331,12 +363,13 @@ pub struct StoredFieldOccurrence {
 pub enum FixtureStorage {
     /// No storage observation was established; the reason states what was unavailable.
     Unavailable(String),
-    /// Values after each occurrence and the value when the file load completed.
+    /// Values after each occurrence and the value when the last fixture file finished loading.
     Observed {
-        /// Source-ordered values after each joined reader return.
+        /// Values after each joined reader return, in load order.
         occurrences: Vec<StoredFieldOccurrence>,
-        /// Value at the file-load terminal, including constructor initialization when observed. For a
-        /// repeated key, it is read once from the one owner of every occurrence.
+        /// Value read once after the last fixture file returns, even when the field's last
+        /// occurrence was in an earlier file, including constructor initialization when observed.
+        /// For a repeated key, it is read from the one owner of every occurrence.
         #[serde(deserialize_with = "crate::answer::required_option")]
         final_value: Option<FixtureValue>,
         /// Whether all storage records and terminals completed intact.
@@ -347,6 +380,8 @@ pub enum FixtureStorage {
 /// One witnessed invocation of a field's parser. A return does not establish validity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParsedFieldOccurrence {
+    /// Fixture-relative file that held the occurrence; `return_line` is in the same file.
+    pub file: String,
     /// One-based source line at entry to the field reader.
     pub line: u64,
     /// One-based occurrence of this field under the definition key, counted across repeats of
@@ -439,10 +474,8 @@ pub enum DiagnosticWindow {
 pub struct FixtureFieldOutcome {
     /// The original bounded question.
     pub question: FixtureFieldQuestion,
-    /// Fixture-relative file.
-    pub file: String,
-    /// Each witnessed construction of the definition key, in source order. A key repeated in the
-    /// file has one entry per occurrence; empty when no constructor was witnessed.
+    /// Each witnessed construction of the definition key, in load order. A key repeated in one
+    /// file or across files has one entry per occurrence; empty when no constructor was witnessed.
     pub definitions: Vec<FixtureDefinition>,
     /// Parser entries and returns; independent of stored values and diagnostic coverage.
     pub parsing: FixtureParsing,
@@ -455,6 +488,9 @@ pub struct FixtureFieldOutcome {
 /// Outcomes and diagnostics from the requested fixture window.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FixtureObservation {
+    /// Fixture files in the order the loader read them. A file whose load was not witnessed is
+    /// absent, and the answer has a gap that names it.
+    pub loaded_files: Vec<String>,
     /// Outcomes for each requested field, in canonical question order.
     pub field_outcomes: Vec<FixtureFieldOutcome>,
     /// Engine diagnostics from the fixture file load, including diagnostics without a field join.
@@ -548,11 +584,26 @@ mod tests {
         invalid = request.clone();
         invalid.files.clear();
         assert!(invalid.validate().is_err());
-        invalid = request.clone();
-        invalid
-            .files
-            .insert("common/tradition_categories/other.txt".into(), "x".into());
-        assert!(invalid.validate().is_err());
+        assert!(
+            request
+                .clone()
+                .with_file("common/tradition_categories/other.txt", "x")
+                .validate()
+                .is_ok()
+        );
+        for invalid in [
+            request
+                .clone()
+                .with_file("common/traditions/other.txt", "x"),
+            request
+                .clone()
+                .with_file("common/tradition_categories/bad.mod", "x"),
+            (0..8).fold(request.clone(), |more, index| {
+                more.with_file(format!("common/tradition_categories/f{index}.txt"), "x")
+            }),
+        ] {
+            assert!(invalid.validate().is_err(), "{:?}", invalid.files.keys());
+        }
         let question = FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda");
         let outcome = FixtureRequest::field_outcomes(
             "common/traditions/x.txt",

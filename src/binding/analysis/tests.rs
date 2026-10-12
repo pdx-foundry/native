@@ -377,6 +377,16 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         unsupported("common/pair"),
         "2 databases load this directory"
     );
+    for operation in [Operation::DerivedNames, Operation::ModifierFamilies] {
+        assert_eq!(
+            native.unanswered_registry(operation, "common/one"),
+            Error::Unsupported {
+                operation,
+                reason: "the loader builds several classes with a member reader: CFirst, CSecond"
+                    .into(),
+            }
+        );
+    }
     for unlisted in ["common/first", "common/second"] {
         assert_eq!(
             native.registry_fields(unlisted),
@@ -566,6 +576,11 @@ fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
         table.registries["common/zones"].key_storage,
         KeyStorage::Offset(0x10)
     );
+    // A custom-loader registry joins generation sites, but its keys are not read.
+    assert!(matches!(
+        &table.registries["common/strategic_resources"].key_storage,
+        KeyStorage::Unavailable(reason) if reason.contains("no template loader")
+    ));
     assert!(
         binding
             .modifier_table_binding(&["common/no_such_registry".into()])
@@ -1550,6 +1565,10 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
                 .with_parent_field("requirements"),
         ],
     );
+    let two_files = request
+        .clone()
+        .with_file("common/special_projects/second.txt", "special_project = {}");
+    assert!(analysis.inline_fixture(&two_files).is_err());
     let (binding, questions) = analysis.inline_fixture(&request).unwrap().unwrap();
     assert_eq!(binding.inline.unwrap().key_storage.offset, 8);
     assert_eq!(binding.load_entry, 0x100b9df4c);

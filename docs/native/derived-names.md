@@ -145,19 +145,32 @@ engine facts above.
 
 ### Population
 
-The run covers every registry from `Native::registries()`:
+The run covers every registry from `Native::registries()` (M452):
 
 ```sh
 cargo run --release --example derived-name-population -- "$STELLARIS_PATH"
 ```
 
-| Inventory | Total | Complete | Partial | Failed |
-| --- | ---: | ---: | ---: | ---: |
-| Registries | 164 | 62 | 102 | 0 |
+| Inventory | Total | Complete | Partial | Unsupported | Failed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Registries | 185 | 62 | 117 | 6 | 0 |
 
 Eighty-five registries return names, and all of them are partial. The 62 complete answers return
-no name: no own method of theirs reaches a lookup or check. Eight of the 17 partial answers with
-no name have no established key place.
+no name: no own method of theirs reaches a lookup or check. Twenty-three of the 32 partial answers
+with no name have no established key place.
+
+The 21 registries that a database's own loader names
+([custom-loader names](registry-fields.md#custom-loader-names)) are read through the owner that
+their loader builds, as `registry_fields` reads them. The six without one owner are
+`Unsupported` with the join's reason: `common/colors`, `common/component_tags`,
+`common/ship_behaviors` and `gfx/worldgfx` (no class with a member reader),
+`common/planet_classes` (two classes) and `prescripted_countries` (two databases). The other 15
+answer partial with no name, each with the `constructor` gap: the method finds the key place only
+in a template key constructor `Owner::Owner(int, CString const&)`, and these owners have other
+shapes, such as `CTrait::CTrait(CString, int)`, `CStrategicResource::CStrategicResource(CString
+const&, int)` and `CStaticModifier::CStaticModifier(CString const&)`. A key-constructor shape per
+loader is a change when Atlas needs the names of one of these registries; SDK-789 gives
+`common/strategic_resources` its key layout.
 
 Gap shapes, by registry (the answer-item shapes also give their gap count):
 
@@ -172,7 +185,7 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 | Paths stop at an unsupported instruction (`instruction`) | 7 | |
 | Paths stop at an unknown branch value (`branch-value`) | 5 | |
 | A fixed-size buffer bounds the name (`name-limit`) | 5 | |
-| No established key place (`constructor` 4, `key-storage` 4) | 8 | |
+| No established key place (`constructor` 19, `key-storage` 4) | 23 | |
 | Every-item initialization not established | 36 | |
 | Field values of a name not established | 47 | 112 |
 | What a missing name gives not established | 38 | 111 |
