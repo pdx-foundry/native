@@ -74,6 +74,27 @@ before the name pass, for example to the calls whose register a load at an evalu
 displacement fills, if the block input grows past about 5 s or a query that runs per registry
 needs it.
 
+## Registry field input
+
+- **The registry-independent part is read once.** The catalog builds its symbol index (the name
+  order of the symbols and every constructor entry, about 4 MB on M452) on the first lookup, and
+  the shared field input (key readers, constructor calls, writable pointer slots, functions that
+  never return, modifier containers) on the first field input. Each registry's field input then
+  finds its constructors, vtable groups and names through the index. The catalog's symbols stay
+  in address order (`binary/inventory.rs` sorts them); `Names` and the address lookups rely on
+  that order.
+- **Each registry's field result is kept.** `BoundAnalysis` keeps the field method's result of a
+  registry after its first run, and `registry_fields` and `derived_names` read it. Every read
+  checks the executable first; a failed run is not kept. `fixture_registry_fields` and the
+  duration groups run the method on their own input and keep nothing. With all 164 M452
+  registries kept, the footprint after a `registry_fields` loop is 20–50 MB higher (415 and
+  447 MB in two runs, against 395 MB; index and shared input included). Bound the kept results
+  if a host must hold a `Native` in less memory than that.
+- **Accepted limit:** each field input still reads its text function starts (`Text::read`) and
+  its constant data, and copies the symbols and strings into the `FieldInput` that the engine
+  owns: about 7 ms of a 270 ms `registry_fields` call. Share them if they grow past about 10% of
+  the call.
+
 ## Parity costs
 
 Measured on M452 at `13c94ba` (SDK-769), on one Apple Silicon host with 18 cores and 24 GB, release

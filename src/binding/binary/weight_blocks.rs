@@ -36,7 +36,7 @@ pub(in crate::binding) fn read(
     let constants = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let constructors = super::receivers::constructors(
         text,
-        image.symbols,
+        image.index.over(image.symbols),
         &constants,
         &roots.iter().collect::<Vec<_>>(),
     )?;
@@ -92,6 +92,7 @@ mod tests {
             pointers: &facts.pointers,
             imports: &facts.imports,
             bound_slots: &facts.bound_slots,
+            index: &super::super::symbols::SymbolIndex::new(&facts.symbols),
         };
 
         let weight = pointer_view(&image).unwrap();

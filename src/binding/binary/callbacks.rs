@@ -340,6 +340,7 @@ pub(in crate::binding) fn block_evaluations(
         imports,
         pointers,
         bound_slots,
+        ..
     } = *image;
     let text = Text::read(bytes, symbols)?;
     let names = Names::new(symbols);
@@ -1259,7 +1260,7 @@ mod tests {
                 name: name.into(),
                 address: CALLER,
             });
-            let symbols: Vec<_> = anchors.chain(aliases).collect();
+            let symbols: Vec<_> = aliases.into_iter().chain(anchors).collect();
             let sites = callback_sites(&text, &symbols).unwrap();
 
             (sites.script_fired_sites, sites.sites.len())

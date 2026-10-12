@@ -225,7 +225,7 @@ impl FieldGap {
     }
 }
 /// The root fields of one registry. This is bounded routing knowledge, never a complete schema.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct RegistryFieldResult {
     /// Local use-time storage selections with unresolved enclosing context.
     pub uses: Vec<StorageSelection>,

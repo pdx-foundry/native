@@ -73,6 +73,8 @@ pub(in crate::binding) struct Image<'a> {
     pub imports: &'a BTreeMap<u64, String>,
     /// Every pointer slot that the loader binds to another image.
     pub bound_slots: &'a BTreeSet<u64>,
+    /// The index of `symbols`.
+    pub index: &'a super::symbols::SymbolIndex,
 }
 
 pub(in crate::binding) fn read(

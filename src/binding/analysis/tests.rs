@@ -109,6 +109,8 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
         pointers: BTreeMap::new(),
         bound_slots: Default::default(),
         imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
 
@@ -178,6 +180,8 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
         pointers: BTreeMap::new(),
         bound_slots: Default::default(),
         imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
 
@@ -244,6 +248,8 @@ fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
         pointers: BTreeMap::new(),
         bound_slots: Default::default(),
         imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let verified = analysis.verified().unwrap();
@@ -288,6 +294,8 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
         pointers: BTreeMap::new(),
         bound_slots: Default::default(),
         imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let binding = crate::binding::Binding {
@@ -1153,6 +1161,57 @@ fn cached_grammar_still_checks_executable_integrity() {
     fs::write(path, original).unwrap();
     assert!(matches!(
         analysis.grammar_input(crate::DeclarationKind::Effect),
+        Err(AnalysisError::Unavailable { .. })
+    ));
+}
+
+#[test]
+fn a_kept_registry_field_result_still_checks_executable_integrity() {
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+
+    let (root, analysis) = fixture();
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: CandidateRecord {
+                database: "CTraditionDatabase".into(),
+                owner_candidate: "CTraditionType".into(),
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
+            },
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let kept = Arc::new(RegistryFieldResult::default());
+    analysis
+        .kept_registry_fields()
+        .insert("common/traditions".into(), Arc::clone(&kept));
+
+    let (owner, result) = analysis
+        .registry_field_result("common/traditions")
+        .unwrap()
+        .unwrap();
+    assert_eq!(owner, "CTraditionType");
+    assert!(Arc::ptr_eq(&result, &kept));
+
+    let path = root.path().join("image");
+    let original = fs::read(&path).unwrap();
+    fs::write(&path, "changed").unwrap();
+    assert!(matches!(
+        analysis.registry_field_result("common/traditions"),
+        Err(AnalysisError::Unavailable { .. })
+    ));
+    fs::write(path, original).unwrap();
+    assert!(matches!(
+        analysis.registry_field_result("common/traditions"),
         Err(AnalysisError::Unavailable { .. })
     ));
 }

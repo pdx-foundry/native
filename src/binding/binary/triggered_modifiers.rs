@@ -1,9 +1,10 @@
 //! Collect triggered modifier clause readers from executable pointer slots, with their member and
 //! delegate bodies and the constructors of each reader's class.
-use super::{declarations::Text, families::Names, references::Image};
+use super::{declarations::Text, receivers::SharedPersistent, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
-    declarations::Function, modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
+    declarations::Function, fields::PersistentInput, modifier_blocks::triggered::TriggeredInput,
+    stop::Unresolved,
 };
 use crate::{AnalysisError, BlockFamily};
 use std::collections::BTreeMap;
@@ -41,22 +42,20 @@ pub(in crate::binding) fn read(
     }
 
     let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
-    let symbol_names = Names::new(image.symbols);
+    let shared = SharedPersistent::read(image, &text, &recipe.persistent);
+    let constructors = |class: &str| -> Result<PersistentInput, AnalysisError> {
+        let shared = shared.as_ref().map_err(Clone::clone)?;
+
+        super::receivers::persistent(image, &text, &data, shared, class, &recipe.persistent)
+    };
     let classes = points
         .keys()
         .map(|&point| {
             let class = super::families::point_class(image.symbols, &data, point)
                 .ok_or_else(|| Unresolved::new("triggered-class"))
                 .and_then(|class| {
-                    super::receivers::persistent(
-                        image,
-                        &text,
-                        &data,
-                        &symbol_names,
-                        &class,
-                        &recipe.persistent,
-                    )
-                    .map_err(|_| Unresolved::new("triggered-class-constructors"))
+                    constructors(&class)
+                        .map_err(|_| Unresolved::new("triggered-class-constructors"))
                 });
 
             (point, class)

@@ -38,7 +38,7 @@ impl Native {
                 .ok_or_else(|| Error::UnknownRegistry {
                     name: registry.into(),
                 })?;
-            let (_, fields) = self.registry_field_input_and_result(registry)?;
+            let (_, fields) = self.registry_field_result(registry)?;
             let shared = &analysis
                 .family_index()
                 .map_err(|failure| error(operation, failure))?

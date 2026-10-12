@@ -159,6 +159,7 @@ pub(super) mod numeric;
 pub(super) mod receivers;
 pub(super) mod references;
 pub(super) mod scoped_numeric;
+pub(super) mod symbols;
 pub(super) mod triggered_modifiers;
 pub(super) mod type_pointers;
 pub(super) mod weight_blocks;
