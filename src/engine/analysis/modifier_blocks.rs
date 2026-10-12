@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use super::{
     declarations::Function,
-    discovery::Symbol,
+    discovery::{Symbol, SymbolIndex},
     fields::{
         self, ConcreteReader, DataSection, DispatchInput, KeyReaders, PathOutcome, ReaderJoin,
         RootField, Token, TokenPath,
@@ -58,9 +58,11 @@ pub(crate) struct ModifierBlockFacts {
 }
 
 pub(crate) fn analyze(input: &ModifierBlockInput, numeric: &NumericFacts) -> ModifierBlockFacts {
+    let symbol_index = SymbolIndex::new(&input.symbols);
     let mut dispatch = DispatchInput::command(
         &input.functions,
         &input.symbols,
+        &symbol_index,
         &input.data,
         input.reader_token_offset,
         &input.key_readers,

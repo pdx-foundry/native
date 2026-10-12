@@ -4,8 +4,10 @@
 //! enumerates exact template loader symbols. A candidate count never establishes that all
 //! registries were found; custom, nested and late loaders are outside the template method.
 mod records;
+mod symbol_index;
 
 pub use records::*;
+pub use symbol_index::SymbolIndex;
 
 use std::collections::BTreeMap;
 

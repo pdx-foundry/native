@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::{MemberLeaves, fixed_fields, member_leaves};
 use crate::engine::analysis::{
     declarations::Function,
-    discovery::Symbol,
+    discovery::{Symbol, SymbolIndex},
     fields::{
         self, ConcreteReader, DataSection, DispatchInput, KeyReaders, PathOutcome, PersistentInput,
         ReaderJoin, RootField, Token, TokenPath, Value,
@@ -51,9 +51,11 @@ pub(crate) struct TriggeredFacts {
 }
 
 pub(crate) fn analyze(input: &TriggeredInput) -> TriggeredFacts {
+    let symbol_index = SymbolIndex::new(&input.symbols);
     let dispatch = DispatchInput::command(
         &input.functions,
         &input.symbols,
+        &symbol_index,
         &input.data,
         input.reader_token_offset,
         &input.key_readers,

@@ -10,6 +10,7 @@ use super::containers::{self, PathMasks};
 use super::{
     CollectionField, FieldInput, RegistryFieldResult, RootField, dispatch, inventory, tokens,
 };
+use crate::engine::analysis::discovery::SymbolIndex;
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use crate::engine::analysis::receivers::ConstructorImage;
 use crate::engine::analysis::stop::Unresolved;
@@ -25,6 +26,7 @@ const SPAN: u64 = 0x10000;
 
 pub(super) fn discover(
     input: &FieldInput,
+    symbol_index: &SymbolIndex,
     fields: &[RootField],
     names: &BTreeMap<i64, tokens::Token>,
 ) -> Vec<CollectionField> {
@@ -206,7 +208,7 @@ pub(super) fn discover(
             .filter(|bound| bound.reader.family != crate::BlockFamily::Unknown);
         let (paths, mut gaps) = match reader {
             Some(_) => Default::default(),
-            None => dispatch::explore_owner(input, &object.class),
+            None => dispatch::explore_owner(input, symbol_index, &object.class),
         };
         let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
         gaps.extend(field_gaps);
