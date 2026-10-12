@@ -20,7 +20,7 @@ At revision `8574760` the config fork has 50,195 lines in 175 `.cwt` files.
 | Share | Content | Route |
 | --- | --- | --- |
 | ~37% | Script language: 1,060 effects, 1,089 triggers, 747 modifiers, scopes, 89 links, localisation commands | Engine declarations, then argument grammars |
-| ~35% | 216 of the 257 type schemas: those under `common/` and `events/` | Registry discovery, field readers, references |
+| ~35% | 218 of the 257 type schemas: those under `common/` and `events/` | Registry discovery, field readers, references |
 | ~13% | 2,042 defines, 385 on_actions, game rules | Inventories |
 | ~8% | Interface, graphics, sound, map, descriptors | Separate loaders, not yet investigated |
 
@@ -132,8 +132,8 @@ holds the decisions of 2026-10-12 and the ticket blockers; its "Second review"
 section supersedes the first plan where they differ.
 
 **Gate population (D1).** The population is every config type whose `path` is under `common/` or
-`events/` at config revision `8574760`: 216 of the 257 `type[…]` definitions, joined by
-`(type, file)` pairs to about 180 directories. Each type has either a Native registry with a
+`events/` at config revision `8574760`: 218 of the 257 `type[…]` definitions, as counted by
+Atlas in SDK-781, joined by `(type, file)` pairs to about 180 directories. Each type has either a Native registry with a
 per-relationship status in the sweep report (SDK-780, over the SDK-798 recording) or an Atlas
 missing-join reason in the registry comparison (SDK-781). Atlas owns the count. Native reports
 rates per registry; Atlas reports them per `(type, file)` (SDK-781) and per claim. The `gfx`,
