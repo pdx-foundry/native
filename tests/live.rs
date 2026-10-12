@@ -291,6 +291,7 @@ enum FixtureOutcomeCase {
     DiagnosticsNotRequested,
     MaximumQuestions,
     UnrelatedDefinitions,
+    RepeatedDefinition,
 }
 
 fn cases() -> Vec<(String, Case)> {
@@ -719,6 +720,10 @@ fn cases() -> Vec<(String, Case)> {
             "unrelated_definitions",
             FixtureOutcomeCase::UnrelatedDefinitions,
         ),
+        (
+            "repeated_definition",
+            FixtureOutcomeCase::RepeatedDefinition,
+        ),
     ] {
         cases.push((
             format!("fixture_outcome_{name}"),
@@ -984,7 +989,7 @@ async fn fixture_transfer(native: &Native) -> Outcome {
         let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
             return Err(format!("transfer outcomes: {answer:?}").into());
         };
-        if tooltip.owner.is_none() || tooltip.owner != agenda.owner {
+        if tooltip.definitions.is_empty() || tooltip.definitions != agenda.definitions {
             return Err(format!("transfer owner join: {answer:?}").into());
         }
         for (outcome, expected) in [(tooltip, "transfer_tip"), (agenda, "transfer_agenda")] {
@@ -1031,7 +1036,7 @@ async fn fixture_relic_portrait(native: &Native) -> Outcome {
         let [outcome] = answer.value.field_outcomes.as_slice() else {
             return Err(format!("novel field outcomes: {answer:?}").into());
         };
-        if outcome.owner.is_none() {
+        if outcome.definitions.is_empty() {
             return Err(format!("novel field owner: {answer:?}").into());
         }
         let FixtureStorage::Observed {
@@ -1182,7 +1187,7 @@ async fn fixture_numeric(
                 final_value: Some(final_value.clone()),
                 completeness: Completeness::Complete,
             };
-            if outcome.owner.is_none() || outcome.storage != expected_storage {
+            if outcome.definitions.is_empty() || outcome.storage != expected_storage {
                 return Err(format!(
                     "numeric storage differs: expected {expected_storage:?}; got {outcome:?}"
                 )
@@ -1272,7 +1277,7 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
                 occurrences[index].line == lines[index] && occurrences[index].return_line.is_some()
             };
 
-            outcome.owner.is_some()
+            !outcome.definitions.is_empty()
                 && matches!(outcome.storage, FixtureStorage::Unavailable(_))
                 && occurrences.len() == 2
                 && returned_at(0)
@@ -1379,7 +1384,7 @@ async fn fixture_modifier_block(native: &Native) -> Outcome {
         };
         if occurrences.len() != 1
             || occurrences[0].return_line.is_none()
-            || outcome.owner.is_none()
+            || outcome.definitions.is_empty()
             || !answer.value.diagnostics.is_empty()
             || !matches!(
                 answer.value.diagnostic_coverage,
@@ -1466,7 +1471,7 @@ async fn fixture_triggered_modifier(native: &Native) -> Outcome {
         };
         if occurrences.len() != 1
             || occurrences[0].return_line.is_none()
-            || outcome.owner.is_none()
+            || outcome.definitions.is_empty()
             || !answer.value.diagnostics.is_empty()
             || !matches!(
                 answer.value.diagnostic_coverage,
@@ -1878,6 +1883,17 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
     if matches!(case, FixtureOutcomeCase::UnrelatedDefinitions) {
         return unrelated_definitions_request();
     }
+    if matches!(case, FixtureOutcomeCase::RepeatedDefinition) {
+        return FixtureRequest::field_outcomes(
+            "common/traditions/native_fixture.txt",
+            "native_fixture_tradition = {\n custom_tooltip = \"tip_one\"\n unlocks_agenda = \"agenda_one\"\n}\nnative_fixture_tradition = {\n unlocks_agenda = \"agenda_two\"\n}\n",
+            [
+                FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "custom_tooltip"),
+                FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda")
+                    .with_parsing(),
+            ],
+        );
+    }
     let body = match case {
         FixtureOutcomeCase::Valid | FixtureOutcomeCase::DiagnosticsNotRequested => {
             " unlocks_agenda = \"agenda_one\"\n"
@@ -1892,7 +1908,8 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
         }
         FixtureOutcomeCase::SameOwner
         | FixtureOutcomeCase::MaximumQuestions
-        | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
+        | FixtureOutcomeCase::UnrelatedDefinitions
+        | FixtureOutcomeCase::RepeatedDefinition => unreachable!(),
     };
     let mut question =
         FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda");
@@ -1983,6 +2000,7 @@ fn assert_fixture_outcome(
         FixtureOutcomeCase::MaximumQuestions => assert_maximum_questions(answer),
         FixtureOutcomeCase::UnrelatedDefinitions => assert_unrelated_definitions(answer),
         FixtureOutcomeCase::SameOwner => assert_same_owner(answer),
+        FixtureOutcomeCase::RepeatedDefinition => assert_repeated_definition(answer),
         FixtureOutcomeCase::Valid
         | FixtureOutcomeCase::Omitted
         | FixtureOutcomeCase::Repeated
@@ -1997,15 +2015,65 @@ fn assert_same_owner(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome
     let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
         return Err(format!("same-owner outcomes: {answer:?}").into());
     };
-    if tooltip.owner.is_none()
-        || tooltip.owner != agenda.owner
-        || tooltip.definition_line != Some(1)
-        || agenda.definition_line != Some(1)
-    {
+    if definition_lines(tooltip) != [1] || tooltip.definitions != agenda.definitions {
         return Err(format!("same-owner identity: {answer:?}").into());
     }
     assert_string_storage(tooltip, &[(2, 1, "tip")], Some("tip"))?;
     assert_string_storage(agenda, &[(3, 1, "agenda")], Some("agenda"))
+}
+
+/// Checks a tradition whose key is repeated: the engine constructs it again at the same owner
+/// and reads the repeat into it, so the field that the repeat omits loses its value.
+fn assert_repeated_definition(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FixtureParsing, ParsedFieldOccurrence};
+
+    let [tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+        return Err(format!("repeated-definition outcomes: {answer:?}").into());
+    };
+    let one_owner = tooltip
+        .definitions
+        .iter()
+        .all(|definition| definition.owner == tooltip.definitions[0].owner);
+    if definition_lines(tooltip) != [1, 5]
+        || !one_owner
+        || tooltip.definitions != agenda.definitions
+    {
+        return Err(format!("repeated-definition identity: {answer:?}").into());
+    }
+    assert_string_storage(tooltip, &[(2, 1, "tip_one")], Some(""))?;
+    assert_string_storage(
+        agenda,
+        &[(3, 1, "agenda_one"), (6, 2, "agenda_two")],
+        Some("agenda_two"),
+    )?;
+    let parsed = [(3, 1), (6, 2)].map(|(line, occurrence)| ParsedFieldOccurrence {
+        line,
+        occurrence,
+        return_line: Some(line),
+    });
+    if agenda.parsing
+        != (FixtureParsing::Observed {
+            occurrences: parsed.to_vec(),
+            completeness: Completeness::Complete,
+        })
+    {
+        return Err(format!("repeated-definition parsing: {answer:?}").into());
+    }
+    let [diagnostic] = answer.value.diagnostics.as_slice() else {
+        return Err(format!("repeated-definition diagnostics: {answer:?}").into());
+    };
+    if !diagnostic
+        .text
+        .starts_with("Object with key: native_fixture_tradition already exists")
+        || !matches!(
+            &diagnostic.join,
+            DiagnosticJoin::Source { file, line: 5, definition: None, field: None,
+                occurrence: None } if file == "common/traditions/native_fixture.txt"
+        )
+    {
+        return Err(format!("repeated-definition diagnostic: {answer:?}").into());
+    }
+    Ok(())
 }
 
 /// Checks the one `unlocks_agenda` question of the single-tradition cases: its identity, stored
@@ -2021,10 +2089,7 @@ fn assert_agenda_outcome(
         .field_outcomes
         .first()
         .ok_or("missing field outcome")?;
-    if outcome.question.field != "unlocks_agenda"
-        || outcome.owner.is_none()
-        || outcome.definition_line != Some(1)
-    {
+    if outcome.question.field != "unlocks_agenda" || definition_lines(outcome) != [1] {
         return Err(format!("field outcome identity: {answer:?}").into());
     }
     match case {
@@ -2048,7 +2113,8 @@ fn assert_agenda_outcome(
         }
         FixtureOutcomeCase::SameOwner
         | FixtureOutcomeCase::MaximumQuestions
-        | FixtureOutcomeCase::UnrelatedDefinitions => unreachable!(),
+        | FixtureOutcomeCase::UnrelatedDefinitions
+        | FixtureOutcomeCase::RepeatedDefinition => unreachable!(),
     }
     match case {
         FixtureOutcomeCase::Malformed => {
@@ -2112,8 +2178,7 @@ fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> 
         let field_line = definition_line + 1;
         if outcome.question.definition != definition
             || outcome.question.field != "unlocks_agenda"
-            || outcome.owner.is_none()
-            || outcome.definition_line != Some(definition_line)
+            || definition_lines(outcome) != [definition_line]
         {
             return Err(format!("maximum field outcome {index}: {answer:?}").into());
         }
@@ -2161,8 +2226,7 @@ fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>)
             })
         || !answer.gaps.is_empty()
         || outcome.question.definition != "native_fixture_target"
-        || outcome.owner.is_none()
-        || outcome.definition_line != Some(260)
+        || definition_lines(outcome) != [260]
         || !outcome.diagnostics.is_empty()
         || diagnostic.text != "Unexpected token"
         || diagnostic.stage != "reader-unexpected-report"
@@ -2180,6 +2244,14 @@ fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>)
         return Err(format!("unrelated definitions: {answer:?}").into());
     }
     assert_string_storage(outcome, &[(261, 1, "target_agenda")], Some("target_agenda"))
+}
+
+fn definition_lines(outcome: &pdx_native::FixtureFieldOutcome) -> Vec<u64> {
+    outcome
+        .definitions
+        .iter()
+        .map(|definition| definition.line)
+        .collect()
 }
 
 fn assert_string_storage(
@@ -2342,8 +2414,8 @@ fn assert_first_fixture_result(
             let outcomes = &answer.value.field_outcomes;
             if answer.source.basis != Basis::LiveObservation
                 || outcomes.len() != 2
-                || outcomes[0].owner.is_none()
-                || outcomes[0].owner != outcomes[1].owner
+                || outcomes[0].definitions.is_empty()
+                || outcomes[0].definitions != outcomes[1].definitions
             {
                 return Err(format!("category owner join: {answer:?}").into());
             }
@@ -2354,7 +2426,7 @@ fn assert_first_fixture_result(
                     .ok_or("category field outcome missing")?;
                 if outcome.file != "common/tradition_categories/atlas.txt"
                     || outcome.question.definition != "atlas_early_category"
-                    || outcome.definition_line != Some(1)
+                    || definition_lines(outcome) != [1]
                 {
                     return Err(format!("category source join: {outcome:?}").into());
                 }
@@ -3478,7 +3550,7 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
             let occurrences = &expected[&outcome.question.definition];
             let storage = FixtureStorage::Observed { occurrences: occurrences.clone(),
                 final_value: occurrences.last().map(|item| item.value.clone()), completeness: Completeness::Complete };
-            if outcome.storage != storage || outcome.owner.is_none() {
+            if outcome.storage != storage || outcome.definitions.is_empty() {
                 return Err(format!("nested storage differs: expected {storage:?}; got {outcome:?}").into());
             }
             if !matches!(&outcome.parsing, FixtureParsing::Observed { occurrences: parsed, completeness: Completeness::Complete } if parsed.len() == occurrences.len() && parsed.iter().zip(occurrences).all(|(parsed, stored)| parsed.line == stored.line && parsed.occurrence == stored.occurrence && parsed.return_line == Some(stored.line))) {

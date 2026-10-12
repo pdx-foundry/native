@@ -94,6 +94,29 @@ Pitfalls:
   `common/traditions` included, come from the loader method, and the validation terminal from
   the `CModifier::LogDefinitions()` symbol; do not pin them.
 
+## A repeated key in one fixture file
+
+When a template loader reads a key that it already holds, `LoadFromReader` calls the database's
+`ReadExistingEntry` (M452: `TSingleObjectGameDatabase<CTraditionTypeDatabase, CTraditionType,
+false>::ReadExistingEntry` at `0x100ce4980`). It logs `Object with key: %s already exists, using
+the one at %s` with the reader's current location, destroys the entry in place, zeroes it,
+constructs it again at the same address with its old ID, and reads the repeat into it. The repeat
+therefore replaces the whole definition: a field that only the first occurrence sets returns to
+its constructor value. SDK-790 states this as the duplicate rule.
+
+The fixture constructor hook fires for each occurrence, so `FixtureFieldOutcome::definitions` lists
+each with its line and owner. Field occurrences count across the repeats, and the file-load
+terminal reads the final value once, from the one owner. If the occurrences of a key had several
+owners, the stored one would not be established; the field then keeps its occurrences, has no
+final value and is partial. A construction after the field terminals, or out of source order, is
+a window gap. One line can hold two occurrences, so equal lines are accepted. The inline loader
+of `common/special_projects` still refuses a repeated root key.
+
+The live case `fixture_outcome_repeated_definition` (M452) repeats a tradition whose second
+occurrence omits `custom_tooltip`: both occurrences have one owner, `unlocks_agenda` keeps both
+values and ends with the second, `custom_tooltip` ends empty, and the engine log joins the
+repeat's line. Several files and the cross-file duplicate belong to SDK-803.
+
 ## Numeric fixture storage
 
 The binding selects a decoder by the joined callee, never by field name: `CReader::Read(int&)`

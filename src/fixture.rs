@@ -305,12 +305,22 @@ pub struct ScopedNumericStorage {
     pub variable: String,
 }
 
+/// One constructed occurrence of the requested definition key.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FixtureDefinition {
+    /// One-based source line where the engine constructed the definition.
+    pub line: u64,
+    /// Session-local identity of the constructed object.
+    pub owner: FixtureOwnerId,
+}
+
 /// One stored value read after a source occurrence returned.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredFieldOccurrence {
     /// One-based source line reported by the engine.
     pub line: u64,
-    /// One-based occurrence of this field on this definition.
+    /// One-based occurrence of this field under the definition key, counted across repeats of
+    /// the key.
     pub occurrence: u64,
     /// Actual value in the definition after the reader returned.
     pub value: FixtureValue,
@@ -325,7 +335,8 @@ pub enum FixtureStorage {
     Observed {
         /// Source-ordered values after each joined reader return.
         occurrences: Vec<StoredFieldOccurrence>,
-        /// Value at the file-load terminal, including constructor initialization when observed.
+        /// Value at the file-load terminal, including constructor initialization when observed. For a
+        /// repeated key, it is read once from the one owner of every occurrence.
         #[serde(deserialize_with = "crate::answer::required_option")]
         final_value: Option<FixtureValue>,
         /// Whether all storage records and terminals completed intact.
@@ -338,7 +349,8 @@ pub enum FixtureStorage {
 pub struct ParsedFieldOccurrence {
     /// One-based source line at entry to the field reader.
     pub line: u64,
-    /// One-based occurrence of this field on the requested definition.
+    /// One-based occurrence of this field under the definition key, counted across repeats of
+    /// the key.
     pub occurrence: u64,
     /// Source line when the same invocation returned, or `None` if its return was lost.
     #[serde(deserialize_with = "crate::answer::required_option")]
@@ -429,12 +441,9 @@ pub struct FixtureFieldOutcome {
     pub question: FixtureFieldQuestion,
     /// Fixture-relative file.
     pub file: String,
-    /// Session-local owner identity, when the definition constructor was witnessed.
-    #[serde(deserialize_with = "crate::answer::required_option")]
-    pub owner: Option<FixtureOwnerId>,
-    /// One-based definition source line, when established by the engine reader.
-    #[serde(deserialize_with = "crate::answer::required_option")]
-    pub definition_line: Option<u64>,
+    /// Each witnessed construction of the definition key, in source order. A key repeated in the
+    /// file has one entry per occurrence; empty when no constructor was witnessed.
+    pub definitions: Vec<FixtureDefinition>,
     /// Parser entries and returns; independent of stored values and diagnostic coverage.
     pub parsing: FixtureParsing,
     /// Independently observed parser storage.

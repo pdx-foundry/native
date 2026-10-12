@@ -1068,8 +1068,7 @@ mod tests {
         FixtureFieldOutcome {
             question: FixtureFieldQuestion::new("common/tradition_categories", "atlas", field),
             file: "common/tradition_categories/atlas.txt".into(),
-            owner: None,
-            definition_line: None,
+            definitions: Vec::new(),
             parsing,
             storage,
             diagnostics,
