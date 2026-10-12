@@ -108,7 +108,11 @@ pub(crate) fn serializer_owner_slot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::analysis::{assembler::arm64, declarations::Function, discovery::Symbol};
+    use crate::engine::analysis::{
+        assembler::arm64,
+        declarations::Function,
+        discovery::{Symbol, SymbolIndex},
+    };
     use std::collections::BTreeMap;
 
     #[test]
@@ -151,7 +155,9 @@ mod tests {
             ),
         ]);
         let readers = super::super::KeyReaders::default();
-        let input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
+        let symbol_index = SymbolIndex::new(&symbols);
+        let input =
+            DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
         let (mut paths, _) = super::super::explore_member(&input, names[0]);
         paths[0].domain = [7, 7];
         let chain = vec![names[0].into()];

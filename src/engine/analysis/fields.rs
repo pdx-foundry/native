@@ -69,6 +69,7 @@ pub(crate) use tokens::{Token, named_key, recover_decoded};
 pub(crate) use uses::{has_owner_receiver, storage_offset};
 
 use super::InputError;
+use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v30";
@@ -97,7 +98,9 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         .collect();
     let (tokens, token_gaps) = tokens::recover(input);
     gaps.extend(token_gaps);
-    let (paths, table_gaps) = dispatch::explore(input);
+    let symbol_index = SymbolIndex::new(&input.symbols);
+    let (paths, table_gaps) =
+        dispatch::explore_owner(input, &symbol_index, &input.selection.owner_candidate);
     gaps.extend(table_gaps);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
     gaps.extend(path_gaps);
@@ -108,7 +111,7 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
             "token intervals are missing or overlap",
         ));
     }
-    let collections = nested::discover(input, &fields, &tokens);
+    let collections = nested::discover(input, &symbol_index, &fields, &tokens);
     let uses = uses::discover(input, &fields, &collections, partition_accounted);
     if !collections.is_empty() {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,

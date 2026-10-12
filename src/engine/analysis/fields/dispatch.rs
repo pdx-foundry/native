@@ -1,10 +1,10 @@
-use super::tokens::{FunctionView, decode, function, names_by_address, number, register};
+use super::tokens::{FunctionView, decode, function, number, register};
 use super::{
-    Condition, DataSection, FieldGap, FieldGapKind, FieldInput, PathOutcome, ReaderJoin,
+    Condition, DataSection, FieldGap, FieldGapKind, FieldInput, Function, PathOutcome, ReaderJoin,
     TableEntry, TokenPath, Value,
 };
 use crate::engine::analysis::decode::Instruction;
-use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::discovery::{Symbol, SymbolIndex};
 use crate::engine::analysis::stop::{Bound, Obstacle, Unknown, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -22,9 +22,11 @@ const MAX_TABLE_ENTRIES: usize = 1024;
 #[derive(Clone)]
 pub(crate) struct DispatchInput<'a> {
     pub scope: Option<Value>,
-    functions: Vec<FunctionView<'a>>,
+    bodies: Bodies<'a>,
     key_readers: &'a super::KeyReaders,
     pub symbols: &'a [Symbol],
+    /// The index of `symbols`.
+    symbol_index: &'a SymbolIndex,
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
     pub member_delegates: bool,
@@ -36,6 +38,16 @@ pub(crate) struct DispatchInput<'a> {
     /// owner, reader and token unchanged.
     pub virtual_delegate: Option<&'a str>,
 }
+
+/// Where dispatch finds a function body by name.
+#[derive(Clone, Copy)]
+enum Bodies<'a> {
+    /// Bodies by entry address, named by every symbol at that address, from command discovery.
+    ByAddress(&'a BTreeMap<u64, crate::engine::analysis::declarations::Function>),
+    /// Named bodies from registry discovery.
+    Named(&'a [Function]),
+}
+
 impl<'a> DispatchInput<'a> {
     pub(crate) fn with_owner_vtable(
         &self,
@@ -46,9 +58,11 @@ impl<'a> DispatchInput<'a> {
             ..self.clone()
         }
     }
+    /// Dispatch input for a command member reader. `symbol_index` is the index of `symbols`.
     pub(crate) fn command(
         functions: &'a BTreeMap<u64, crate::engine::analysis::declarations::Function>,
         symbols: &'a [Symbol],
+        symbol_index: &'a SymbolIndex,
         read_only_data: &'a [DataSection],
         reader_token_offset: u64,
         key_readers: &'a super::KeyReaders,
@@ -56,24 +70,39 @@ impl<'a> DispatchInput<'a> {
         Self {
             scope: None,
             key_readers,
-            functions: symbols
-                .iter()
-                .filter_map(|symbol| {
-                    let body = functions.get(&symbol.address)?;
-                    Some(FunctionView {
-                        name: &symbol.name,
-                        address: body.address,
-                        code: &body.code,
-                    })
-                })
-                .collect(),
+            bodies: Bodies::ByAddress(functions),
             symbols,
+            symbol_index,
             read_only_data,
             reader_token_offset: Some(reader_token_offset),
             member_delegates: true,
             owner_vtable: None,
             serializer_constructors: None,
             virtual_delegate: None,
+        }
+    }
+
+    /// The one function named `name`, when every symbol of that name is at its entry.
+    fn function(&self, name: &str) -> Option<FunctionView<'a>> {
+        let named = self.symbol_index.named(self.symbols, name);
+
+        match self.bodies {
+            Bodies::ByAddress(bodies) => {
+                let views = named.clone().filter_map(|symbol| {
+                    let body = bodies.get(&symbol.address)?;
+
+                    Some(FunctionView {
+                        name: &symbol.name,
+                        address: body.address,
+                        code: &body.code,
+                    })
+                });
+
+                function(views, named, name)
+            }
+            Bodies::Named(functions) => {
+                function(functions.iter().map(FunctionView::from), named, name)
+            }
         }
     }
 }
@@ -473,7 +502,7 @@ fn push_table_gap(
         gaps.push(gap);
     }
 }
-fn rejection(input: &DispatchInput<'_>, names: &BTreeMap<u64, Option<&str>>) -> bool {
+fn rejection(input: &DispatchInput<'_>) -> bool {
     let Some((_, rows)) = decode_root(input, "CPersistent::ReadMember(CReader&, int)") else {
         return false;
     };
@@ -481,7 +510,7 @@ fn rejection(input: &DispatchInput<'_>, names: &BTreeMap<u64, Option<&str>>) -> 
         && rows[0].operation == "mov"
         && rows[0].operands == "x0,x1"
         && rows[1].operation == "b"
-        && number(&rows[1].operands).and_then(|a| names.get(&(a as u64)).copied().flatten())
+        && number(&rows[1].operands).and_then(|a| input.symbol_index.name(input.symbols, a as u64))
             == Some("CReader::ReportUnexpected()")
 }
 /// The reader that the call at `at` joins. `entry` is the root function.
@@ -798,24 +827,26 @@ fn apply(
 /// The entry address and instructions of the root function, or `None` when the image has no
 /// single root function or its code does not decode.
 fn decode_root(input: &DispatchInput<'_>, root: &str) -> Option<(u64, Vec<Instruction>)> {
-    let body = function(input.functions.iter().copied(), input.symbols, root)?;
+    let body = input.function(root)?;
     let rows = decode(body).ok()?;
     Some((body.address, rows))
 }
 
-/// Every token path through the root, and the jump tables in it that could not be decoded.
-pub(super) fn explore(input: &FieldInput) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    explore_owner(input, &input.selection.owner_candidate)
-}
-
-pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>, Vec<FieldGap>) {
+/// Every token path through the member reader of `owner`, and the jump tables in it that could
+/// not be decoded. `symbol_index` is the index of the input's symbols.
+pub(super) fn explore_owner(
+    input: &FieldInput,
+    symbol_index: &SymbolIndex,
+    owner: &str,
+) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let root = format!("{owner}::ReadMember(CReader&, int)");
     explore_member(
         &DispatchInput {
             scope: None,
             key_readers: &input.key_readers,
-            functions: input.functions.iter().map(FunctionView::from).collect(),
+            bodies: Bodies::Named(&input.functions),
             symbols: &input.symbols,
+            symbol_index,
             read_only_data: &input.read_only_data,
             reader_token_offset: None,
             member_delegates: false,
@@ -881,8 +912,7 @@ fn explore_member_with_wrapped_owner(
         .enumerate()
         .map(|(i, r)| (r.address, i))
         .collect();
-    let names = names_by_address(input.symbols);
-    let rejects = rejection(input, &names);
+    let rejects = rejection(input);
     let mut pending = vec![initial];
     let mut leaves = Vec::new();
     let mut tables = Vec::new();
@@ -930,7 +960,8 @@ fn explore_member_with_wrapped_owner(
                 && !matches!(state.value(&row.operands), Some(Value::TableTarget { .. }))
             {
                 let target = owner_virtual_target(input, &state, &row.operands);
-                let name = target.and_then(|address| names.get(&address).copied().flatten());
+                let name =
+                    target.and_then(|address| input.symbol_index.name(input.symbols, address));
                 let outcome = call_outcome(
                     name,
                     &state,
@@ -984,7 +1015,8 @@ fn explore_member_with_wrapped_owner(
                     break;
                 }
                 if let Some((stack, slot, owner)) = state.serializer {
-                    let name = target.and_then(|address| names.get(&address).copied().flatten());
+                    let name =
+                        target.and_then(|address| input.symbol_index.name(input.symbols, address));
                     if depth < 8
                         && name.is_some_and(crate::engine::analysis::readers::is_member)
                         && state.value("x0") == Some(Value::Stack(stack))
@@ -1071,10 +1103,9 @@ fn explore_member_with_wrapped_owner(
                             destination,
                             repeat,
                         } => {
-                            let callee = names
-                                .get(&target)
-                                .copied()
-                                .flatten()
+                            let callee = input
+                                .symbol_index
+                                .name(input.symbols, target)
                                 .unwrap_or_default()
                                 .to_owned();
                             let join = ReaderJoin::Stored {
@@ -1114,7 +1145,7 @@ fn explore_member_with_wrapped_owner(
                         CompoundCall::Unclassified => {}
                     }
                 }
-                let name = target.and_then(|a| names.get(&a).copied().flatten());
+                let name = target.and_then(|a| input.symbol_index.name(input.symbols, a));
                 let mut outcome = call_outcome(
                     name,
                     &state,
@@ -1817,7 +1848,9 @@ mod tests {
             },
         )]);
         let readers = super::super::KeyReaders::default();
-        let input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
+        let symbol_index = SymbolIndex::new(&symbols);
+        let input =
+            DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
         let (paths, _) = explore_member(&input, root);
         assert!(
             matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
@@ -1859,7 +1892,9 @@ mod tests {
         };
         let default = super::super::KeyReaders::default();
         let joins = |functions, readers| {
-            let input = DispatchInput::command(functions, &symbols, &[], 0x38, readers);
+            let symbol_index = SymbolIndex::new(&symbols);
+            let input =
+                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, readers);
             let (paths, _) = explore_member(&input, root);
             matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
                 if callee == assign)
@@ -1967,7 +2002,9 @@ mod tests {
                 ),
             ]);
             let readers = super::super::KeyReaders::default();
-            let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
+            let symbol_index = SymbolIndex::new(&symbols);
+            let mut input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
             input.serializer_constructors = Some(&constructors);
             let (paths, gaps) = explore_member(&input, root);
             assert!(gaps.is_empty());
@@ -2086,7 +2123,15 @@ mod tests {
                 BTreeMap::from([(0x8040, 0x2000)])
             };
             let key_readers = super::super::KeyReaders::default();
-            let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &key_readers);
+            let symbol_index = SymbolIndex::new(&symbols);
+            let mut input = DispatchInput::command(
+                &functions,
+                &symbols,
+                &symbol_index,
+                &[],
+                0x38,
+                &key_readers,
+            );
             if control != "missing-point" {
                 input.owner_vtable = Some((0x8000, &pointers));
             }
@@ -2160,5 +2205,60 @@ mod tests {
             intervals(all, "gt", range(0, 2)),
             Some(vec![[3, MAX_TOKEN]])
         );
+    }
+
+    #[test]
+    fn a_function_lookup_needs_one_body_and_every_symbol_of_its_name_at_that_body() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = [
+            symbol("twin", 0x10),
+            symbol("twin", 0x10),
+            symbol("split", 0x20),
+            symbol("split", 0x30),
+            symbol("alias", 0x40),
+            symbol("other", 0x40),
+            symbol("moved", 0x50),
+        ];
+        let symbol_index = SymbolIndex::new(&symbols);
+        let body = |address| Function {
+            address,
+            code: vec![0; 4],
+        };
+        let bodies = BTreeMap::from([
+            (0x10, body(0x10)),
+            (0x20, body(0x20)),
+            (0x40, body(0x40)),
+            (0x50, body(0x54)),
+        ]);
+        let readers = super::super::KeyReaders::default();
+        let command = DispatchInput::command(&bodies, &symbols, &symbol_index, &[], 0x38, &readers);
+        let named = [super::super::Function {
+            name: "twin".into(),
+            address: 0x10,
+            code: vec![0; 4],
+        }];
+        let registry = DispatchInput {
+            bodies: Bodies::Named(&named),
+            ..command.clone()
+        };
+        let found = |input: &DispatchInput<'_>, name| input.function(name).map(|f| f.address);
+
+        assert_eq!(found(&command, "twin"), None, "one view per twin symbol");
+        assert_eq!(found(&registry, "twin"), Some(0x10));
+        assert_eq!(
+            found(&command, "split"),
+            None,
+            "a symbol away from the body"
+        );
+        assert_eq!(found(&command, "alias"), Some(0x40));
+        assert_eq!(
+            command.symbol_index.name(command.symbols, 0x40),
+            None,
+            "two names at one address"
+        );
+        assert_eq!(found(&command, "moved"), None, "a body at another entry");
     }
 }

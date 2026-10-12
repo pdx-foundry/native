@@ -1,9 +1,10 @@
 //! Command member dispatch, joined to the concrete factory receiver.
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use super::{
     declarations::{self, CommandReader, DeclarationInput},
-    discovery::Symbol,
+    discovery::{Symbol, SymbolIndex},
     fields::{
         self, DataSection, DispatchInput, FieldGap, PathOutcome, ReaderJoin, RootField, Token,
         TokenPath, Value,
@@ -90,12 +91,24 @@ pub struct GrammarInput {
     pub numeric_decoder: u64,
     pub reader_token_offset: u64,
     pub symbols: Vec<Symbol>,
+    /// The index of `symbols`. It is built on first use, so set `symbols` before the first
+    /// analysis; see [`GrammarInput::symbol_index`].
+    pub symbol_index: OnceLock<SymbolIndex>,
     pub data: Vec<DataSection>,
     pub tokens: BTreeMap<i64, Token>,
     /// Shared family dispatch boundaries inspected for this exact build.
     pub families: BTreeMap<String, BlockFamily>,
     /// Execute bodies and the flag-store proof for duration keys.
     pub durations: super::durations::Input,
+}
+
+impl GrammarInput {
+    /// Lookups by address and by name over `symbols`, built on first use and shared by every
+    /// command.
+    pub fn symbol_index(&self) -> &SymbolIndex {
+        self.symbol_index
+            .get_or_init(|| SymbolIndex::new(&self.symbols))
+    }
 }
 
 #[derive(Debug)]
@@ -218,29 +231,18 @@ fn analyze_reader_with_state(
     if depth >= DELEGATION_LIMIT {
         return Err(Unresolved::new("grammar-nesting-limit"));
     }
-    let names: BTreeSet<_> = input
-        .symbols
-        .iter()
-        .filter(|symbol| symbol.address == reader.member)
-        .map(|symbol| symbol.name.as_str())
-        .collect();
-    if names.len() != 1 {
-        return Err(Unresolved::new("command-member-name"));
-    }
-    let root = *names.first().unwrap();
-    let read_names: BTreeSet<_> = input
-        .symbols
-        .iter()
-        .filter(|symbol| symbol.address == reader.read)
-        .map(|symbol| symbol.name.as_str())
-        .collect();
-    if read_names.len() != 1 {
-        return Err(Unresolved::new("command-reader-name"));
-    }
-    let reader_name = read_names.first().unwrap().to_string();
+    let symbol_index = input.symbol_index();
+    let root = symbol_index
+        .name(&input.symbols, reader.member)
+        .ok_or_else(|| Unresolved::new("command-member-name"))?;
+    let reader_name = symbol_index
+        .name(&input.symbols, reader.read)
+        .ok_or_else(|| Unresolved::new("command-reader-name"))?
+        .to_string();
     let dispatch = DispatchInput::command(
         &input.declarations.functions,
         &input.symbols,
+        symbol_index,
         &input.data,
         input.reader_token_offset,
         &input.key_readers,
@@ -288,10 +290,9 @@ fn analyze_reader_with_state(
         if let Some(rule) = ordering::rule(input, &path) {
             ordering.push(rule);
         }
-        let entry = input
-            .symbols
-            .iter()
-            .find(|symbol| Some(&symbol.name) == chain.last())
+        let entry = chain
+            .last()
+            .and_then(|name| symbol_index.named(&input.symbols, name).next())
             .map_or(reader.member, |symbol| symbol.address);
         match numeric::reader(input, entry, &path) {
             Ok(Some(child)) if numeric_reader.as_ref().is_none_or(|known| known == &child) => {
@@ -421,9 +422,10 @@ fn analyze_reader_with_state(
         let child_node = nodes.len();
         nodes.push(ReaderNode::new(path.domain));
         nodes[child_node].table_gaps = child_gaps.len();
-        if input.symbols.iter().any(|symbol| {
-            symbol.name == *callee && input.forms.cut_bodies.contains(&symbol.address)
-        }) {
+        if symbol_index
+            .named(&input.symbols, callee)
+            .any(|symbol| input.forms.cut_bodies.contains(&symbol.address))
+        {
             nodes[child_node]
                 .stops
                 .push(Unresolved::new("member-body-cut"));
@@ -481,9 +483,9 @@ fn analyze_reader_with_state(
             let ReaderJoin::Joined { callee, .. } = join else {
                 return false;
             };
-            input.symbols.iter().any(|symbol| {
-                symbol.name == *callee && Some(symbol.address) == input.key_readers.persistent_read
-            })
+            symbol_index
+                .named(&input.symbols, callee)
+                .any(|symbol| Some(symbol.address) == input.key_readers.persistent_read)
         });
         if !persistent {
             nested_stops.insert(field.name.clone(), Unresolved::new("nested-member-reader"));
@@ -682,17 +684,12 @@ fn initializer(input: &GrammarInput, vtable: u64) -> Result<String, Unresolved> 
         .pointers
         .get(&slot)
         .ok_or_else(|| Unresolved::new("owner-initializer-slot"))?;
-    let names: BTreeSet<_> = input
-        .symbols
-        .iter()
-        .filter(|symbol| symbol.address == *address)
-        .map(|symbol| symbol.name.as_str())
-        .collect();
-    if names.len() != 1 {
-        return Err(Unresolved::new("owner-initializer-name"));
-    }
+    let name = input
+        .symbol_index()
+        .name(&input.symbols, *address)
+        .ok_or_else(|| Unresolved::new("owner-initializer-name"))?;
 
-    Ok(names.first().unwrap().to_string())
+    Ok(name.to_string())
 }
 
 #[cfg(test)]
@@ -814,6 +811,7 @@ mod tests {
             reader_token_offset: 0x38,
             declarations,
             symbols,
+            symbol_index: Default::default(),
             data: vec![],
             tokens: BTreeMap::from([(
                 7,

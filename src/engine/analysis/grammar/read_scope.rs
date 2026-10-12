@@ -35,9 +35,11 @@ pub(super) fn analyze(input: &GrammarInput, reader: CommandReader, root: &str) -
         result.children.push((family, Some(Value::EnclosingScope)));
         return result;
     }
+    let symbol_index = input.symbol_index();
     let mut dispatch = DispatchInput::command(
         &input.declarations.functions,
         &input.symbols,
+        symbol_index,
         &input.data,
         input.reader_token_offset,
         &input.key_readers,
@@ -85,9 +87,9 @@ pub(super) fn analyze(input: &GrammarInput, reader: CommandReader, root: &str) -
         match fields::follow_member(&dispatch, &path, &chain) {
             Ok((children, gaps)) => {
                 result.complete &= gaps.is_empty()
-                    && !input.symbols.iter().any(|symbol| {
-                        symbol.name == *callee && input.forms.cut_bodies.contains(&symbol.address)
-                    });
+                    && !symbol_index
+                        .named(&input.symbols, callee)
+                        .any(|symbol| input.forms.cut_bodies.contains(&symbol.address));
                 let mut chain = chain;
                 chain.push(callee.clone());
                 pending.extend(children.into_iter().map(|child| (child, chain.clone())));

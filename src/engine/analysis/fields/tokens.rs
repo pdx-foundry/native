@@ -2,7 +2,7 @@ use super::{FieldGap, FieldGapKind, FieldInput, Function};
 use crate::engine::analysis::decode::{Instruction, decode_arm64, general_register};
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::stop::{Obstacle, Unknown, Unresolved};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) fn number(operand: &str) -> Option<i64> {
     let operand = operand.strip_prefix('#').unwrap_or(operand);
@@ -53,9 +53,9 @@ pub(super) fn decode(function: FunctionView<'_>) -> Result<Vec<Instruction>, Str
     decode_arm64(function.code, function.address).map_err(|e| e.to_string())
 }
 
-pub(super) fn function<'a>(
+pub(super) fn function<'a, 's>(
     functions: impl IntoIterator<Item = FunctionView<'a>>,
-    symbols: &[Symbol],
+    symbols: impl IntoIterator<Item = &'s Symbol>,
     name: &str,
 ) -> Option<FunctionView<'a>> {
     let mut matches = functions.into_iter().filter(|f| f.name == name);
@@ -63,24 +63,10 @@ pub(super) fn function<'a>(
     if matches.next().is_some() {
         return None;
     }
-    let mut symbols = symbols.iter().filter(|s| s.name == name);
+    let mut symbols = symbols.into_iter().filter(|s| s.name == name);
     let symbol = symbols.next()?;
     (symbol.address == first.address && symbols.all(|s| s.address == first.address))
         .then_some(first)
-}
-pub(super) fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>> {
-    let mut names = BTreeMap::new();
-    for symbol in symbols {
-        names
-            .entry(symbol.address)
-            .and_modify(|name| {
-                if *name != Some(symbol.name.as_str()) {
-                    *name = None;
-                }
-            })
-            .or_insert(Some(symbol.name.as_str()));
-    }
-    names
 }
 /// A token that the engine's token constructor names.
 #[derive(Debug)]
@@ -131,7 +117,7 @@ pub(crate) fn recover_decoded(
             return (tokens, vec![gap]);
         }
     };
-    let branch_targets: std::collections::BTreeSet<_> = rows
+    let branch_targets: BTreeSet<_> = rows
         .iter()
         .filter(|row| {
             row.operation == "b"
@@ -141,12 +127,7 @@ pub(crate) fn recover_decoded(
         .filter_map(|row| row.operands.rsplit(',').next().and_then(number))
         .map(|address| address as u64)
         .collect();
-    let names = names_by_address(symbols);
-    let constructors: std::collections::BTreeSet<_> = names
-        .iter()
-        .filter(|(_, name)| **name == Some("CToken::CToken(int, char const*)"))
-        .map(|(address, _)| *address)
-        .collect();
+    let constructors = token_constructors(symbols);
     for (index, row) in rows.iter().enumerate() {
         if row.operation != "bl" || !reachable.contains(&row.address) {
             continue;
@@ -245,6 +226,22 @@ pub(crate) fn recover_decoded(
     (tokens, gaps)
 }
 
+/// The addresses whose every symbol is the token constructor.
+fn token_constructors(symbols: &[Symbol]) -> BTreeSet<u64> {
+    const CONSTRUCTOR: &str = "CToken::CToken(int, char const*)";
+    let mut constructors: BTreeSet<_> = symbols
+        .iter()
+        .filter(|symbol| symbol.name == CONSTRUCTOR)
+        .map(|symbol| symbol.address)
+        .collect();
+
+    for symbol in symbols.iter().filter(|symbol| symbol.name != CONSTRUCTOR) {
+        constructors.remove(&symbol.address);
+    }
+
+    constructors
+}
+
 #[cfg(test)]
 mod function_tests {
     use super::*;
@@ -286,6 +283,26 @@ mod function_tests {
 #[cfg(test)]
 mod key_tests {
     use super::*;
+
+    #[test]
+    fn a_token_constructor_address_has_no_other_name() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let constructor = "CToken::CToken(int, char const*)";
+        let symbols = [
+            symbol("other", 0x10),
+            symbol(constructor, 0x10),
+            symbol(constructor, 0x20),
+            symbol(constructor, 0x30),
+            symbol("other", 0x30),
+            symbol(constructor, 0x40),
+            symbol(constructor, 0x40),
+        ];
+
+        assert_eq!(token_constructors(&symbols), BTreeSet::from([0x20, 0x40]));
+    }
 
     #[test]
     fn a_named_key_is_a_singleton_interval_of_one_named_token() {
