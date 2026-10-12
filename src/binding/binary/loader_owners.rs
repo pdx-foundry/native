@@ -45,7 +45,9 @@ fn builders(image: &Image<'_>) -> Result<BTreeMap<u64, String>, AnalysisError> {
         .symbols
         .iter()
         .filter_map(|symbol| {
-            let class = constructed_class(&symbol.name)?;
+            let (class, false) = super::type_pointers::constructed_class(&symbol.name)? else {
+                return None;
+            };
 
             readers
                 .contains(class)
@@ -67,15 +69,6 @@ fn builders(image: &Image<'_>) -> Result<BTreeMap<u64, String>, AnalysisError> {
     Ok(builders)
 }
 
-/// The class of a constructor's demangled name, such as `CTrait` of `CTrait::CTrait(int)`.
-fn constructed_class(name: &str) -> Option<&str> {
-    let (qualified, _) = name.split_once('(')?;
-    let (class, method) = qualified.rsplit_once("::")?;
-    let last = class.rsplit_once("::").map_or(class, |(_, last)| last);
-
-    (last == method).then_some(class)
-}
-
 /// The decoded body of every function whose name is qualified by `class`, by its start.
 fn own_functions(
     text: &Text<'_>,
@@ -93,20 +86,4 @@ fn own_functions(
             Some((address, decode_arm64(code, address).ok()?))
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_constructor_names_its_class_and_a_method_does_not() {
-        assert_eq!(constructed_class("CTrait::CTrait(int)"), Some("CTrait"));
-        assert_eq!(
-            constructed_class("NSpace::CItem::CItem(CString const&)"),
-            Some("NSpace::CItem")
-        );
-        assert_eq!(constructed_class("CTrait::~CTrait()"), None);
-        assert_eq!(constructed_class("CTrait::PostProcess()"), None);
-    }
 }

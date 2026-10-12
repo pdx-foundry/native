@@ -212,7 +212,7 @@ fn const_member_class(name: &str) -> Option<&str> {
 }
 
 /// The class of the constructor or destructor `name`, and whether it is the destructor.
-fn constructed_class(name: &str) -> Option<(&str, bool)> {
+pub(super) fn constructed_class(name: &str) -> Option<(&str, bool)> {
     let (qualified, _) = signature(name)?;
     let class = qualifier(qualified)?;
     let method = &qualified[class.len() + 2..];

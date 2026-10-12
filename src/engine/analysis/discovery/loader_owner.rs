@@ -38,25 +38,26 @@ pub fn loader_owner(
     enumerations: &BTreeSet<u64>,
     builders: &BTreeMap<u64, String>,
 ) -> LoaderOwner {
-    let reads: BTreeMap<u64, Reads> = functions
+    let addresses: BTreeMap<u64, FunctionAddresses> = functions
         .iter()
-        .map(|(&start, rows)| (start, Reads::of(rows)))
+        .map(|(&start, rows)| (start, FunctionAddresses::of(rows)))
         .collect();
-    let mut pending: Vec<u64> = reads
+    let mut pending: Vec<u64> = addresses
         .iter()
-        .filter(|(_, read)| !read.calls.is_disjoint(enumerations))
+        .filter(|(_, function)| !function.calls.is_disjoint(enumerations))
         .map(|(&start, _)| start)
         .collect();
     let mut route = BTreeSet::new();
     while let Some(start) = pending.pop() {
         if route.insert(start) {
-            pending.extend(reads[&start].calls.iter().filter(|c| reads.contains_key(c)));
+            let calls = &addresses[&start].calls;
+            pending.extend(calls.iter().filter(|call| addresses.contains_key(call)));
         }
     }
 
     let built: BTreeSet<&String> = route
         .iter()
-        .flat_map(|start| reads[start].calls.union(&reads[start].formed))
+        .flat_map(|start| addresses[start].calls.union(&addresses[start].formed))
         .filter_map(|address| builders.get(address))
         .collect();
     let mut built: Vec<String> = built.into_iter().cloned().collect();
@@ -68,14 +69,14 @@ pub fn loader_owner(
 }
 
 /// The direct call targets of one function and the addresses that it forms with `adrp` and `add`.
-struct Reads {
+struct FunctionAddresses {
     calls: BTreeSet<u64>,
     formed: BTreeSet<u64>,
 }
 
-impl Reads {
+impl FunctionAddresses {
     fn of(rows: &[Instruction]) -> Self {
-        let mut reads = Self {
+        let mut addresses = Self {
             calls: BTreeSet::new(),
             formed: BTreeSet::new(),
         };
@@ -89,19 +90,19 @@ impl Reads {
             }
 
             if let Some(target) = call_target(word, row.address) {
-                reads.calls.insert(target);
+                addresses.calls.insert(target);
             }
             if let Some((_, source, offset)) = add_immediate(word)
                 && let Some(page) = pages.get(&source)
             {
-                reads.formed.insert(page + offset);
+                addresses.formed.insert(page + offset);
             }
             for register in written_registers(&row.operation, &row.operands) {
                 pages.remove(&register);
             }
         }
 
-        reads
+        addresses
     }
 }
 
