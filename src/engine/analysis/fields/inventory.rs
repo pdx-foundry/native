@@ -120,6 +120,7 @@ mod tests {
             stored_words: BTreeMap::new(),
             container_masks: BTreeMap::new(),
             collections: Vec::new(),
+            embedded: Vec::new(),
             fields,
             paths,
             gaps,

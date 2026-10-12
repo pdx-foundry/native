@@ -81,15 +81,13 @@ fn collect(
         ),
     });
 
-    for collection in &result.collections {
-        let name = result
-            .fields
-            .iter()
-            .find(|field| field.token == collection.token)
-            .map_or_else(|| collection.class.clone(), |field| field.name.clone());
+    for (token, nested) in result.nested_results() {
+        let Some(field) = result.fields.iter().find(|field| field.token == token) else {
+            continue;
+        };
         let mut child = path.to_vec();
-        child.push(name);
+        child.push(field.name.clone());
 
-        collect(&collection.fields, &child, code, storage, groups);
+        collect(nested, &child, code, storage, groups);
     }
 }

@@ -21,8 +21,8 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v30`) holds
-the baseline: **164 registries, 13 complete, 151 partial, 0 failed**, 1,593 root and 46 nested
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v31`) holds
+the baseline: **164 registries, 13 complete, 151 partial, 0 failed**, 1,593 root and 177 nested
 fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -188,7 +188,7 @@ The gap follows the field's own `Field.reader`, which the method builds once: no
 field of a collection gets its gap under its dotted name, and a collection field itself, which
 always has an identity, gets none. A reader path gap on the same field adds no second
 `UnresolvedReader` gap. A persistent read whose destination holds no known reader has no identity,
-so its field has the gap too. On M452, 368 of the 1,639 root and nested fields have no identity
+so its field has the gap too. On M452, 402 of the 1,770 root and nested fields have no identity
 and 5 have an identity with kind `Unknown`; each has its gap. A field that a gap already names
 gets no container-category gap of its own ([modifier masks](modifier-masks.md)).
 `Reader.family` identifies the child family separately. Conditional read alternatives keep their
@@ -459,6 +459,65 @@ Pitfalls:
   and no effect, and `event` has neither an effect nor a scope.
 - A token number is per build. Name tokens from `GetTokenArray()` (the constant in `w1` after
   each name string), and scope bits from `NEventScope::GetScopeName`.
+
+## Embedded object keys
+
+A root field that reads one embedded persistent object on every token path that holds its token,
+including a wider path, where every owner
+constructor installs the same reader there and that reader has no block family, gets the keys of
+the object's own `ReadMember` as `FieldMembers::Fields`, to depth one (`fields/persistent.rs`,
+`embedded`). The binding adds the member reader of each such reader that the owner's constructors
+can install to the field input. A walk that names no key leaves the members `Unresolved`. The keys take the read-scope,
+scoped-operand and duration passes that a collection's fields take. A gap of
+the object's walk as a whole names the parent field; a gap of one key names `parent.key`. The same
+rule renames the whole-reader gaps of a collection's object, which earlier carried the registry
+name after the dot.
+
+On M452 (`registry-fields/v31`), 17 fields in 11 registries get keys this way, 131 keys in all.
+Three walks name no key: `common/anomalies` `on_success` and
+`common/country_customization` `graphical_culture_for_random_empire` keep `Unresolved` members.
+
+Pitfalls:
+
+- The constructor join must succeed first. `CJobType`'s constructor used `mvni` (vector move of
+  an inverted immediate), which the evaluator did not run, so no `common/pop_jobs` field joined a
+  persistent reader. `mvni` is now evaluated like `movi`; `common/pop_jobs` and
+  `common/pop_categories` gained their modifier and weight readers with it.
+- A key whose value goes to a class helper that the dispatch walk does not follow keeps an
+  `UnresolvedReader` gap. The key is still established: its path is a singleton.
+
+### Pre-trigger blocks
+
+`common/pop_jobs` `possible_pre_triggers` and `common/pop_faction_types` `can_join_pre_triggers`
+read one embedded `CPreTriggers` object. Both fields have reader identity `87346602eebc8fd3`
+(`CPersistent::Read`, `CPreTriggers::ReadMember`), so the blocks share one key table.
+`tests/expected/m452/pre-triggers.json` holds the keys; `cargo parity pre_trigger` checks them.
+
+Facts on M452:
+
+- `CPreTriggers::ReadMember` (`0x1004d0168`) maps 14 tokens to `EPreTriggers` values 0 to 13 and
+  tail-calls `CPreTriggers::ReadValue` (`0x1004d0008`); any other token goes to
+  `CPersistent::ReadMember`. `TokenToEnum<EPreTriggers>` (`0x1004cfe3c`) has the same 14 cases.
+  The keys: `has_ground_combat`, `has_owner`, `has_planet`, `is_ai`, `is_being_assimilated`,
+  `is_being_purged`, `is_capital`, `is_enslaved`, `is_homeworld`, `is_idle`, `is_occupied_flag`,
+  `is_robotic`, `is_sapient`, `original_owner`.
+- `ReadValue` compares the reader's value token (`+0x278`) with token `0x3ff8` and `0x2cac`
+  directly, not through `CReader::Read(bool&)`. It sets the key's bit in a 16-bit mask at `+0x8`
+  or `+0xa`, and ignores any other value without a diagnostic. A key whose bit is already set
+  in either mask logs `Pre-trigger "%s" is specified more than once` and still sets the bit.
+  The token names of `0x3ff8` and `0x2cac` were not read.
+- The config splits the keys into colony, pop and country sets (13 names; no `is_idle`). The
+  reader has one table and no scope split. The `PreCalc*Value` functions that fill the values per
+  scope object are use-time code; which keys each one sets is not established.
+- The blocks' read scope is the [read-scope](#block-entry-contexts) answer (SDK-549); it stays
+  unresolved with a `read-scope: scope-argument` gap.
+
+Each of the two fields is listed with all 14 keys; every key keeps an `UnresolvedReader`, an
+`UnresolvedStorage` and a `read-scope: scope-argument` gap, because the walk does not follow `ReadValue`. So the result is partial
+for both fields, with one failure shape: an unfollowed value helper. None failed. Establish the
+value form when Atlas needs it: the value is one of two literal tokens, and others are ignored,
+which the `Keyword` rule of [weight blocks](weight-blocks.md) does not cover (two different owner
+words, and a silent ignore instead of a diagnostic).
 
 ## Block families
 

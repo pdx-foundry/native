@@ -941,6 +941,7 @@ fn field_result(
         stored_words: BTreeMap::new(),
         container_masks: Default::default(),
         collections,
+        embedded: Vec::new(),
         fields,
         paths: Vec::new(),
         gaps: Vec::new(),

@@ -1342,6 +1342,91 @@ fn persistent_fixture() -> FieldInput {
     input
 }
 
+/// The persistent fixture whose embedded object at `0x40` has a member reader with no block
+/// family. The member reader reads token 7 as a Boolean.
+fn embedded_fixture() -> FieldInput {
+    let member = "CSettings::ReadMember(CReader&, int)";
+    let mut input = persistent_fixture();
+    let concrete = input
+        .persistent
+        .as_mut()
+        .unwrap()
+        .readers
+        .get_mut(&0xb000)
+        .unwrap();
+    concrete.member = member.into();
+    concrete.family = crate::BlockFamily::Unknown;
+    input.symbols.extend([
+        Symbol {
+            name: member.into(),
+            address: 0xd000,
+        },
+        Symbol {
+            name: "CReader::Read(bool&)".into(),
+            address: 0xe000,
+        },
+    ]);
+    input.functions.push(Function {
+        name: member.into(),
+        address: 0xd000,
+        code: arm64!(at 0xd000;
+            cmp w2, #7; // token 7
+            b.eq extern 0xd00c;
+            b extern 0x5000; // CPersistent::ReadMember
+            add x8, x0, #0x10; // the Boolean member
+            mov x0, x1; // the reader
+            mov x1, x8;
+            b extern 0xe000 // CReader::Read(bool&)
+        ),
+    });
+    input
+}
+
+#[test]
+fn an_embedded_object_without_a_block_family_lists_its_keys() {
+    let result = derive(embedded_fixture());
+    let fields = crate::session::questions::normalized_fields(&result, &Default::default());
+    let crate::FieldMembers::Fields(members) = &fields[0].members else {
+        panic!("members: {:?}", fields[0].members);
+    };
+
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].name, "new_engine_field");
+    assert_eq!(members[0].reader.kind, crate::ReaderKind::Boolean);
+
+    let mut family = embedded_fixture();
+    family
+        .persistent
+        .as_mut()
+        .unwrap()
+        .readers
+        .get_mut(&0xb000)
+        .unwrap()
+        .family = crate::BlockFamily::Modifier;
+    assert!(derive(family).embedded.is_empty());
+
+    let mut unnamed = embedded_fixture();
+    replace(&mut unnamed, 0xd000, arm64!(at 0xd000; cmp w2, #8)); // a token with no name
+    assert!(derive(unnamed).embedded.is_empty());
+
+    let mut wider = embedded_fixture();
+    wider.functions[0].code = arm64!(at 0x1000;
+        cbz x3, extern 0x1024; // a state branch before the token test
+        cmp w2, #7; // token 7
+        b.eq extern 0x1014;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x40; // the embedded object
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read(CPersistent&)
+        b extern 0x7100 // an unknown call that every token reaches
+    );
+    let result = derive(wider);
+    assert_eq!(result.fields[0].name, "new_engine_field");
+    assert!(result.embedded.is_empty());
+}
+
 #[test]
 fn scoped_destination_requires_ctor_agreement_and_owner_reader_join() {
     let mut input = persistent_fixture();

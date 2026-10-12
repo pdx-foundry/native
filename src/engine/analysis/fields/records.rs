@@ -243,6 +243,8 @@ pub struct RegistryFieldResult {
     pub container_masks: BTreeMap<i64, Result<u64, Unresolved>>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
+    /// Fixed keys of the embedded objects that root fields read and that no block family reads.
+    pub embedded: Vec<EmbeddedField>,
     /// Named root fields, with explicit reader alternatives.
     pub fields: Vec<RootField>,
     /// Full bounded token-path ledger.
@@ -251,6 +253,27 @@ pub struct RegistryFieldResult {
     pub gaps: Vec<FieldGap>,
     /// Whether all token intervals are accounted for; this does not close path gaps.
     pub partition_accounted: bool,
+}
+
+impl RegistryFieldResult {
+    /// The result of the object that the root field with `token` collects or embeds.
+    pub(crate) fn nested(&self, token: i64) -> Option<&RegistryFieldResult> {
+        self.nested_results()
+            .find(|(nested, _)| *nested == token)
+            .map(|(_, result)| result)
+    }
+
+    /// The results of the collected and embedded objects, by the token of their root field.
+    pub(crate) fn nested_results(&self) -> impl Iterator<Item = (i64, &RegistryFieldResult)> {
+        self.collections
+            .iter()
+            .map(|collection| (collection.token, collection.fields.as_ref()))
+            .chain(
+                self.embedded
+                    .iter()
+                    .map(|embedded| (embedded.token, embedded.fields.as_ref())),
+            )
+    }
 }
 
 /// A persistent object's executable-derived constructor and virtual reader bindings.
@@ -302,6 +325,18 @@ pub struct CollectionField {
     /// The category mask that the inserted object's constructor gives it, when that constructor
     /// builds a modifier container.
     pub container_mask: Option<Result<u64, Unresolved>>,
+}
+
+/// A root field that reads one embedded persistent object whose member reader has no block
+/// family, with the keys that the member reader dispatches.
+#[derive(Debug, Clone, Serialize)]
+pub struct EmbeddedField {
+    /// Root loader token whose every path reads the object.
+    pub token: i64,
+    /// The object's member reader.
+    pub member: String,
+    /// Loader fields and gaps of the member reader. Its keys are derived to depth one.
+    pub fields: Box<RegistryFieldResult>,
 }
 
 /// A conditional selection of a stored field in an owner method.

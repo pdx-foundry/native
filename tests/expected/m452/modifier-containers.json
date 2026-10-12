@@ -34,6 +34,9 @@
     "triggered_planet_pop_group_modifier_for_species.modifier": "Enclosing"
   },
   "common/pop_categories": {
+    "country_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Espionage", "Owned Ships", "Colony"]},
+    "planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Armies", "Planets", "Transport Ships", "Deposits", "Habitability", "Economic Units", "Colony"]},
+    "pop_group_modifier": {"Listed": ["Pops", "Deposits", "Habitability", "Economic Units"]},
     "triggered_country_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Espionage", "Owned Ships", "Colony"]},
     "triggered_country_modifier.modifier": "Enclosing",
     "triggered_planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Armies", "Planets", "Transport Ships", "Deposits", "Habitability", "Economic Units", "Colony"]},

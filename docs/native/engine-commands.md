@@ -551,7 +551,8 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   unresolved contexts: 4 use `SetColonyCarrierRef`, and the five `can_build_*_around` rules pass
   a from scope through `FillEventScope`. 2 rule sites pass a rule object that is not a constant.
 - On_actions that content defines are an `OutsideMethod` gap. Events and their `push_scope` are
-  SDK-702; pre_trigger key sets are SDK-703.
+  SDK-702. The pre_trigger key table of the two registry fields is on
+  [registry fields](registry-fields.md#pre-trigger-blocks); the event kinds' key sets are SDK-801.
 
 ## Defines
 

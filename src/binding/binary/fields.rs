@@ -1,10 +1,10 @@
-use crate::AnalysisError;
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
     evaluate::ReadOnlyData,
     fields::{FieldInput, Function, KeyReaders, ObjectReader, PointReader, has_owner_receiver},
 };
+use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
@@ -111,6 +111,16 @@ pub(in crate::binding) fn read(
         &selection.owner_candidate,
         persistent_recipe,
     )?;
+    // The member readers that the method may walk for the keys of an embedded object.
+    for reader in persistent
+        .readers
+        .values()
+        .filter(|reader| reader.family == BlockFamily::Unknown)
+    {
+        if let [symbol] = indexed.named(&reader.member).collect::<Vec<_>>()[..] {
+            push_function(&text, &mut functions, symbol);
+        }
+    }
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),

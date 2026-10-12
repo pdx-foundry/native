@@ -3296,7 +3296,70 @@
   "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Fields": [
+    {
+     "accepted_categories": "NotApplicable",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "planet_possible",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "e044b50825a1841d",
+          "kind": "Block",
+          "family": "Trigger",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Block"
+         }
+        }
+       }
+      }
+     ],
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+         }
+        ]
+       }
+      ]
+     },
+     "reader": {
+      "id": "e044b50825a1841d",
+      "kind": "Block",
+      "family": "Trigger",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Replace",
+      "value": "Block"
+     },
+     "uses": []
+    }
+   ]
+  },
   "name": "placement_rules",
   "read": [
    {
@@ -5138,7 +5201,139 @@
   "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Fields": [
+    {
+     "accepted_categories": "NotApplicable",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "None",
+     "name": "key",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String",
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "read_scope": {
+      "Known": []
+     },
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String",
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "variables",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    },
+    {
+     "accepted_categories": "NotApplicable",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "None",
+     "name": "literal",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "b894933b2b2853a5",
+          "kind": "Boolean",
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "read_scope": {
+      "Known": []
+     },
+     "reader": {
+      "id": "b894933b2b2853a5",
+      "kind": "Boolean",
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    }
+   ]
+  },
   "name": "cycle_title",
   "read": [
    {
@@ -5187,7 +5382,139 @@
   "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Fields": [
+    {
+     "accepted_categories": "NotApplicable",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "None",
+     "name": "key",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "325efaa17499c32d",
+          "kind": "String",
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "read_scope": {
+      "Known": []
+     },
+     "reader": {
+      "id": "325efaa17499c32d",
+      "kind": "String",
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "variables",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    },
+    {
+     "accepted_categories": "NotApplicable",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "None",
+     "name": "literal",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "b894933b2b2853a5",
+          "kind": "Boolean",
+          "family": "NotApplicable",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Replace",
+          "value": "Scalar"
+         }
+        }
+       }
+      }
+     ],
+     "read_scope": {
+      "Known": []
+     },
+     "reader": {
+      "id": "b894933b2b2853a5",
+      "kind": "Boolean",
+      "family": "NotApplicable",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
+     },
+     "reference": "NotEstablished",
+     "shape": {
+      "repeat": "Replace",
+      "value": "Scalar"
+     },
+     "uses": []
+    }
+   ]
+  },
   "name": "cycle_desc",
   "read": [
    {

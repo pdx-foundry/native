@@ -232,6 +232,7 @@ pub(super) fn discover(
                 gaps,
                 partition_accounted,
                 collections: Vec::new(),
+                embedded: Vec::new(),
             }),
             container_mask,
         });

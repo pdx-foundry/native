@@ -264,6 +264,7 @@ mod tests {
             container_masks: masks,
             uses: vec![],
             collections: vec![],
+            embedded: Vec::new(),
             fields: vec![RootField {
                 name: "modifier".into(),
                 token: 7,

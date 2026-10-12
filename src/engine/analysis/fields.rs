@@ -17,7 +17,9 @@
 //! Limits of this revision:
 //! - Root dispatch stops at the first external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
-//!   every path. Its named child fields are then derived to depth one.
+//!   every path. Its named child fields are then derived to depth one. So are the keys of an
+//!   embedded object that every path of a field reads, when the constructors agree on its
+//!   reader and that reader has no block family.
 //! - Direct const owner methods supply local Boolean storage selections separately from loader
 //!   conditions. Other signatures do not establish the original receiver and remain unresolved.
 //!   Collection provenance is joined across loops; the enclosing selection context is unresolved.
@@ -72,7 +74,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v30";
+pub const METHOD: &str = "registry-fields/v31";
 
 /// Find the root fields of the selected owner. The binding has established the selection, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -119,6 +121,14 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     }
     let persistent = persistent::discover(input, &fields);
     gaps.extend(persistent.gaps);
+    let embedded = persistent::embedded(
+        input,
+        &symbol_index,
+        &fields,
+        &paths,
+        &persistent.readers,
+        &tokens,
+    );
     Ok(RegistryFieldResult {
         persistent: persistent.readers,
         persistent_points: persistent.points,
@@ -127,6 +137,7 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         container_masks: persistent.containers,
         uses,
         collections,
+        embedded,
         fields,
         paths,
         gaps,

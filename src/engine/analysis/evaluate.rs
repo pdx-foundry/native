@@ -1720,7 +1720,7 @@ impl<'a> Machine<'a> {
     fn step_vector(&mut self, mnemonic: &str, operands: &[Operand]) -> Result<bool, Halt> {
         match (mnemonic, operands) {
             (
-                "movi",
+                "movi" | "mvni",
                 [
                     Operand::Register(Register {
                         name: Name::Vector(index),
@@ -1737,7 +1737,13 @@ impl<'a> Machine<'a> {
                     [Operand::Shift(Shift::Left, amount)] => *amount,
                     _ => return Err(Halt::unsupported("movi-shift")),
                 };
-                self.vectors[*index] = Some(replicate((*value as u64) << shift, *lane, *bytes));
+                let lane_value = (*value as u64) << shift;
+                let lane_value = if mnemonic == "mvni" {
+                    !lane_value
+                } else {
+                    lane_value
+                };
+                self.vectors[*index] = Some(replicate(lane_value, *lane, *bytes));
             }
             ("fmov", [Operand::Register(destination), Operand::Register(source)]) => {
                 let value = match source.name {
@@ -3838,6 +3844,26 @@ mod tests {
                 "{atomic:?} {old:#x} {source:#x} at {width}"
             );
         }
+    }
+
+    #[test]
+    fn mvni_replicates_the_inverted_shifted_lane() {
+        let code = rows(&[
+            (0x100, "mvni", "v0.4s,#0x80,lsl#24"),
+            (0x104, "str", "q0,[x1]"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        let object = machine.allocate(16);
+        machine.set_register(1, object);
+
+        assert_eq!(
+            machine.run(0x100, &mut |_, _| Ok(Call::Return(None))),
+            Ok(Exit::Returned)
+        );
+        assert_eq!(machine.read(object, 8), Some(0x7fff_ffff_7fff_ffff));
+        assert_eq!(machine.read(object + 8, 8), Some(0x7fff_ffff_7fff_ffff));
     }
 
     #[test]

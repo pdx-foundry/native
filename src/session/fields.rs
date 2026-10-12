@@ -189,6 +189,20 @@ pub(super) fn field(
             references,
         ),
     };
+    if let Some(embedded) = result
+        .embedded
+        .iter()
+        .find(|embedded| embedded.token == field.token)
+    {
+        normalized.members = FieldMembers::Fields(
+            embedded
+                .fields
+                .fields
+                .iter()
+                .map(|child| self::field(child, &embedded.fields, references))
+                .collect(),
+        );
+    }
     if let FieldMembers::Fields(children) = &mut normalized.members {
         for child in children {
             prefix_conditions(child, &field.name);
@@ -1404,6 +1418,7 @@ mod tests {
             container_masks: Default::default(),
             uses: vec![],
             collections,
+            embedded: Vec::new(),
             fields,
             paths,
             gaps: vec![],

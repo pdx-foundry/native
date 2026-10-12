@@ -114,6 +114,7 @@ impl Layout<'_> {
             "modifier-category-keys.json" => depth >= 2,
             "script-expansions.json" => depth >= 3 || (section == "gaps" && depth >= 2),
             "modifier-containers.json" => depth >= 2,
+            "pre-triggers.json" => depth >= 4,
             "weight-blocks.json" => depth >= 5 || (section == "gaps" && depth >= 3),
             "triggered-modifiers.json" => depth >= 4 || (section == "gaps" && depth >= 3),
             "dynamic-names.json" => section == "gaps" || depth >= 3,

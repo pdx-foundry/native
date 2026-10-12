@@ -714,12 +714,12 @@ fn normalized_gaps(
             });
         }
     }
-    for collection in &result.collections {
+    for (token, nested) in result.nested_results() {
         let Some((parent, built)) = result
             .fields
             .iter()
             .zip(fields)
-            .find(|(root, _)| root.token == collection.token)
+            .find(|(root, _)| root.token == token)
         else {
             continue;
         };
@@ -727,16 +727,16 @@ fn normalized_gaps(
             crate::FieldMembers::Fields(members) => members.as_slice(),
             _ => &[],
         };
-        for mut gap in normalized_gaps(&collection.fields, registry, references, members) {
+        for mut gap in normalized_gaps(nested, registry, references, members) {
             if gap.kind == GapKind::OutsideMethod {
                 continue;
             }
-            let name = gap
-                .subject
-                .as_ref()
-                .map(|subject| subject.name())
-                .unwrap_or("");
-            gap.subject = Some(GapSubject::field(format!("{}.{}", parent.name, name)));
+            // A gap on the nested reader as a whole belongs to the parent field.
+            let name = match &gap.subject {
+                Some(GapSubject::Field { name }) => format!("{}.{name}", parent.name),
+                _ => parent.name.clone(),
+            };
+            gap.subject = Some(GapSubject::field(name));
             gaps.push(gap);
         }
     }
@@ -917,6 +917,7 @@ mod field_gap_tests {
             container_masks: Default::default(),
             uses: vec![],
             collections: vec![],
+            embedded: Vec::new(),
             fields: vec![RootField {
                 name: "known".into(),
                 token: 7,
