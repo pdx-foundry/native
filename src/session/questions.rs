@@ -119,7 +119,8 @@ impl Native {
             | Operation::DerivedNames
             | Operation::ModifierNodes
             | Operation::ModifierCategoryKeys
-            | Operation::ScriptExpansions => match binding.analysis.executable() {
+            | Operation::ScriptExpansions
+            | Operation::LoaderRules => match binding.analysis.executable() {
                 Ok(_) => Support::Supported,
                 Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
             },

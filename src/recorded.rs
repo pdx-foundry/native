@@ -5,7 +5,8 @@
 //! starts no process. A file can also be written by hand, for example for a failure case.
 //!
 //! Layout: `build.json`, `registries.json`, `registry_fields/<registry>.json`,
-//! `modifier_families/<registry>.json`, `derived_names/<registry>.json`, where `<registry>` is
+//! `modifier_families/<registry>.json`, `derived_names/<registry>.json`,
+//! `loader_rules/<registry>.json`, where `<registry>` is
 //! the content directory, such as `common/traditions`. The language
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json`,
 //! `dynamic_names.json` and `modifier_nodes.json`, and
@@ -192,8 +193,8 @@ enum Layout {
 fn layout(operation: Operation) -> Layout {
     use Operation::*;
     match operation {
-        RegistryFields | ModifierFamilies | DerivedNames | Declarations | CommandGrammar
-        | ObserveFixture | CheckScript => Layout::Directory,
+        RegistryFields | ModifierFamilies | DerivedNames | LoaderRules | Declarations
+        | CommandGrammar | ObserveFixture | CheckScript => Layout::Directory,
         LoadedModifiers => Layout::FileOrDirectory,
         Registries
         | Modifiers
