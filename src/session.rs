@@ -323,6 +323,21 @@ pub async fn check_registry_load(
     result
 }
 
+/// The installation at `STELLARIS_PATH`, opened once per test binary. Exact-build tests that
+/// only ask questions share it and its cached analysis; a test that records, traces or changes
+/// the executable opens its own `Native`.
+#[cfg(test)]
+pub(crate) fn installed_native() -> &'static Native {
+    static INSTALLED: std::sync::OnceLock<Native> = std::sync::OnceLock::new();
+
+    INSTALLED.get_or_init(|| {
+        let installation =
+            std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+
+        Native::open(installation).expect("the installed build is in the target catalogue")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

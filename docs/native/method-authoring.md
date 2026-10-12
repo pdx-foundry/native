@@ -202,6 +202,11 @@ cargo test --release --lib --test static_questions -- --ignored
 stamp, values, completeness and gaps, including an unresolved or invalid case. Inspect a changed
 answer before changing its expected file. A parity sample does not replace the population run.
 
+Each parity binary opens the installation once, and its tests share that `Native` and its cached
+analysis: use `native()` in `tests/static_questions.rs` and `session::installed_native()` in the
+library. A test that records answers, traces causes, changes the executable or must start from an
+empty analysis opens its own `Native`.
+
 Generate a candidate tree with the same questions and selections as the parity tests:
 
 ```sh

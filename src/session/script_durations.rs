@@ -116,6 +116,8 @@ mod tests {
     #[test]
     #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
     fn m452_checks_carry_the_named_receivers_and_their_count_slots() {
+        // Not the shared `installed_native`: another test's command grammar question fills the
+        // caches that the first assertion needs empty.
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
         let analysis = &native.bound().analysis;
         assert!(

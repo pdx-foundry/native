@@ -16,6 +16,7 @@ use pdx_native::{
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
@@ -23,7 +24,7 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
     use pdx_native::{GenerationCondition, GrammarProperty, ModifierEntry, NamePart};
     let native = native();
     assert_eq!(
-        modifier_blocks(&native).unwrap(),
+        modifier_blocks(native).unwrap(),
         expected::<Value>("modifier-blocks.json")
     );
     let mut variants = BTreeMap::new();
@@ -58,7 +59,7 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
 
     let native = native();
     assert_eq!(
-        triggered_modifiers(&native).unwrap(),
+        triggered_modifiers(native).unwrap(),
         expected::<Value>("triggered-modifiers.json")
     );
     let mut variants = BTreeMap::new();
@@ -163,7 +164,7 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
 
     let native = native();
     assert_eq!(
-        weight_blocks(&native).unwrap(),
+        weight_blocks(native).unwrap(),
         expected::<Value>("weight-blocks.json")
     );
     let mut variants = BTreeMap::new();
@@ -1445,7 +1446,16 @@ fn find<'a, T>(items: &'a [T], name: &str, key: impl Fn(&T) -> &String) -> &'a T
         .unwrap_or_else(|| panic!("{name} is in the answer"))
 }
 
-fn native() -> Native {
+/// The installation, opened once for this test binary so that the tests share its cached
+/// analysis.
+fn native() -> &'static Native {
+    static INSTALLED: OnceLock<Native> = OnceLock::new();
+
+    INSTALLED.get_or_init(own_native)
+}
+
+/// A `Native` of its own, for a test that records answers or traces a fresh analysis.
+fn own_native() -> Native {
     Native::open(
         std::env::var_os("STELLARIS_PATH")
             .expect("STELLARIS_PATH names the installation or executable"),
@@ -1483,7 +1493,7 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let expected = expected::<BTreeMap<String, Value>>("references.json");
     for (subject, value) in &expected {
         let (owner, name) = subject.split_once('#').unwrap_or((subject, ""));
-        let (text, gaps, fields) = reference_answer(&native, owner).unwrap();
+        let (text, gaps, fields) = reference_answer(native, owner).unwrap();
         assert!(!text.contains("Database"), "{owner} names a database class");
 
         if name.is_empty() {
@@ -1668,7 +1678,7 @@ fn megastructure_fields_behind_the_two_jump_tables_are_found() {
 fn the_developer_run_gives_the_public_registry_field_answer() {
     let native = native();
     for registry in ["common/traditions", "common/megastructures"] {
-        let run = registry_field_stops::run(&native, registry).unwrap();
+        let run = registry_field_stops::run(native, registry).unwrap();
         assert_eq!(run.answer, native.registry_fields(registry).unwrap());
     }
 }
@@ -1676,9 +1686,9 @@ fn the_developer_run_gives_the_public_registry_field_answer() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn traced_questions_match_untraced_questions() {
-    let untraced = observe(&native());
+    let untraced = observe(native());
     // Each `Native` caches its analysis, so the traced questions need their own.
-    let traced_native = native();
+    let traced_native = own_native();
     let traced = trace_causes(|| observe(&traced_native));
 
     assert_eq!(traced.answers, untraced.answers);
@@ -1691,7 +1701,7 @@ fn traced_questions_match_untraced_questions() {
 fn traced_initial_state_keeps_destinations_across_later_member_constructors() {
     let untraced_native = native();
     // Each `Native` caches its analysis, so the traced questions need their own.
-    let traced_native = native();
+    let traced_native = own_native();
 
     // Both lost their storage to later event-target and registration calls before SDK-660.
     for (command, key) in [
@@ -1699,7 +1709,7 @@ fn traced_initial_state_keeps_destinations_across_later_member_constructors() {
         ("effect_on_blob", "owned_planets_percentage"),
     ] {
         let run = |native| command_grammar_stops::run(native, DeclarationKind::Effect, command);
-        let untraced = run(&untraced_native).unwrap();
+        let untraced = run(untraced_native).unwrap();
         let traced = trace_causes(|| run(&traced_native)).unwrap();
 
         assert_eq!(traced.answer, untraced.answer, "{command}");
@@ -1800,7 +1810,7 @@ fn observe(native: &Native) -> Observed {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn recorded_answers_equal_the_real_answers_apart_from_the_basis() {
     let directory = tempfile::tempdir().unwrap();
-    let real = native().record_answers_to(directory.path());
+    let real = own_native().record_answers_to(directory.path());
     let registries = real.registries().unwrap();
     let fields = real.registry_fields("common/traditions").unwrap();
     let effects = real.declarations(DeclarationKind::Effect).unwrap();
@@ -2429,7 +2439,7 @@ fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
     assert!(!text.contains("Flag("), "no native type name in the answer");
     if let Some(directory) = std::env::var_os("NATIVE_DYNAMIC_EXPECTED_OUT") {
         std::fs::create_dir_all(&directory).unwrap();
-        let candidate = parity::candidate(&native, "dynamic-names.json").unwrap();
+        let candidate = parity::candidate(native, "dynamic-names.json").unwrap();
         std::fs::write(
             std::path::Path::new(&directory).join("dynamic-names.json"),
             candidate,
@@ -2442,7 +2452,7 @@ fn dynamic_names_group_flag_commands_by_the_store_they_reach() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_tracked_candidate_matches_the_reviewed_tree() {
     let recordings = tempfile::tempdir().unwrap();
-    let native = native().record_answers_to(recordings.path());
+    let native = own_native().record_answers_to(recordings.path());
     for name in parity::FILES {
         let tracked = std::fs::read(parity::expected_directory().join(name)).unwrap();
         let candidate = parity::candidate(&native, name).unwrap();
@@ -2623,7 +2633,7 @@ fn known_target_lists_have_covered_arguments() {
     }
     let native = native();
     for kind in [DeclarationKind::Effect, DeclarationKind::Trigger] {
-        command_grammar_stops::population(&native, kind, |name, run| {
+        command_grammar_stops::population(native, kind, |name, run| {
             if !matches!(run.answer.value.targets, GrammarProperty::Known(_)) {
                 return;
             }
@@ -2731,9 +2741,9 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn read_scopes_match_the_engine_and_link_output_ids() {
     use pdx_native::GrammarProperty;
-    let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = native();
     let expected: serde_json::Value = expected("read-scopes.json");
-    let actual = parity::read_scopes(&native, &expected).unwrap();
+    let actual = parity::read_scopes(native, &expected).unwrap();
     // Independent config expectations at cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8:
     // common/traditions.cwt replace_scopes.this; triggers.cwt push_scope for any_owned_army
     // and count_owned_army.limit. effects.cwt if/else/else_if keep the surrounding scope.

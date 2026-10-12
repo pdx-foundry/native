@@ -420,8 +420,8 @@ fn m452_numeric_boundary_engine_parity() {
         assert_eq!(listing.rows[0].operation, operation);
         assert_eq!(listing.rows[0].operands, operands);
     }
-    let native = crate::Native::open(path).unwrap();
-    let facts = crate::internals::numeric_readers::run(&native).unwrap();
+    let native = crate::session::installed_native();
+    let facts = crate::internals::numeric_readers::run(native).unwrap();
     assert_eq!(facts.readers.len(), 13);
     for (name, reader) in &facts.token_readers {
         assert!(

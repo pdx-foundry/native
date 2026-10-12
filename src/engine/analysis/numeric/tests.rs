@@ -177,8 +177,8 @@ fn numeric_recordings_require_properties_and_exact_bounds_round_trip() {
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
 fn m452_numeric_reader_static_parity() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let facts = crate::internals::numeric_readers::run(&native).unwrap();
+    let native = crate::session::installed_native();
+    let facts = crate::internals::numeric_readers::run(native).unwrap();
     for (name, width, scale, range) in [
         ("CToken::ReadValue(int&) const", 32, 1, signed_32_range()),
         (
