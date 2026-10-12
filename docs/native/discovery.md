@@ -11,7 +11,7 @@ check a method in one task.
 
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
-| `Native::registries` | `registry-directories/v4` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
+| `Native::registries` | `registry-directories/v5` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v31` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-sweep) |
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v31`, `command-grammar/v18` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v31`, `command-grammar/v18` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |

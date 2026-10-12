@@ -5,8 +5,8 @@ mod population_filter;
 
 use pdx_native::internals::registry_field_stops;
 use pdx_native::{
-    CommandForm, CommandGrammar, Field, FieldMembers, FieldReadOutcome, Gap, GapKind, GapSubject,
-    GrammarProperty, Native, Reader, ReaderKind,
+    CommandForm, CommandGrammar, Error, Field, FieldMembers, FieldReadOutcome, Gap, GapKind,
+    GapSubject, GrammarProperty, Native, Reader, ReaderKind,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -197,6 +197,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registries = native.registries()?;
     let mut fields = Population::new();
     let mut failed_questions = Vec::new();
+    let mut unsupported_questions = Vec::new();
 
     let selected_registries = selection.registries(
         registries
@@ -207,6 +208,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for registry in &selected_registries {
         match registry_field_stops::run(&native, registry) {
             Ok(run) => fields.fields(registry, &run.answer.value, &[], &run.answer.gaps),
+            Err(Error::Unsupported { reason, .. }) => {
+                unsupported_questions.push(json!({"registry":registry,"reason":reason}))
+            }
             Err(error) => failed_questions.push(json!({"registry":registry,"error":error})),
         }
     }
@@ -225,7 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "build":native.build(),"registries":selected_registries.len(),
             "registry_completeness":registries.completeness,"commands":commands,
             "fields":fields.report(),"arguments":arguments.report(),
-            "failed_questions":failed_questions
+            "failed_questions":failed_questions,"unsupported_questions":unsupported_questions
         }))?
     );
     Ok(())

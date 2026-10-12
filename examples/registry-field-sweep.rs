@@ -125,7 +125,7 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
                 let stops = place_gaps(&image, &registry.name, result.gaps);
                 report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
-            Err(error) => report.add_failure(&registry.name, error, elapsed_ms),
+            Err(error) => report.add_error(&registry.name, error, elapsed_ms),
         }
     }
 
@@ -227,6 +227,8 @@ struct SweepReport {
     complete_queries: usize,
     partial_queries: usize,
     failed_queries: usize,
+    /// Listed registries that the field method does not read.
+    unsupported_queries: usize,
     queries_with_unresolved_paths: usize,
     unresolved_paths: usize,
     /// Fields with a reader identity, by that identity.
@@ -327,7 +329,19 @@ impl SweepReport {
         Ok(())
     }
 
-    fn add_failure(&mut self, registry: &str, error: Error, elapsed_ms: u128) {
+    /// Record one registry query error. `Error::Unsupported` counts apart from failures.
+    fn add_error(&mut self, registry: &str, error: Error, elapsed_ms: u128) {
+        if let Error::Unsupported { reason, .. } = &error {
+            self.unsupported_queries += 1;
+            self.cases.push(json!({
+                "registry": registry,
+                "status": "unsupported",
+                "elapsed_ms": elapsed_ms,
+                "reason": reason,
+            }));
+            return;
+        }
+
         self.failed_queries += 1;
         self.failure_shapes
             .entry(error.to_string())
@@ -383,6 +397,7 @@ impl SweepReport {
                 "complete_queries": self.complete_queries,
                 "partial_queries": self.partial_queries,
                 "failed_queries": self.failed_queries,
+                "unsupported_queries": self.unsupported_queries,
                 "queries_with_unresolved_paths": self.queries_with_unresolved_paths,
                 "fields_found": fields_found,
                 "unresolved_paths": self.unresolved_paths,
@@ -762,7 +777,12 @@ mod tests {
                 1,
             )
             .unwrap();
-        report.add_failure("common/c", Error::Method("stopped".into()), 1);
+        report.add_error("common/c", Error::Method("stopped".into()), 1);
+        let unsupported = Error::Unsupported {
+            operation: pdx_native::Operation::RegistryFields,
+            reason: "not a template registry".into(),
+        };
+        report.add_error("common/d", unsupported, 1);
 
         let registries = answer("registries", "Complete", json!([]), json!([]));
         let json = report
@@ -775,6 +795,7 @@ mod tests {
                 "complete_queries": 1,
                 "partial_queries": 1,
                 "failed_queries": 1,
+                "unsupported_queries": 1,
                 "queries_with_unresolved_paths": 1,
                 "fields_found": 3,
                 "unresolved_paths": 1,

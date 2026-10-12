@@ -28,8 +28,8 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
         expected::<Value>("modifier-blocks.json")
     );
     let mut variants = BTreeMap::new();
-    for registry in native.registries().unwrap().value {
-        for field in native.registry_fields(&registry.name).unwrap().value {
+    for answer in read_registry_fields(native).unwrap() {
+        for field in answer.value {
             check_modifier_identity(&mut variants, &field).unwrap();
         }
     }
@@ -63,8 +63,8 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
         expected::<Value>("triggered-modifiers.json")
     );
     let mut variants = BTreeMap::new();
-    for registry in native.registries().unwrap().value {
-        for field in native.registry_fields(&registry.name).unwrap().value {
+    for answer in read_registry_fields(native).unwrap() {
+        for field in answer.value {
             check_triggered_identity(&mut variants, &field).unwrap();
         }
     }
@@ -168,8 +168,8 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
         expected::<Value>("weight-blocks.json")
     );
     let mut variants = BTreeMap::new();
-    for registry in native.registries().unwrap().value {
-        for field in native.registry_fields(&registry.name).unwrap().value {
+    for answer in read_registry_fields(native).unwrap() {
+        for field in answer.value {
             check_weight_identity(&mut variants, &field).unwrap();
         }
     }
@@ -767,7 +767,7 @@ fn script_expansions_give_hosts_stages_and_checks() {
         .iter()
         .filter(|host| matches!(host, ExpansionHost::RegistryRoot { .. }))
         .count();
-    assert_eq!(roots, expected::<Vec<String>>("registries.json").len());
+    assert_eq!(roots, read_registry_fields(native).unwrap().len());
     assert!(hosts.contains(&ExpansionHost::RegistryRoot {
         registry: "common/traditions".into()
     }));
@@ -1464,6 +1464,21 @@ fn own_native() -> Native {
     .expect("the installed build is in the target catalogue")
 }
 
+/// The field answer of every listed registry that the field method reads. A listed registry that
+/// it does not read gives `Error::Unsupported` and is left out.
+fn read_registry_fields(native: &Native) -> Result<Vec<Answer<Vec<pdx_native::Field>>>> {
+    let mut answers = Vec::new();
+    for registry in native.registries()?.value {
+        match native.registry_fields(&registry.name) {
+            Ok(answer) => answers.push(answer),
+            Err(Error::Unsupported { .. }) => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    Ok(answers)
+}
+
 fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
     let path = parity::expected_directory().join(name);
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
@@ -1483,6 +1498,108 @@ fn registries_are_named_by_their_content_directory() {
     let kinds: Vec<_> = answer.gaps.iter().map(|gap| gap.kind).collect();
     assert_eq!(kinds, [GapKind::OutsideMethod, GapKind::UnnamedRegistries]);
     assert_eq!(answer.completeness, Completeness::Partial);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn every_listed_registry_gets_an_answer_or_unsupported() {
+    use std::collections::BTreeSet;
+
+    let native = native();
+    // Independent expectation: the registries that only their database's own loader names.
+    let loader_named: BTreeSet<String> = [
+        "common/ambient_objects",
+        "common/colors",
+        "common/component_tags",
+        "common/diplo_phrases",
+        "common/fallen_empires",
+        "common/global_ship_designs",
+        "common/on_actions",
+        "common/opinion_modifiers",
+        "common/ship_behaviors",
+        "common/special_projects",
+        "common/species_names",
+        "common/start_screen_messages",
+        "common/static_modifiers",
+        "common/strategic_resources",
+        "common/terraform",
+        "common/traits",
+        "events",
+        "gfx/worldgfx",
+        "prescripted_countries",
+    ]
+    .map(String::from)
+    .into();
+    let mut unsupported: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for registry in native.registries().unwrap().value {
+        let name = registry.name;
+        for result in [
+            native.registry_fields(&name).map(drop),
+            native.derived_names(&name).map(drop),
+            native.modifier_families(&name).map(drop),
+        ] {
+            match result {
+                Err(Error::Unsupported { operation, .. }) => {
+                    let operation = operation.to_string();
+                    unsupported
+                        .entry(operation)
+                        .or_default()
+                        .insert(name.clone());
+                }
+                Err(error @ Error::UnknownRegistry { .. }) => panic!("{name}: {error}"),
+                _ => {}
+            }
+        }
+    }
+
+    for operation in [
+        Operation::RegistryFields,
+        Operation::DerivedNames,
+        Operation::ModifierFamilies,
+    ] {
+        let operation = operation.to_string();
+        assert_eq!(
+            unsupported.get(&operation),
+            Some(&loader_named),
+            "{operation}"
+        );
+    }
+    assert!(matches!(
+        native.derived_names("common/no_such_registry"),
+        Err(Error::UnknownRegistry { .. })
+    ));
+    assert!(matches!(
+        native.modifier_families("common/no_such_registry"),
+        Err(Error::UnknownRegistry { .. })
+    ));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn a_registry_with_no_template_loader_is_refused_before_a_game_starts() {
+    // No such supervisor: if the refusal regressed, the start fails here instead of launching.
+    let options = pdx_native::GameOptions::new(std::process::Command::new(
+        "/nonexistent/pdx-native-supervisor",
+    ));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let result = runtime.block_on(pdx_native::internals::check_registry_load(
+        native(),
+        options,
+        "events",
+    ));
+    assert!(
+        matches!(
+            result,
+            Err(Error::Unsupported {
+                operation: Operation::Registries,
+                ..
+            })
+        ),
+        "{result:?}"
+    );
 }
 
 #[test]

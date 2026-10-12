@@ -111,6 +111,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
+        schedule: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
 
@@ -182,6 +183,7 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
+        schedule: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
 
@@ -250,6 +252,7 @@ fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
+        schedule: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let verified = analysis.verified().unwrap();
@@ -269,6 +272,83 @@ fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
             verified.field_input(foreign),
             Err(AnalysisError::InvalidRange)
         ));
+    }
+}
+
+#[test]
+fn a_custom_loader_with_one_directory_names_a_registry_that_template_queries_do_not_read() {
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+    use crate::{Error, GapKind, Native, Operation};
+
+    let (_image, analysis) = fixture();
+    let loader_directories = BTreeMap::from([
+        ("COneDatabase".into(), Directory::Named("common/one".into())),
+        (
+            "CTwoDatabase".into(),
+            Directory::Ambiguous(vec!["common/first".into(), "common/second".into()]),
+        ),
+        ("CNoneDatabase".into(), Directory::Missing),
+    ]);
+    let schedule = ScheduledDatabases {
+        inventory: ScheduleInventory {
+            rows: 4,
+            unjoined: loader_directories.keys().cloned().collect(),
+            unresolved: 0,
+        },
+        loader_directories,
+    };
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: CandidateRecord {
+                database: "CTraditionDatabase".into(),
+                owner_candidate: "CTraditionType".into(),
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
+            },
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
+        schedule: OnceLock::from(Ok(schedule)),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let native = Native::from_binding(crate::binding::Binding {
+        installation: analysis.installation.clone(),
+        invalidated: analysis.invalidated.clone(),
+        analysis: std::sync::Arc::new(analysis),
+        operation: None,
+    });
+
+    let answer = native.registries().unwrap();
+    let names: Vec<_> = answer.value.iter().map(|registry| &registry.name).collect();
+    assert_eq!(names, ["common/one", "common/traditions"]);
+    let unnamed = answer
+        .gaps
+        .iter()
+        .find(|gap| gap.kind == GapKind::UnnamedRegistries)
+        .unwrap();
+    assert!(unnamed.detail.starts_with("2 of 4 scheduled databases"));
+
+    assert!(matches!(
+        native.registry_fields("common/one"),
+        Err(Error::Unsupported {
+            operation: Operation::RegistryFields,
+            ..
+        })
+    ));
+    for unlisted in ["common/first", "common/second"] {
+        assert_eq!(
+            native.registry_fields(unlisted),
+            Err(Error::UnknownRegistry {
+                name: unlisted.into()
+            })
+        );
     }
 }
 
@@ -296,6 +376,7 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
+        schedule: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let binding = crate::binding::Binding {
@@ -1188,6 +1269,7 @@ fn a_kept_registry_field_result_still_checks_executable_integrity() {
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
+        schedule: OnceLock::new(),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let kept = Arc::new(RegistryFieldResult::default());
@@ -1704,27 +1786,28 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates() {
+    use crate::engine::analysis::directories::Directory;
+
     let binding = crate::session::installed_native().bound();
-    let schedule = binding
-        .analysis
-        .verified()
-        .unwrap()
-        .database_schedule()
-        .unwrap();
-    assert_eq!(schedule.rows, 198);
-    assert_eq!(schedule.unjoined.len(), 35);
-    assert_eq!(schedule.unresolved, 0);
-    for database in [
-        "CStaticModifierDatabase",
-        "CPlanetClassDatabase",
-        "CEventManager",
-    ] {
-        assert!(
-            schedule
-                .unjoined
-                .iter()
-                .any(|unjoined| unjoined == database),
-            "{database}"
-        );
-    }
+    let verified = binding.analysis.verified().unwrap();
+    let schedule = verified.database_schedule().unwrap();
+    let inventory = &schedule.inventory;
+    assert_eq!(inventory.rows, 198);
+    assert_eq!(inventory.unjoined.len(), 35);
+    assert_eq!(inventory.unresolved, 0);
+
+    let directory = |database: &str| schedule.loader_directories[database].clone();
+    let named = |name: &str| Directory::Named(name.into());
+    assert_eq!(
+        directory("CStaticModifierDatabase"),
+        named("common/static_modifiers")
+    );
+    assert_eq!(directory("CEventManager"), named("events"));
+    // The directory is a global `char const*`, which the scan does not read.
+    assert_eq!(directory("CPlanetClassDatabase"), Directory::Missing);
+    // Two databases enumerate one directory.
+    assert_eq!(
+        directory("CEmpireDesignDatabase"),
+        directory("CPrescriptedSpeciesDatabase")
+    );
 }

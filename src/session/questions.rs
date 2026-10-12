@@ -167,10 +167,10 @@ impl Native {
 
     /// List the engine registries, each named by its content directory.
     ///
-    /// The search covers shared database-template candidates. Custom, nested, and late loaders
-    /// are outside it. The engine's database schedule counts the scheduled databases that no
-    /// template candidate covers. Completeness says whether every candidate inside that boundary
-    /// was named and every scheduled database was covered.
+    /// The search covers shared database-template candidates and the scheduled databases outside
+    /// them whose own loader enumerates one content directory. Nested and late loaders are
+    /// outside it. Completeness says whether every template candidate and every scheduled
+    /// database was named.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
         self.answer(Operation::Registries, None, || {
             self.registries_from_executable()
@@ -205,22 +205,31 @@ impl Native {
         }
         match schedule {
             Ok(schedule) => {
-                if !schedule.unjoined.is_empty() {
+                let mut unnamed_loaders = 0;
+                for directory in schedule.loader_directories.values() {
+                    match directory {
+                        Directory::Named(name) => {
+                            names.insert(name.clone());
+                        }
+                        Directory::Missing | Directory::Ambiguous(_) => unnamed_loaders += 1,
+                    }
+                }
+                let inventory = &schedule.inventory;
+                if unnamed_loaders > 0 {
                     unnamed_details.push(format!(
-                        "{} of {} scheduled databases have no template loader, so their content \
-                         directory is not established.",
-                        schedule.unjoined.len(),
-                        schedule.rows
+                        "{unnamed_loaders} of {} scheduled databases have no template loader, and \
+                         their own functions enumerate no single content directory.",
+                        inventory.rows
                     ));
                 }
-                if schedule.unresolved > 0 {
+                if inventory.unresolved > 0 {
                     gaps.push(Gap {
                         kind: GapKind::UnreadableInput,
                         subject: None,
                         detail: format!(
                             "{} of {} scheduled databases name no single database type, so \
                              whether a template loader covers them is not established.",
-                            schedule.unresolved, schedule.rows
+                            inventory.unresolved, inventory.rows
                         ),
                     });
                 }
@@ -253,6 +262,9 @@ impl Native {
     /// The search covers root reader paths for one shared-template registry. Nested blocks,
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
+    ///
+    /// The name is a content directory from [`Native::registries`]. A listed registry with no
+    /// template loader is [`Error::Unsupported`]; another name is [`Error::UnknownRegistry`].
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::RegistryFields, Some(registry), || {
@@ -439,9 +451,33 @@ impl Native {
             .analysis
             .registry_field_result(registry.trim_end_matches('/'))
             .map_err(|e| error(Operation::RegistryFields, e))?
-            .ok_or_else(|| Error::UnknownRegistry {
+            .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
+    }
+
+    /// The error for a registry that no template candidate names. A registry that
+    /// [`Native::registries`] lists through its own loader is [`Error::Unsupported`]; any other
+    /// name is [`Error::UnknownRegistry`]. A changed executable keeps its own error.
+    pub(crate) fn unanswered_registry(&self, operation: Operation, registry: &str) -> Error {
+        let registry = registry.trim_end_matches('/');
+        let verified = match self.bound().analysis.verified() {
+            Ok(verified) => verified,
+            Err(failure) => return error(operation, failure),
+        };
+        let listed = verified
+            .database_schedule()
+            .is_ok_and(|schedule| schedule.names_registry(registry));
+        if !listed {
+            return Error::UnknownRegistry {
                 name: registry.into(),
-            })
+            };
+        }
+
+        Error::Unsupported {
+            operation,
+            reason: "the registry has no template loader, and this operation reads only template \
+                     registries"
+                .into(),
+        }
     }
 
     /// The registry field method's input and a new run of the method over it.
@@ -453,9 +489,7 @@ impl Native {
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
         let Some(candidate) = unique_named_candidate(verified.named_candidates(), name) else {
-            return Err(Error::UnknownRegistry {
-                name: registry.into(),
-            });
+            return Err(self.unanswered_registry(operation, registry));
         };
         let input = self
             .bound()

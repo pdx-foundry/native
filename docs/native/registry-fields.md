@@ -10,9 +10,10 @@ weight keyword domains, which the [weight blocks](weight-blocks.md) method estab
 ## What complete means
 
 Both static answers are bounded searches. `registries` searches the shared database-template
-candidates. It is complete when every candidate inside that boundary has one content directory;
-custom, nested and late loaders are outside the search. `registry_fields` searches the root reader
-paths of one such registry. It is complete when every path, field name and promised reader
+candidates and the scheduled databases outside them. It is complete when every candidate and every
+scheduled database has one content directory; nested and late loaders are outside the search.
+`registry_fields` searches the root reader paths of one template registry; a listed registry with
+no template loader is `Unsupported`. It is complete when every path, field name and promised reader
 classification is resolved. An `OutsideMethod` gap states the boundary and can accompany
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
@@ -303,6 +304,7 @@ did not run before the startup boundary is not a missing registry.
   registry names (51 literals; 8 of them repeat a directory with a trailing `/`). Find them with
   `inspect -- --strings common/` and remove the 164 names of `registries()`. Examples are
   `common/component_templates`, `common/static_modifiers`, `common/traits` and `common/on_actions`.
+  16 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
   A literal is not a loader: `RunGame` forms the address of 157 of the 158 `common/` template
   directories and of `events`, and for 13 of the 43 (such as `common/agendas`, `common/planet_classes` and `common/subjects`) it is
   the only function that does. The "59" of the M45-observe count had no list.
@@ -336,10 +338,11 @@ did not run before the startup boundary is not a missing registry.
 
 ### Database schedule
 
-`Native::registries` reads the table of `NNullObjAndDatabaseInitUtil::SetupDatabases` to count
+`Native::registries` reads the table of `NNullObjAndDatabaseInitUtil::SetupDatabases` to find
 the scheduled databases that no template candidate covers (`discovery/schedule.rs`; its module
-comment gives the scan). Each unjoined row is a custom-loader candidate; the answer reports their
-count in its `UnnamedRegistries` gap, with no class name. The scan finds the function by its name
+comment gives the scan). Each unjoined row is a custom-loader candidate, named as the next
+section says; the answer counts the rows it cannot name in its `UnnamedRegistries` gap, with no
+class name. The scan finds the function by its name
 and derives the end of the fill from the code; no recipe holds an address.
 
 - On M452 the function starts at `0x1005eb000`. After `mov x19, sp`, the table is at `x19 + 96`:
@@ -375,6 +378,48 @@ and derives the end of the fill from the code; no recipe holds an address.
   slot gives nothing without the chained fixups.
 - The M45-release reader decoded a hand-found window (`0x1005eb938` to `0x1005eedf0`) and was
   removed in `e9261a1`; the current reader derives the end instead.
+
+### Custom-loader names
+
+For each unjoined row, `loader_directory` (`directories.rs`) reads every function qualified by the
+database class (`CTraitDatabase::…`) and takes the literal first argument of each
+`VFSGetEnumeratedFiles` call. Exactly one distinct literal names the registry; several, none, or
+an argument that the scan does not establish leave the row in the `UnnamedRegistries` gap. The
+three registry queries read only template registries, so they give `Unsupported` for these names
+until SDK-787 and SDK-802; `UnknownRegistry` is for names that `registries()` does not list. The
+references and modifier-block methods use the same join (`references::database_directories`).
+
+On M452, 20 of the 35 rows are named, with 19 names: `common/ambient_objects`, `common/colors`,
+`common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
+`common/global_ship_designs` (`CDesignerDatabase`), `common/on_actions`,
+`common/opinion_modifiers`, `common/ship_behaviors`, `common/special_projects`,
+`common/species_names`, `common/start_screen_messages`, `common/static_modifiers`,
+`common/strategic_resources`, `common/terraform`, `common/traits`, `events` (`CEventManager`),
+`gfx/worldgfx` and `prescripted_countries`. None repeats a template name.
+
+- **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
+  both enumerate `prescripted_countries`, so it is one name. An owner join for it (SDK-787) must
+  not select one of the two.
+- **The 15 rows that stay gaps**, by obstacle:
+  - The directory is a global `char const*` that the code loads from a data slot (`ldr x0, [x8,
+    #0x358]` of `_PLANET_CLASSES_DIR`); the scan tracks only `adrp` and `add`:
+    `CPlanetClassDatabase` (`common/planet_classes`) and `CEmpireFlagDatabase`
+    (`_pEMPIRE_FLAG_FOLDER`). Reading a resolved pointer slot would name both; SDK-786 can start
+    there instead of at the `RunGame` caller.
+  - The directory is the text of a `CString` member or a built path (the short-string `csel` on
+    the object): `CGfxCultureDatabase`, `CNameListDatabase`, `CGalaxyTemplateDatabase`
+    (`ReadFiles`), `CMessageSystem` (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase`
+    (`InitInstance`), `CScriptableLocalizationDatabase` and `CSystemInitializerDataBase`.
+  - Several directories: `CShipDesignTemplatesDatabase::Init(bool)` enumerates
+    `common/section_templates`, `common/component_sets` and `common/component_templates`;
+    `CPortraitDatabase` enumerates a global path, a member path and
+    `gfx/portraits/portraits/substitutions`. One database that loads several config types is not
+    one registry.
+  - No enumeration call in the class's own functions: `CAdvisorDatabase`, `CAlertSystem` and
+    `CGameSettingsDatabase`.
+- Pitfall: a row with one literal is not proof that the database owns the items there; it is the
+  directory the loader reads. `prescripted_countries` shows that a directory can feed two
+  databases.
 
 ### Owner vtables on M45-release
 

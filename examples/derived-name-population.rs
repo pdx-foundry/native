@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
 use pdx_native::{
-    Answer, Completeness, DerivedName, FieldCondition, Gap, GapKind, MissingName, NamePart, Native,
+    Answer, Completeness, DerivedName, Error, FieldCondition, Gap, GapKind, MissingName, NamePart,
+    Native,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,6 +65,7 @@ fn print_outcomes(runs: &[Run]) {
         let outcome = match &run.answer {
             Ok(answer) if answer.completeness == Completeness::Complete => "complete",
             Ok(_) => "partial",
+            Err(Error::Unsupported { .. }) => "unsupported",
             Err(_) => "failed",
         };
         *outcomes.entry(outcome).or_default() += 1;
@@ -78,8 +80,12 @@ fn print_outcomes(runs: &[Run]) {
     println!("{:10} {with_names}", "with names");
 
     for run in runs {
-        if let Err(error) = &run.answer {
-            println!("failed     {}: {error}", run.registry);
+        match &run.answer {
+            Err(Error::Unsupported { reason, .. }) => {
+                println!("unsupported {}: {reason}", run.registry);
+            }
+            Err(error) => println!("failed     {}: {error}", run.registry),
+            Ok(_) => {}
         }
     }
 }

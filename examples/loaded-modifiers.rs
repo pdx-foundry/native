@@ -7,7 +7,7 @@
 //!
 //! Set `RECORD_ANSWERS_TO` to a directory to write each answer there. Give that directory as
 //! `<installation>` with `RECORDED=1` to read the answers back with no game.
-use pdx_native::{GameOptions, NamePart, Native};
+use pdx_native::{Error, GameOptions, NamePart, Native};
 use std::collections::BTreeSet;
 use std::process::Command;
 
@@ -66,7 +66,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         println!("registry\ttemplate\titems\tnames\tloaded");
         for (registry, items) in &answer.value.registry_items {
-            for family in native.modifier_families(registry)?.value {
+            let families = match native.modifier_families(registry) {
+                Err(Error::Unsupported { reason, .. }) => {
+                    println!("{registry}\tunsupported: {reason}");
+                    continue;
+                }
+                families => families?.value,
+            };
+            for family in families {
                 let template: String = family
                     .name
                     .iter()

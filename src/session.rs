@@ -1,6 +1,7 @@
 //! `Native`: one pinned installation, or one directory of recorded answers.
 use crate::{
-    AnalysisError, Gap, GapKind, GapSubject, OpenError, UnavailableReason, binding::Binding,
+    AnalysisError, Gap, GapKind, GapSubject, OpenError, UnavailableReason,
+    binding::{Binding, unique_named_candidate},
 };
 use std::sync::{Arc, Mutex};
 
@@ -164,14 +165,14 @@ impl Native {
         } else {
             self.blocking_reasons(binding)
         };
+        let operation = if options.loaded_modifiers {
+            Operation::LoadedModifiers
+        } else if options.fixture.is_some() {
+            Operation::ObserveFixture
+        } else {
+            Operation::Registries
+        };
         if !reasons.is_empty() {
-            let operation = if options.loaded_modifiers {
-                Operation::LoadedModifiers
-            } else if options.fixture.is_some() {
-                Operation::ObserveFixture
-            } else {
-                Operation::Registries
-            };
             return Err(questions::error(
                 operation,
                 AnalysisError::Unavailable { reasons },
@@ -202,6 +203,16 @@ impl Native {
                 return Err(Error::UnknownRegistry {
                     name: registry.clone(),
                 });
+            }
+        }
+        // A session observes a registry through its template loader.
+        let verified = binding
+            .analysis
+            .verified()
+            .map_err(|failure| questions::error(operation, failure))?;
+        for registry in &registries {
+            if unique_named_candidate(verified.named_candidates(), registry).is_none() {
+                return Err(self.unanswered_registry(operation, registry));
             }
         }
         let modifiers = if options.loaded_modifiers {

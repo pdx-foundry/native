@@ -28,8 +28,8 @@ impl Native {
     /// [`GapKind::UnnamedDeclaration`] gap, so the answer is partial while such code exists. Where
     /// a modifier takes effect is outside this method.
     ///
-    /// The name is a content directory from [`Native::registries`]; another name is
-    /// [`Error::UnknownRegistry`].
+    /// The name is a content directory from [`Native::registries`]. A listed registry with no
+    /// template loader is [`Error::Unsupported`]; another name is [`Error::UnknownRegistry`].
     pub fn modifier_families(&self, registry: &str) -> Result<Answer<Vec<ModifierFamily>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::ModifierFamilies, Some(registry), || {
@@ -41,9 +41,7 @@ impl Native {
             let code = index
                 .registries
                 .get(registry)
-                .ok_or_else(|| Error::UnknownRegistry {
-                    name: registry.into(),
-                })?;
+                .ok_or_else(|| self.unanswered_registry(operation, registry))?;
             let modifier_input = analysis
                 .modifier_input()
                 .map_err(|failure| error(operation, failure))?;

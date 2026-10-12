@@ -76,6 +76,28 @@ struct Catalog {
     /// The part of every registry's field input that does not depend on the registry, read on
     /// the first field input.
     field_input: OnceLock<Result<binary::fields::SharedFieldInput, AnalysisError>>,
+    /// The database schedule, read on the first registry list.
+    schedule: OnceLock<Result<ScheduledDatabases, ScheduleGap>>,
+}
+
+/// The database schedule joined to the template candidates, with the directory that each
+/// unjoined database's own loader enumerates.
+#[derive(Debug)]
+pub(crate) struct ScheduledDatabases {
+    pub inventory: ScheduleInventory,
+    /// The directory of each unjoined database, keyed by its type.
+    pub loader_directories: BTreeMap<String, crate::engine::analysis::directories::Directory>,
+}
+
+impl ScheduledDatabases {
+    /// Whether the loader of an unjoined database names `registry`.
+    pub(crate) fn names_registry(&self, registry: &str) -> bool {
+        use crate::engine::analysis::directories::Directory;
+
+        self.loader_directories
+            .values()
+            .any(|directory| matches!(directory, Directory::Named(name) if name == registry))
+    }
 }
 
 impl Catalog {
@@ -409,9 +431,17 @@ impl VerifiedAnalysis<'_> {
         &self.catalog.candidates
     }
 
-    /// The database schedule joined to the template candidates. A scheduling function that is
-    /// missing, not unique or undecodable is a gap.
-    pub(crate) fn database_schedule(&self) -> Result<ScheduleInventory, ScheduleGap> {
+    /// The database schedule joined to the template candidates, read once per catalog. A
+    /// scheduling function that is missing, not unique or undecodable is a gap.
+    pub(crate) fn database_schedule(&self) -> Result<&ScheduledDatabases, ScheduleGap> {
+        self.catalog
+            .schedule
+            .get_or_init(|| self.read_database_schedule())
+            .as_ref()
+            .map_err(|gap| *gap)
+    }
+
+    fn read_database_schedule(&self) -> Result<ScheduledDatabases, ScheduleGap> {
         let symbols = &self.catalog.symbols;
         let addresses: std::collections::BTreeSet<u64> = symbols
             .iter()
@@ -421,8 +451,10 @@ impl VerifiedAnalysis<'_> {
         let [start] = addresses.into_iter().collect::<Vec<_>>()[..] else {
             return Err(ScheduleGap::Unreadable);
         };
-        let instructions = binary::declarations::Text::read(&self.executable, symbols)
-            .and_then(|text| text.function(start))
+        let text = binary::declarations::Text::read(&self.executable, symbols)
+            .map_err(|_| ScheduleGap::Unreadable)?;
+        let instructions = text
+            .function(start)
             .ok()
             .and_then(|(address, code)| decode_arm64(code, address).ok())
             .ok_or(ScheduleGap::Unreadable)?;
@@ -437,8 +469,18 @@ impl VerifiedAnalysis<'_> {
                 .map(|candidate| candidate.record.database.as_str())
                 .collect(),
         };
+        let inventory = schedule::inventory(&instructions, &facts)?;
+        let loader_directories = binary::references::database_directories(
+            &text,
+            &self.image(),
+            &self.catalog.candidates,
+            inventory.unjoined.iter().cloned().collect(),
+        );
 
-        schedule::inventory(&instructions, &facts)
+        Ok(ScheduledDatabases {
+            inventory,
+            loader_directories,
+        })
     }
 
     /// Read fields for a candidate from this analysis; reject records from another source.
@@ -1008,6 +1050,7 @@ impl BoundAnalysis {
             imports: input.imports,
             symbol_index: OnceLock::new(),
             field_input: OnceLock::new(),
+            schedule: OnceLock::new(),
         })
     }
 

@@ -173,7 +173,7 @@ fn reachable_functions(
 
 /// The content directory of each database: the template join first, then the directory that the
 /// database's own loader enumerates.
-pub(super) fn database_directories(
+pub(in crate::binding) fn database_directories(
     text: &Text<'_>,
     image: &Image<'_>,
     candidates: &[NamedCandidate],
