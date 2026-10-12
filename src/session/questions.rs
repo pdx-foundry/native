@@ -5,7 +5,7 @@ use crate::answer::{
     Field, Gap, GapKind, GapSubject, Operation, ReaderKind, Registry, ScopeId, ScopeReference,
     Source, Support, opaque_id,
 };
-use crate::binding::{Binding, VerifiedAnalysis, unique_named_candidate};
+use crate::binding::{Binding, VerifiedAnalysis};
 use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
@@ -260,12 +260,14 @@ impl Native {
 
     /// List the root fields of one registry's definitions, with the shared reader of each.
     ///
-    /// The search covers root reader paths for one shared-template registry. Nested blocks,
+    /// The search covers root reader paths for the items of one registry: the owner of a
+    /// shared-template registry, or the one owner that a custom loader builds. Nested blocks,
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
-    /// The name is a content directory from [`Native::registries`]. A listed registry with no
-    /// template loader is [`Error::Unsupported`]; another name is [`Error::UnknownRegistry`].
+    /// The name is a content directory from [`Native::registries`]. A listed registry whose
+    /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
+    /// [`Error::UnknownRegistry`].
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::RegistryFields, Some(registry), || {
@@ -455,7 +457,7 @@ impl Native {
             .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
     }
 
-    /// The error for a registry that no template candidate names. A registry that
+    /// The error for a registry that the operation does not read. A registry that
     /// [`Native::registries`] lists through its own loader is [`Error::Unsupported`]; any other
     /// name is [`Error::UnknownRegistry`]. A changed executable keeps its own error.
     pub(crate) fn unanswered_registry(&self, operation: Operation, registry: &str) -> Error {
@@ -464,21 +466,23 @@ impl Native {
             Ok(verified) => verified,
             Err(failure) => return error(operation, failure),
         };
-        let listed = verified
+        let Some(owner) = verified
             .database_schedule()
-            .is_ok_and(|schedule| schedule.names_registry(registry));
-        if !listed {
+            .ok()
+            .and_then(|schedule| schedule.loader_owner(registry))
+        else {
             return Error::UnknownRegistry {
                 name: registry.into(),
             };
-        }
-
-        Error::Unsupported {
-            operation,
-            reason: "the registry has no template loader, and this operation reads only template \
-                     registries"
+        };
+        let reason = match (operation, owner) {
+            (Operation::RegistryFields, Err(reason)) => reason,
+            _ => "the registry has no template loader, and this operation reads only template \
+                  registries"
                 .into(),
-        }
+        };
+
+        Error::Unsupported { operation, reason }
     }
 
     /// The registry field method's input and a new run of the method over it.
@@ -489,13 +493,13 @@ impl Native {
         let operation = Operation::RegistryFields;
         let name = registry.trim_end_matches('/');
         let verified = self.verified_analysis(operation)?;
-        let Some(candidate) = unique_named_candidate(verified.named_candidates(), name) else {
+        let Some(Ok(owner)) = verified.registry_owner(name) else {
             return Err(self.unanswered_registry(operation, registry));
         };
         let input = self
             .bound()
             .analysis
-            .registry_field_input(&verified, candidate)
+            .registry_field_input(&verified, owner)
             .map_err(|e| error(operation, e))?;
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
 

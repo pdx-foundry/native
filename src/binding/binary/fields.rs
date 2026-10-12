@@ -1,6 +1,6 @@
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
-    discovery::{CandidateRecord, Symbol},
+    discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{FieldInput, Function, KeyReaders, ObjectReader, PointReader, has_owner_receiver},
 };
@@ -43,12 +43,12 @@ impl SharedFieldInput {
     }
 }
 
-/// Read the selected root, the shared engine token constructor and the read-only data that holds
+/// Read the root of `owner`, the shared engine token constructor and the read-only data that holds
 /// jump tables from the same verified buffer. `shared` is the shared part read from `image`.
 pub(in crate::binding) fn read(
     image: &Image<'_>,
     shared: &SharedFieldInput,
-    selection: CandidateRecord,
+    owner: &str,
     persistent_recipe: &PersistentRecipe,
 ) -> Result<FieldInput, AnalysisError> {
     let Image {
@@ -64,7 +64,7 @@ pub(in crate::binding) fn read(
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
-    let root = format!("{}::ReadMember(CReader&, int)", selection.owner_candidate);
+    let root = format!("{owner}::ReadMember(CReader&, int)");
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -95,20 +95,14 @@ pub(in crate::binding) fn read(
         &mut functions,
     )?;
     if !objects.is_empty() {
-        collect_owner_methods(
-            &text,
-            symbols,
-            &selection.owner_candidate,
-            &mut functions,
-            &mut gaps,
-        );
+        collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
     let persistent = super::receivers::persistent(
         image,
         &text,
         &data,
         &shared.persistent,
-        &selection.owner_candidate,
+        owner,
         persistent_recipe,
     )?;
     // The member readers that the method may walk for the keys of an embedded object.
@@ -125,7 +119,7 @@ pub(in crate::binding) fn read(
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
         objects,
-        selection,
+        owner: owner.into(),
         symbols: symbols.to_vec(),
         functions,
         strings: strings.clone(),

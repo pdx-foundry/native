@@ -33,10 +33,7 @@ pub(super) fn discover(
     if input.objects.is_empty() {
         return Vec::new();
     }
-    let root_name = format!(
-        "{}::ReadMember(CReader&, int)",
-        input.selection.owner_candidate
-    );
+    let root_name = format!("{}::ReadMember(CReader&, int)", input.owner);
     let Some(root) = input
         .functions
         .iter()

@@ -212,8 +212,11 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
 }
 
 #[test]
-fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
-    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+fn field_input_refuses_an_owner_that_no_registry_has() {
+    use crate::engine::analysis::{
+        directories::Directory,
+        discovery::{CandidateRecord, loader_owner::LoaderOwner},
+    };
 
     // The symbols that the key readers need, so that the held record reads.
     let symbols = [
@@ -252,37 +255,52 @@ fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
         imports: BTreeMap::new(),
         symbol_index: OnceLock::new(),
         field_input: OnceLock::new(),
-        schedule: OnceLock::new(),
+        schedule: OnceLock::from(Ok(ScheduledDatabases {
+            inventory: ScheduleInventory {
+                rows: 2,
+                unjoined: vec!["CLoaderDatabase".into()],
+                unresolved: 0,
+            },
+            loader_directories: BTreeMap::from([(
+                "CLoaderDatabase".into(),
+                Directory::Named("common/loader".into()),
+            )]),
+            loader_owners: Ok(BTreeMap::from([(
+                "CLoaderDatabase".into(),
+                LoaderOwner::Owner("CLoaderItem".into()),
+            )])),
+        })),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let verified = analysis.verified().unwrap();
 
-    assert!(verified.field_input(held.clone()).is_ok());
-    for foreign in [
-        CandidateRecord {
-            owner_candidate: "COther".into(),
-            ..held.clone()
-        },
-        CandidateRecord {
-            address: 0x1004,
-            ..held.clone()
-        },
-    ] {
-        assert!(matches!(
-            verified.field_input(foreign),
-            Err(AnalysisError::InvalidRange)
-        ));
-    }
+    assert!(verified.field_input("CTraditionType").is_ok());
+    assert!(verified.field_input("CLoaderItem").is_ok());
+    assert!(matches!(
+        verified.field_input("COther"),
+        Err(AnalysisError::InvalidRange)
+    ));
 }
 
 #[test]
-fn a_custom_loader_with_one_directory_names_a_registry_that_template_queries_do_not_read() {
-    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
+    use crate::engine::analysis::{
+        directories::Directory,
+        discovery::{CandidateRecord, loader_owner::LoaderOwner},
+    };
     use crate::{Error, GapKind, Native, Operation};
 
     let (_image, analysis) = fixture();
     let loader_directories = BTreeMap::from([
         ("COneDatabase".into(), Directory::Named("common/one".into())),
+        (
+            "CLeftDatabase".into(),
+            Directory::Named("common/pair".into()),
+        ),
+        (
+            "CRightDatabase".into(),
+            Directory::Named("common/pair".into()),
+        ),
         (
             "CTwoDatabase".into(),
             Directory::Ambiguous(vec!["common/first".into(), "common/second".into()]),
@@ -291,11 +309,19 @@ fn a_custom_loader_with_one_directory_names_a_registry_that_template_queries_do_
     ]);
     let schedule = ScheduledDatabases {
         inventory: ScheduleInventory {
-            rows: 4,
+            rows: 6,
             unjoined: loader_directories.keys().cloned().collect(),
             unresolved: 0,
         },
         loader_directories,
+        loader_owners: Ok(BTreeMap::from([
+            (
+                "COneDatabase".into(),
+                LoaderOwner::Several(vec!["CFirst".into(), "CSecond".into()]),
+            ),
+            ("CLeftDatabase".into(), LoaderOwner::Owner("CLeft".into())),
+            ("CRightDatabase".into(), LoaderOwner::Owner("CRight".into())),
+        ])),
     };
     let catalog = Catalog {
         candidates: vec![NamedCandidate {
@@ -327,21 +353,30 @@ fn a_custom_loader_with_one_directory_names_a_registry_that_template_queries_do_
 
     let answer = native.registries().unwrap();
     let names: Vec<_> = answer.value.iter().map(|registry| &registry.name).collect();
-    assert_eq!(names, ["common/one", "common/traditions"]);
+    assert_eq!(names, ["common/one", "common/pair", "common/traditions"]);
     let unnamed = answer
         .gaps
         .iter()
         .find(|gap| gap.kind == GapKind::UnnamedRegistries)
         .unwrap();
-    assert!(unnamed.detail.starts_with("2 of 4 scheduled databases"));
+    assert!(unnamed.detail.starts_with("2 of 6 scheduled databases"));
 
-    assert!(matches!(
-        native.registry_fields("common/one"),
+    let unsupported = |registry: &str| match native.registry_fields(registry) {
         Err(Error::Unsupported {
             operation: Operation::RegistryFields,
-            ..
-        })
-    ));
+            reason,
+        }) => reason,
+        other => panic!("{registry}: {other:?}"),
+    };
+    assert_eq!(
+        unsupported("common/one"),
+        "the loader builds several classes with a member reader: CFirst, CSecond"
+    );
+    // Two databases load one directory; neither owner is selected.
+    assert_eq!(
+        unsupported("common/pair"),
+        "2 databases load this directory"
+    );
     for unlisted in ["common/first", "common/second"] {
         assert_eq!(
             native.registry_fields(unlisted),
@@ -876,7 +911,9 @@ fn m452_persistent_field_families() {
     let verified = native.bound().analysis.verified().unwrap();
     for registry in ["common/traditions", "common/council_agendas"] {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
-        let input = verified.field_input(candidate.record.clone()).unwrap();
+        let input = verified
+            .field_input(&candidate.record.owner_candidate)
+            .unwrap();
         let result = crate::engine::analysis::fields::analyze(&input).unwrap();
         eprintln!(
             "destinations={:?}; gaps={:?}",
@@ -1542,7 +1579,9 @@ fn scoped_fixture_destinations() {
     let verified = analysis.verified().unwrap();
     for registry in ["common/council_agendas", "common/megastructures"] {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
-        let input = verified.field_input(candidate.record.clone()).unwrap();
+        let input = verified
+            .field_input(&candidate.record.owner_candidate)
+            .unwrap();
         let result = crate::engine::analysis::fields::analyze(&input).unwrap();
         let bindings = analysis.fixture_registry_fields(registry).unwrap().bindings;
         for field in &result.fields {
@@ -1786,7 +1825,7 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates() {
-    use crate::engine::analysis::directories::Directory;
+    use crate::engine::analysis::{directories::Directory, discovery::loader_owner::LoaderOwner};
 
     let binding = crate::session::installed_native().bound();
     let verified = binding.analysis.verified().unwrap();
@@ -1810,4 +1849,40 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         directory("CEmpireDesignDatabase"),
         directory("CPrescriptedSpeciesDatabase")
     );
+
+    let owners = schedule.loader_owners.as_ref().unwrap();
+    let owner = |database: &str| match &owners[database] {
+        LoaderOwner::Owner(owner) => owner.as_str(),
+        other => panic!("{database}: {other:?}"),
+    };
+    for (database, expected) in [
+        ("CAmbientObjectDatabase", "CAmbientObjectData"),
+        ("CDiploPhraseDatabase", "CDiploPhrase"),
+        ("CFallenEmpiresDatabase", "CFallenEmpireType"),
+        ("CDesignerDatabase", "CShipDesign"),
+        ("COnActionDatabase", "COnActionList"),
+        ("COpinionModifierDatabase", "COpinionModifier"),
+        ("CSpecialProjectDatabase", "CSpecialProjectType"),
+        ("CSpeciesNamesDatabase", "CSpeciesNames"),
+        ("CStartScreenMessageDatabase", "CStartScreenMessage"),
+        // An inlined constructor: the loader forms the vtable address point.
+        ("CStaticModifierDatabase", "CStaticModifier"),
+        ("CStrategicResourceDatabase", "CStrategicResource"),
+        ("CTerraformDatabase", "CTerraformLink"),
+        ("CTraitDatabase", "CTrait"),
+        ("CEventManager", "CEvent"),
+        ("CEmpireDesignDatabase", "CEmpireDesign"),
+        ("CPrescriptedSpeciesDatabase", "CPrescriptedSpecies"),
+    ] {
+        assert_eq!(owner(database), expected);
+    }
+    for database in [
+        "CColorsDatabase",
+        "CWeaponTagDatabase",
+        "CShipBehaviorDatabase",
+        "CWorldGfxDatabase",
+    ] {
+        assert_eq!(owners[database], LoaderOwner::NoOwner, "{database}");
+    }
+    assert_eq!(owners.len(), 20);
 }
