@@ -5,6 +5,7 @@
 //! established only when every read alternative reaches a container with one agreed mask. A key of
 //! a clause that reads into the clause's own container is `Enclosing`. Any other container
 //! category stays unresolved, with a gap that names the field.
+use super::push_once;
 use crate::engine::analysis::{
     fields::{PathOutcome, ReaderJoin, RegistryFieldResult, RootField},
     modifier_blocks::triggered::TriggeredFacts,
@@ -196,29 +197,20 @@ fn state_unresolved(field: &Field, parent: &[String], gaps: &mut Vec<Gap>) {
 /// Whether a gap names `path` or a field that encloses it.
 fn named(gaps: &[Gap], path: &[String]) -> bool {
     (1..=path.len()).any(|length| {
-        let subject = subject(&path[..length]);
+        let subject = GapSubject::path(&path[..length]);
         gaps.iter()
             .any(|gap| gap.subject.as_ref() == Some(&subject))
     })
 }
 
-fn subject(path: &[String]) -> GapSubject {
-    match path {
-        [name] => GapSubject::field(name),
-        _ => GapSubject::key_path(path.to_vec()),
-    }
-}
-
 fn push(gaps: &mut Vec<Gap>, path: &[String], detail: String) {
     let gap = Gap {
         kind: GapKind::UnresolvedPath,
-        subject: Some(subject(path)),
+        subject: Some(GapSubject::path(path)),
         detail,
     };
 
-    if !gaps.contains(&gap) {
-        gaps.push(gap);
-    }
+    push_once(gaps, gap);
 }
 
 #[cfg(test)]

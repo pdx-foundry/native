@@ -191,6 +191,81 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
 }
 
 #[test]
+fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root() {
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+    use crate::{Error, Native};
+
+    let (_image, analysis) = fixture();
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: CandidateRecord {
+                database: "CTraditionDatabase".into(),
+                owner_candidate: "CTraditionType".into(),
+                loader: "loader".into(),
+                address: "0x1000".into(),
+                initial_loader: Some("0x2000".into()),
+                has_named_member_reader: true,
+            },
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let binding = crate::binding::Binding {
+        installation: analysis.installation.clone(),
+        invalidated: analysis.invalidated.clone(),
+        analysis: Some(std::sync::Arc::new(analysis)),
+        operation: None,
+    };
+    let base = tempfile::tempdir().unwrap();
+    let recording = base.path().join("recording");
+    let native = Native::from_binding(binding).record_answers_to(&recording);
+    let names = [
+        "common/Traditions",
+        "common/some-thing",
+        "",
+        "../escape",
+        "common/../../escape",
+    ];
+
+    for name in names {
+        assert_eq!(
+            native.registry_fields(name),
+            Err(Error::UnknownRegistry { name: name.into() }),
+            "{name:?}"
+        );
+    }
+
+    // A trailing slash names the same registry, so "/" is the empty name live and recorded.
+    assert_eq!(
+        native.registry_fields("/"),
+        Err(Error::UnknownRegistry { name: "".into() })
+    );
+
+    let replay = Native::from_recorded_answers(&recording).unwrap();
+    for name in names {
+        assert_eq!(
+            replay.registry_fields(name),
+            Err(Error::UnknownRegistry { name: name.into() }),
+            "{name:?}"
+        );
+    }
+    assert_eq!(
+        replay.registry_fields("/"),
+        Err(Error::UnknownRegistry { name: "".into() })
+    );
+    let beside: Vec<_> = fs::read_dir(base.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(beside, ["recording"]);
+}
+
+#[test]
 fn static_support_checks_the_pinned_executable_without_requiring_content() {
     use crate::{Native, Operation, Support};
     for mutation in ["changed", "missing"] {

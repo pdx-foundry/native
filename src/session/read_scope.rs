@@ -1,5 +1,5 @@
 //! Normalize read-time scope arguments without conflating them with evaluation contexts.
-use super::language::gap_for_subject;
+use super::gap_for_subject;
 use crate::engine::analysis::{
     declarations::scope_mask,
     fields::{PathOutcome, ReaderJoin, RootField, TokenPath, Value},

@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use super::callbacks::{Scopes, entries};
-use super::language::gap_for_subject;
+use super::gap_for_subject;
 use crate::answer::{BlockFamily, Field, Gap, GapKind, GapSubject};
 use crate::binding::BlockFacts;
 use crate::engine::analysis::callbacks::Findings;

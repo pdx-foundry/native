@@ -1,6 +1,6 @@
 //! Static modifier node graph from node type symbols and node constructor calls.
 use super::Native;
-use super::language::gap;
+use super::gap;
 use super::questions::error;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Error, Gap, GapKind, KeptCategories, ModifierNode,
@@ -23,7 +23,7 @@ impl Native {
     /// supported scopes. A category that no node keeps, apart from nodes that keep every category,
     /// is a gap.
     pub fn modifier_nodes(&self) -> Result<Answer<Vec<ModifierNode>>, Error> {
-        self.answer("modifier_nodes", None, || {
+        self.answer(Operation::ModifierNodes, None, || {
             let operation = Operation::ModifierNodes;
             let result = self
                 .declaration_analysis(operation)?

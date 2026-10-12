@@ -138,8 +138,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             for (stage, address) in [
-                ("factory", run.chain.factory),
-                ("create", run.chain.create),
                 ("concrete receiver", run.chain.receiver),
                 ("read", run.chain.read),
                 ("member", run.chain.member),
@@ -156,7 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match &run.result {
                 Ok(result) => print_grammar(&image, result, arguments.trace),
                 Err(unresolved) => {
-                    println!("stopped at {}", run.chain.stopped_at.unwrap_or("grammar"));
+                    println!("stopped:");
                     print_stop(&image, unresolved, arguments.trace);
                 }
             }

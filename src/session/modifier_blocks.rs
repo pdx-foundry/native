@@ -64,19 +64,12 @@ pub(super) fn block(
     path: &[String],
     gaps: &mut Vec<Gap>,
 ) -> Option<ModifierBlock> {
-    let subject = |path: Vec<String>| {
-        if path.len() == 1 {
-            GapSubject::field(&path[0])
-        } else {
-            GapSubject::key_path(path)
-        }
-    };
     let variant = match found {
         Some(Ok(variant)) => variant,
         failure => {
             gaps.push(Gap {
                 kind: GapKind::UnresolvedReader,
-                subject: Some(subject(path.to_vec())),
+                subject: Some(GapSubject::path(path)),
                 detail: format!(
                     "The modifier block analysis stopped at {}.",
                     match failure {
@@ -98,7 +91,7 @@ pub(super) fn block(
             } else {
                 GapKind::UnresolvedPath
             },
-            subject: Some(subject(stopped)),
+            subject: Some(GapSubject::path(&stopped)),
             detail: format!("The modifier block analysis stopped at {}.", stop.reason),
         });
     }

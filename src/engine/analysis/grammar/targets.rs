@@ -86,6 +86,23 @@ pub fn getter_table(input: &GrammarInput) -> &BTreeMap<u64, Getter> {
     })
 }
 
+/// The constant mask that the target getter slot of the command made by `factory` returns, for the
+/// developer census. `None` when the receiver join, the slot or its body is not established, or
+/// the body returns no constant.
+pub fn slot_mask(input: &GrammarInput, factory: u64) -> Option<u64> {
+    use crate::engine::analysis::{declarations, decode::decode_arm64};
+    let reader = declarations::command_reader(&input.declarations, factory).ok()?;
+    let slot = reader.vtable + input.command_bindings.target_getter_slot;
+    let body = input
+        .declarations
+        .pointers
+        .get(&slot)
+        .and_then(|at| input.declarations.functions.get(at))?;
+    let rows = decode_arm64(&body.code, body.address).ok()?;
+
+    declarations::constant_return(&rows)
+}
+
 fn getter_bit(input: &GrammarInput, code: &Code, address: u64, bit: usize) -> Bit {
     if input.forms.cut_bodies.contains(&address) {
         return Bit::Unresolved("cut getter body");

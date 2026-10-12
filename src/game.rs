@@ -4,7 +4,7 @@
 //! the game. The supervisor sends the answers once, when the game is paused; every
 //! fixture and modifier query returns from them.
 use crate::{
-    Disposal, Error,
+    Disposal, Error, Operation,
     engine::operations::registry_items::{Observed, RegistryItems},
     protocol::session::{
         Fault, ObservationControl, ObservationTarget, SessionOutcome, SessionRequest,
@@ -233,7 +233,7 @@ impl Game {
         input.validate()?;
         let subject = input.recorded_subject(&self.script_history);
         let result = self
-            .answer("check_script", Some(&subject), async |game| {
+            .answer(Operation::CheckScript, Some(&subject), async |game| {
                 let durations = game.duration_receivers(input);
                 let (reply, receive) = oneshot::channel();
                 game.commands
@@ -313,9 +313,11 @@ impl Game {
             .fixture
             .as_ref()
             .map(crate::FixtureRequest::recorded_subject);
-        self.answer("loaded_modifiers", subject.as_deref(), async |game| {
-            game.loaded_modifiers_from_game().await
-        })
+        self.answer(
+            Operation::LoadedModifiers,
+            subject.as_deref(),
+            async |game| game.loaded_modifiers_from_game().await,
+        )
         .await
     }
 
@@ -348,7 +350,7 @@ impl Game {
             reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
         })?;
         let subject = fixture.recorded_subject();
-        self.answer("observe_fixture", Some(&subject), async |game| {
+        self.answer(Operation::ObserveFixture, Some(&subject), async |game| {
             game.fixture_from_game().await
         })
         .await
@@ -409,17 +411,17 @@ impl Game {
     /// and write the result when a recorder is set.
     async fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
         &mut self,
-        question: &str,
+        operation: Operation,
         subject: Option<&str>,
         live: impl AsyncFnOnce(&mut Self) -> Result<crate::Answer<T>, Error>,
     ) -> Result<crate::Answer<T>, Error> {
         let recorder = match &self.backend {
-            GameBackend::Recorded(answers) => return answers.read(question, subject),
+            GameBackend::Recorded(answers) => return answers.read(operation, subject),
             GameBackend::Live { recorder, .. } => recorder.clone(),
         };
         let answer = live(self).await;
         if let Some(directory) = &recorder {
-            crate::recorded::write(directory, &self.build, question, subject, &answer)?;
+            crate::recorded::write(directory, &self.build, operation, subject, &answer)?;
         }
         answer
     }
@@ -790,7 +792,7 @@ mod tests {
         lost_acknowledgement.join().unwrap();
         let recording = crate::recorded::Answers::open(root.path().into()).unwrap();
         assert_eq!(
-            recording.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
+            recording.read::<crate::FixtureObservation>(Operation::ObserveFixture, Some(&subject)),
             Err(error)
         );
     }
@@ -841,7 +843,7 @@ mod tests {
         acknowledgements.join().unwrap();
         let recording = crate::recorded::Answers::open(root.path().into()).unwrap();
         assert_eq!(
-            recording.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
+            recording.read::<crate::FixtureObservation>(Operation::ObserveFixture, Some(&subject)),
             Err(error)
         );
         state.send_modify(|state| state.finished = Some(Ok(finished())));
@@ -958,12 +960,12 @@ mod tests {
         assert_eq!(game.script_history, second);
         let recorded = crate::recorded::Answers::open(recording).unwrap();
         assert!(matches!(
-            recorded.read::<crate::ScriptObservation>("check_script", Some(&first)),
+            recorded.read::<crate::ScriptObservation>(Operation::CheckScript, Some(&first)),
             Err(Error::NotRecorded { .. })
         ));
         assert_eq!(
             recorded
-                .read::<crate::ScriptObservation>("check_script", Some(&second))
+                .read::<crate::ScriptObservation>(Operation::CheckScript, Some(&second))
                 .unwrap()
                 .value
                 .check,
@@ -1189,7 +1191,7 @@ mod tests {
         // The recorded answer replays the same error.
         let recorded = crate::recorded::Answers::open(recording).unwrap();
         assert!(matches!(
-            recorded.read::<crate::FixtureObservation>("observe_fixture", Some(&subject)),
+            recorded.read::<crate::FixtureObservation>(Operation::ObserveFixture, Some(&subject)),
             Err(Error::Observation { reason, .. }) if reason == "access failed"
         ));
         state.send_modify(|state| state.finished = Some(Ok(finished())));
@@ -1274,7 +1276,7 @@ mod tests {
         crate::recorded::write(
             root.path(),
             &game.build,
-            "loaded_modifiers",
+            Operation::LoadedModifiers,
             None,
             &original,
         )
@@ -1287,7 +1289,7 @@ mod tests {
         assert!(matches!(game.loaded_modifiers().await, Err(Error::Closed)));
         let recorded = crate::recorded::Answers::open(root.path().into()).unwrap();
         assert_eq!(
-            recorded.read::<crate::LoadedModifiers>("loaded_modifiers", None),
+            recorded.read::<crate::LoadedModifiers>(Operation::LoadedModifiers, None),
             original
         );
     }

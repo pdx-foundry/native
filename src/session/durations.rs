@@ -1,4 +1,5 @@
 //! Attach a command's duration groups, their omitted counts, and gaps for what is not established.
+use super::push_once;
 use crate::engine::analysis::{
     durations::{self, Combination, Group},
     grammar::GrammarResult,
@@ -20,15 +21,15 @@ pub(super) fn grammar(
     gaps: &mut Vec<Gap>,
 ) {
     let mut gap = |kind, detail: String| {
-        let gap = Gap {
-            kind,
-            subject: Some(GapSubject::answer_item(name)),
-            detail,
-        };
-
-        if !gaps.contains(&gap) {
-            gaps.push(gap);
-        }
+        let subject = Some(GapSubject::answer_item(name));
+        push_once(
+            gaps,
+            Gap {
+                kind,
+                subject,
+                detail,
+            },
+        );
     };
     let mut scoped_overlap = false;
     let groups: Vec<Duration> = result

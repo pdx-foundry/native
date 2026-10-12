@@ -1,7 +1,7 @@
 //! Static script expansion rules: inline scripts, scripted effects and triggers, script values and
 //! scripted variables.
 use super::Native;
-use super::language::gap;
+use super::gap;
 use super::questions::error;
 use crate::answer::{Answer, Basis, BuildId, Completeness, Error, Gap, GapKind, Operation, Source};
 use crate::engine::analysis::expansions::{self, ExpansionGap, ExpansionResult, Property};
@@ -23,7 +23,7 @@ impl Native {
     /// modifiers are modifier names, not expansions: [`Native::modifier_families`] gives them.
     /// Which duplicate definition wins, cycles, and runtime evaluation are outside this method.
     pub fn script_expansions(&self) -> Result<Answer<Vec<ScriptExpansion>>, Error> {
-        self.answer("script_expansions", None, || {
+        self.answer(Operation::ScriptExpansions, None, || {
             let operation = Operation::ScriptExpansions;
             let input = self
                 .declaration_analysis(operation)?

@@ -1,4 +1,5 @@
 //! Attach triggered modifier clause grammar to fields whose collected object has a clause reader.
+use super::push_once;
 use crate::engine::analysis::{
     fields::{ConcreteReader, ReaderJoin, RegistryFieldResult, RootField},
     modifier_blocks::{
@@ -276,7 +277,5 @@ fn push(gaps: &mut Vec<Gap>, kind: GapKind, subject: GapSubject, detail: String)
         detail,
     };
 
-    if !gaps.contains(&gap) {
-        gaps.push(gap);
-    }
+    push_once(gaps, gap);
 }

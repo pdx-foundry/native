@@ -1,4 +1,5 @@
 //! Attach shared weight grammar only where the field constructor proved its address point.
+use super::push_once;
 use crate::engine::analysis::{
     fields::{ReaderJoin, RegistryFieldResult, RootField, Value},
     numeric::NumericFacts,
@@ -99,11 +100,7 @@ impl Block<'_> {
     fn subject(&self, key: Option<&str>) -> GapSubject {
         let mut path = self.path.clone();
         path.extend(key.map(str::to_owned));
-        if path.len() == 1 {
-            GapSubject::field(&path[0])
-        } else {
-            GapSubject::key_path(path)
-        }
+        GapSubject::path(&path)
     }
 
     /// The scopes that the block's keys and conditions are read in. `words` gives the known
@@ -334,7 +331,7 @@ impl Block<'_> {
                     super::fields::concrete_reader_id(&nested.reader.read, &nested.reader.member);
                 let concrete = |reader: &mut Reader| {
                     reader.id = Some(id.clone());
-                    reader.family = BlockFamily::Weight;
+                    reader.family = nested.reader.family;
                 };
                 concrete(&mut key.reader);
                 for alternative in &mut key.read {
@@ -550,9 +547,8 @@ fn push(gaps: &mut Vec<Gap>, kind: GapKind, subject: GapSubject, detail: String)
         subject: Some(subject),
         detail,
     };
-    if !gaps.contains(&gap) {
-        gaps.push(gap);
-    }
+
+    push_once(gaps, gap);
 }
 
 #[cfg(test)]

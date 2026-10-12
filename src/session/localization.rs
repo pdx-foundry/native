@@ -1,15 +1,15 @@
 //! Static localization question: contexts, their commands and links, and the scope join.
 use std::collections::{BTreeMap, BTreeSet};
 
-use sha2::{Digest, Sha256};
-
 use super::Native;
-use super::language::{declared, gap, gap_for_subject, unread_scope_bits_detail};
+use super::language::{declared, unread_scope_bits_detail};
 use super::questions::{error, scope_id};
+use super::{gap, gap_for_subject};
 use crate::answer::{
     Answer, BuildId, ContextScopes, Error, Gap, GapKind, GapSubject, LocalizationCommand,
     LocalizationContext, LocalizationContextId, LocalizationContextReference,
     LocalizationDeclarations, LocalizationLink, LocalizationOutput, Operation, ScopeReference,
+    opaque_id,
 };
 use crate::engine::analysis::localization::{self, Join, LocalizationResult, METHOD, Output};
 use crate::engine::analysis::stop::Unresolved;
@@ -42,7 +42,7 @@ impl Native {
     /// # }
     /// ```
     pub fn localization_declarations(&self) -> Result<Answer<LocalizationDeclarations>, Error> {
-        self.answer("localization_declarations", None, || {
+        self.answer(Operation::LocalizationDeclarations, None, || {
             let operation = Operation::LocalizationDeclarations;
             let input = self
                 .declaration_analysis(operation)?
@@ -57,8 +57,7 @@ impl Native {
 
 /// The public identity of a localization context. It hides the engine's context value.
 fn context_id(value: u64) -> LocalizationContextId {
-    let digest = Sha256::digest(format!("localization-context/{value}").as_bytes());
-    LocalizationContextId(format!("{digest:x}")[..16].to_owned())
+    LocalizationContextId(opaque_id(&format!("localization-context/{value}")))
 }
 
 /// A link's output with context values, ordered so that rows group by name and output.

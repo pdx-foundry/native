@@ -1,5 +1,5 @@
 //! Normalize command grammar without promoting a partial property to a complete grammar.
-use super::{Native, questions::error};
+use super::{Native, push_once, questions::error};
 use crate::engine::analysis::references::{
     ReferenceFacts,
     initialization::{Initialization, InitializationLookup},
@@ -27,7 +27,7 @@ impl Native {
         name: &str,
     ) -> Result<Answer<CommandGrammar>, Error> {
         let subject = recorded_subject(kind, name);
-        self.answer("command_grammar", Some(&subject), || {
+        self.answer(Operation::CommandGrammar, Some(&subject), || {
             let result = self.command_grammar_result(kind, name)?;
             let references = self.reference_facts(Operation::CommandGrammar)?;
             let numeric = self.numeric_facts(Operation::CommandGrammar)?;
@@ -75,18 +75,9 @@ pub(super) fn registered_grammar(
     }
 }
 
-/// Encode only non-plain names in a separate namespace so no path normalization aliases them.
+/// The recording subject of a command. The recorder encodes a name that is not a plain path.
 fn recorded_subject(kind: DeclarationKind, name: &str) -> String {
-    let plain = !name.is_empty()
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
-    if plain {
-        format!("{}/{}", kind.subject(), name)
-    } else {
-        let encoded: String = name.bytes().map(|byte| format!("{byte:02x}")).collect();
-        format!("{}/encoded/x{encoded}", kind.subject())
-    }
+    format!("{}/{}", kind.subject(), name)
 }
 
 pub(super) fn registered_factory(
@@ -183,14 +174,15 @@ pub(crate) fn normalize(
     let mut gaps = Vec::new();
     let mut key_gaps = Vec::new();
     let mut gap = |kind, detail: String| {
-        let gap = Gap {
-            kind,
-            subject: Some(GapSubject::answer_item(name)),
-            detail,
-        };
-        if !gaps.contains(&gap) {
-            gaps.push(gap);
-        }
+        let subject = Some(GapSubject::answer_item(name));
+        push_once(
+            &mut gaps,
+            Gap {
+                kind,
+                subject,
+                detail,
+            },
+        );
     };
     match result {
         Err(stop) => gap(GapKind::UnresolvedReader, stop.reason.into()),
@@ -289,8 +281,7 @@ pub(crate) fn normalize(
                 for (path, stop) in &coverage.gaps {
                     let subject = match path.as_slice() {
                         [] => GapSubject::answer_item(name),
-                        [key] => GapSubject::field(key.clone()),
-                        _ => GapSubject::key_path(path.clone()),
+                        path => GapSubject::path(path),
                     };
                     key_gaps.push(Gap {
                         kind: GapKind::UnresolvedPath,
@@ -379,10 +370,7 @@ pub(crate) fn normalize(
                     if let Some(cause) = target.cause {
                         let subject = match &target.path {
                             crate::ArgumentPath::Value => GapSubject::answer_item(name),
-                            crate::ArgumentPath::Key(path) if path.len() == 1 => {
-                                GapSubject::field(path[0].clone())
-                            }
-                            crate::ArgumentPath::Key(path) => GapSubject::key_path(path.clone()),
+                            crate::ArgumentPath::Key(path) => GapSubject::path(path),
                         };
                         key_gaps.push(Gap {
                             kind: GapKind::UnresolvedPath,
@@ -427,9 +415,7 @@ pub(crate) fn normalize(
     }
     gap(GapKind::OutsideMethod, "Required keys, key combinations, defaults, value domains, occurrence limits, operators, numeric grammar, weights and runtime meaning are outside this method.".into());
     for key_gap in key_gaps {
-        if !gaps.contains(&key_gap) {
-            gaps.push(key_gap);
-        }
+        push_once(&mut gaps, key_gap);
     }
     Answer {
         value,
@@ -494,10 +480,7 @@ fn nested_reference_gaps(
         if let Some((kind, detail)) = initialization_gap(child, initialization) {
             gaps.push(Gap {
                 kind,
-                subject: Some(match path.as_slice() {
-                    [key] => GapSubject::field(key.clone()),
-                    _ => GapSubject::key_path(path.clone()),
-                }),
+                subject: Some(GapSubject::path(&path)),
                 detail,
             });
         }
@@ -1227,6 +1210,8 @@ mod tests {
             "IF",
             "encoded",
             "encoded/x69662f",
+            "hex-encoded",
+            "hex-encoded/x69662f",
         ];
         for name in names {
             let answer: Result<Answer<CommandGrammar>, Error> = Err(Error::UnknownCommand {
@@ -1236,7 +1221,7 @@ mod tests {
             crate::recorded::write(
                 root.path(),
                 &build,
-                "command_grammar",
+                Operation::CommandGrammar,
                 Some(&recorded_subject(DeclarationKind::Effect, name)),
                 &answer,
             )

@@ -35,7 +35,7 @@ pub struct Run {
     /// The method's own result, from which `answer` is derived: the grammar, or the obstruction
     /// that stopped the command's receiver join.
     pub result: Result<GrammarResult, Unresolved>,
-    /// Registration, factory and receiver joins retained even if a later stage fails.
+    /// The registrations of the command, and the receiver that the method joined.
     pub chain: Chain,
     /// Child keys whose initial owner storage the factory does not establish: a scoped
     /// destination's vtable point (`scoped-destination-state`), or the omitted count of the
@@ -86,22 +86,18 @@ pub struct Registration {
     pub factory: Option<u64>,
 }
 
-/// Available joins preceding grammar analysis. Missing stages remain absent, never inferred.
+/// What the command's registrations and the method's result establish. The method gives the
+/// receiver only with a result, so a stopped command has registrations alone; the obstruction
+/// in [`Run::result`] says where it stopped.
 #[derive(Debug, Default, serde::Serialize)]
 pub struct Chain {
-    /// The analysis stage that failed, or none when grammar analysis returned a result.
-    pub stopped_at: Option<&'static str>,
     /// All registrations with this command name.
     pub registrations: Vec<Registration>,
-    /// Unique factory selected by the same lookup as the public operation.
-    pub factory: Option<u64>,
-    /// Factory create method, if its slot is readable.
-    pub create: Option<u64>,
-    /// Concrete receiver vtable established by factory evaluation.
+    /// Concrete receiver vtable that the method joined.
     pub receiver: Option<u64>,
-    /// Virtual read method, if its slot is readable.
+    /// Virtual read method of the receiver.
     pub read: Option<u64>,
-    /// Virtual member method, if its slot is readable.
+    /// Virtual member method of the receiver.
     pub member: Option<u64>,
 }
 
@@ -196,58 +192,9 @@ fn inspect_command(
     numeric: &crate::engine::analysis::numeric::NumericFacts,
     scoped: &crate::engine::analysis::scoped_numeric::Facts,
 ) -> Run {
-    let mut chain = Chain {
-        stopped_at: Some("registration"),
-        ..Chain::default()
-    };
-    for &(instruction, ref site) in &inventory.sites {
-        match site {
-            Site::Declared {
-                name: found,
-                factory,
-                ..
-            } if found == name => chain.registrations.push(Registration {
-                instruction,
-                factory: Some(*factory),
-            }),
-            Site::Unreadable {
-                name: Some(found), ..
-            } if found == name => chain.registrations.push(Registration {
-                instruction,
-                factory: None,
-            }),
-            _ => {}
-        }
-    }
-    let result = (|| {
-        let factory = super::grammar::registered_factory(inventory, name)?
-            .ok_or_else(|| Unresolved::new("command-registration"))?;
-        chain.factory = Some(factory);
-        chain.create = input
-            .declarations
-            .pointers
-            .get(&(factory + input.declarations.slots.create))
-            .copied();
-        chain.stopped_at = Some("factory receiver");
-        let receiver = declarations::factory_vtable(&input.declarations, factory)?;
-        chain.receiver = Some(receiver);
-        chain.read = input
-            .declarations
-            .pointers
-            .get(&(receiver + input.declarations.parser_slots.read))
-            .copied();
-        chain.member = input
-            .declarations
-            .pointers
-            .get(&(receiver + input.declarations.parser_slots.member))
-            .copied();
-        chain.stopped_at = Some("reader slots and bodies");
-        declarations::reader_at_vtable(&input.declarations, receiver)?;
-        chain.stopped_at = Some("grammar");
-        let result = grammar::analyze(input, factory)?;
-        chain.stopped_at = None;
-        Ok(result)
-    })();
+    let result = super::grammar::registered_grammar(input, inventory, name)
+        .unwrap_or_else(|| Err(Unresolved::new("command-registration")));
+    let chain = chain(inventory, name, &result);
     let state_stops = result
         .as_ref()
         .map(|result| state_stops(result, scoped))
@@ -264,6 +211,42 @@ fn inspect_command(
         result,
         chain,
         state_stops,
+    }
+}
+
+fn chain(
+    inventory: &declarations::DeclarationResult,
+    name: &str,
+    result: &Result<GrammarResult, Unresolved>,
+) -> Chain {
+    let registrations = inventory
+        .sites
+        .iter()
+        .filter_map(|&(instruction, ref site)| match site {
+            Site::Declared {
+                name: found,
+                factory,
+                ..
+            } if found == name => Some(Registration {
+                instruction,
+                factory: Some(*factory),
+            }),
+            Site::Unreadable {
+                name: Some(found), ..
+            } if found == name => Some(Registration {
+                instruction,
+                factory: None,
+            }),
+            _ => None,
+        })
+        .collect();
+    let reader = result.as_ref().ok().map(|result| result.reader);
+
+    Chain {
+        registrations,
+        receiver: reader.map(|reader| reader.vtable),
+        read: reader.map(|reader| reader.read),
+        member: reader.map(|reader| reader.member),
     }
 }
 

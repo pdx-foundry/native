@@ -1,6 +1,6 @@
 //! Developer-only comparison with command target getter slots. These masks never enter answers.
 pub use crate::engine::analysis::grammar::targets::{Bit, Check, Getter};
-use crate::engine::analysis::{declarations, decode::decode_arm64, grammar::targets};
+use crate::engine::analysis::{declarations, grammar::targets};
 use crate::{DeclarationKind, Error, Native, Operation};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,26 +34,11 @@ pub fn run(native: &Native, kind: DeclarationKind) -> Result<Census, Error> {
             .collect();
         let mut commands = BTreeMap::new();
         for name in names {
-            let Some(factory) = super::grammar::registered_factory(inventory, &name)
+            let mask = super::grammar::registered_factory(inventory, &name)
                 .ok()
                 .flatten()
-            else {
-                continue;
-            };
-            let Ok(reader) = declarations::command_reader(&input.declarations, factory) else {
-                continue;
-            };
-            let Some(body) = input
-                .declarations
-                .pointers
-                .get(&(reader.vtable + input.command_bindings.target_getter_slot))
-                .and_then(|at| input.declarations.functions.get(at))
-            else {
-                continue;
-            };
-            if let Ok(rows) = decode_arm64(&body.code, body.address)
-                && let Some(mask) = declarations::constant_return(&rows)
-            {
+                .and_then(|factory| targets::slot_mask(input, factory));
+            if let Some(mask) = mask {
                 commands.insert(name, mask);
             }
         }

@@ -2,8 +2,8 @@
 use std::collections::BTreeMap;
 
 use super::Native;
-use super::language::registry_gap;
 use super::questions::error;
+use super::registry_gap;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredTags, Error, GapKind, GenerationCondition,
     ModifierFamily, NamePart, Operation, Source,
@@ -31,7 +31,7 @@ impl Native {
     /// [`Error::UnknownRegistry`].
     pub fn modifier_families(&self, registry: &str) -> Result<Answer<Vec<ModifierFamily>>, Error> {
         let registry = registry.trim_end_matches('/');
-        self.answer("modifier_families", Some(registry), || {
+        self.answer(Operation::ModifierFamilies, Some(registry), || {
             let operation = Operation::ModifierFamilies;
             let analysis = self.declaration_analysis(operation)?;
             let index = analysis

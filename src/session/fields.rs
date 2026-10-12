@@ -1,4 +1,5 @@
 //! Normalize loader paths without losing the pairing between conditions and outcomes.
+use crate::answer::opaque_id;
 use crate::engine::analysis::fields::{
     ConcreteReader, Condition, PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath,
     Value,
@@ -13,7 +14,6 @@ use crate::{
     MissingResult, Reader, ReaderId, ReaderKind, ReferenceLookup, ReferenceTarget, RepeatBehavior,
     ValueShape,
 };
-use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
@@ -29,8 +29,7 @@ pub(super) fn reader(joins: &[ReaderJoin]) -> Reader {
 
 /// One identity for a concrete read/member pair across field and command answers.
 pub(super) fn concrete_reader_id(read: &str, member: &str) -> ReaderId {
-    let digest = Sha256::digest(format!("{read}:{member}").as_bytes());
-    ReaderId(format!("{digest:x}")[..16].into())
+    ReaderId(opaque_id(&format!("{read}:{member}")))
 }
 
 /// The identity of a persistent reader. A bound delegate tells apart readers that share their
@@ -665,18 +664,15 @@ fn attach_uses(
     field.uses = uses
         .iter()
         .filter(|selection| selection.field == path)
-        .map(|selection| {
-            let digest = Sha256::digest(selection.method.as_bytes());
-            crate::FieldUse {
-                id: crate::FieldUseId(format!("{digest:x}")[..16].into()),
-                condition: FieldCondition::All(vec![
-                    FieldCondition::Unresolved,
-                    FieldCondition::FieldZero {
-                        path: selection.tested.clone(),
-                        zero: selection.zero,
-                    },
-                ]),
-            }
+        .map(|selection| crate::FieldUse {
+            id: crate::FieldUseId(opaque_id(&selection.method)),
+            condition: FieldCondition::All(vec![
+                FieldCondition::Unresolved,
+                FieldCondition::FieldZero {
+                    path: selection.tested.clone(),
+                    zero: selection.zero,
+                },
+            ]),
         })
         .collect();
     if let FieldMembers::Fields(children) = &mut field.members {

@@ -2,8 +2,8 @@
 //! field.
 use super::Native;
 use super::families::{not_established, public_parts, template};
-use super::language::{gap_for_subject, registry_gap};
 use super::questions::error;
+use super::{gap_for_subject, registry_gap};
 use crate::engine::analysis::families::Part;
 use crate::engine::analysis::names::{
     self, Condition, METHOD, Miss, Name, NameResult, Stage, Term,
@@ -29,7 +29,7 @@ impl Native {
     /// [`Error::UnknownRegistry`].
     pub fn derived_names(&self, registry: &str) -> Result<Answer<Vec<DerivedName>>, Error> {
         let registry = registry.trim_end_matches('/');
-        self.answer("derived_names", Some(registry), || {
+        self.answer(Operation::DerivedNames, Some(registry), || {
             let operation = Operation::DerivedNames;
             let analysis = self.declaration_analysis(operation)?;
             let code = analysis

@@ -14,8 +14,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
 use super::families::{public_family, unjoined_sites, unjoined_summary};
-use super::language::registry_gap;
 use super::questions::error;
+use super::registry_gap;
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, DeclaredTags, Error, Gap, GapKind, GeneratedName,
     LoadedContent, LoadedModifier, LoadedModifiers, ModifierFamily, Operation, Source,

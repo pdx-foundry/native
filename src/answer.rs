@@ -145,6 +145,15 @@ impl GapSubject {
         Self::KeyPath { path }
     }
 
+    /// The subject at a field path: the field for one key, a key path for more. `path` must not
+    /// be empty.
+    pub(crate) fn path(path: &[String]) -> Self {
+        match path {
+            [name] => Self::field(name),
+            _ => Self::key_path(path.to_vec()),
+        }
+    }
+
     pub(crate) fn field(name: impl Into<String>) -> Self {
         Self::Field { name: name.into() }
     }
@@ -165,6 +174,19 @@ mod gap_subject_tests {
     #[test]
     fn empty_key_path_has_empty_name() {
         assert_eq!(GapSubject::KeyPath { path: vec![] }.name(), "");
+    }
+
+    #[test]
+    fn a_path_is_a_field_for_one_key_and_a_key_path_for_more() {
+        let key = |name: &str| name.to_owned();
+        assert_eq!(
+            GapSubject::path(&[key("parent")]),
+            GapSubject::field("parent")
+        );
+        assert_eq!(
+            GapSubject::path(&[key("parent"), key("child")]),
+            GapSubject::key_path(vec![key("parent"), key("child")])
+        );
     }
 
     #[test]
@@ -1317,10 +1339,15 @@ pub struct ReaderId(pub(crate) String);
 
 impl ReaderId {
     pub(crate) fn from_callee(callee: &str) -> Self {
-        use sha2::{Digest, Sha256};
-        let digest = Sha256::digest(callee.as_bytes());
-        Self(format!("{digest:x}")[..16].to_owned())
+        Self(opaque_id(callee))
     }
+}
+
+/// The text of an opaque identity: the first 16 hexadecimal digits of the SHA-256 of `input`.
+/// The identity hides `input`, which names an engine fact, and is the same on every build.
+pub(crate) fn opaque_id(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(input.as_bytes()))[..16].to_owned()
 }
 
 /// Broad value form accepted by a shared reader.

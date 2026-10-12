@@ -1,5 +1,7 @@
 //! `Native`: one pinned installation, or one directory of recorded answers.
-use crate::{OpenError, UnavailableReason, binding::Binding};
+use crate::{
+    AnalysisError, Gap, GapKind, GapSubject, OpenError, UnavailableReason, binding::Binding,
+};
 use std::sync::{Arc, Mutex};
 
 pub(crate) use loaded_modifiers::ModifierJoin;
@@ -161,20 +163,18 @@ impl Native {
         } else {
             self.blocking_reasons(binding)
         };
-        if reasons.contains(&UnavailableReason::TargetChanged) {
-            return Err(Error::BuildChanged);
-        }
         if !reasons.is_empty() {
-            return Err(Error::Unsupported {
-                operation: if options.loaded_modifiers {
-                    Operation::LoadedModifiers
-                } else if options.fixture.is_some() {
-                    Operation::ObserveFixture
-                } else {
-                    Operation::Registries
-                },
-                reason: format!("{reasons:?}"),
-            });
+            let operation = if options.loaded_modifiers {
+                Operation::LoadedModifiers
+            } else if options.fixture.is_some() {
+                Operation::ObserveFixture
+            } else {
+                Operation::Registries
+            };
+            return Err(questions::error(
+                operation,
+                AnalysisError::Unavailable { reasons },
+            ));
         }
         if options.loaded_modifiers
             && binding.has_script_check_method()
@@ -247,6 +247,31 @@ impl Native {
     }
 }
 
+/// A gap at the answer item `subject`, or at no subject.
+fn gap(kind: GapKind, subject: Option<&str>, detail: impl Into<String>) -> Gap {
+    gap_for_subject(kind, subject.map(GapSubject::answer_item), detail)
+}
+
+/// A gap at the registry `registry`, or at no subject.
+fn registry_gap(kind: GapKind, registry: Option<&str>, detail: impl Into<String>) -> Gap {
+    gap_for_subject(kind, registry.map(GapSubject::registry), detail)
+}
+
+fn gap_for_subject(kind: GapKind, subject: Option<GapSubject>, detail: impl Into<String>) -> Gap {
+    Gap {
+        kind,
+        subject,
+        detail: detail.into(),
+    }
+}
+
+/// Add `gap` to `gaps` unless the list holds an equal gap already.
+fn push_once(gaps: &mut Vec<Gap>, gap: Gap) {
+    if !gaps.contains(&gap) {
+        gaps.push(gap);
+    }
+}
+
 /// The supervisor's request for one live session, with a fixed idle timeout.
 fn session_request(
     binding: &Binding,
@@ -301,4 +326,30 @@ pub async fn check_registry_load(
     let result = game.loader_items(registry).await;
     game.close().await?;
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_once_keeps_one_of_equal_gaps() {
+        let mut gaps = Vec::new();
+
+        push_once(
+            &mut gaps,
+            gap(GapKind::UnresolvedPath, Some("item"), "stopped"),
+        );
+        push_once(
+            &mut gaps,
+            gap(GapKind::UnresolvedPath, Some("item"), "stopped"),
+        );
+        push_once(
+            &mut gaps,
+            gap(GapKind::UnresolvedPath, Some("item"), "stopped later"),
+        );
+
+        let details: Vec<_> = gaps.iter().map(|gap| gap.detail.as_str()).collect();
+        assert_eq!(details, ["stopped", "stopped later"]);
+    }
 }

@@ -3,7 +3,7 @@ use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
     Field, Gap, GapKind, GapSubject, Operation, ReaderKind, Registry, ScopeId, ScopeReference,
-    Source, Support,
+    Source, Support, opaque_id,
 };
 use crate::binding::{Binding, VerifiedAnalysis, unique_named_candidate};
 use crate::engine::analysis::{
@@ -12,12 +12,10 @@ use crate::engine::analysis::{
     fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
     modifier_nodes::ModifierNodeResult,
     modifiers::{self, CategoryInput, CategoryNames},
-    readers,
     references::ReferenceFacts,
     stop::Unresolved,
 };
 use crate::{AnalysisError, UnavailableReason};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub(super) fn error(operation: Operation, error: AnalysisError) -> Error {
@@ -48,17 +46,17 @@ impl Native {
     /// write the result when a recorder is set.
     pub(super) fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
-        question: &str,
+        operation: Operation,
         subject: Option<&str>,
         method: impl FnOnce() -> Result<Answer<T>, Error>,
     ) -> Result<Answer<T>, Error> {
         let recorder = match &self.backend {
-            Backend::Recorded(answers) => return answers.read(question, subject),
+            Backend::Recorded(answers) => return answers.read(operation, subject),
             Backend::Live { recorder, .. } => recorder,
         };
         let answer = method();
         if let Some(directory) = recorder {
-            crate::recorded::write(directory, &self.build(), question, subject, &answer)?;
+            crate::recorded::write(directory, &self.build(), operation, subject, &answer)?;
         }
         answer
     }
@@ -137,7 +135,9 @@ impl Native {
             Operation::ObserveFixture | Operation::LoadedModifiers | Operation::CheckScript => {
                 match self.selected_blocking_reasons(binding) {
                     reasons if reasons.is_empty() => Support::Supported,
-                    reasons => Support::Unsupported(format!("{reasons:?}")),
+                    reasons => Support::Unsupported(
+                        error(operation, AnalysisError::Unavailable { reasons }).to_string(),
+                    ),
                 }
             }
         }
@@ -185,7 +185,7 @@ impl Native {
     /// function pointer, argument grammar, behavior, and actual scope availability are outside
     /// this method.
     pub fn declarations(&self, kind: DeclarationKind) -> Result<Answer<Vec<Declaration>>, Error> {
-        self.answer("declarations", Some(kind.subject()), || {
+        self.answer(Operation::Declarations, Some(kind.subject()), || {
             let operation = Operation::Declarations;
             let input = self
                 .declaration_analysis(operation)?
@@ -202,7 +202,9 @@ impl Native {
     /// The search covers shared database-template candidates. Custom, nested, and late loaders
     /// are outside it. Completeness says whether every candidate inside that boundary was named.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
-        self.answer("registries", None, || self.registries_from_executable())
+        self.answer(Operation::Registries, None, || {
+            self.registries_from_executable()
+        })
     }
 
     fn registries_from_executable(&self) -> Result<Answer<Vec<Registry>>, Error> {
@@ -243,7 +245,8 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
-        self.answer("registry_fields", Some(registry), || {
+        let registry = registry.trim_end_matches('/');
+        self.answer(Operation::RegistryFields, Some(registry), || {
             self.registry_fields_from_executable(registry)
         })
     }
@@ -407,8 +410,8 @@ impl Native {
     ) -> (Answer<Vec<Field>>, Vec<Gap>) {
         let registry = registry.trim_end_matches('/');
         let references = facts.references;
-        let mut gaps = normalized_gaps(result, registry, references);
         let mut value = normalized_fields(result, references);
+        let mut gaps = normalized_gaps(result, registry, references, &value);
         super::modifier_blocks::attach(
             &mut value,
             result,
@@ -608,8 +611,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
 
 /// The public identity of a scope type. It hides the engine's bit number.
 pub(crate) fn scope_id(scope: &ScopeType) -> ScopeId {
-    let digest = Sha256::digest(format!("scope-type/{}", scope.bit).as_bytes());
-    ScopeId(format!("{digest:x}")[..16].to_owned())
+    ScopeId(opaque_id(&format!("scope-type/{}", scope.bit)))
 }
 
 pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
@@ -622,10 +624,13 @@ pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
         .collect()
 }
 
+/// The gaps that `result` gives, with its normalized `fields` in the order of `result.fields`.
+/// The reader gaps follow the fields' own readers, so a field that has no reader id has one.
 fn normalized_gaps(
     result: &RegistryFieldResult,
     registry: &str,
     references: &ReferenceFacts,
+    fields: &[Field],
 ) -> Vec<Gap> {
     let mut gaps = vec![Gap {
         kind: GapKind::OutsideMethod,
@@ -640,7 +645,7 @@ fn normalized_gaps(
             .map(|field| field.name.clone())
     };
     let mut seen = BTreeSet::new();
-    for field in &result.fields {
+    for (field, built) in result.fields.iter().zip(fields) {
         if result
             .collections
             .iter()
@@ -655,42 +660,14 @@ fn normalized_gaps(
                 detail,
             });
         }
-        // A wider token path that also reads the field joins its shared reader claim.
-        let applicable: Vec<_> = super::fields::read_alternatives(field, &result.paths)
-            .into_iter()
-            .filter_map(|(_, outcome)| match outcome {
-                PathOutcome::Reader(join) => Some(join),
-                PathOutcome::Gap(unresolved) => Some(fields::ReaderJoin::Missing(unresolved)),
-                PathOutcome::Rejected => None,
-            })
-            .collect();
-        let classification = readers::classify(&applicable);
-        // One shared callee can still reach persistent readers of different concrete
-        // identities. Alternatives that all lack an identity are a separate, known hole.
-        let identities: Vec<_> = applicable
-            .iter()
-            .map(|join| super::fields::alternative_reader(join, &result.persistent).id)
-            .collect();
-        let identities_disagree = identities.iter().any(|id| *id != identities[0]);
-        let (kind, detail) = if classification.callee.is_none() || identities_disagree {
-            (
-                GapKind::UnresolvedReader,
-                "The field's alternatives do not establish one shared reader.",
-            )
-        } else if classification.kind == ReaderKind::Unknown {
-            (
-                GapKind::ReaderSemantics,
-                "The shared reader is identified, but its broad value form is not established.",
-            )
-        } else {
-            continue;
-        };
-        seen.insert((kind as u8, Some(field.name.clone()), false));
-        gaps.push(Gap {
-            kind,
-            subject: Some(GapSubject::field(field.name.clone())),
-            detail: detail.into(),
-        });
+        if let Some((kind, detail)) = reader_gap(&built.reader) {
+            seen.insert((kind as u8, Some(field.name.clone()), false));
+            gaps.push(Gap {
+                kind,
+                subject: Some(GapSubject::field(field.name.clone())),
+                detail: detail.into(),
+            });
+        }
     }
     for gap in &result.gaps {
         if gap.path.is_some_and(|index| {
@@ -753,7 +730,7 @@ fn normalized_gaps(
             detail: format!("{unnamed} reader paths have no recovered literal field name; anonymous or dynamic keys remain unresolved."),
         });
     }
-    for field in normalized_fields(result, references) {
+    for field in fields {
         if field
             .read
             .iter()
@@ -769,14 +746,19 @@ fn normalized_gaps(
         }
     }
     for collection in &result.collections {
-        let Some(parent) = result
+        let Some((parent, built)) = result
             .fields
             .iter()
-            .find(|field| field.token == collection.token)
+            .zip(fields)
+            .find(|(root, _)| root.token == collection.token)
         else {
             continue;
         };
-        for mut gap in normalized_gaps(&collection.fields, registry, references) {
+        let members = match &built.members {
+            crate::FieldMembers::Fields(members) => members.as_slice(),
+            _ => &[],
+        };
+        for mut gap in normalized_gaps(&collection.fields, registry, references, members) {
             if gap.kind == GapKind::OutsideMethod {
                 continue;
             }
@@ -825,6 +807,25 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
         if let crate::FieldMembers::Fields(children) = &field.members {
             storage_gaps(children, Some(&name), gaps);
         }
+    }
+}
+
+/// The gap that a field's reader leaves: no identity means that the field's paths did not
+/// establish one shared reader, and an identity with an unknown kind means that the value form is
+/// not established.
+fn reader_gap(reader: &crate::Reader) -> Option<(GapKind, &'static str)> {
+    if reader.id.is_none() {
+        Some((
+            GapKind::UnresolvedReader,
+            "The field's alternatives do not establish one shared reader.",
+        ))
+    } else if reader.kind == ReaderKind::Unknown {
+        Some((
+            GapKind::ReaderSemantics,
+            "The shared reader is identified, but its broad value form is not established.",
+        ))
+    } else {
+        None
     }
 }
 
@@ -966,9 +967,27 @@ mod field_gap_tests {
         }
     }
 
+    /// The gaps of `result` with its normalized fields.
+    fn field_gaps(result: &RegistryFieldResult) -> Vec<Gap> {
+        let references = ReferenceFacts::default();
+        let fields = normalized_fields(result, &references);
+        normalized_gaps(result, REGISTRY, &references, &fields)
+    }
+
+    /// A persistent read whose destination holds no known reader, so its field has no identity.
+    fn unplaced_persistent_read() -> ReaderJoin {
+        use crate::engine::analysis::fields::Value;
+
+        ReaderJoin::Joined {
+            callee: "CReader::Read(CPersistent&)".into(),
+            arguments: [("x1".into(), Value::Owner(0x10))].into(),
+            tail: true,
+        }
+    }
+
     /// The public gaps besides the method's boundary, which every answer carries.
     fn public_gaps(gaps: Vec<FieldGap>) -> Vec<Gap> {
-        let mut public = normalized_gaps(&result(gaps), REGISTRY, &ReferenceFacts::default());
+        let mut public = field_gaps(&result(gaps));
         assert_eq!(public.remove(0).kind, GapKind::OutsideMethod);
         public
     }
@@ -1013,7 +1032,7 @@ mod field_gap_tests {
             outcome: PathOutcome::Gap(Unresolved::new("wide-path")),
         });
 
-        let public = normalized_gaps(&result, REGISTRY, &ReferenceFacts::default());
+        let public = field_gaps(&result);
 
         assert!(
             public
@@ -1053,12 +1072,10 @@ mod field_gap_tests {
             result
         };
         let reader_gap = |result: &RegistryFieldResult| {
-            normalized_gaps(result, REGISTRY, &ReferenceFacts::default())
-                .iter()
-                .any(|gap| {
-                    gap.kind == GapKind::UnresolvedReader
-                        && gap.subject == Some(GapSubject::field("known"))
-                })
+            field_gaps(result).iter().any(|gap| {
+                gap.kind == GapKind::UnresolvedReader
+                    && gap.subject == Some(GapSubject::field("known"))
+            })
         };
 
         let disagreeing = with_wide_path(0x20);
@@ -1070,6 +1087,101 @@ mod field_gap_tests {
         let field = &normalized_fields(&agreeing, &ReferenceFacts::default())[0];
         assert!(field.reader.id.is_some());
         assert!(!reader_gap(&agreeing));
+    }
+
+    #[test]
+    fn a_persistent_read_of_an_unknown_destination_is_a_reader_gap_of_that_field() {
+        let mut result = result(vec![]);
+        let persistent = unplaced_persistent_read();
+        result.fields[0].readers = vec![persistent.clone()];
+        result.paths[0].outcome = PathOutcome::Reader(persistent);
+
+        let field = &normalized_fields(&result, &ReferenceFacts::default())[0];
+        assert_eq!(field.reader.id, None);
+
+        let reader_gaps: Vec<_> = field_gaps(&result)
+            .into_iter()
+            .filter(|gap| gap.kind == GapKind::UnresolvedReader)
+            .collect();
+        assert_eq!(reader_gaps.len(), 1);
+        assert_eq!(reader_gaps[0].subject, Some(GapSubject::field("known")));
+    }
+
+    #[test]
+    fn a_reader_with_an_identity_and_an_unknown_kind_is_a_semantics_gap() {
+        let mut result = result(vec![]);
+        let unclassified = ReaderJoin::Joined {
+            callee: "CUnclassified::Read(CReader&)".into(),
+            arguments: BTreeMap::new(),
+            tail: true,
+        };
+        result.fields[0].readers = vec![unclassified.clone()];
+        result.paths[0].outcome = PathOutcome::Reader(unclassified);
+
+        let field = &normalized_fields(&result, &ReferenceFacts::default())[0];
+        assert!(field.reader.id.is_some());
+        assert_eq!(field.reader.kind, ReaderKind::Unknown);
+
+        let public = field_gaps(&result);
+        assert!(public.iter().any(|gap| gap.kind == GapKind::ReaderSemantics
+            && gap.subject == Some(GapSubject::field("known"))));
+        assert!(
+            public
+                .iter()
+                .all(|gap| gap.kind != GapKind::UnresolvedReader)
+        );
+    }
+
+    #[test]
+    fn a_field_with_a_reader_path_gap_and_no_reader_id_has_one_reader_gap() {
+        let mut result = result(vec![FieldGap {
+            path: Some(0),
+            ..FieldGap::new(FieldGapKind::ReaderJoin, "stopped")
+        }]);
+        let persistent = unplaced_persistent_read();
+        result.fields[0].readers = vec![persistent.clone()];
+        result.paths[0].outcome = PathOutcome::Reader(persistent);
+
+        let reader_gaps: Vec<_> = field_gaps(&result)
+            .into_iter()
+            .filter(|gap| gap.subject == Some(GapSubject::field("known")))
+            .collect();
+
+        assert_eq!(reader_gaps.len(), 1);
+        assert_eq!(reader_gaps[0].kind, GapKind::UnresolvedReader);
+    }
+
+    #[test]
+    fn a_collection_member_without_a_reader_id_is_a_reader_gap_of_its_dotted_name() {
+        use crate::engine::analysis::fields::CollectionField;
+
+        let persistent = unplaced_persistent_read();
+        let mut member = result(vec![]);
+        member.fields[0].name = "child".into();
+        member.fields[0].readers = vec![persistent.clone()];
+        member.paths[0].outcome = PathOutcome::Reader(persistent);
+        let mut parent = result(vec![]);
+        parent.collections.push(CollectionField {
+            token: 7,
+            offset: 0x40,
+            data_offset: None,
+            count_offset: None,
+            class: "CChild".into(),
+            reader: None,
+            fields: Box::new(member),
+            container_mask: None,
+        });
+
+        let reader_gaps: Vec<_> = field_gaps(&parent)
+            .into_iter()
+            .filter(|gap| gap.kind == GapKind::UnresolvedReader)
+            .collect();
+
+        assert_eq!(reader_gaps.len(), 1);
+        assert_eq!(
+            reader_gaps[0].subject,
+            Some(GapSubject::field("known.child"))
+        );
     }
 
     #[test]

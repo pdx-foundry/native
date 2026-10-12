@@ -1,10 +1,9 @@
 //! Dynamic-name namespaces from the stores that flag commands reach.
 use std::collections::{BTreeMap, BTreeSet};
 
-use sha2::{Digest, Sha256};
-
 use super::Native;
 use super::questions::{error, scope_references};
+use crate::answer::opaque_id;
 use crate::engine::analysis::declarations::ScopeType;
 use crate::engine::analysis::dynamic_names::{
     self, CommandNames, NameOutcome, Role, routes::Route,
@@ -23,7 +22,7 @@ impl Native {
     /// stores an interned flag index. Two commands share a namespace only when both reach the
     /// same store. Saved event targets and variables are outside it.
     pub fn dynamic_names(&self) -> Result<Answer<Vec<DynamicNamespace>>, Error> {
-        self.answer("dynamic_names", None, || {
+        self.answer(Operation::DynamicNames, None, || {
             let commands = self.dynamic_name_commands()?;
             Ok(normalize(&commands, self.build()))
         })
@@ -81,9 +80,7 @@ impl StoreKey {
                 ..
             } => format!("dynamic-names/scope/{bit}/{terminal:x}/{offset:x}"),
         };
-        let digest = Sha256::digest(text.as_bytes());
-
-        DynamicNamespaceId(format!("{digest:x}")[..16].to_owned())
+        DynamicNamespaceId(opaque_id(&text))
     }
 
     fn owner(&self) -> NamespaceOwner {

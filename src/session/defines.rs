@@ -15,7 +15,7 @@ impl Native {
     /// The search covers compiled `NDefines` and `NUncheckedDefines` helpers in the
     /// executable. Defaults, bounds, documentation and shipped-file entries are outside it.
     pub fn defines(&self) -> Result<Answer<Vec<Define>>, Error> {
-        self.answer("defines", None, || {
+        self.answer(Operation::Defines, None, || {
             let operation = Operation::Defines;
             let input = self
                 .declaration_analysis(operation)?

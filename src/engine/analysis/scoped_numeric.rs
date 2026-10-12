@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use super::decode::Instruction;
 use super::references::shapes::{Bindings, Shape, canonical_local};
 use super::stop::Unresolved;
+use crate::ScopedReferenceKind;
 
 #[derive(Clone)]
 pub(crate) struct SubtypeInput {
@@ -56,7 +57,8 @@ pub(crate) struct Shared {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Forms {
-    pub prefixes: [String; 3],
+    /// The reference kind that each prefix selects.
+    pub prefixes: [(ScopedReferenceKind, String); 3],
     pub separator: String,
 }
 
@@ -163,9 +165,12 @@ fn forms(bindings: &Bindings) -> Result<Forms, Unresolved> {
     Ok(Forms {
         separator: string("separator")?,
         prefixes: [
-            string("trigger_prefix")?,
-            string("modifier_prefix")?,
-            string("script_value_prefix")?,
+            (ScopedReferenceKind::Trigger, string("trigger_prefix")?),
+            (ScopedReferenceKind::Modifier, string("modifier_prefix")?),
+            (
+                ScopedReferenceKind::ScriptValue,
+                string("script_value_prefix")?,
+            ),
         ],
     })
 }
@@ -511,7 +516,14 @@ mod tests {
         );
         let forms = facts.shared.forms.as_ref().unwrap();
         assert_eq!(forms.separator, ":");
-        assert_eq!(forms.prefixes, ["trigger", "modifier", "value"]);
+        assert_eq!(
+            forms.prefixes,
+            [
+                (ScopedReferenceKind::Trigger, "trigger".to_owned()),
+                (ScopedReferenceKind::Modifier, "modifier".to_owned()),
+                (ScopedReferenceKind::ScriptValue, "value".to_owned()),
+            ]
+        );
 
         let mut missing_read = input.clone();
         missing_read.bodies.remove(&input.reader_name);
@@ -553,7 +565,7 @@ mod tests {
         }
         assert_eq!(
             analyze(&renamed_prefix).shared.forms.unwrap().prefixes[0],
-            "cause"
+            (ScopedReferenceKind::Trigger, "cause".to_owned())
         );
 
         let mut missing_dispatch = input.clone();

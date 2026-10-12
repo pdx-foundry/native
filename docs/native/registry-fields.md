@@ -173,6 +173,14 @@ on a modifier-block fixed key names the full field path from the root field or c
 conservative broad value kind. The kinds promise no complete grammar, valid ranges, occurrence
 rules, reference ownership, nested behavior or runtime behavior, so a known identity can still
 have kind `Unknown`. A missing identity means that the paths did not establish one shared reader.
+The gap follows the field's own `Field.reader`, which the method builds once: no identity gives an
+`UnresolvedReader` gap, and an identity with kind `Unknown` gives a `ReaderSemantics` gap. A nested
+field of a collection gets its gap under its dotted name, and a collection field itself, which
+always has an identity, gets none. A reader path gap on the same field adds no second
+`UnresolvedReader` gap. A persistent read whose destination holds no known reader has no identity,
+so its field has the gap too. On M452, 368 of the 1,639 root and nested fields have no identity
+and 5 have an identity with kind `Unknown`; each has its gap. A field that a gap already names
+gets no container-category gap of its own ([modifier masks](modifier-masks.md)).
 `Reader.family` identifies the child family separately. Conditional read alternatives keep their
 own families; conflicting or unresolved alternatives cannot establish an unconditional family.
 Constructor joins refine generic persistent reader identities. Modifier fields carry

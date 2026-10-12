@@ -9,16 +9,23 @@
 //! the content directory, such as `common/traditions`. The language
 //! questions use `<question>.json`, such as `on_actions.json`, `game_rules.json`, `defines.json`,
 //! `dynamic_names.json` and `modifier_nodes.json`, and
-//! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json` for
-//! plain names; other names use an injective hex component under `<kind>/encoded/`. Fixture answers use
-//! `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys, not provenance.
-//! The loaded modifier inventory uses `loaded_modifiers.json`, or
+//! `declarations/<kind>.json`. Command grammar uses `command_grammar/<kind>/<name>.json`. Fixture
+//! answers use `observe_fixture/<files-hash>/<request-hash>.json`; hashes are internal lookup keys,
+//! not provenance. The loaded modifier inventory uses `loaded_modifiers.json`, or
 //! `loaded_modifiers/<files-hash>/<request-hash>.json` for a session with a fixture.
 //!
-//! Each write goes to its own `<file>.<process>.<count>.tmp` and is then renamed, so a reader never
-//! sees a partial file, even while two queries record at once. One recorder writes to a directory
-//! at a time.
-use crate::answer::{Answer, Basis, BuildId, Error};
+//! A subject whose every `/`-separated segment holds only `[a-z0-9_]` names its file directly, as
+//! above. Any other subject (an uppercase, hyphenated, empty or `..` name, which a caller can
+//! pass and a method answers with an error) is recorded as `<operation>/hex-encoded/x<hex>.json`,
+//! where `<hex>` is the hex of the whole subject. No plain segment holds the `-` of `hex-encoded`,
+//! and the hex is injective, so no subject leaves the root or takes another subject's file. A
+//! subject over 124 bytes has an encoded name over the 255-byte file name limit, and recording
+//! it fails with `Error::Recorded`. Change this when a caller must record such a subject.
+//!
+//! Each write goes to its own `.<process>.<count>.tmp` beside the file and is then renamed, so a
+//! reader never sees a partial file, even while two queries record at once. One recorder writes to
+//! a directory at a time.
+use crate::answer::{Answer, Basis, BuildId, Error, Operation};
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -42,7 +49,7 @@ impl Answers {
 
     /// Whether an answer file is present where the operation's questions read it; decoding
     /// remains the query's job. A file at the other layout is not an answer.
-    pub(crate) fn contains(&self, operation: crate::Operation) -> bool {
+    pub(crate) fn contains(&self, operation: Operation) -> bool {
         let path = self.directory.join(operation.name());
         let (file, directory) = match layout(operation) {
             Layout::File => (true, false),
@@ -55,13 +62,13 @@ impl Answers {
     /// Preserve the original build, and mark the answer as recorded regardless of its file.
     pub(crate) fn read<T: DeserializeOwned>(
         &self,
-        question: &str,
+        operation: Operation,
         subject: Option<&str>,
     ) -> Result<Answer<T>, Error> {
-        let mut answer = read(&self.directory, question, subject)?;
+        let mut answer = read(&self.directory, operation, subject)?;
         if answer.source.build != self.build {
             return Err(Error::Recorded(format!(
-                "{question}: answer build differs from build.json"
+                "{operation}: answer build differs from build.json"
             )));
         }
         answer.source.basis = Basis::Recorded;
@@ -98,44 +105,52 @@ fn publish(path: &Path, bytes: &[u8]) -> Result<(), Error> {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
 
+    // The temporary name is short and its own, so a final name near the file name limit fits.
     let write = WRITES.fetch_add(1, Ordering::Relaxed);
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(format!(".{}.{write}.tmp", std::process::id()));
+    let temporary = path.with_file_name(format!(".{}.{write}.tmp", std::process::id()));
     std::fs::write(&temporary, bytes).map_err(failed)?;
     std::fs::rename(&temporary, path).map_err(failed)
 }
 
-/// Location of one question's file. A subject that could leave the directory is refused.
-fn path(root: &Path, question: &str, subject: Option<&str>) -> Result<PathBuf, Error> {
-    let mut path = root.join(question);
-    if let Some(subject) = subject {
-        let plain = |segment: &str| {
-            !segment.is_empty()
-                && segment
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
-        };
-        let subject = subject.trim_end_matches('/');
-        if !subject.split('/').all(plain) {
-            return Err(Error::NotRecorded {
-                question: format!("{question}/{subject}"),
-            });
+/// The directory component of every encoded subject. Its `-` is outside the plain alphabet, so no
+/// plain subject names it.
+const ENCODED: &str = "hex-encoded";
+
+/// Location of one operation's file. Any subject has one, and it lies inside `root`.
+fn path(root: &Path, operation: Operation, subject: Option<&str>) -> PathBuf {
+    let mut path = root.join(operation.name());
+    match subject {
+        None => {}
+        Some(subject) if is_plain(subject) => path.push(subject),
+        Some(subject) => {
+            let hex: String = subject.bytes().map(|byte| format!("{byte:02x}")).collect();
+            path.push(ENCODED);
+            path.push(format!("x{hex}"));
         }
-        path.push(subject);
     }
     path.set_extension("json");
-    Ok(path)
+    path
+}
+
+/// Whether every segment of `subject` is a non-empty run of `[a-z0-9_]`.
+fn is_plain(subject: &str) -> bool {
+    subject.split('/').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    })
 }
 
 fn read<T: DeserializeOwned>(
     root: &Path,
-    question: &str,
+    operation: Operation,
     subject: Option<&str>,
 ) -> Result<Answer<T>, Error> {
-    let path = path(root, question, subject)?;
+    let path = path(root, operation, subject);
     let named = || match subject {
-        Some(subject) => format!("{question}/{subject}"),
-        None => question.to_owned(),
+        Some(subject) => format!("{operation}/{subject}"),
+        None => operation.to_string(),
     };
     let bytes = match std::fs::read(&path) {
         Ok(bytes) => bytes,
@@ -153,11 +168,11 @@ fn read<T: DeserializeOwned>(
 pub(crate) fn write<T: Serialize>(
     root: &Path,
     build: &BuildId,
-    question: &str,
+    operation: Operation,
     subject: Option<&str>,
     answer: &Result<Answer<T>, Error>,
 ) -> Result<(), Error> {
-    let path = path(root, question, subject)?;
+    let path = path(root, operation, subject);
     record_build(root, build)?;
     let mut bytes = serde_json::to_vec_pretty(answer).expect("answers serialize");
     bytes.push(b'\n');
@@ -174,8 +189,8 @@ enum Layout {
     FileOrDirectory,
 }
 
-fn layout(operation: crate::Operation) -> Layout {
-    use crate::Operation::*;
+fn layout(operation: Operation) -> Layout {
+    use Operation::*;
     match operation {
         RegistryFields | ModifierFamilies | DerivedNames | Declarations | CommandGrammar
         | ObserveFixture | CheckScript => Layout::Directory,
@@ -222,13 +237,22 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let build = BuildId("original".into());
         let answer: Result<Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
-        write(root.path(), &build, "registries", None, &answer).unwrap();
+        write(root.path(), &build, Operation::Registries, None, &answer).unwrap();
         let recorded = Answers::open(root.path().into()).unwrap();
         assert_eq!(recorded.build, build);
-        assert_eq!(recorded.read::<Vec<String>>("registries", None), answer);
+        assert_eq!(
+            recorded.read::<Vec<String>>(Operation::Registries, None),
+            answer
+        );
         let different = BuildId("different".into());
         assert!(matches!(
-            write(root.path(), &different, "registries", None, &answer),
+            write(
+                root.path(),
+                &different,
+                Operation::Registries,
+                None,
+                &answer
+            ),
             Err(Error::Recorded(_))
         ));
         assert_eq!(Answers::open(root.path().into()).unwrap().build, build);
@@ -246,12 +270,12 @@ mod tests {
         ));
 
         let answer: Result<Answer<Vec<String>>, Error> = Err(Error::BuildChanged);
-        write(root.path(), &build, "scopes", None, &answer).unwrap();
+        write(root.path(), &build, Operation::Scopes, None, &answer).unwrap();
         let recorded = Answers::open(root.path().into()).unwrap();
         assert_eq!(recorded.build, build);
-        assert!(!recorded.contains(crate::Operation::Registries));
+        assert!(!recorded.contains(Operation::Registries));
         assert!(matches!(
-            recorded.read::<Vec<String>>("registries", None),
+            recorded.read::<Vec<String>>(Operation::Registries, None),
             Err(Error::NotRecorded { .. })
         ));
         let left_over: Vec<_> = std::fs::read_dir(root.path())
@@ -271,8 +295,8 @@ mod tests {
             for _ in 0..2 {
                 scope.spawn(|| {
                     for _ in 0..50 {
-                        for question in ["registries", "scopes"] {
-                            write(root.path(), &build, question, None, &answer).unwrap();
+                        for operation in [Operation::Registries, Operation::Scopes] {
+                            write(root.path(), &build, operation, None, &answer).unwrap();
                         }
                     }
                 });
@@ -281,14 +305,116 @@ mod tests {
 
         let recorded = Answers::open(root.path().into()).unwrap();
         assert_eq!(recorded.build, build);
-        for question in ["registries", "scopes"] {
-            assert_eq!(recorded.read::<Vec<String>>(question, None), answer);
+        for operation in [Operation::Registries, Operation::Scopes] {
+            assert_eq!(recorded.read::<Vec<String>>(operation, None), answer);
         }
     }
 
     #[test]
+    fn plain_subjects_keep_their_file_names() {
+        let root = Path::new("recording");
+        assert_eq!(
+            path(root, Operation::RegistryFields, Some("common/traditions")),
+            root.join("registry_fields/common/traditions.json")
+        );
+        assert_eq!(
+            path(root, Operation::CommandGrammar, Some("effect/add_district")),
+            root.join("command_grammar/effect/add_district.json")
+        );
+        assert_eq!(
+            path(root, Operation::Registries, None),
+            root.join("registries.json")
+        );
+    }
+
+    #[test]
+    fn a_subject_at_the_encoded_length_limit_is_recorded() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("recording");
+        let build = BuildId("original".into());
+        let subject = "A".repeat(124);
+        let error: Result<Answer<Vec<String>>, Error> = Err(Error::UnknownRegistry {
+            name: subject.clone(),
+        });
+
+        write(
+            &root,
+            &build,
+            Operation::RegistryFields,
+            Some(&subject),
+            &error,
+        )
+        .unwrap();
+        let recorded = Answers::open(root).unwrap();
+        assert_eq!(
+            recorded.read::<Vec<String>>(Operation::RegistryFields, Some(&subject)),
+            error
+        );
+    }
+
+    #[test]
+    fn every_subject_gets_its_own_file_inside_the_root() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("recording");
+        let build = BuildId("original".into());
+        // The encoded name of "A" is `x41`; plain subjects that look like it are separate files.
+        let subjects = [
+            "common/traditions",
+            "Common/Traditions",
+            "common/some-thing",
+            "",
+            "/",
+            "common//traditions",
+            "common/traditions/",
+            "../escape",
+            "common/../../escape",
+            "A",
+            "x41",
+            "encoded/x41",
+            "hex-encoded/x41",
+            "hex-encoded",
+        ];
+        for subject in subjects {
+            let error: Result<Answer<Vec<String>>, Error> = Err(Error::UnknownRegistry {
+                name: subject.into(),
+            });
+            let operation = Operation::RegistryFields;
+
+            write(&root, &build, operation, Some(subject), &error).unwrap();
+        }
+
+        let recorded = Answers::open(root.clone()).unwrap();
+        for subject in subjects {
+            assert_eq!(
+                recorded.read::<Vec<String>>(Operation::RegistryFields, Some(subject)),
+                Err(Error::UnknownRegistry {
+                    name: subject.into()
+                }),
+                "{subject:?}"
+            );
+        }
+        let outside: Vec<_> = std::fs::read_dir(base.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(outside, ["recording"]);
+        let mut files = Vec::new();
+        let mut directories = vec![root];
+        while let Some(directory) = directories.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    directories.push(entry);
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        assert_eq!(files.len(), subjects.len() + 1, "{files:?}");
+    }
+
+    #[test]
     fn support_follows_the_layout_that_each_operation_reads() {
-        use crate::Operation;
         let root = tempfile::tempdir().unwrap();
         let build = BuildId("original".into());
         let answer: Result<Answer<Vec<String>>, Error> = Ok(Answer {
@@ -303,18 +429,39 @@ mod tests {
             },
         });
         // A subject file under a singleton question is not where `registries()` reads.
-        write(root.path(), &build, "registries", Some("archive"), &answer).unwrap();
-        // A singleton file for a subject question is not where `observe_fixture` reads.
-        write(root.path(), &build, "observe_fixture", None, &answer).unwrap();
         write(
             root.path(),
             &build,
-            "registry_fields",
+            Operation::Registries,
+            Some("archive"),
+            &answer,
+        )
+        .unwrap();
+        // A singleton file for a subject question is not where `observe_fixture` reads.
+        write(
+            root.path(),
+            &build,
+            Operation::ObserveFixture,
+            None,
+            &answer,
+        )
+        .unwrap();
+        write(
+            root.path(),
+            &build,
+            Operation::RegistryFields,
             Some("common/traditions"),
             &answer,
         )
         .unwrap();
-        write(root.path(), &build, "loaded_modifiers", None, &answer).unwrap();
+        write(
+            root.path(),
+            &build,
+            Operation::LoadedModifiers,
+            None,
+            &answer,
+        )
+        .unwrap();
         let recorded = Answers::open(root.path().into()).unwrap();
         assert!(!recorded.contains(Operation::Registries));
         assert!(!recorded.contains(Operation::ObserveFixture));
