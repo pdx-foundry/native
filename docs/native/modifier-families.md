@@ -8,7 +8,9 @@ The module comments of `engine/analysis/families.rs`, `families/joins.rs`, `fami
 holds the engine facts, the M45-release result, the gaps and the pitfalls. The
 [engine knowledge index](../engine-knowledge.md) lists the other pages.
 
-## Engine code (M45-release)
+## Engine code
+
+This code is from M45-release.
 
 ### Generation calls
 
@@ -148,9 +150,9 @@ must read both words and take the copy when they differ.
   state therefore cannot change the modifier table. Native's sessions set a private `HOME`, so
   the game finds no Steam client and prints no mount failure.
 
-## Result on M45-release
+## Loaded table result
 
-The loaded table has 45,578 entries. The names, their order and every tag list equal the
+On M45-release the loaded table has 45,578 entries. The names, their order and every tag list equal the
 `modifiers.log` that the engine writes in the same session. The table has 571 declared names
 (they join `Native::modifiers`), 5,432 names that a returned family generates for a loaded item,
 and 39,576 unexplained names. `terraforming_cost_mult` is both declared and generated (by the

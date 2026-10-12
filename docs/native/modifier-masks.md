@@ -84,9 +84,9 @@ method confirmed them and corrected one.
 - **Parse-time containers.** The registry field method reads them; see
   [container masks](#container-masks) below.
 
-## Result on M452
+## Node result
 
-34 nodes. 33 have a followed construction and a resolved mask; node 0 is a gap. Node 14 has two
+On M452 the graph has 34 nodes. 33 have a followed construction and a resolved mask; node 0 is a gap. Node 14 has two
 owners, and node 31 (the ship) has two masks. `tests/expected/m452/modifier-nodes.json` holds the
 whole answer. M452 has one country node where M451-hotfix had two: the M451-hotfix node 1, which
 had no source nodes, is gone, and the colony node no longer receives it. Every other node keeps its
@@ -227,9 +227,9 @@ Stated assumptions, true for M451-hotfix by the scans above: no code writes a co
 between its construction and the check, and the galactic-object initializer runs before any parse.
 Extend the walk when a new build shows another writer.
 
-### Result on M452
+### Container result
 
-`tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
+On M452, `tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
 fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys, with no unresolved
 modifier field. The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
 `__common` form (psionic aura `triggered_system_modifier`, system) resolve. Tradition `modifier`
@@ -406,8 +406,9 @@ starbase has seven nodes.
   off the end after a call to `__Unwind_Resume`.
 - **Path count.** An owner constructor splits on each `cset` of an unknown comparison (one for each
   node that it constructs; 7 in `CStarbase::CStarbase()`) and on each loop pass. The second country
-  node needs 1,296 paths. The method raises the run's path limit to 4,096. Read the mask word once
-  for each distinct address, not once for each path: an initializer search for each path took
-  5 seconds on one galactic-object call.
+  node on M451-hotfix needs 1,296 paths. The method raises the run's path limit to 4,096. Read the
+  mask word once for each distinct address, not once for each path: an initializer search for each
+  path took 5 seconds on one galactic-object call. The scratch memory of an owner and of a node is
+  0x10000 bytes; constructors on M451-hotfix write below 0x1000 of their object.
 - **Replicating loads.** The ship, fleet, megastructure and galactic-community constructors run
   `ld1r` before the call. The shared evaluator now runs it; before, it stopped those paths.

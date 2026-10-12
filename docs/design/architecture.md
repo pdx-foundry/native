@@ -174,8 +174,16 @@ holds the exact addresses, object sizes, offsets and writes. A build adaptation 
 places.
 
 The content directory identifies a registry on the caller, supervisor and worker sides; the
-supervisor derives its loader bindings again from the executable and never trusts caller
-addresses.
+supervisor derives its loader bindings again from the executable and trusts no caller address, with
+one exception.
+
+**Exception: script-check receivers.** `Game` computes the duration receivers of a script check (the
+vtables and slots of the commands that the text names) from its own `Binding`. `Control::CheckScript`
+carries them, and the supervisor checks only their count before it passes them to the worker. It
+does not derive them again, because the caller and the supervisor are the same Native build. The
+handshake refuses a different Native build, and the supervisor refuses a different game build. The
+condition for a change is a supervisor that can run a different build from its caller. Then the
+supervisor must derive the receivers from its own binding or verify them.
 
 ## Binding once, executing without target tests
 

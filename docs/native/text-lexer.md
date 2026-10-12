@@ -75,7 +75,7 @@ through `}` (0x7d). The shape sends every other byte to a word.
   goes to `ParseAdvancedStatementWithVariables` ([script expansion](script-expansion.md)). A `}`
   value is rebuilt as token 4.
 - The numeric token conversions read the text pointer at token `+0x10` and do not check the kind
-  or the quoted flag ([numeric conversion](numeric-conversion.md#engine-boundary-facts-m451-hotfix)).
+  or the quoted flag ([numeric conversion](numeric-conversion.md#engine-boundary-facts)).
 - **End of input.** `GetTok` returns 0 when the byte that ended a word was 0xff
   (`0x1025b1544`–`0x1025b1550`). The reader's lookahead (`0x1025b7ab4`–`0x1025b7ae4`) then
   writes kind `0x13` to the lexer token and keeps the result. The next `GetTok` call returns the

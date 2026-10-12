@@ -97,7 +97,7 @@ Milestone 4 completes only when all of these hold:
    static entry bindings against hand-read call sites and independent scope expectations.
 3. **Method transfer:** each method runs unchanged over its full registry or command inventory,
    recording complete, partial and failed counts and distinct failure shapes. SDK-569 passes.
-   Production registry validation follows the bound build; M452 parity explicitly asserts
+   Production registry validation follows the bound build; parity explicitly asserts
    164 registries as a regression expectation, not a production cap.
 4. **Atlas integration (SDK-597, then SDK-625):** two established field branches and one
    unresolved branch survive assembly, verification, comparison and coverage; an established
@@ -122,7 +122,7 @@ swap's name carries `inherit_name` as a field condition, and the swap tooltips c
 `inherit_effects`. The tradition icon (`GFX_` and the key) is composed by interface code, outside
 that method. SDK-597 must preserve the processing stage and unresolved context. This is not a new
 exclusion from SDK-600. The exact-build findings and remaining work are in
-[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance-m45-release)
+[registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance)
 and [derived names](native/derived-names.md).
 
 ## Release and later work

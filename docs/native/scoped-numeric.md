@@ -5,7 +5,9 @@ literal-assignment properties, with their analysis versions and expected output,
 `d8f9d8a`, with the evaluated world results; their pitfalls are on
 [ready-world observations](ready-world.md).
 
-## Engine facts and method (M45-release to M452)
+## Engine facts and method
+
+The facts and the method cover M45-release to M452.
 
 `CVariableValue::Read` and `Assign` share one operand reader. A destination's constructor vtable
 point selects `CIntVariableValue` (signed 32-bit, scale 1), `CFixedPointVariableValue` (signed
@@ -81,7 +83,9 @@ reader, so no form carries an `Assign` reader. The one form with a scoped reader
   use `cycle_length_in_days` (`tests/expected/scoped-numeric-m452/cases.json` maps each case).
 - An incomplete diagnostic source join is not complete coverage.
 
-## Transfer to the 4.5.1 hotfix
+## Transfer: compiler paths and jump-table bases
+
+This transfer is from M45-release to M451-hotfix.
 
 The canonical bodies align instruction for instruction with M45-release, but diagnostic strings
 carry another compiler source directory, and both numeric `GetValue` bodies form relocated local
@@ -91,7 +95,9 @@ matches each local `adr` by its relative instruction position; a different targe
 outside the body or any changed instruction still fails. Shape captures are in
 `.local/sdk-650/hotfix/scoped-*`.
 
-## Transfer to M452
+## Transfer: store pages and token IDs
+
+This transfer is from M451-hotfix to M452.
 
 The canonical bodies again align instruction for instruction. Two literals broke the match:
 

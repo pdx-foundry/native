@@ -99,7 +99,7 @@ under [generation calls](modifier-families.md#generation-calls). M45-release has
 The 11 calls and the other sites that generate modifiers at run time are `UnnamedDeclaration` gaps
 here. The [modifier families](modifier-families.md#generation-calls) page lists them and joins
 them to registries. Five declared names have other tags in the
-[loaded table](modifier-families.md#result-on-m45-release), because content registers the same
+[loaded table](modifier-families.md#loaded-table-result), because content registers the same
 name again. The static answer keeps the executable's declaration.
 
 ### Categories

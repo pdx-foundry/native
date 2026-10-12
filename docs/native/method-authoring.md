@@ -192,7 +192,7 @@ authored tests independent of an installed game.
 
 Keep reviewed expected output in [`tests/expected/m452/`](../../tests/expected/m452/), and check it
 in [`tests/static_questions.rs`](../../tests/static_questions.rs). Those ignored tests read the
-exact M452 executable and start no game. The ignored library tests read the same executable:
+exact catalogued executable and start no game. The ignored library tests read the same executable:
 
 ```sh
 cargo test --release --lib --test static_questions -- --ignored
@@ -341,7 +341,7 @@ cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local
 cargo run --release --example registry-field-sweep -- --diff tests/population/m452/registry-field-sweep.json .local/population/fields.json
 ```
 
-The tracked [M452 population reports](../../tests/population/m452/) are the
+The tracked [population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
 build and basis, and reports once which absent members matched their serde defaults. It fails on a
 report that is of another kind, has no `cases` or `inventories` array, has a row without a name or
@@ -413,7 +413,7 @@ cargo run --release --example record-command-grammars -- "$STELLARIS_PATH"
 cargo run --release --example record-command-grammars -- --verify .local/sdk-548/recorded-answers "$STELLARIS_PATH"
 ```
 
-A full recording takes about three minutes on M452-release; do not skip the check (SDK-640).
+A full recording takes about three minutes; do not skip the check (SDK-640).
 
 For commands, [`declaration-list.rs`](../../examples/declaration-list.rs) prints both full
 inventories and their gaps when no name filter is supplied:

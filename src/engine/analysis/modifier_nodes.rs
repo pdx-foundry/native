@@ -31,12 +31,13 @@ mod tests;
 /// Name and revision of the modifier node method.
 pub const METHOD: &str = "modifier-nodes/v1";
 
-/// Bytes of scratch memory for an owner or a node. Constructors on M451-hotfix write below 0x1000.
+/// Bytes of scratch memory for an owner or a node, more than its constructors write. The Path count
+/// pitfall in `docs/native/modifier-masks.md` records the measured write span.
 const OBJECT_SPAN: u64 = 0x1_0000;
 
-/// The most paths that one run follows. An owner constructor splits on each conditional select of
-/// an unknown comparison and on each loop pass before its node constructor call: the second country
-/// node on M451-hotfix needs 1,296 paths.
+/// The most paths that one run follows: more than any owner constructor needs. It splits on each
+/// conditional select of an unknown comparison and on each loop pass before its node constructor
+/// call. The Path count pitfall in `docs/native/modifier-masks.md` records the largest count.
 const PATH_LIMIT: usize = 4096;
 
 /// Where a node keeps its category mask and how a node constructor receives it.
