@@ -1,7 +1,7 @@
 //! Normalize read-time scope arguments without conflating them with evaluation contexts.
 use super::language::gap_for_subject;
 use crate::engine::analysis::{
-    declarations::ScopeType,
+    declarations::scope_mask,
     fields::{PathOutcome, ReaderJoin, RootField, TokenPath, Value},
     grammar::GrammarResult,
     readers,
@@ -267,21 +267,8 @@ pub(super) fn normalize_scopes(
 }
 
 fn types(mask: u64, names: Option<&[String]>) -> Result<ReadScope, &'static str> {
-    let names = names.ok_or("scope-names")?;
-    let mut types = Vec::new();
-    for bit in 0..64 {
-        if mask & (1 << bit) == 0 {
-            continue;
-        }
-        let name = names
-            .get(bit)
-            .filter(|name| !name.is_empty())
-            .ok_or("scope-name")?;
-        types.push(ScopeType {
-            bit,
-            name: name.clone(),
-        });
-    }
+    let types = scope_mask(mask, names).map_err(|unresolved| unresolved.reason)?;
+
     Ok(ReadScope::Types(super::questions::scope_references(&types)))
 }
 

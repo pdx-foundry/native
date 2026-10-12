@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 
 use super::Native;
-use super::language::{declared, gap, gap_for_subject};
+use super::language::{declared, gap, gap_for_subject, unread_scope_bits_detail};
 use super::questions::{error, scope_id};
 use crate::answer::{
     Answer, BuildId, ContextScopes, Error, Gap, GapKind, GapSubject, LocalizationCommand,
@@ -125,20 +125,28 @@ pub(crate) fn normalized_localization(
     )
 }
 
-/// Each context with the scope types that select it. With any scope type unresolved, no context
-/// can be `Joined` or `Missing`.
+/// Each context with the scope types that select it. With the scope name table missing, a scope
+/// type unresolved or a scope type unnamed, no context can be `Joined` or `Missing`.
 fn contexts(
     result: &LocalizationResult,
     names: &BTreeMap<u64, String>,
     gaps: &mut Vec<Gap>,
 ) -> Vec<LocalizationContext> {
     let mut selecting = BTreeMap::<u64, Vec<ScopeReference>>::new();
-    let mut unresolved = result.scope_table_missing;
+    let unnamed = !result.unread_scope_bits.is_empty();
+    let mut unresolved = result.scope_table_missing || unnamed;
     if result.scope_table_missing {
         gaps.push(gap(
             GapKind::UnreadableInput,
             None,
             "scope name table not found",
+        ));
+    }
+    if unnamed {
+        gaps.push(gap(
+            GapKind::UnreadableInput,
+            None,
+            unread_scope_bits_detail(&result.unread_scope_bits),
         ));
     }
 
@@ -193,23 +201,22 @@ fn commands(
 ) -> Vec<LocalizationCommand> {
     let mut declaring = BTreeMap::<String, BTreeSet<u64>>::new();
     for context in &result.contexts {
-        match &context.commands {
-            Ok(commands) => {
-                for command in commands {
-                    declaring
-                        .entry(command.clone())
-                        .or_default()
-                        .insert(context.value);
-                }
-            }
-            Err(reason) => gaps.push(gap_for_subject(
+        for command in &context.commands.rows {
+            declaring
+                .entry(command.clone())
+                .or_default()
+                .insert(context.value);
+        }
+
+        if let Some(reason) = context.commands.unread {
+            gaps.push(gap_for_subject(
                 GapKind::UnreadableInput,
                 Some(GapSubject::LocalizationContext {
                     id: context_id(context.value),
                     name: reference(context.value).name,
                 }),
-                format!("the command rows of this context could not be read ({reason})"),
-            )),
+                format!("the command rows of this context could not all be read ({reason})"),
+            ));
         }
     }
 
@@ -229,22 +236,18 @@ fn links(
 ) -> Vec<LocalizationLink> {
     let mut declaring = BTreeMap::<(String, Target), BTreeSet<u64>>::new();
     for context in &result.contexts {
-        let links = match &context.links {
-            Ok(links) => links,
-            Err(reason) => {
-                gaps.push(gap_for_subject(
-                    GapKind::UnreadableInput,
-                    Some(GapSubject::LocalizationContext {
-                        id: context_id(context.value),
-                        name: reference(context.value).name,
-                    }),
-                    format!("the link rows of this context could not be read ({reason})"),
-                ));
-                continue;
-            }
-        };
+        if let Some(reason) = context.links.unread {
+            gaps.push(gap_for_subject(
+                GapKind::UnreadableInput,
+                Some(GapSubject::LocalizationContext {
+                    id: context_id(context.value),
+                    name: reference(context.value).name,
+                }),
+                format!("the link rows of this context could not all be read ({reason})"),
+            ));
+        }
 
-        for (name, output) in links {
+        for (name, output) in &context.links.rows {
             let target = match output {
                 Output::Contexts(values) => Target::Contexts(values.iter().copied().collect()),
                 Output::Various => Target::Various,
@@ -297,8 +300,9 @@ fn sorted_references(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::answer::Completeness;
     use crate::engine::analysis::declarations::ScopeType;
-    use crate::engine::analysis::localization::Context;
+    use crate::engine::analysis::localization::{Context, RowTable};
 
     #[test]
     fn gaps_identify_link_context_and_scope_even_when_names_collide() {
@@ -310,14 +314,21 @@ mod tests {
             contexts: vec![Context {
                 value: 7,
                 name: Some("Planet".into()),
-                commands: Err("rows"),
-                links: Ok(vec![(
-                    "Planet".into(),
-                    Output::Unresolved(Unresolved::new("output")),
-                )]),
+                commands: RowTable {
+                    rows: Vec::new(),
+                    unread: Some("rows"),
+                },
+                links: RowTable {
+                    rows: vec![(
+                        "Planet".into(),
+                        Output::Unresolved(Unresolved::new("output")),
+                    )],
+                    unread: None,
+                },
             }],
             joins: vec![(scope.clone(), Join::Unresolved(Unresolved::new("setter")))],
             scope_table_missing: false,
+            unread_scope_bits: Vec::new(),
         };
 
         let answer = normalized_localization(&result, BuildId("test".into()));
@@ -338,5 +349,127 @@ mod tests {
             id: scope_id(&scope),
             name: "Planet".into(),
         }));
+    }
+
+    fn context_with_name(value: u64, name: &str) -> Context {
+        Context {
+            value,
+            name: Some(name.into()),
+            commands: read_rows(Vec::new()),
+            links: read_rows(Vec::new()),
+        }
+    }
+
+    fn read_rows<T>(rows: Vec<T>) -> RowTable<T> {
+        RowTable { rows, unread: None }
+    }
+
+    /// A context that the named scope type joins and a context that nothing joins.
+    fn joined_and_missing(unread_scope_bits: Vec<usize>) -> LocalizationResult {
+        let country = ScopeType {
+            bit: 2,
+            name: "country".into(),
+        };
+        LocalizationResult {
+            contexts: vec![
+                context_with_name(1, "Country"),
+                context_with_name(2, "Dead Object"),
+            ],
+            joins: vec![(country, Join::Context(1))],
+            scope_table_missing: false,
+            unread_scope_bits,
+        }
+    }
+
+    fn scopes_of(answer: &Answer<LocalizationDeclarations>, context: &str) -> ContextScopes {
+        answer
+            .value
+            .contexts
+            .iter()
+            .find(|candidate| candidate.name == context)
+            .expect("context is present")
+            .scopes
+            .clone()
+    }
+
+    #[test]
+    fn readable_scope_bits_leave_the_contexts_joined_or_missing() {
+        let answer =
+            normalized_localization(&joined_and_missing(Vec::new()), BuildId("test".into()));
+
+        assert_eq!(answer.completeness, Completeness::Complete);
+        assert!(
+            matches!(scopes_of(&answer, "Country"), ContextScopes::Joined(scopes) if scopes.len() == 1)
+        );
+        assert_eq!(scopes_of(&answer, "Dead Object"), ContextScopes::Missing);
+    }
+
+    #[test]
+    fn an_unread_scope_bit_makes_the_answer_partial_and_keeps_the_readable_joins() {
+        let answer = normalized_localization(&joined_and_missing(vec![5]), BuildId("test".into()));
+
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .any(|gap| gap.kind == GapKind::UnreadableInput
+                    && gap.subject.is_none()
+                    && gap.detail.contains("bits 5"))
+        );
+        assert!(
+            matches!(scopes_of(&answer, "Country"), ContextScopes::Partial(scopes) if scopes.len() == 1 && scopes[0].name == "country")
+        );
+        assert_eq!(
+            scopes_of(&answer, "Dead Object"),
+            ContextScopes::Partial(Vec::new()),
+            "an unnamed scope type may select a context that no named type does"
+        );
+    }
+
+    #[test]
+    fn unreadable_rows_leave_the_readable_commands_and_links_beside_a_gap() {
+        let result = LocalizationResult {
+            contexts: vec![Context {
+                value: 1,
+                name: Some("Country".into()),
+                commands: RowTable {
+                    rows: vec!["GetName".into()],
+                    unread: Some("row-name"),
+                },
+                links: RowTable {
+                    rows: vec![("Owner".into(), Output::Various)],
+                    unread: Some("row-index"),
+                },
+            }],
+            joins: Vec::new(),
+            scope_table_missing: false,
+            unread_scope_bits: Vec::new(),
+        };
+
+        let answer = normalized_localization(&result, BuildId("test".into()));
+
+        let commands: Vec<_> = answer.value.commands.iter().map(|c| &c.name).collect();
+        let links: Vec<_> = answer.value.links.iter().map(|link| &link.name).collect();
+        assert_eq!(commands, ["GetName"]);
+        assert_eq!(links, ["Owner"]);
+        assert_eq!(answer.completeness, Completeness::Partial);
+        let details: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnreadableInput)
+            .map(|gap| gap.detail.as_str())
+            .collect();
+        assert_eq!(details.len(), 2);
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("command rows") && detail.contains("(row-name)"))
+        );
+        assert!(
+            details
+                .iter()
+                .any(|detail| detail.contains("link rows") && detail.contains("(row-index)"))
+        );
     }
 }

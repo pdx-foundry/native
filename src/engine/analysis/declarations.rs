@@ -177,6 +177,15 @@ pub enum ScopeOutcome {
     Unresolved(Unresolved),
 }
 
+impl From<Result<Vec<ScopeType>, Unresolved>> for ScopeOutcome {
+    fn from(types: Result<Vec<ScopeType>, Unresolved>) -> Self {
+        match types {
+            Ok(types) => Self::Listed(types),
+            Err(unresolved) => Self::Unresolved(unresolved),
+        }
+    }
+}
+
 /// One scope type: its bit in the engine's scope-type mask, which identifies it, and the engine's
 /// display name, which two types can share.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -234,7 +243,7 @@ pub fn analyze(input: &DeclarationInput) -> Result<DeclarationResult, InputError
     Ok(DeclarationResult {
         sites,
         table_gaps: if input.scope_names.is_none() {
-            vec!["scope-table"]
+            vec![SCOPE_TABLE_MISSING]
         } else {
             Vec::new()
         },
@@ -586,7 +595,7 @@ fn scopes(input: &DeclarationInput, factory: u64) -> ScopeOutcome {
         return ScopeOutcome::Unresolved(Unresolved::new("scope-getter"));
     };
     match constant_return(&rows) {
-        Some(mask) => scope_mask(mask, input.scope_names.as_deref()),
+        Some(mask) => declared_scopes(mask, input.scope_names.as_deref()),
         None => ScopeOutcome::Unresolved(Unresolved::new("scope-mask")),
     }
 }
@@ -627,29 +636,52 @@ fn command_vtable(input: &DeclarationInput, factory: u64) -> Result<u64, &'stati
         .ok_or("command-vtable")
 }
 
-/// Scope names of a declared scope mask. Zero and all bits mean every scope. A name is kept as
-/// the engine spells it, even with a space (`pop job`); splitting it would invent a scope.
-pub(crate) fn scope_mask(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
+/// The [`Unresolved`] reason of a scope that the missing scope-name table left unnamed. One
+/// answer-wide gap reports the table, so a session does not report each such scope again.
+pub(crate) const SCOPE_TABLE_MISSING: &str = "scope-table";
+
+/// The scopes that a declared scope mask allows. The engine reads zero as no restriction (a
+/// supported mask of 0 skips the check) and all bits as every scope.
+pub(crate) fn declared_scopes(mask: u64, names: Option<&[String]>) -> ScopeOutcome {
     if mask == 0 || mask == u64::MAX {
         return ScopeOutcome::Any;
     }
+
+    scope_mask(mask, names).into()
+}
+
+/// The scope type of each set bit of `mask`, in bit order. A name is kept as the engine spells
+/// it, even with a space (`pop job`); splitting it would invent a scope. A mask has no other
+/// meaning here: zero lists nothing and all bits list a type per bit, so a bit without a name
+/// makes the mask unresolved.
+pub(crate) fn scope_mask(
+    mask: u64,
+    names: Option<&[String]>,
+) -> Result<Vec<ScopeType>, Unresolved> {
     let Some(names) = names else {
-        return ScopeOutcome::Unresolved(Unresolved::new("scope-table"));
+        return Err(Unresolved::new(SCOPE_TABLE_MISSING));
     };
-    let mut listed = Vec::new();
-    for index in 0..64 {
-        if mask & (1u64 << index) == 0 {
-            continue;
-        }
-        let Some(name) = names.get(index).filter(|name| !name.is_empty()) else {
-            return ScopeOutcome::Unresolved(Unresolved::new("scope-name"));
-        };
-        listed.push(ScopeType {
-            bit: index,
-            name: name.clone(),
-        });
-    }
-    ScopeOutcome::Listed(listed)
+
+    (0..64)
+        .filter(|bit| mask & (1u64 << bit) != 0)
+        .map(|bit| scope_type(names, bit).ok_or(Unresolved::new("scope-name")))
+        .collect()
+}
+
+/// The scope type of `bit` when the scope-name table names it. An empty name marks a bit that
+/// the table does not test or whose name could not be read; the bit has no scope type.
+pub(crate) fn scope_type(names: &[String], bit: usize) -> Option<ScopeType> {
+    let name = names.get(bit).filter(|name| !name.is_empty())?;
+
+    Some(ScopeType {
+        bit,
+        name: name.clone(),
+    })
+}
+
+/// Every scope type that the scope-name table names, in bit order.
+pub(crate) fn named_scope_types(names: &[String]) -> impl Iterator<Item = ScopeType> + '_ {
+    (0..names.len()).filter_map(|bit| scope_type(names, bit))
 }
 
 fn create_rows(input: &DeclarationInput, address: u64, depth: usize) -> Option<Vec<Instruction>> {

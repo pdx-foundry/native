@@ -1149,8 +1149,8 @@ pub enum ContextScopes {
     Joined(Vec<ScopeReference>),
     /// Every scope type was followed; none selects the context, such as for a dead object.
     Missing,
-    /// Some scope types could not be followed. These select the context; others may too. The
-    /// list can be empty.
+    /// Some scope types could not be followed, or the scope name table gave them no name. These
+    /// select the context; others may too. The list can be empty.
     Partial(Vec<ScopeReference>),
 }
 

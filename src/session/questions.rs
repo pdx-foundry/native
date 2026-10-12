@@ -546,7 +546,7 @@ fn normalized_declarations(result: &DeclarationResult, build: BuildId) -> Answer
                     ScopeOutcome::Any => DeclaredScopes::Any,
                     ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
                     ScopeOutcome::Unresolved(Unresolved { reason: link, .. }) => {
-                        if *link != "scope-table" {
+                        if *link != declarations::SCOPE_TABLE_MISSING {
                             gaps.push(Gap {
                                 kind: GapKind::UnresolvedPath,
                                 subject: Some(GapSubject::answer_item(name.clone())),
@@ -897,10 +897,12 @@ mod declaration_tests {
                     factory: 0,
                     description: "description".into(),
                     usage: "".into(),
-                    scopes: ScopeOutcome::Unresolved(Unresolved::new("scope-table")),
+                    scopes: ScopeOutcome::Unresolved(Unresolved::new(
+                        declarations::SCOPE_TABLE_MISSING,
+                    )),
                 },
             )],
-            table_gaps: vec!["scope-table"],
+            table_gaps: vec![declarations::SCOPE_TABLE_MISSING],
         };
         let answer = normalized_declarations(&result, BuildId("test".into()));
         assert_eq!(answer.value[0].scopes, DeclaredScopes::Unresolved);

@@ -225,6 +225,17 @@ contexts join scope types (`Ship (and Starbase)` joins `ship` and `starbase`; `S
 - `Planet` from `Deposit` selects planet or ship on some paths and returns without a new context
   on another.
 
+A row whose name or index cannot be read costs only that row. The other rows of the table stay in
+the answer, with their outputs, and an `UnreadableInput` gap names the context and the first reason
+(`row-name` or `row-index`). A table whose getter cannot be run or whose count cannot be read has
+no row and the same gap. M452 has no unreadable row.
+
+A scope type that the scope-name table tests but whose name the method cannot read has no join: the
+method cannot name it, and it may select any context. The answer then has an `UnreadableInput` gap
+that lists the bits, and every context is `Partial`, as for a missing table or an unresolved join.
+The `Partial` list keeps the joins of the readable scope types. M452 has no such bit. If a build
+does, run `join` for the unread bit and mark only the context that it selects.
+
 The prose of the dump names five unscoped forms. `GetYear` and `LastKilledCountryName` are also
 `Base Scope` rows and `GetDate` is a `Timeline Event` row; `GetMidGameDate` and `GetLateGameDate`
 are in no table. The unscoped forms are an `OutsideMethod` gap. Whether a command gives useful
@@ -273,7 +284,11 @@ The engine has no documentation dump for either.
   a scope and calls `CScriptedRule::Evaluate(this + 20 * 0xc0, scope, …)`. Weighted rules start at
   `this + 0x9cc0`, `0x40` apart. `__GLOBAL__sub_I_game_rules.cpp` fills the rule declaration
   tables, and `FindRuleDeclarationByEnum` returns the row, with its token, for a rule's
-  enumeration.
+  enumeration. Each family is read on its own. A family whose tables cannot be read
+  (`rule-initializer`, `rule-lookup`, `rule-table-empty`) names no rule and has a gap; a rule
+  whose token has no name is skipped and its family has a `rule-token` gap, and a site that
+  evaluates it is an unnamed site with the same reason. The other rules and the other family stay.
+  M452 has no such case.
 - **A scope parameter.** Some sites fire or evaluate the scope that their function receives:
   `CGameRules::CanFillDroneJob(CEventScope&, CString*)` evaluates its rule with its own `x1`. A site
   outside the pinned forwarders whose scope register holds a parameter on every path takes its

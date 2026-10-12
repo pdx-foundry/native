@@ -10,7 +10,7 @@ use crate::answer::{
 };
 use crate::engine::analysis::{
     category_keys::{self, CategoryKeyResult},
-    declarations::ScopeOutcome,
+    declarations::{SCOPE_TABLE_MISSING, ScopeOutcome},
     modifiers::{self, CATEGORY_METHOD, DefinitionSite, MODIFIER_METHOD, ModifierResult, Tags},
     scopes::{self, LINK_METHOD, LinkResult, Output, SCOPE_METHOD, ScopeResult},
     stop::Unresolved,
@@ -414,14 +414,10 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
         ));
     }
     if !result.unread_types.is_empty() {
-        let bits: Vec<_> = result.unread_types.iter().map(usize::to_string).collect();
         gaps.push(gap(
             GapKind::UnresolvedPath,
             None,
-            format!(
-                "the scope name table tests bits {} but their names could not be read",
-                bits.join(", ")
-            ),
+            unread_scope_bits_detail(&result.unread_types),
         ));
     }
     if result.unnamed_keywords > 0 {
@@ -453,6 +449,16 @@ pub(crate) fn normalized_scopes(result: &ScopeResult, build: BuildId) -> Answer<
     declared(ScopeInventory { types, groups }, gaps, build, SCOPE_METHOD)
 }
 
+/// The detail of a gap for scope-type bits that the scope name table tests but does not name.
+pub(super) fn unread_scope_bits_detail(bits: &[usize]) -> String {
+    let bits: Vec<_> = bits.iter().map(usize::to_string).collect();
+
+    format!(
+        "the scope name table tests bits {} but their names could not be read",
+        bits.join(", ")
+    )
+}
+
 pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Vec<ScopeLink>> {
     let mut value = Vec::new();
     let mut gaps = Vec::new();
@@ -462,7 +468,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             ScopeOutcome::Any => DeclaredScopes::Any,
             ScopeOutcome::Listed(types) => DeclaredScopes::Listed(scope_references(types)),
             ScopeOutcome::Unresolved(Unresolved { reason, .. }) => {
-                if *reason != "scope-table" {
+                if *reason != SCOPE_TABLE_MISSING {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
                         Some(&link.name),
@@ -476,7 +482,7 @@ pub(crate) fn normalized_links(result: &LinkResult, build: BuildId) -> Answer<Ve
             Output::Listed(types) => OutputScope::Listed(scope_references(types)),
             Output::Various => OutputScope::Various,
             Output::Unresolved(Unresolved { reason, .. }) => {
-                if *reason != "scope-table" {
+                if *reason != SCOPE_TABLE_MISSING {
                     gaps.push(gap(
                         GapKind::UnresolvedPath,
                         Some(&link.name),

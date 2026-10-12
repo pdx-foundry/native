@@ -12,7 +12,7 @@ use crate::answer::{
 use crate::engine::analysis::callbacks::{
     self, CallbacksResult, Context, Family, Findings, METHOD, RuleFamily, Slot,
 };
-use crate::engine::analysis::declarations::ScopeType;
+use crate::engine::analysis::declarations::{ScopeType, scope_type};
 
 impl Native {
     /// The on_actions that the engine fires by name, each with the scopes that its call sites
@@ -104,7 +104,7 @@ pub(crate) fn normalized_on_actions(
         })
         .collect();
 
-    unnamed_gaps(result, Family::OnAction, &mut gaps);
+    unnamed_gaps(result, &mut gaps);
     if result.script_fired_sites > 0 {
         gaps.push(gap(
             GapKind::OutsideMethod,
@@ -127,11 +127,15 @@ pub(crate) fn normalized_game_rules(
 ) -> Answer<Vec<GameRule>> {
     let mut gaps = Vec::new();
     let scopes = Scopes::new(scope_names, &mut gaps);
-    if let Some(reason) = result.rule_tables_missing {
+    for (family, reason) in &result.rules_unread {
+        let kind = match family {
+            RuleFamily::Scripted => "scripted",
+            RuleFamily::Weighted => "weighted",
+        };
         gaps.push(gap(
             GapKind::UnreadableInput,
             None,
-            format!("the rule declarations could not be read ({reason})"),
+            format!("the {kind} rule declarations could not all be read ({reason})"),
         ));
     }
     let value = result
@@ -147,7 +151,7 @@ pub(crate) fn normalized_game_rules(
         })
         .collect();
 
-    unnamed_gaps(result, Family::GameRule, &mut gaps);
+    unnamed_gaps(result, &mut gaps);
     gaps.push(gap(
         GapKind::OutsideMethod,
         None,
@@ -180,15 +184,13 @@ impl<'a> Scopes<'a> {
         Self(names.as_deref())
     }
 
-    fn name(&self, bit: u32) -> Option<&'a String> {
-        self.0?.get(bit as usize).filter(|name| !name.is_empty())
+    fn scope(&self, bit: u32) -> Option<ScopeType> {
+        scope_type(self.0?, bit as usize)
     }
 
     fn reference(&self, bit: u32) -> Option<ScopeReference> {
-        let scope = ScopeType {
-            bit: bit as usize,
-            name: self.name(bit)?.clone(),
-        };
+        let scope = self.scope(bit)?;
+
         Some(ScopeReference {
             id: scope_id(&scope),
             name: scope.name,
@@ -242,7 +244,7 @@ pub(super) fn entries(
     let incomplete = findings
         .contexts
         .iter()
-        .flat_map(slots)
+        .flat_map(Context::slots)
         .any(|slot| *slot == Slot::Unresolved);
     if incomplete {
         gaps.push(gap(
@@ -253,8 +255,8 @@ pub(super) fn entries(
     let unreadable = findings
         .contexts
         .iter()
-        .flat_map(slots)
-        .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.name(*bit).is_none()));
+        .flat_map(Context::slots)
+        .any(|slot| matches!(slot, Slot::Scope(bit) if scopes.scope(*bit).is_none()));
     if unreadable {
         gaps.push(gap(
             GapKind::UnreadableInput,
@@ -270,21 +272,10 @@ pub(super) fn entries(
     entries
 }
 
-fn slots(context: &Context) -> impl Iterator<Item = &Slot> {
-    std::iter::once(&context.this)
-        .chain([&context.root])
-        .chain(&context.from)
-        .chain(&context.prev)
-}
-
 /// One gap for each reason that some call sites could not be named, with their number.
-fn unnamed_gaps(result: &CallbacksResult, family: Family, gaps: &mut Vec<Gap>) {
+fn unnamed_gaps(result: &CallbacksResult, gaps: &mut Vec<Gap>) {
     let mut counts = BTreeMap::<&str, usize>::new();
-    for unnamed in result
-        .unnamed
-        .iter()
-        .filter(|unnamed| unnamed.family == family)
-    {
+    for unnamed in &result.unnamed {
         *counts.entry(unnamed.reason).or_default() += 1;
     }
     for (reason, count) in counts {
@@ -319,6 +310,8 @@ pub(super) fn describe(reason: &str) -> String {
         }
         "no-site" => "the engine declares this rule, but no followed call site evaluates it",
         "name-not-a-literal" => "the name is not a text literal, such as a name built at run time",
+        "name-not-readable" => "the name is a text literal, but its text could not be read",
+        "rule-token" => "the rule is declared, but its token has no known name",
         "name-not-proved" => "no path proves which name the call site passes",
         "list-unknown" | "cached-list-unknown" => "the list that a call site fires is not known",
         "rule-outside-the-rule-set" => "a rule object outside the engine's rule set",
@@ -331,6 +324,21 @@ pub(super) fn describe(reason: &str) -> String {
         }
         "caller-depth" => "the scope comes from more callers than the method follows",
         "caller-not-decoded" => "a function that passes the scope on could not be decoded",
+        "block-and-scope-from-caller" => {
+            "a helper evaluates a block that its caller passes with a scope that its caller also passes, and the method does not follow both"
+        }
+        "selected-block-scope-from-caller" => {
+            "a call that evaluates one of several candidate blocks takes its scope from a caller, and the method does not follow it"
+        }
+        "selected-block-offset" => {
+            "a path evaluates an offset of the owner that none of the candidate blocks has"
+        }
+        "selected-block-identity" => {
+            "a path does not show which of several candidate blocks the call evaluates"
+        }
+        "selected-block-not-reached" => {
+            "no followed path evaluates one of the candidate blocks that the call may select"
+        }
         _ => "a path to a call site could not be followed",
     };
     format!("{text} ({reason})")
@@ -462,14 +470,14 @@ mod tests {
     }
 
     #[test]
-    fn unnamed_sites_are_counted_by_reason_and_family() {
+    fn unnamed_sites_are_counted_by_reason() {
         let mut result = CallbacksResult::default();
-        for (family, reason) in [
-            (Family::OnAction, "name-not-a-literal"),
-            (Family::OnAction, "name-not-a-literal"),
-            (Family::GameRule, "rule-unknown"),
+        for reason in [
+            "name-not-a-literal",
+            "name-not-a-literal",
+            "name-not-proved",
         ] {
-            result.unnamed.push(Unnamed { family, reason });
+            result.unnamed.push(Unnamed { reason });
         }
         let answer = normalized_on_actions(&result, &names(), build());
 
@@ -479,8 +487,100 @@ mod tests {
             .filter(|gap| gap.kind == GapKind::UnnamedDeclaration)
             .map(|gap| gap.detail.as_str())
             .collect();
-        assert_eq!(unnamed.len(), 1);
-        assert!(unnamed[0].starts_with("2 call sites"));
-        assert!(unnamed[0].contains("built at run time"));
+        assert_eq!(unnamed.len(), 2);
+        assert!(unnamed.iter().any(
+            |detail| detail.starts_with("2 call sites") && detail.contains("built at run time")
+        ));
+        assert!(
+            unnamed
+                .iter()
+                .any(|detail| detail.starts_with("1 ") && detail.contains("name-not-proved"))
+        );
+    }
+
+    #[test]
+    fn a_family_with_unread_declarations_has_a_gap_beside_the_other_rules() {
+        let mut result = CallbacksResult::default();
+        result.rules.insert(
+            ("can_a".into(), RuleFamily::Scripted),
+            Findings {
+                contexts: BTreeSet::from([Context {
+                    this: Slot::Scope(2),
+                    root: Slot::SelfLink,
+                    from: vec![Slot::SelfLink],
+                    prev: vec![Slot::SelfLink],
+                }]),
+                unresolved: BTreeSet::new(),
+            },
+        );
+        result
+            .rules_unread
+            .insert(RuleFamily::Weighted, "rule-token");
+
+        let answer = normalized_game_rules(&result, &names(), build());
+
+        assert_eq!(answer.value.len(), 1);
+        assert_eq!(answer.value[0].name, "can_a");
+        assert_eq!(answer.completeness, Completeness::Partial);
+        let unreadable: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnreadableInput && gap.subject.is_none())
+            .map(|gap| gap.detail.as_str())
+            .collect();
+        assert_eq!(
+            unreadable,
+            ["the weighted rule declarations could not all be read (rule-token)"]
+        );
+    }
+
+    /// The text of `describe` without its reason code, which stays at the end.
+    fn sentence(reason: &str) -> String {
+        describe(reason)
+            .strip_suffix(&format!(" ({reason})"))
+            .expect("the reason code ends the description")
+            .to_owned()
+    }
+
+    #[test]
+    fn each_reason_code_of_the_callback_methods_has_its_own_sentence() {
+        let generic = sentence("a-code-that-no-method-gives");
+        assert_eq!(generic, "a path to a call site could not be followed");
+
+        for reason in [
+            "path-limit",
+            "step-limit",
+            "loop-limit",
+            "left-the-site",
+            "site-not-reached",
+            "context-not-attributed",
+            "scope-built-by-callee",
+            "looked-up-only",
+            "cached-list-not-fired",
+            "no-site",
+            "name-not-a-literal",
+            "name-not-readable",
+            "name-not-proved",
+            "list-unknown",
+            "cached-list-unknown",
+            "rule-outside-the-rule-set",
+            "rule-unknown",
+            "rule-offset",
+            "rule-not-constant",
+            "rule-not-declared",
+            "rule-token",
+            "forwarder-not-verified",
+            "site-not-decoded",
+            "no-caller",
+            "caller-depth",
+            "caller-not-decoded",
+            "block-and-scope-from-caller",
+            "selected-block-scope-from-caller",
+            "selected-block-offset",
+            "selected-block-identity",
+            "selected-block-not-reached",
+        ] {
+            assert_ne!(sentence(reason), generic, "{reason}");
+        }
     }
 }

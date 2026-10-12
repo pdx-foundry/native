@@ -1625,7 +1625,6 @@ fn a_forwarder_that_does_not_pass_its_argument_is_refused() {
     assert_eq!(
         result.unnamed,
         [Unnamed {
-            family: Family::OnAction,
             reason: "forwarder-not-verified"
         }]
     );
@@ -1764,13 +1763,17 @@ fn rule_function(offset: &'static str) -> Vec<(u64, &'static str, &'static str)>
     ]
 }
 
-fn analyze_rule_function(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksResult {
+fn rule_function_input(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksInput {
     let lines = rule_function(offset);
     let mut program = Program::new().function(&lines).site(0x3000, 0x3028, call);
     if owned {
         program.rule_owners.insert(0x3000);
     }
-    analyze(&program.input(), Family::GameRule).unwrap()
+    program.input()
+}
+
+fn analyze_rule_function(offset: &'static str, call: SiteCall, owned: bool) -> CallbacksResult {
+    analyze(&rule_function_input(offset, call, owned), Family::GameRule).unwrap()
 }
 
 fn scripted<'r>(result: &'r CallbacksResult, name: &str) -> &'r Findings {
@@ -1782,6 +1785,15 @@ const SCRIPTED_RULE: SiteCall = SiteCall::Rule {
     rule: 0,
     scope: 1,
 };
+
+const WEIGHTED_RULE: SiteCall = SiteCall::Rule {
+    family: RuleFamily::Weighted,
+    rule: 0,
+    scope: 1,
+};
+
+/// The token of the one weighted rule in [`rule_tables`].
+const WEIGHTED_TOKEN: u64 = 0x13;
 
 #[test]
 fn a_rule_is_named_by_its_offset_in_the_rule_set() {
@@ -1799,13 +1811,98 @@ fn a_rule_is_named_by_its_offset_in_the_rule_set() {
 }
 
 #[test]
+fn a_rule_whose_token_has_no_name_leaves_the_other_rules_named() {
+    let mut input = rule_function_input("x0,x0,#0xc0", SCRIPTED_RULE, true);
+    input.tokens.remove(&WEIGHTED_TOKEN);
+
+    let result = analyze(&input, Family::GameRule).unwrap();
+
+    assert_eq!(
+        scripted(&result, "can_b")
+            .contexts
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>(),
+        [context(COUNTRY, Slot::SelfLink, &[Slot::SelfLink])]
+    );
+    assert_eq!(
+        scripted(&result, "can_a").unresolved,
+        BTreeSet::from(["no-site"])
+    );
+    assert!(
+        result
+            .rules
+            .keys()
+            .all(|(_, family)| *family == RuleFamily::Scripted)
+    );
+    assert_eq!(
+        result.rules_unread,
+        BTreeMap::from([(RuleFamily::Weighted, "rule-token")])
+    );
+}
+
+#[test]
+fn a_site_of_a_rule_whose_token_has_no_name_is_unnamed_for_that_reason() {
+    let mut input = rule_function_input("x0,x0,#0x9cc0", WEIGHTED_RULE, true);
+    input.tokens.remove(&WEIGHTED_TOKEN);
+
+    let result = analyze(&input, Family::GameRule).unwrap();
+
+    assert_eq!(
+        result.unnamed,
+        [Unnamed {
+            reason: "rule-token"
+        }]
+    );
+}
+
+#[test]
+fn a_family_whose_lookup_fails_leaves_the_other_family_named() {
+    let mut input = rule_function_input("x0,x0,#0xc0", SCRIPTED_RULE, true);
+    let weighted = input
+        .rule_tables
+        .finders
+        .iter_mut()
+        .find(|(family, _)| *family == RuleFamily::Weighted)
+        .unwrap();
+    weighted.1 = 0x6f00;
+
+    let result = analyze(&input, Family::GameRule).unwrap();
+
+    assert!(!scripted(&result, "can_b").contexts.is_empty());
+    assert_eq!(
+        result.rules_unread,
+        BTreeMap::from([(RuleFamily::Weighted, "rule-lookup")])
+    );
+}
+
+#[test]
+fn an_initializer_that_cannot_run_leaves_every_family_unread() {
+    let mut input = rule_function_input("x0,x0,#0xc0", SCRIPTED_RULE, true);
+    input.rule_tables.initializer = 0x6f00;
+
+    let result = analyze(&input, Family::GameRule).unwrap();
+
+    assert!(result.rules.is_empty());
+    assert_eq!(
+        result.rules_unread,
+        BTreeMap::from([
+            (RuleFamily::Scripted, "rule-initializer"),
+            (RuleFamily::Weighted, "rule-initializer"),
+        ])
+    );
+}
+
+#[test]
+fn readable_rule_declarations_leave_no_family_unread() {
+    let result = analyze_rule_function("x0,x0,#0xc0", SCRIPTED_RULE, true);
+
+    assert!(result.rules_unread.is_empty());
+}
+
+#[test]
 fn a_weighted_rule_uses_its_own_array() {
-    let weighted = SiteCall::Rule {
-        family: RuleFamily::Weighted,
-        rule: 0,
-        scope: 1,
-    };
-    let result = analyze_rule_function("x0,x0,#0x9cc0", weighted, true);
+    let result = analyze_rule_function("x0,x0,#0x9cc0", WEIGHTED_RULE, true);
 
     let weight = &result.rules[&("weight_c".to_owned(), RuleFamily::Weighted)];
     assert!(!weight.contexts.is_empty());
@@ -2425,7 +2522,6 @@ fn a_climbed_site_without_a_literal_name_takes_no_name_from_its_caller() {
     assert_eq!(
         result.unnamed,
         [Unnamed {
-            family: Family::OnAction,
             reason: "name-not-a-literal"
         }]
     );
