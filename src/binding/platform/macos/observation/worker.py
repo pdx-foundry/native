@@ -311,15 +311,17 @@ def registry_callback(frame, name):
     return False
 
 
-def fixture_source_line(text, file):
-    """The one line of `file` that the engine source name or message `text` points at, or None
-    when it points at no line or at several. A message names the line as
-    `stored_values.SOURCE_MESSAGE` says. An inline script that the file calls is named
+def fixture_source(text, files):
+    """The one (file, line) of `files` that the engine source name or message `text` points at,
+    or None when it points at none or at several. A message names the line as
+    `stored_values.SOURCE_MESSAGE` says. An inline script that a file calls is named
     `<file>:<line>(inline_script) <script>`, which gives the call's line."""
-    lines = {line for name, line in stored_values.message_sources(text)
-             if name == file and line is not None}
-    lines.update(int(call) for call in re.findall(re.escape(file) + r':([0-9]+)\(inline_script\) ', text))
-    return next(iter(lines)) if len(lines) == 1 else None
+    sources = {(name, line) for name, line in stored_values.message_sources(text)
+               if name in files and line is not None}
+    for file in files:
+        sources.update((file, int(call)) for call in
+                       re.findall(re.escape(file) + r':([0-9]+)\(inline_script\) ', text))
+    return next(iter(sources)) if len(sources) == 1 else None
 
 
 # An engine error's generated instance source is evidence, not a value: keep a bounded prefix.
@@ -333,12 +335,10 @@ def interpret_fixture_log(text, files, returned):
     if not named:
         return None
     stage = protocol.DIAGNOSTIC_STAGE['engine_validation'] if returned else protocol.DIAGNOSTIC_STAGE['engine_parser']
-    sources = [(file, line) for file in named
-               if (line := fixture_source_line(text, file)) is not None]
-    if len(sources) == 1:
-        [(file, line)] = sources
-    else:
-        file, line = (named[0] if len(named) == 1 else None), None
+    source = fixture_source(text, named)
+    if source is None:
+        source = (named[0] if len(named) == 1 else None), None
+    file, line = source
     return dict(text=text, stage=stage, file=file, line=line)
 
 
@@ -423,9 +423,7 @@ class FixtureObserver:
         <file> line: <line>`. None for any other source, or when several fixture calls match."""
         if file in self.files:
             return file, line
-        calls = [(fixture, call) for fixture in self.files
-                 if (call := fixture_source_line(file, fixture)) is not None]
-        return calls[0] if len(calls) == 1 else None
+        return fixture_source(file, self.files)
 
     def start_file(self, file, thread):
         """Open the load window of one fixture file."""

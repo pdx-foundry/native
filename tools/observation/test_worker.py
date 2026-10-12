@@ -511,6 +511,10 @@ class ParserObservationTests(unittest.TestCase):
         self.assertEqual((both['file'], both['line']), (None, None))
         inline = f'{second}:5(inline_script) common/inline_scripts/a.txt'
         self.assertEqual(self.observer.fixture_line(inline, 1), (second, 5))
+        ambiguous = f'file: {self.file} line: 2 file: {self.file} line: 4 file: {second} line: 6'
+        diagnostic = worker.interpret_fixture_log(ambiguous, self.observer.files, False)
+        self.assertEqual((diagnostic['file'], diagnostic['line']), (None, None))
+        self.assertIsNone(self.observer.fixture_line(ambiguous, 1))
 
     def test_unbound_parser_does_not_report_a_complete_empty_observation(self):
         self.observer.questions[0]['token'] = None

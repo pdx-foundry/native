@@ -113,8 +113,9 @@ impl FixtureRequest {
         }
     }
 
-    /// Add another file of the same registry directory. The loader reads the files in its own
-    /// order, which `FixtureObservation::loaded_files` reports.
+    /// Add another file of the same registry directory, or replace the text of a file with this
+    /// path. The loader reads the files in its own order, which
+    /// `FixtureObservation::loaded_files` reports.
     ///
     /// ```
     /// use pdx_native::{FixtureFieldQuestion, FixtureRequest};
@@ -362,12 +363,13 @@ pub struct StoredFieldOccurrence {
 pub enum FixtureStorage {
     /// No storage observation was established; the reason states what was unavailable.
     Unavailable(String),
-    /// Values after each occurrence and the value when the file load completed.
+    /// Values after each occurrence and the value when the last fixture file finished loading.
     Observed {
         /// Values after each joined reader return, in load order.
         occurrences: Vec<StoredFieldOccurrence>,
-        /// Value at the file-load terminal, including constructor initialization when observed. For a
-        /// repeated key, it is read once from the one owner of every occurrence.
+        /// Value read once after the last fixture file returns, even when the field's last
+        /// occurrence was in an earlier file, including constructor initialization when observed.
+        /// For a repeated key, it is read from the one owner of every occurrence.
         #[serde(deserialize_with = "crate::answer::required_option")]
         final_value: Option<FixtureValue>,
         /// Whether all storage records and terminals completed intact.
