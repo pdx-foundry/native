@@ -15,12 +15,12 @@ The [specification's operation table](specs/native.md#2-public-api) lists what N
 
 ## The target, measured
 
-The config fork has 49,196 lines in 172 `.cwt` files.
+At revision `8574760` the config fork has 50,195 lines in 175 `.cwt` files.
 
 | Share | Content | Route |
 | --- | --- | --- |
 | ~37% | Script language: 1,060 effects, 1,089 triggers, 747 modifiers, scopes, 89 links, localisation commands | Engine declarations, then argument grammars |
-| ~35% | 253 type schemas under `common/`, and `events/` | Registry discovery, field readers, references |
+| ~35% | 216 of the 257 type schemas: those under `common/` and `events/` | Registry discovery, field readers, references |
 | ~13% | 2,042 defines, 385 on_actions, game rules | Inventories |
 | ~8% | Interface, graphics, sound, map, descriptors | Separate loaders, not yet investigated |
 
@@ -60,7 +60,7 @@ Linear works milestones in order. Milestones 1 to 3.5 are complete.
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
 | 3.5 | Foundations | Shortcut guard; jump-table repair; stop diagnostics and the sweep report; test assembler helper; method-authoring guide; one pause owner in the worker; the review's refactors and cleanup | The shortcut guard passes; the 32 megastructure jump-table fields are found; a failed path is located from one inspector run; the sweep report groups failures by stop diagnostic; every refactor keeps parity output byte-identical | SDK-563, SDK-569, SDK-571, SDK-574, SDK-581, SDK-589, SDK-593, SDK-601 to SDK-606 |
 | 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier nodes and container categories, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550, SDK-607, SDK-705; preparation SDK-596; Atlas SDK-597, SDK-625, SDK-626 and SDK-577; entry contexts SDK-608 and SDK-677; developer tracing SDK-629; acceptance test SDK-600 |
-| 5 | Registry sweep | Custom, nested and late registries; `events/`, with its event kinds and the scope that each kind sets; pre_trigger key sets; mounted files and duplicates; the method set, unchanged at a recorded commit, over all registries | Automatic rate known for all 253 types and for `events/`; every exception recorded | SDK-551 to SDK-553; events SDK-702; pre_triggers SDK-703 |
+| 5 | Registry sweep | Custom, nested and late registries; `events/`, with its event kinds and the scope that each kind sets; pre_trigger key sets; file selection, duplicate and definition-name rules; the method set, unchanged at a recorded commit, over all registries | Every config type under `common/` or `events/` has a Native registry status in the sweep report or an Atlas missing-join reason; rates per registry and per `(type, file)`; every exception recorded (see below) | SDK-551: SDK-778, SDK-779, SDK-783, SDK-784, SDK-786, SDK-787, SDK-789, SDK-794, SDK-802; SDK-552: SDK-788, SDK-790 to SDK-792, SDK-795, SDK-803; SDK-553: SDK-780; events SDK-702, SDK-801; pre_triggers SDK-703; Atlas SDK-781, SDK-785, SDK-793, SDK-796 to SDK-800; cost SDK-591; roadmap SDK-782 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
@@ -124,6 +124,66 @@ that method. SDK-597 must preserve the processing stage and unresolved context. 
 exclusion from SDK-600. The exact-build findings and remaining work are in
 [registry fields](native/registry-fields.md#read-conditions-and-use-time-inheritance)
 and [derived names](native/derived-names.md).
+
+### Milestone 5 acceptance
+
+The "5 · Registry sweep" milestone description in the [Linear Atlas project](https://linear.app/unnamed-system/project/atlas-65cdd1747212)
+holds the decisions of 2026-10-12, the ticket blockers and the wave order; its "Second review"
+section supersedes the first plan where they differ.
+
+**Gate population (D1).** The population is every config type whose `path` is under `common/` or
+`events/` at config revision `8574760`: 216 of the 257 `type[…]` definitions, joined by
+`(type, file)` pairs to about 180 directories. Each type has either a Native registry with a
+per-relationship status in the sweep report (SDK-780, over the SDK-798 recording) or an Atlas
+missing-join reason in the registry comparison (SDK-781). Atlas owns the count. Native reports
+rates per registry; Atlas reports them per `(type, file)` (SDK-781) and per claim. The `gfx`,
+`interface`, `sound`, `music`, `flags`, `fonts`, `map/setup_scenarios` and `prescripted_countries`
+families are Milestone 6.
+
+**Lanes.** Three lanes run side by side:
+
+1. **Registries (SDK-551).** SDK-779 reads the scheduler table as the candidate inventory; SDK-783
+   names the registries whose own loader enumerates a directory and carries the listed-name
+   contract: a listed registry gets an answer or `Unsupported`, never `UnknownRegistry`. SDK-786
+   joins a directory that a caller enumerates; SDK-787 answers `registry_fields` through the
+   owner, and SDK-802 answers `derived_names` and `modifier_families`, for non-template
+   registries. SDK-789 and SDK-794 join the strategic-resource and planet-class generation sites
+   and name two-registry modifier templates. SDK-778 investigates the events route and nested
+   identity; SDK-784 settles nested definitions, or closes with no session if SDK-778 recommends
+   an amendment.
+2. **Events and pre_triggers.** SDK-702 establishes event kinds and the scope each kind sets,
+   starting with one vertical case; SDK-703 extracts the pre_trigger key sets of the two registry
+   fields; SDK-801 extracts those of event kinds.
+3. **Loader rules (SDK-552).** SDK-788 adds the loader-rules operation and file selection
+   (`path_file` included); SDK-790 states the duplicate, file-order and mod-over-vanilla rules;
+   SDK-791 states definition-name rules; SDK-792 observes a repeated key in one fixture file and
+   SDK-803 several files in one session; SDK-795 checks each rule shape with a fixture.
+
+On the Atlas side, SDK-799 checks the entry-scope answers again against `callbacks/v4` before any
+recording refresh; SDK-800 decides whether a `type_key_filter` subtype can earn coverage; SDK-785
+joins a directory with several config types, keeping the type selectors; SDK-793 and SDK-797
+carry events, pre_triggers and loader rules into snapshots and coverage.
+
+**Pin moves.** Atlas moves its Native pin twice. Pin A (SDK-796) follows the registry, events and
+pre_trigger work: SDK-799, SDK-781, SDK-783, SDK-802 and SDK-793. Pin C (SDK-798) is the sweep's
+recorded commit, after every other ticket: Atlas removes its local path override, pins, makes a
+live run with recording, takes coverage from the live run, and reports the rates and the SDK-591
+cost measurement. SDK-553 then records the commit, the method set, the report and one follow-up
+ticket per new failure shape.
+
+**Baseline (D2).** The sweep is a baseline. Repairs for known failure shapes may land before pin C,
+and the run reflects them; none is mandatory. The rest are labelled deficits in the report.
+
+**Decisions of 2026-10-12.**
+
+- D3: fixture observation support (SDK-792, SDK-803) is split from the rule controls (SDK-795).
+- D4: event kinds as root fields of `registry_fields("events")` is a hypothesis until SDK-778 and
+  one vertical case in SDK-702 and SDK-793 prove it.
+- D5: `Registry` keeps only `name`; the loader rules are one separate string-keyed operation
+  (SDK-788).
+- D6: SDK-640 and SDK-651 close through the superseding SDK-770, SDK-771 and SDK-774 decisions,
+  with the whole-inventory recording time that SDK-780 records.
+- D7: SDK-778 is the one investigation, and it is narrow; SDK-779 and SDK-783 start directly.
 
 ## Release and later work
 

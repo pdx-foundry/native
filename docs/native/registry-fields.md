@@ -292,7 +292,7 @@ gives the two compiled shapes. On M45 the method named all 164 template registri
 seconds, and all 162 directories that the retained live run observed are in the result, with no
 conflict.
 
-- Seven template registries load from outside `common/`, such as `map/galaxy`,
+- On M452, six template registries load from outside `common/`, such as `map/galaxy`,
   `sound/advisor_voice_types`, `gfx/portraits/sprite_configurations` and
   `interface/resource_groups`. So a registry name is the full content directory.
 - 59 more `common/` literals belong to loaders outside the template method, such as
