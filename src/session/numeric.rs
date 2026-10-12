@@ -77,13 +77,6 @@ fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimit
         (reader.id.as_ref() == Some(&ReaderId::from_callee(callee))).then_some(fact)
     }) {
         reader.numeric = fact.conversion.clone();
-        if let GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion)) =
-            &reader.numeric
-            && conversion.representation
-                == GrammarProperty::Known(crate::NumericRepresentation::BinaryFloat)
-        {
-            reader.kind = ReaderKind::Float;
-        }
         return limits(fact);
     }
     reader.numeric = match reader.kind {
@@ -398,6 +391,7 @@ mod tests {
                 ordered,
             ] {
                 assert_eq!(reader.id, id);
+                assert_eq!(reader.kind, ReaderKind::Integer);
                 assert_eq!(reader.numeric, conversion);
             }
             assert!(

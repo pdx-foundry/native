@@ -273,6 +273,9 @@ conflict.
 - Pitfall: the first version of the method took any directory-shaped literal in the constructor.
   It missed the global `CString` shape of `common/ship_categories`, and it had no tie to the
   meaning of the literal. The base-constructor call anchor replaced it.
+- Pitfall: a scan that stops at every conditional branch loses loaders. `CSpeciesNamesDatabase::Init`
+  runs a loop before it passes `common/species_names` to the file enumeration. The scan continues
+  past a conditional branch, and the target of one forgets every register and built object.
 
 ### Scheduler table on M45-release
 

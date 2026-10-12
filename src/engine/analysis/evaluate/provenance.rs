@@ -31,11 +31,13 @@ pub(super) struct Provenance {
 
 impl Machine<'_> {
     /// Unknown-input decisions of this path, including the receiver bytes that caused them.
+    /// Panics unless [`Machine::watch_reads`] came first: without a watch, no decision is recorded.
     pub fn decisions(&self) -> Vec<Decision> {
         self.provenance
             .as_ref()
-            .map(|provenance| provenance.decisions.clone())
-            .unwrap_or_default()
+            .expect("watch_reads first")
+            .decisions
+            .clone()
     }
 
     /// The watched receiver offsets that the unknown value of general register `index` was

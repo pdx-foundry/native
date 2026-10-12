@@ -245,6 +245,23 @@ impl Trace {
         }
     }
 
+    /// The trace of a value that paths joined and left unknown. `kept` and `arrival` are the
+    /// traces of the sides that did not know it. When neither side knew it, the trace combines
+    /// both; when a side knew it, or both knew it differently, the join is a cause too, and
+    /// `cause` comes first.
+    pub(crate) fn joined(kept: Option<Self>, arrival: Option<Self>, cause: Self) -> Self {
+        let mut trace = match (kept, arrival) {
+            (Some(_), Some(_)) => Self::default(),
+            _ => cause,
+        };
+
+        for side in [kept, arrival].into_iter().flatten() {
+            trace.merge(&side);
+        }
+
+        trace
+    }
+
     /// Add the causes and markers of `other`, a value that this one combines. Causes past
     /// [`CAUSE_LIMIT`] are dropped and mark the trace as truncated.
     pub(crate) fn merge(&mut self, other: &Self) {
@@ -421,6 +438,31 @@ mod tests {
         let instructions: Vec<_> = trace.causes().map(|cause| cause.instruction).collect();
         assert_eq!(instructions, [0x200, 0x204, 0x208, 0x200]);
         assert!(trace.truncated);
+    }
+
+    #[test]
+    fn a_join_cause_comes_first_unless_both_sides_were_unknown() {
+        let join = Trace::of(Cause {
+            kind: CauseKind::Join,
+            instruction: 0x300,
+            entry: 0x100,
+        });
+        let instructions =
+            |trace: Trace| -> Vec<u64> { trace.causes().map(|cause| cause.instruction).collect() };
+
+        assert_eq!(instructions(Trace::joined(None, None, join)), [0x300]);
+        assert_eq!(
+            instructions(Trace::joined(Some(call_at(0x104)), None, join)),
+            [0x300, 0x104]
+        );
+        assert_eq!(
+            instructions(Trace::joined(
+                Some(call_at(0x104)),
+                Some(call_at(0x10c)),
+                join
+            )),
+            [0x104, 0x10c]
+        );
     }
 
     #[test]

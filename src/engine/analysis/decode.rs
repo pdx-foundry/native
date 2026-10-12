@@ -3,13 +3,12 @@
 use std::collections::BTreeMap;
 
 use capstone::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::declarations::number;
 
 /// One fully decoded ARM64 instruction. This establishes no higher-level reader semantics.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Instruction {
     /// Unsigned virtual address in the selected executable slice.
     pub address: u64,
@@ -118,6 +117,24 @@ pub fn adrp(word: u32, address: u64) -> Option<(usize, u64)> {
         (word & 0x1f) as usize,
         (address & !0xfff).wrapping_add_signed(pages << 12),
     ))
+}
+
+/// The target of a conditional branch word at `address`: `b.cond`, `cbz`, `cbnz`, `tbz` or
+/// `tbnz`. The other branches and calls have no condition.
+pub fn conditional_branch_target(word: u32, address: u64) -> Option<u64> {
+    let condition = word & 0xff00_0010 == 0x5400_0000;
+    let compare = word & 0x7e00_0000 == 0x3400_0000;
+    let test = word & 0x7e00_0000 == 0x3600_0000;
+    // `b.cond` and `cbz` hold a 19-bit offset in words, and `tbz` holds a 14-bit one.
+    let words = if condition || compare {
+        ((word >> 5 & 0x7_ffff) << 13) as i32 >> 13
+    } else if test {
+        ((word >> 5 & 0x3fff) << 18) as i32 >> 18
+    } else {
+        return None;
+    };
+
+    Some(address.wrapping_add_signed(i64::from(words) * 4))
 }
 
 /// The destination register, source register and addend of a 64-bit `add` of an immediate,
@@ -319,6 +336,7 @@ pub fn wide_register(name: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::analysis::assembler::arm64;
 
     /// The pinned decoder's reading of one word.
     fn decoded(word: u32, address: u64) -> (String, String) {
@@ -341,6 +359,50 @@ mod tests {
         );
         assert_eq!(adrp(0x90ff_ffe1, 0x5000), Some((1, 0x1000)));
         assert_eq!(adrp(0x9100_4108, 0x1000), None);
+    }
+
+    #[test]
+    fn a_conditional_branch_gives_its_target_forward_and_backward() {
+        let branches = [
+            (arm64!(at 0x1004; b.eq extern 0x1010), 0x1004, 0x1010),
+            (arm64!(at 0x1010; b.ne extern 0x1000), 0x1010, 0x1000),
+            (arm64!(at 0x1004; cbz w3, extern 0x1024), 0x1004, 0x1024),
+            (arm64!(at 0x1020; cbnz x3, extern 0x1008), 0x1020, 0x1008),
+            (arm64!(at 0x1004; tbz w1, #3, extern 0x1020), 0x1004, 0x1020),
+            (
+                arm64!(at 0x1020; tbnz x1, #40, extern 0x1000),
+                0x1020,
+                0x1000,
+            ),
+        ];
+
+        for (code, address, target) in branches {
+            let word = u32::from_le_bytes(code.try_into().unwrap());
+            let (_, operands) = decoded(word, address);
+
+            assert_eq!(conditional_branch_target(word, address), Some(target));
+            assert!(operands.ends_with(&format!("#{target:#x}")), "{operands}");
+        }
+    }
+
+    #[test]
+    fn no_other_instruction_is_a_conditional_branch() {
+        let others = [
+            arm64!(at 0x1000; b extern 0x1010),
+            arm64!(at 0x1000; bl extern 0x1010),
+            arm64!(at 0x1000; blr x8),
+            arm64!(at 0x1000; br x8),
+            arm64!(at 0x1000; ret),
+            arm64!(at 0x1000; adrp x8, extern 0x2000),
+            arm64!(at 0x1000; cmp w1, #7),
+            arm64!(at 0x1000; nop),
+        ];
+
+        for code in others {
+            let word = u32::from_le_bytes(code.try_into().unwrap());
+
+            assert_eq!(conditional_branch_target(word, 0x1000), None, "{word:#x}");
+        }
     }
 
     #[test]

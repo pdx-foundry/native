@@ -1,12 +1,12 @@
 //! Bounded C library effects and executable bodies used by constructor walks.
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::engine::analysis::evaluate::{Call, Machine, ReturnTaint};
 
 /// Bound imports have their C ABI semantics. Engine helpers are executed, never summarized by name.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct ConstructorCalls {
     /// Entry addresses of the imported C `strlen`.
     pub lengths: BTreeSet<u64>,

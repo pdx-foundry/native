@@ -1,11 +1,10 @@
 use crate::engine::analysis::discovery::{CandidateRecord, Symbol};
 use crate::engine::analysis::stop::{Stop, Unresolved};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Raw function bytes from the selected executable slice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Function {
     /// Exact demangled function symbol.
     pub name: String,
@@ -15,8 +14,7 @@ pub struct Function {
     pub code: Vec<u8>,
 }
 /// Read-only data bytes from the selected executable slice, where the compiler puts jump tables.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize)]
 pub struct DataSection {
     /// File virtual address of the first byte.
     pub address: u64,
@@ -25,11 +23,9 @@ pub struct DataSection {
 }
 /// What the method reads, all from the executable. The selection is a discovered candidate,
 /// never a list of field names.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FieldInput {
     /// Bound signatures and layouts for compound key readers.
-    #[serde(default)]
     pub key_readers: KeyReaders,
     /// The template loader candidate whose fields are asked for.
     pub selection: CandidateRecord,
@@ -42,16 +38,14 @@ pub struct FieldInput {
     /// Read-only data sections, which hold the root's jump tables.
     pub read_only_data: Vec<DataSection>,
     /// Constructed persistent classes directly reached from the root.
-    #[serde(default)]
     pub objects: Vec<ObjectReader>,
     /// Constructor evidence for generic persistent member destinations.
-    #[serde(default)]
     pub persistent: Option<PersistentInput>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
 }
 /// Provenance of a value at a dispatch boundary; unknown values are omitted.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum Value {
     /// Immediate integer.
     Constant(i64),
@@ -90,7 +84,7 @@ pub enum Value {
     },
 }
 /// The entry at `table + index * width`, where the index is the token word `token + offset`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct TableEntry {
     /// Address of the first entry.
     pub table: u64,
@@ -259,7 +253,7 @@ pub struct RegistryFieldResult {
 }
 
 /// A persistent object's executable-derived constructor and virtual reader bindings.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ObjectReader {
     /// Demangled class name associated with these constructors and readers.
     pub class: String,
@@ -272,21 +266,17 @@ pub struct ObjectReader {
     /// Entry address of the persistent reader called on the constructed object.
     pub read: u64,
     /// Entry addresses of factories that allocate, construct and return the object through `x8`.
-    #[serde(default)]
     pub factories: Vec<u64>,
     /// Entry addresses of insertion specializations accepting this object's pointer.
     pub insert: Vec<u64>,
     /// Entry addresses of insertion specializations that take the object from a scoped pointer
     /// and are proven to clear that pointer.
-    #[serde(default)]
     pub moving_insert: Vec<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
     /// Byte offset of the element count within the collection, if proven.
-    #[serde(default)]
     pub count_offset: Option<u64>,
     /// The persistent reader at the object's primary address point.
-    #[serde(default)]
     pub reader: Option<PointReader>,
 }
 
@@ -327,18 +317,17 @@ pub struct StorageSelection {
 }
 
 /// Concrete methods and independently established family at one vtable address point.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConcreteReader {
     pub read: String,
     pub member: String,
     pub family: crate::BlockFamily,
     /// The target of the family's delegate slot, for readers that share read and member.
-    #[serde(default)]
     pub delegate: Option<String>,
 }
 
 /// A persistent reader with the vtable address point that holds it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PointReader {
     /// Executable virtual address of the object's vtable address point.
     pub point: u64,
@@ -347,36 +336,30 @@ pub struct PointReader {
 }
 
 /// Exact executable inputs for owner constructor evaluation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PersistentInput {
-    #[serde(default)]
     pub(crate) constructor_calls: super::super::receivers::ConstructorCalls,
     pub constructors: Vec<Function>,
     pub summaries: BTreeMap<u64, BTreeMap<u64, u64>>,
     /// Called constructor bodies for initial embedded storage.
-    #[serde(default)]
     pub constructor_bodies: BTreeMap<u64, Function>,
     pub pointers: BTreeMap<u64, u64>,
     /// The pointer slots outside the constant sections, whose targets code may replace.
-    #[serde(default)]
     pub writable_slots: BTreeSet<u64>,
     pub never_return: Vec<u64>,
     pub readers: BTreeMap<u64, ConcreteReader>,
     /// The offsets of the words to read inside each persistent object, by its address point.
-    #[serde(default)]
     pub requested_words: BTreeMap<u64, BTreeSet<u64>>,
     /// How owner constructors build a modifier container and where it keeps its mask.
-    #[serde(default)]
     pub containers: ModifierContainers,
     /// 32-bit words in zero-fill memory, with the value that the static initializer that stores
     /// each one leaves there.
-    #[serde(default)]
     pub initialized_words: BTreeMap<u64, u64>,
 }
 
 /// The constructors of a modifier container, which store its category mask, and where the
 /// container keeps the mask.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ModifierContainers {
     /// Constructors that take the mask as their category argument in `w2`.
     pub category: BTreeSet<u64>,
@@ -387,10 +370,9 @@ pub struct ModifierContainers {
 }
 
 /// Signature addresses for shared compound key-reader idioms.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct KeyReaders {
     /// Destination sizes for target, optional string, and string array.
-    #[serde(default)]
     pub compound_sizes: [i64; 3],
     pub array_data: i64,
     pub array_count: i64,
@@ -405,6 +387,5 @@ pub struct KeyReaders {
     pub string_read: Option<u64>,
     pub persistent_read: Option<u64>,
     /// `CString::CString(char const*)`, which makes a string from a token's text.
-    #[serde(default)]
     pub string_from_text: Vec<u64>,
 }

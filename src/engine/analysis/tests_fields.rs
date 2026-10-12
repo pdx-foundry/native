@@ -436,10 +436,7 @@ fn altered_flags_and_external_branch_do_not_silently_drop_token_intervals() {
     }
 }
 #[test]
-fn completeness_is_never_an_input_and_a_foreign_selection_is_refused() {
-    let mut input = serde_json::to_value(fixture()).unwrap();
-    input["complete_registry"] = true.into();
-    assert!(serde_json::from_value::<FieldInput>(input).is_err());
+fn a_foreign_selection_is_refused() {
     let mut input = fixture();
     input.selection.owner_candidate = "COther".into();
     assert!(fields::analyze(&input).is_err());

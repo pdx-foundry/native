@@ -435,19 +435,8 @@ impl Machine<'_> {
         let (Some(traces), Some(kept_traces)) = (&mut self.traces, kept.traces.as_deref()) else {
             return;
         };
-        let joined = |kept: Option<Trace>, arrival: Option<Trace>| match (kept, arrival) {
-            (Some(mut kept), Some(arrival)) => {
-                kept.merge(&arrival);
-                kept
-            }
-            (kept, arrival) => {
-                let mut trace = join;
-                for side in [kept, arrival].into_iter().flatten() {
-                    trace.merge(&side);
-                }
-                trace
-            }
-        };
+        let joined =
+            |kept: Option<Trace>, arrival: Option<Trace>| Trace::joined(kept, arrival, join);
 
         for index in 0..self.registers.len() {
             if self.registers[index].is_none() {
