@@ -2,8 +2,10 @@
 //!
 //! The method needs no config seeds, name list, content files, debugger, or game launch. It
 //! enumerates exact template loader symbols. A candidate count never establishes that all
-//! registries were found; custom, nested and late loaders are outside the template method.
+//! registries were found; custom, nested and late loaders are outside the template method. The
+//! [`schedule`] lists the databases that the engine schedules, so it counts the ones outside it.
 mod records;
+pub mod schedule;
 mod symbol_index;
 
 pub use records::*;

@@ -109,7 +109,7 @@ impl Layout<'_> {
         match self.name {
             "on-actions.json" | "game-rules.json" | "localization-declarations.json" => depth >= 2,
             "modifier-blocks.json" => depth >= 4,
-            "modifier-nodes.json" => depth >= 2,
+            "modifier-nodes.json" | "registry-gaps.json" => depth >= 2,
             "modifier-categories.json" => depth >= 1,
             "modifier-category-keys.json" => depth >= 2,
             "script-expansions.json" => depth >= 3 || (section == "gaps" && depth >= 2),

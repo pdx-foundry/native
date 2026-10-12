@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::decode::{add_immediate, adrp, conditional_branch_target, sub_immediate};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "registry-directories/v3";
+pub const METHOD: &str = "registry-directories/v4";
 
 /// Base constructor whose `CString` argument is the content directory.
 pub const BASE_CONSTRUCTOR: &str =
