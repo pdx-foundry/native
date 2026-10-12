@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// What the method does not search.
-const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls and the stated definition-name rules of its loaders. Files that the loader opens by a literal name, a check of the file name after the enumeration, and definitions nested in a definition's block other than tradition swaps are outside it.";
+const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls and the stated definition-name rules of its loaders. Files that the loader opens by a literal name, a check of the file name after the enumeration, and definitions nested in a definition's block other than the stated swap blocks are outside it.";
 
 /// The build-wide rules that the answer does not carry, by the name of each gap's subject. The
 /// knowledge page states them once for the build.
@@ -40,8 +40,10 @@ impl Native {
     /// [`GrammarProperty::Unresolved`] with a gap whose subject is the property's
     /// [`GapSubject::AnswerItem`] name, such as `extension`. The definition-name forms are
     /// stated rules of the loader's code: a loader with no stated rule, or a build that lacks the
-    /// code of a stated rule, leaves `definition_names` unresolved or partial with a gap whose
-    /// subject is `definition_names`. The duplicate rule is established for a template registry;
+    /// code of a stated rule, leaves `definition_names` unresolved or partial with a
+    /// [`GapKind::UnresolvedPath`] gap whose subject is `definition_names`. A rule whose
+    /// definitions no form can name, such as one with a field that renames a definition, adds a
+    /// [`GapKind::OutsideMethod`] gap with that subject that names the obstacle. The duplicate rule is established for a template registry;
     /// a custom loader's is `Unresolved` with a gap whose subject is `duplicate_rule`. The file
     /// order and whether a mod's file replaces a game file are build-wide rules outside the
     /// answer, with gaps whose subjects are `file_order` and `mod_over_vanilla`.
@@ -177,25 +179,40 @@ fn property<T: Clone>(
     GrammarProperty::Unresolved
 }
 
-/// The definition forms: `Known` when every stated rule holds, `Partial` when some do, and
-/// `Unresolved` when none does or the loader has no stated rule, with a gap for the last two.
+/// The definition forms: `Known` when every stated rule holds and has no obstacle, `Partial` when
+/// some forms are stated but a rule is missing or has an obstacle, and `Unresolved` otherwise. A
+/// missing rule or a loader with no rule adds an `UnresolvedPath` gap, and each obstacle adds an
+/// `OutsideMethod` gap.
 fn definition_names(naming: &Naming, gaps: &mut Vec<Gap>) -> GrammarProperty<Vec<DefinitionForm>> {
-    let reason = match (naming.forms.is_empty(), naming.missing) {
-        (false, 0) => return GrammarProperty::Known(naming.forms.clone()),
-        (true, 0) => "the registry's loader has no stated definition-name rule".to_owned(),
-        (_, missing) => {
-            format!("the build lacks the code of {missing} stated definition-name rules")
-        }
-    };
-    gaps.push(gap_for_subject(
-        GapKind::UnresolvedPath,
+    let subject = || {
         Some(GapSubject::AnswerItem {
             name: "definition_names".into(),
-        }),
-        reason,
-    ));
+        })
+    };
+    let unresolved = match (naming.rules, naming.missing) {
+        (0, _) => Some("the registry's loader has no stated definition-name rule".to_owned()),
+        (_, 0) => None,
+        (_, missing) => Some(format!(
+            "the build lacks the code of {missing} stated definition-name rules"
+        )),
+    };
 
-    if naming.forms.is_empty() {
+    gaps.extend(
+        unresolved
+            .into_iter()
+            .map(|reason| gap_for_subject(GapKind::UnresolvedPath, subject(), reason)),
+    );
+    gaps.extend(
+        naming
+            .obstacles
+            .iter()
+            .map(|&obstacle| gap_for_subject(GapKind::OutsideMethod, subject(), obstacle)),
+    );
+
+    let established = naming.rules > 0 && naming.missing == 0 && naming.obstacles.is_empty();
+    if established {
+        GrammarProperty::Known(naming.forms.clone())
+    } else if naming.forms.is_empty() {
         GrammarProperty::Unresolved
     } else {
         GrammarProperty::Partial(naming.forms.clone())
@@ -248,8 +265,10 @@ mod tests {
             &selection,
             &Ok(DuplicateRule::LastWins),
             &Naming {
+                rules: 1,
                 forms: vec![root_key()],
                 missing: 0,
+                obstacles: vec![],
             },
             build(),
         );
@@ -292,8 +311,10 @@ mod tests {
             &selection(),
             &Err(DuplicateObstacle::NotFollowed),
             &Naming {
+                rules: 1,
                 forms: vec![root_key()],
                 missing: 0,
+                obstacles: vec![],
             },
             build(),
         );
@@ -327,8 +348,10 @@ mod tests {
             &selection,
             &Ok(DuplicateRule::LastWins),
             &Naming {
+                rules: 1,
                 forms: vec![root_key()],
                 missing: 0,
+                obstacles: vec![],
             },
             build(),
         );
@@ -360,14 +383,82 @@ mod tests {
     }
 
     #[test]
+    fn a_held_rule_with_no_form_states_that_the_loader_names_no_definition() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Ok(DuplicateRule::LastWins),
+            &Naming {
+                rules: 1,
+                forms: vec![],
+                missing: 0,
+                obstacles: vec![],
+            },
+            build(),
+        );
+
+        assert_eq!(
+            answer.value.definition_names,
+            GrammarProperty::Known(vec![])
+        );
+        assert!(definition_name_gaps(&answer).is_empty());
+    }
+
+    #[test]
+    fn an_obstacle_leaves_the_stated_forms_partial_with_a_gap_that_names_it() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Ok(DuplicateRule::LastWins),
+            &Naming {
+                rules: 2,
+                forms: vec![root_key()],
+                missing: 0,
+                obstacles: vec!["a `key` field renames a definition"],
+            },
+            build(),
+        );
+
+        assert_eq!(
+            answer.value.definition_names,
+            GrammarProperty::Partial(vec![root_key()])
+        );
+        assert_eq!(
+            definition_name_gaps(&answer),
+            [(GapKind::OutsideMethod, "a `key` field renames a definition")]
+        );
+    }
+
+    #[test]
+    fn an_obstacle_with_no_stated_form_leaves_definition_names_unresolved() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Ok(DuplicateRule::LastWins),
+            &Naming {
+                rules: 1,
+                forms: vec![],
+                missing: 0,
+                obstacles: vec!["definitions are named by their file name"],
+            },
+            build(),
+        );
+
+        assert_eq!(answer.value.definition_names, GrammarProperty::Unresolved);
+        assert_eq!(definition_name_gaps(&answer).len(), 1);
+    }
+
+    #[test]
     fn a_loader_with_no_stated_rule_leaves_definition_names_unresolved() {
         let answer = normalized_rules(
             "common/examples",
             &selection(),
             &Ok(DuplicateRule::LastWins),
             &Naming {
+                rules: 0,
                 forms: vec![],
                 missing: 0,
+                obstacles: vec![],
             },
             build(),
         );
@@ -389,8 +480,10 @@ mod tests {
             &selection(),
             &Ok(DuplicateRule::LastWins),
             &Naming {
+                rules: 2,
                 forms: vec![root_key()],
                 missing: 1,
+                obstacles: vec![],
             },
             build(),
         );
@@ -415,8 +508,10 @@ mod tests {
             &selection(),
             &Ok(DuplicateRule::LastWins),
             &Naming {
+                rules: 2,
                 forms: vec![],
                 missing: 2,
+                obstacles: vec![],
             },
             build(),
         );

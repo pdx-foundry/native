@@ -651,7 +651,8 @@ pub struct LoaderRules {
     /// What the loader does with a later definition of a key that it already holds, from the same
     /// file or a later one.
     pub duplicate_rule: crate::GrammarProperty<DuplicateRule>,
-    /// How the loader names each form of definition in the registry's files.
+    /// How the loader names each form of definition in the registry's files. `Known` with no
+    /// form means that the loader names none of its definitions.
     pub definition_names: crate::GrammarProperty<Vec<DefinitionForm>>,
 }
 

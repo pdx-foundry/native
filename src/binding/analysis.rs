@@ -523,7 +523,7 @@ impl VerifiedAnalysis<'_> {
                 &image,
                 &template_databases,
             ),
-            stated: binary::definition_names::stated_forms(
+            stated: binary::definition_names::stated_rules(
                 &self.catalog.symbols,
                 &templates,
                 &databases,

@@ -1715,6 +1715,47 @@ fn loader_rules_state_the_definition_name_forms_of_template_and_event_loaders() 
     );
 }
 
+/// Every listed registry's loader has a stated definition-name rule: a custom loader names its
+/// definitions by a form, names none of them, or has a gap that names its obstacle
+/// (`docs/native/loader-rules.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn loader_rules_state_a_rule_or_an_obstacle_for_every_custom_loader() {
+    use pdx_native::{DefinitionForm, DefinitionName, DefinitionStatement, GrammarProperty};
+    let native = native();
+    let rules = |registry: &str| native.loader_rules(registry).unwrap();
+
+    for registry in native.registries().unwrap().value {
+        let answer = rules(&registry.name);
+        let unstated = answer
+            .gaps
+            .iter()
+            .any(|gap| gap.detail == "the registry's loader has no stated definition-name rule");
+        assert!(!unstated, "{}", registry.name);
+    }
+
+    assert_eq!(
+        rules("gfx/worldgfx").value.definition_names,
+        GrammarProperty::Known(vec![DefinitionForm {
+            statement: DefinitionStatement::RootKey("gfx_settings".into()),
+            name: DefinitionName::Field("world".into()),
+        }])
+    );
+    assert_eq!(
+        rules("common/start_screen_messages").value.definition_names,
+        GrammarProperty::Known(vec![])
+    );
+    let modifiers = rules("common/static_modifiers");
+    assert_eq!(
+        modifiers.value.definition_names,
+        GrammarProperty::Unresolved
+    );
+    assert!(modifiers.gaps.iter().any(|gap| {
+        gap.kind == GapKind::OutsideMethod
+            && gap.subject.as_ref().map(GapSubject::name) == Some("definition_names")
+    }));
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_builds() {

@@ -119,8 +119,8 @@ pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
     Ok(json!(registries))
 }
 
-/// The loader rules of each registry that the tracked file selects, with the property and
-/// detail of each unresolved property.
+/// The loader rules of each registry that the tracked file selects, with the kind, subject and
+/// detail of each unresolved property and each definition-name gap.
 pub fn loader_rules(native: &Native, expected: &Value) -> Result<Value> {
     let mut registries = BTreeMap::new();
     for registry in expected
@@ -129,16 +129,16 @@ pub fn loader_rules(native: &Native, expected: &Value) -> Result<Value> {
         .keys()
     {
         let answer = current_answer(native, native.loader_rules(registry)?)?;
-        let unresolved: Vec<_> = answer
+        let gaps: Vec<_> = answer
             .gaps
             .iter()
-            .filter(|gap| gap.kind == GapKind::UnresolvedPath)
-            .map(|gap| json!([gap.subject.as_ref().map(GapSubject::name), gap.detail]))
+            .map(|gap| (gap, gap.subject.as_ref().map(GapSubject::name)))
+            .filter(|(gap, subject)| {
+                gap.kind == GapKind::UnresolvedPath || *subject == Some("definition_names")
+            })
+            .map(|(gap, subject)| json!([gap.kind, subject, gap.detail]))
             .collect();
-        registries.insert(
-            registry,
-            json!({"rules": answer.value, "unresolved": unresolved}),
-        );
+        registries.insert(registry, json!({"rules": answer.value, "gaps": gaps}));
     }
     Ok(json!(registries))
 }
