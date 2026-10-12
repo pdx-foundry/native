@@ -1,4 +1,4 @@
-# Static analysis and live-test costs
+# Static analysis, parity and live-test costs
 
 ## Hashing dominates the first static query
 
@@ -74,18 +74,119 @@ before the name pass, for example to the calls whose register a load at an evalu
 displacement fills, if the block input grows past about 5 s or a query that runs per registry
 needs it.
 
+## Parity costs
+
+Measured on M452 at `13c94ba` (SDK-769), on one Apple Silicon host with 18 cores and 24 GB, release
+build, nothing else running. `cargo parity` runs two test binaries one after the other:
+
+| Binary | Wall | CPU | Peak resident | Peak footprint | Slowest test (alone) |
+| --- | --- | --- | --- | --- | --- |
+| lib, 26 ignored tests | 79 s | 334 s | 8.7 GB | 10.3 GB | `numeric_fixture_storage_population`, 65 s |
+| `static_questions`, 40 cases | 172 s | 1,254 s | 9.8 GB | 13.2 GB | `known_target_lists_have_covered_arguments`, 137 s |
+
+- **The slowest test sets the wall time.** Each binary runs its tests on all cores, so it ends with
+  its slowest test. With 6 test threads the walls stay at 84 s and 173 s and the peaks fall only
+  to 6.3 GB and 8.5 GB resident: a few heavy tests hold most of the memory.
+- **Each test opens its own `Native`; no test shares one.** About 64 opens run per parity run.
+  Opening costs 0.5 s; the first question then builds the catalog in about 0.5 s, and the two
+  together keep about 280 MB (the executable and the catalog). What repeats is the analysis after
+  them. One `Native` measured step by step:
+
+  | First call on a `Native` | Time | Footprint after |
+  | --- | --- | --- |
+  | `open` | 0.5 s | 314 MB |
+  | `registries` (builds the catalog) | 0.5 s | 270 MB |
+  | `registry_fields`, first registry (the shared fact sets, block facts included) | 15.3 s | 751 MB (falls to about 280 MB after) |
+  | `registry_fields`, any later registry | 0.7 s | about 340 MB |
+  | `command_grammar`, first effect | 2.9 s | 661 MB |
+  | `command_grammar`, first trigger | 2.7 s | 919 MB |
+  | `command_grammar`, any later command | 0.02–0.05 s | — |
+
+  The grammar input of each kind keeps about 300 MB, because it copies the symbol list and the
+  read-only sections (`binding/binary/grammar.rs`). A test with full facts and both grammar
+  kinds holds about 0.9 GB; alone, the heavy tests peak at 1.3–3.2 GB resident. A parity run's
+  10–13 GB is several such tests at once.
+- **Per-command and per-registry work rebuilds whole-symbol tables.** In
+  `known_target_lists_have_covered_arguments`, which walks the 2,178 commands,
+  `fields::tokens::names_by_address` rebuilt a map of every symbol for each member exploration:
+  half of the test. Built once, the test took 64 s instead of 137 s with the same answers. Of the
+  rest, `DispatchInput::command` rebuilding the list of every function for each command is 60%.
+  In `numeric_fixture_storage_population`, the field input of each registry scans every symbol
+  for persistent constructors (`binding/binary/receivers.rs`, `constructor_class`), and
+  `fields::persistent::constructor_points` copies the read-only sections.
+- **The same costs reach Atlas.** The Atlas live snapshot takes 432 s with 3.8 GB resident. Its
+  three game sessions take about 75 s; the rest is Native static analysis on one thread.
+  `names_by_address` alone takes about 67 s, and `derived_names` computes each registry's field
+  input again after `registry_fields` did (about 69 s).
+
 ## Live costs
 
 A live case spends 16–21 s loading the game to the registry pause, 2–5 s in supervisor setup and
-about 0.5 s in cleanup. A diagnostic window through validation waits about 74 s for all content.
+about 0.5 s in cleanup. A diagnostic window through validation reaches its pause about 65 s
+later; nearly all of that is the log hooks (below).
 Batch independent validation samples into one session; a batched session is no slower than a
 single one (the batching rule is in [command grammar](command-grammar.md)).
+
+A session's phase times are in its `session/run-summary.json`. Three cases measured at `13c94ba`
+on the host above, each run alone:
+
+| Case | Wall | Sessions | Setup | To the pause | Paused | Cleanup |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fixture_numeric_conversion_matrix` | 289 s | 10 | 1.3–8.4 s, 27 s in all | 22–26 s, 237 s in all | 0.1 s each | 0.5 s each |
+| `fixture_control_triggers` | 108 s | 1 | 1.8 s | 88.2 s (through validation) | 0.1 s | 0.5 s |
+| `script_numeric` | 121 s | 1 | 1.2 s | 26.9 s | 82.0 s (163 checks, 0.5 s each) | 0.5 s |
+
+- **Most of a launch is engine startup.** In `fixture_normal` the game reached the first
+  `Initializing Database` line in `setup.log` 16.2 s after the spawn, then loaded all 180
+  databases in 4.3 s: `common/traditions` (234 items) in 25 ms, and the categories and the
+  fixture file in 93 ms. The session paused 20.7 s after the spawn. 10.4 s of the startup has no
+  log output and is not identified.
+- **A fixture case's time is game launches.** Reading the answers takes about 0.1 s. A slow
+  fixture case is slow because it launches the game many times. The conversion matrix gives
+  each of its 10 table rows its own fixture. The scoped matrix launches 7 times: a request takes
+  one file, so each registry has its own launches; ordinary cases go in batches of 24; and each of
+  3 structural cases has a launch of its own, because a block given to a scalar reader can consume
+  the definitions after it.
+  `script_attribution` launches 5 times, and each `fixture_argument_*` case twice, the first
+  through validation.
+- **A window through validation costs about 60 s more, because of its log hooks.** The fixture's
+  private mod replaces `common/traditions` and `common/tradition_categories` (`replace_path`),
+  so vanilla content fails about 4,500 deferred references to the missing traditions, and the
+  engine logs 4,895 lines. With diagnostics requested, the worker stops the game at each log
+  call. In `fixture_control_triggers` the session took 85.5 s and 86.3 s to its pause with the
+  four log hooks armed, and 24.9 s and 25.1 s without them. Both reached the same
+  validation-complete pause and wrote the same 4,895 lines: about 12.5 ms per message. 12 cases
+  use such a window (the `fixture_control_*` cases, the first launch of each `fixture_argument_*`
+  case and `script_expansion_templates`): about 1,080 of the suite's 3,500 s.
+- **The rest of a case runs outside the session.** It is the harness's static analysis (about 15 s
+  on the first full-facts query of a `Native`) and admission. The `fixture_outcome_*` cases open
+  their own `Native` to record answers, so each pays the 15 s again (41–50 s against 27 s for
+  `fixture_normal`).
+- **A script check costs about 0.5 s in a paused session.** Where that time goes inside the
+  worker is not measured; the worker's `session/worker-diagnostics.json` checkpoints are the
+  place to time it.
+
+A suite run on the code of `13c94ba` took 3,514 s for 66 cases and about 88 launches: about 1,080 s in 12
+windows through validation, about 1,900 s in the other launches, about 140 s in script checks
+and the rest in static analysis and fault cases that end early.
 
 ## Measure
 
 `tools/profiling/measure.py OUTPUT [--release] [--live]` builds once and runs the static
 workloads twice; `tools/profiling/instrument.py` makes an instrumented source copy for phase
-timing (never publish it or use its timings as a baseline). The SDK-559 to SDK-561 raw logs and
+timing (never publish it or use its timings as a baseline).
+
+- **Per-test time:** run a built test binary with `--ignored -Z unstable-options --report-time`
+  and `RUSTC_BOOTSTRAP=1`; add `--exact NAME --test-threads=1` to time one test alone, and wrap it
+  in `/usr/bin/time -l` for its peak memory.
+- **Where the time goes:** `sample PID SECONDS -file OUT` on the running test or snapshot process.
+  The release profile keeps symbol names. Sum each function's inclusive samples per call path;
+  the report's top-of-stack list alone hides callers.
+- **Live phases:** the harness removes a passing case's work directory, so copy each
+  `$TMPDIR/pdx-native-*/session/run-summary.json` while the case runs; poll every 20 ms or less,
+  because a one-session case can write and remove it within 200 ms.
+
+The SDK-559 to SDK-561 raw logs and
 source copies are in `.local/sdk-559/`, `.local/sdk-560-*` and `.local/sdk-561-*`; no other copy
 was found. The second local copy that the [preservation guide](preservation.md) names,
 `~/Documents/PDX/evidence/native-2026-09-18/`, is not on this machine now.
