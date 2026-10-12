@@ -131,6 +131,10 @@ partial; the terminals then never run, and the registry return still pauses the 
 gaps that no single file owns have the registry as subject. The inline loader of
 `common/special_projects` takes one file.
 
+Pitfall: every file returns at the same reader-return address, and an LLDB one-shot hook whose
+callback continues stays armed. The worker disables each file's return hook before the next file
+arms its own; otherwise both fire at the second return and the worker cannot name the first.
+
 An engine log joins a file and line only when exactly one requested file and line is its source. A
 reader of expanded text joins the one fixture file whose call its source names.
 
