@@ -1,4 +1,4 @@
-use crate::engine::analysis::discovery::{CandidateRecord, Symbol};
+use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::stop::{Stop, Unresolved};
 use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,15 +21,15 @@ pub struct DataSection {
     /// The section's bytes.
     pub bytes: Vec<u8>,
 }
-/// What the method reads, all from the executable. The selection is a discovered candidate,
-/// never a list of field names.
+/// What the method reads, all from the executable. The owner is a discovered class, never a list
+/// of field names.
 #[derive(Debug, Clone, Serialize)]
 pub struct FieldInput {
     /// Bound signatures and layouts for compound key readers.
     pub key_readers: KeyReaders,
-    /// The loader candidate whose fields are asked for. The binding establishes it:
-    /// `VerifiedAnalysis::field_input` refuses a record that the executable's catalog lacks.
-    pub selection: CandidateRecord,
+    /// The class whose `ReadMember(CReader&, int)` is the root. The binding establishes it:
+    /// `VerifiedAnalysis::field_input` refuses an owner that no registry of the executable has.
+    pub owner: String,
     /// Executable symbol inventory used to resolve calls.
     pub symbols: Vec<Symbol>,
     /// Root, token construction, rejection and bounded owner helper functions.

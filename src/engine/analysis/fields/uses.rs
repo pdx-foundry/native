@@ -468,7 +468,7 @@ pub(super) fn discover(
     for function in input
         .functions
         .iter()
-        .filter(|function| has_owner_receiver(&function.name, &input.selection.owner_candidate))
+        .filter(|function| has_owner_receiver(&function.name, &input.owner))
     {
         let Ok(rows) = decode_arm64(&function.code, function.address) else {
             continue;
@@ -710,10 +710,7 @@ fn arm(
 mod tests {
     use super::*;
     use crate::engine::analysis::fields::{Function, ReaderJoin, RegistryFieldResult, Value};
-    use crate::engine::analysis::{
-        assembler::arm64,
-        discovery::{Symbol, candidates},
-    };
+    use crate::engine::analysis::{assembler::arm64, discovery::Symbol};
     fn member(name: &str, token: i64, at: i64, callee: &str) -> RootField {
         RootField {
             name: name.into(),
@@ -736,7 +733,7 @@ mod tests {
         FieldInput {
             key_readers: Default::default(),
             persistent: None,
-            selection: candidates(&symbols).remove(0),
+            owner: "CExample".into(),
             symbols,
             functions: vec![Function {
                 name: "CExample::Select() const".into(),

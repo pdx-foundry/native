@@ -1,7 +1,6 @@
 //! Bind embedded fixture storage and inline loader boundaries from one verified executable.
 use super::{BoundAnalysis, VerifiedAnalysis, binary, fixture_decoder};
 use crate::engine::analysis::{
-    discovery::CandidateRecord,
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
     fields::{self, FieldInput, ReaderJoin, Value},
     numeric::NumericFacts,
@@ -39,7 +38,9 @@ impl BoundAnalysis {
         let verified = self.verified().map_err(|error| error.to_string())?;
         let numeric = self.numeric_facts().map_err(|error| error.to_string())?;
         let loader = verified.verify_inline_loader(recipe)?;
-        let input = verified.fixture_owner_input(recipe.owner, recipe)?;
+        let input = verified
+            .read_field_input(recipe.owner)
+            .map_err(|error| error.to_string())?;
         let root = fields::analyze(&input).map_err(|error| error.to_string())?;
         let key = root
             .fields
@@ -66,7 +67,7 @@ impl BoundAnalysis {
         };
         let mut questions = Vec::new();
         for (index, question) in request.field_questions.iter().enumerate() {
-            let setup = match verified.nested_fixture_storage(question, &root, recipe, numeric) {
+            let setup = match verified.nested_fixture_storage(question, &root, numeric) {
                 Ok((token, storage, callee, nested)) => {
                     let bound = FixtureStorageBinding {
                         offset: nested
@@ -135,7 +136,6 @@ impl VerifiedAnalysis<'_> {
         &self,
         question: &crate::FixtureFieldQuestion,
         root: &fields::RegistryFieldResult,
-        recipe: &super::super::targets::InlineFixtureRecipe,
         numeric: &NumericFacts,
     ) -> Result<(u64, FixtureStorageBinding, String, FixtureNestedField), String> {
         let parent_name = question
@@ -179,7 +179,9 @@ impl VerifiedAnalysis<'_> {
             .member
             .strip_suffix("::ReadMember(CReader&, int)")
             .ok_or("Nested member signature is unsupported")?;
-        let nested_input = self.fixture_owner_input(owner, recipe)?;
+        let nested_input = self
+            .read_field_input(owner)
+            .map_err(|error| error.to_string())?;
         let nested_result = fields::analyze(&nested_input).map_err(|error| error.to_string())?;
         let leaf = nested_result
             .fields
@@ -213,26 +215,6 @@ impl VerifiedAnalysis<'_> {
         }
         binary::code_range(&self.executable, address, length).map_err(|error| error.to_string())
     }
-
-    fn fixture_owner_input(
-        &self,
-        owner: &str,
-        recipe: &super::super::targets::InlineFixtureRecipe,
-    ) -> Result<FieldInput, String> {
-        let (class, _) = recipe
-            .loader
-            .split_once("::")
-            .ok_or("Loader has no class")?;
-        let selection = CandidateRecord {
-            database: class.into(),
-            owner_candidate: owner.into(),
-            loader_class: class.into(),
-            address: self.symbol(recipe.loader)?,
-            initial_loader: None,
-        };
-        self.read_field_input(selection)
-            .map_err(|error| error.to_string())
-    }
 }
 
 /// Prove a single tail reader destination for a known token, including a preceding comparison read.
@@ -241,10 +223,7 @@ fn member_storage(
     token: i64,
     numeric: &NumericFacts,
 ) -> Result<(FixtureStorageBinding, String), String> {
-    let name = format!(
-        "{}::ReadMember(CReader&, int)",
-        input.selection.owner_candidate
-    );
+    let name = format!("{}::ReadMember(CReader&, int)", input.owner);
     let function = input
         .functions
         .iter()
@@ -321,7 +300,7 @@ mod tests {
 
     fn input(code: Vec<u8>) -> FieldInput {
         FieldInput {
-            selection: CandidateRecord { database: "Database".into(), owner_candidate: "Owner".into(), loader_class: "Database".into(), address: 0x1000, initial_loader: None },
+            owner: "Owner".into(),
             symbols: vec![
                 Symbol { address: 0x2000, name: "CCompareOperator::Read(CReader&)".into() },
                 Symbol { address: 0x3000, name: "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)".into() },

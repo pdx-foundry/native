@@ -1,7 +1,7 @@
 //! The registry field method on small authored inputs.
 use crate::engine::analysis::{
     assembler::{Arm64, arm64},
-    discovery::{Symbol, candidates},
+    discovery::Symbol,
     fields::{self, FieldGap, FieldGapKind, FieldInput, Function, PathOutcome, ReaderJoin},
     stop::{Bound, Obstacle, Unknown, Unresolved},
 };
@@ -19,7 +19,7 @@ fn fixture() -> FieldInput {
         key_readers: Default::default(),
         persistent: None,
         objects: vec![],
-        selection: candidates(&symbols).remove(0),
+        owner: "CExample".into(),
         symbols,
         strings: BTreeMap::from([(0x8000, "new_engine_field".into())]),
         read_only_data: vec![],

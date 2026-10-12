@@ -39,7 +39,7 @@
 //!   a stack temporary can join its reader; the join does not establish final member storage.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
-//! - Inputs: at most 128 functions and 4 MiB of aggregate code, with a 1 MiB per-function
+//! - Inputs: at most 256 functions and 4 MiB of aggregate code, with a 1 MiB per-function
 //!   decode bound, and at most 64 MiB of read-only data.
 //!
 //! `partition_accounted` means that the ledger accounts for every signed token interval,
@@ -76,10 +76,10 @@ use super::discovery::SymbolIndex;
 /// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v31";
 
-/// Find the root fields of the selected owner. The binding has established the selection, so the
+/// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
-    if input.functions.len() > 128
+    if input.functions.len() > 256
         || input.functions.iter().map(|f| f.code.len()).sum::<usize>() > 4 * 1024 * 1024
     {
         return Err(InputError("function input budget exceeded".into()));
@@ -101,8 +101,7 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     let (tokens, token_gaps) = tokens::recover(input);
     gaps.extend(token_gaps);
     let symbol_index = SymbolIndex::new(&input.symbols);
-    let (paths, table_gaps) =
-        dispatch::explore_owner(input, &symbol_index, &input.selection.owner_candidate);
+    let (paths, table_gaps) = dispatch::explore_owner(input, &symbol_index, &input.owner);
     gaps.extend(table_gaps);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
     gaps.extend(path_gaps);

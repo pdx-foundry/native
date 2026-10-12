@@ -763,11 +763,17 @@ fn script_expansions_give_hosts_stages_and_checks() {
     let GrammarProperty::Partial(hosts) = &inline.hosts else {
         panic!("inline hosts: {:?}", inline.hosts);
     };
-    let roots = hosts
+    // The template loaders read inline scripts at the root; a custom loader is outside the join.
+    let roots: Vec<_> = hosts
         .iter()
-        .filter(|host| matches!(host, ExpansionHost::RegistryRoot { .. }))
-        .count();
-    assert_eq!(roots, read_registry_fields(native).unwrap().len());
+        .filter_map(|host| match host {
+            ExpansionHost::RegistryRoot { registry } => Some(registry.as_str()),
+            _ => None,
+        })
+        .collect();
+    let registries = native.registries().unwrap().value;
+    assert_eq!(roots.len(), registries.len() - LOADER_NAMED.len());
+    assert!(roots.iter().all(|root| !LOADER_NAMED.contains(root)));
     assert!(hosts.contains(&ExpansionHost::RegistryRoot {
         registry: "common/traditions".into()
     }));
@@ -1464,6 +1470,31 @@ fn own_native() -> Native {
     .expect("the installed build is in the target catalogue")
 }
 
+/// Independent expectation on M452: the registries that only their database's own loader names.
+const LOADER_NAMED: [&str; 21] = [
+    "common/ambient_objects",
+    "common/colors",
+    "common/component_tags",
+    "common/diplo_phrases",
+    "common/fallen_empires",
+    "common/global_ship_designs",
+    "common/on_actions",
+    "common/opinion_modifiers",
+    "common/planet_classes",
+    "common/ship_behaviors",
+    "common/special_projects",
+    "common/species_names",
+    "common/start_screen_messages",
+    "common/static_modifiers",
+    "common/strategic_resources",
+    "common/terraform",
+    "common/traits",
+    "events",
+    "flags",
+    "gfx/worldgfx",
+    "prescripted_countries",
+];
+
 /// The field answer of every listed registry that the field method reads. A listed registry that
 /// it does not read gives `Error::Unsupported` and is left out.
 fn read_registry_fields(native: &Native) -> Result<Vec<Answer<Vec<pdx_native::Field>>>> {
@@ -1506,32 +1537,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     use std::collections::BTreeSet;
 
     let native = native();
-    // Independent expectation: the registries that only their database's own loader names.
-    let loader_named: BTreeSet<String> = [
-        "common/ambient_objects",
-        "common/colors",
-        "common/component_tags",
-        "common/diplo_phrases",
-        "common/fallen_empires",
-        "common/global_ship_designs",
-        "common/on_actions",
-        "common/opinion_modifiers",
-        "common/planet_classes",
-        "common/ship_behaviors",
-        "common/special_projects",
-        "common/species_names",
-        "common/start_screen_messages",
-        "common/static_modifiers",
-        "common/strategic_resources",
-        "common/terraform",
-        "common/traits",
-        "events",
-        "flags",
-        "gfx/worldgfx",
-        "prescripted_countries",
-    ]
-    .map(String::from)
-    .into();
+    let loader_named: BTreeSet<String> = LOADER_NAMED.map(String::from).into();
     let mut unsupported: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for registry in native.registries().unwrap().value {
         let name = registry.name;
@@ -1554,11 +1560,22 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         }
     }
 
-    for operation in [
-        Operation::RegistryFields,
-        Operation::DerivedNames,
-        Operation::ModifierFamilies,
-    ] {
+    // The field method reads every loader registry whose loader builds one owner.
+    let without_owner: BTreeSet<String> = [
+        "common/colors",
+        "common/component_tags",
+        "common/planet_classes",
+        "common/ship_behaviors",
+        "gfx/worldgfx",
+        "prescripted_countries",
+    ]
+    .map(String::from)
+    .into();
+    assert_eq!(
+        unsupported.get(&Operation::RegistryFields.to_string()),
+        Some(&without_owner)
+    );
+    for operation in [Operation::DerivedNames, Operation::ModifierFamilies] {
         let operation = operation.to_string();
         assert_eq!(
             unsupported.get(&operation),
@@ -1622,6 +1639,69 @@ fn loader_rules_state_the_file_selection_of_every_listed_registry() {
         native.loader_rules("common/no_such_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_builds() {
+    use pdx_native::{EntryScope, GapSubject};
+
+    let native = native();
+    // The loader builds `CStaticModifier` with an inlined constructor.
+    let answer = native.registry_fields("common/static_modifiers").unwrap();
+    let names: Vec<_> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "key",
+            "apply_modifier_to_other_planets",
+            "divide_over_pop_groups"
+        ]
+    );
+    // Other tokens go to the base class's `ReadMember`, an inherited reader outside the method.
+    assert_eq!(answer.completeness, Completeness::Partial);
+    let registry = Some(GapSubject::Registry {
+        name: "common/static_modifiers".into(),
+    });
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::UnresolvedPath && gap.subject == registry),
+        "{:?}",
+        answer.gaps
+    );
+
+    // Block entry contexts reach the blocks of a custom loader's owner.
+    let resources = native
+        .registry_fields("common/strategic_resources")
+        .unwrap();
+    let potential = resources
+        .value
+        .iter()
+        .find(|field| field.name == "potential")
+        .unwrap();
+    assert!(
+        potential.entry_contexts.iter().all(
+            |context| matches!(&context.this, EntryScope::Scope(scope) if scope.name == "country")
+        ),
+        "{:?}",
+        potential.entry_contexts
+    );
+    assert!(!potential.entry_contexts.is_empty());
+
+    let refused = native.registry_fields("prescripted_countries");
+    assert_eq!(
+        refused,
+        Err(Error::Unsupported {
+            operation: Operation::RegistryFields,
+            reason: "2 databases load this directory".into(),
+        })
+    );
 }
 
 #[test]
