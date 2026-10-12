@@ -22,7 +22,8 @@ use crate::engine::analysis::{
         climbing_functions,
     },
     decode::{
-        Instruction, decode_arm64, general_register, reads_before_writing, written_registers,
+        Instruction, decode_arm64, general_register, number, reads_before_writing,
+        written_registers,
     },
     discovery::Symbol,
     evaluate::ReadOnlyData,
@@ -34,7 +35,6 @@ use super::families::{Names, never_return, vtable_group};
 use super::instances::instances;
 use super::references::Image;
 use super::type_pointers::TypeOwners;
-use crate::engine::analysis::declarations::number;
 
 const EXTRA: &str = "CPdxUnorderedMap<EEffectUserDataKey, unsigned long long, SPdxHash<EEffectUserDataKey, void>, std::__1::equal_to<EEffectUserDataKey>, false>";
 

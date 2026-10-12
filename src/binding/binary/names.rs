@@ -14,8 +14,10 @@ use crate::engine::analysis::{
 use crate::{AnalysisError, NameLookup};
 
 use super::declarations::{Text, addresses};
-use super::families::{Call, NamedRegistry, Names, calls, constructors, decoded, entered, loading};
-use super::grammar::ERROR_LOGS;
+use super::families::{
+    Call, NamedRegistry, Names, POST_READ, calls, constructors, decoded, entered, loading,
+};
+use super::grammar::{ERROR_LOGS, LOG_FILE_AND_LINE};
 
 /// The functions that check or look up a name. An unchecked localisation lookup states its miss:
 /// `LocalizeString` finds no key and returns null, and `PdxLocalizeAndReplaceView` then uses the
@@ -81,14 +83,6 @@ const LOCALIZE: &str =
 /// The size of the view that the localisation lookup returns.
 const LOCALIZED_VIEW: ResultView = ResultView { size: 0x10 };
 
-/// The constructor that starts a file-and-line diagnostic. It receives no part of the message, and
-/// a run must not enter it: it clears a large buffer byte by byte.
-const LOG_START: &str =
-    "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)";
-
-/// The post-read functions of an item: the engine runs them after it reads the item.
-const POST_READ: [&str; 2] = ["::PostReadInit()", "::InitPostRead("];
-
 /// The sinks and diagnostic functions of the executable.
 pub(in crate::binding) fn input(symbols: &[Symbol]) -> NameInput {
     let mut sinks = BTreeMap::new();
@@ -106,7 +100,7 @@ pub(in crate::binding) fn input(symbols: &[Symbol]) -> NameInput {
     }
 
     let mut logs = BTreeMap::new();
-    for name in ERROR_LOGS.iter().chain([&LOG_START]) {
+    for name in ERROR_LOGS.iter().chain([&LOG_FILE_AND_LINE]) {
         for address in addresses(symbols, name) {
             logs.insert(address, log_arguments(name));
         }

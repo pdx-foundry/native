@@ -13,8 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::contexts::{Read, Selected};
 use super::names::{self, Fact, State, StringFunctions};
-use crate::engine::analysis::declarations::number;
-use crate::engine::analysis::decode::Instruction;
+use crate::engine::analysis::decode::{Instruction, number};
 use crate::engine::analysis::evaluate::Code;
 
 /// How many callers up the climb follows a scope that wrappers pass on.

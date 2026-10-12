@@ -56,9 +56,11 @@ pub(crate) enum AnalysisError {
         /// Each independent reason.
         reasons: Vec<UnavailableReason>,
     },
-    /// The selected range is ambiguous, unmapped, or truncated.
+    /// The executable could not be read: a section or an instruction range is unmapped, truncated
+    /// or ambiguous, a decode or a parse failed, or the build has no recipe for the method.
     InvalidRange,
-    /// The method refused its input.
+    /// A symbol, fixup form or table that the method needs is missing, ambiguous or unsupported,
+    /// or the method refused its input. The text says which.
     Input(InputError),
 }
 

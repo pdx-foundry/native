@@ -69,23 +69,6 @@ pub(crate) use tokens::{Token, named_key, recover_decoded};
 pub(crate) use uses::{has_owner_receiver, storage_offset};
 
 use super::InputError;
-use std::collections::BTreeMap;
-
-/// Literal token identifiers shared with other static command readers.
-pub(crate) fn literal_token_names(
-    code: &[u8],
-    address: u64,
-    symbols: &[crate::engine::analysis::discovery::Symbol],
-    strings: &BTreeMap<u64, String>,
-) -> Result<BTreeMap<u64, String>, InputError> {
-    let rows = super::decode::decode_arm64(code, address)
-        .map_err(|error| InputError(error.to_string()))?;
-    let (tokens, _) = tokens::recover_decoded(&rows, symbols, strings);
-    Ok(tokens
-        .into_iter()
-        .filter_map(|(number, token)| Some((number as u32 as u64, token.name?)))
-        .collect())
-}
 
 /// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v30";

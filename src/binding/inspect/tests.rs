@@ -1,5 +1,7 @@
 use super::*;
+use crate::AnalysisError;
 use crate::binding::binary::discovery;
+use crate::engine::analysis::InputError;
 use crate::engine::analysis::analysis_support as support;
 use crate::engine::analysis::assembler::{Arm64, arm64};
 
@@ -93,7 +95,11 @@ fn an_unread_fixup_format_leaves_symbols_strings_and_code() {
         fixups::read(&inventory),
         Err(FixupDiagnostic::PointerFormat { format: 1, .. })
     ));
-    assert!(discovery::read(&bytes).is_err());
+
+    let Some(AnalysisError::Input(InputError(reason))) = discovery::read(&bytes).err() else {
+        panic!("an unread fixup format is an input error that keeps its reason");
+    };
+    assert!(reason.contains("chained pointer format 1"), "{reason}");
 }
 
 #[test]

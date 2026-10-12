@@ -14,8 +14,7 @@
 //! Other owner stores, calls or unfamiliar code leave a typed gap.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::declarations::number;
-use super::decode::{Instruction, decode_arm64, general_register, written_registers};
+use super::decode::{Instruction, decode_arm64, general_register, number, written_registers};
 use super::fields::{ReaderJoin, RootField, TokenPath, Value};
 use super::references::shapes::{Bindings, Shape, canonical, split_operands};
 use super::stop::Unresolved;

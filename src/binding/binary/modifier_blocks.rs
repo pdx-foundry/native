@@ -3,7 +3,7 @@
 //! The name object that a modifier block reads `name` through is stated to derive from the
 //! recipe's `modifier_name_base`; [`name_reads`] derives the rest from the executable's
 //! type information.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, numeric::NUMERIC_MODIFIER_MEMBER, references::Image};
 use crate::binding::{analysis::NamedCandidate, targets::DeclarationRecipe};
 use crate::engine::analysis::{
     declarations::Function,
@@ -73,7 +73,7 @@ pub(in crate::binding) fn read(
         .map(|reader| reader.member.clone())
         .collect();
     pending.insert(recipe.modifier_reference_member.into());
-    pending.insert(recipe.numeric_modifier_member.into());
+    pending.insert(NUMERIC_MODIFIER_MEMBER.into());
     while let Some(name) = pending.pop_first() {
         let addresses: BTreeSet<_> = image
             .symbols
@@ -96,7 +96,7 @@ pub(in crate::binding) fn read(
             if !matches!(row.operation.as_str(), "bl" | "b") {
                 continue;
             }
-            let Some(callee) = crate::engine::analysis::declarations::number(&row.operands)
+            let Some(callee) = crate::engine::analysis::decode::number(&row.operands)
                 .and_then(|target| names.get(&target))
             else {
                 continue;
@@ -115,15 +115,7 @@ pub(in crate::binding) fn read(
             },
         );
     }
-    let token_address = image
-        .symbols
-        .iter()
-        .find(|symbol| symbol.name == "GetTokenArray()")
-        .ok_or(AnalysisError::InvalidRange)?
-        .address;
-    let (address, code) = text.function(token_address)?;
-    let rows = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, image.symbols, image.strings);
+    let tokens = text.token_table(image.symbols, image.strings)?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
     let name_reads = name_read_functions(image, bound_slots, &text, &base, recipe);
     let directories = super::references::database_directories(
@@ -141,7 +133,7 @@ pub(in crate::binding) fn read(
     let aliases = [
         (database.as_str(), "database"),
         (null, "null_item"),
-        (recipe.numeric_modifier_member, "base_member"),
+        (NUMERIC_MODIFIER_MEMBER, "base_member"),
         ("CString::CString(char const*)", "key_string"),
         ("CToken::GetFloat() const", "fixed_value"),
         ("StringToFixedPoint(char const*)", "fixed_conversion"),
@@ -202,7 +194,7 @@ pub(in crate::binding) fn read(
         serializer_constructors,
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
         reader_token_offset: recipe.reader_token_offset,
-        base_member: recipe.numeric_modifier_member.into(),
+        base_member: NUMERIC_MODIFIER_MEMBER.into(),
         base,
         references: BTreeMap::from([(recipe.modifier_reference_member.into(), reference)]),
         name_reads,

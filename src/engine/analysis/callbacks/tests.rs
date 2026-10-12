@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
-use crate::engine::analysis::declarations::number;
+use crate::engine::analysis::decode::number;
 
 // Rows call the engine functions by these addresses: the firing function 0x9000, the list
 // firing 0x9010, the lookup 0x9020, the scripted rule 0x9030, and an unknown function 0x9900.

@@ -990,16 +990,3 @@ fn only_the_trigger_reader_gives_a_nested_entry_no_bare_value_unread() {
     );
     assert!(nested_scalar("CReader::Read(CPersistent&)").is_err());
 }
-
-#[test]
-fn thunk_names_resolve_to_their_target() {
-    assert_eq!(
-        thunk_target("{virtual override thunk({offset(-8)}, A::ReadMember(CReader&, int))}"),
-        "A::ReadMember(CReader&, int)"
-    );
-    assert_eq!(
-        thunk_target("non-virtual thunk to A::ReadMember(CReader&, int)"),
-        "A::ReadMember(CReader&, int)"
-    );
-    assert_eq!(thunk_target("A::Read(CReader&)"), "A::Read(CReader&)");
-}

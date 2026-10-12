@@ -26,9 +26,8 @@ use std::sync::LazyLock;
 use super::commands::{OBJECT_SPAN, calls_any, forget_if_passed, stand_in_command};
 use super::declarations::{
     self, DeclarationInput, DeclarationResult, ScopeOutcome, ScopeType, Site, named_scope_types,
-    number,
 };
-use super::decode::{Instruction, decode_arm64};
+use super::decode::{Instruction, decode_arm64, number};
 use super::evaluate::{Call, Code, Exit, Machine, Path};
 use super::references::shapes::{Shape, canonical};
 use super::stop::Unresolved;

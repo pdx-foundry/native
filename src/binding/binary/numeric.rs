@@ -1,5 +1,7 @@
 //! Bind numeric reader functions and external helper identities on the supported recipe.
-use super::{declarations::Text, references::Image};
+use super::{
+    declarations::Text, families::DEFINITIONS, grammar::LOG_FILE_AND_LINE, references::Image,
+};
 use crate::AnalysisError;
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
@@ -9,6 +11,12 @@ use crate::engine::analysis::{
     references::shapes::canonical,
 };
 use std::collections::{BTreeMap, BTreeSet};
+
+/// The modifier's member reader, which reads a numeric entry.
+pub(super) const NUMERIC_MODIFIER_MEMBER: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::TryReadMember(CReader&, int)";
+
+/// The token's reader of an `int`.
+pub(super) const READ_INT_VALUE: &str = "CToken::ReadValue(int&) const";
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
@@ -157,26 +165,18 @@ pub(super) fn modifier_input(
     names: &BTreeMap<u64, String>,
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierInput, AnalysisError> {
-    let member = decode_unique_symbol_or_empty(text, symbols, recipe.numeric_modifier_member)?;
+    let member = decode_unique_symbol_or_empty(text, symbols, NUMERIC_MODIFIER_MEMBER)?;
     let insert = decode_unique_symbol_or_empty(text, symbols, recipe.numeric_modifier_insert)?;
     let shared_callee = "CReader::Read(CFixedPoint&)";
-    let modifier_class = recipe
-        .numeric_modifier_member
-        .strip_suffix("::TryReadMember(CReader&, int)")
-        .ok_or(AnalysisError::InvalidRange)?;
-    let definitions = format!("{modifier_class}::_Definitions");
-    let cold = format!("{} [clone .cold.1]", recipe.numeric_modifier_member);
+    let cold = format!("{NUMERIC_MODIFIER_MEMBER} [clone .cold.1]");
     let aliases = [
-        (definitions.as_str(), "definitions"),
+        (DEFINITIONS, "definitions"),
         (cold.as_str(), "cold_cleanup"),
         (recipe.numeric_modifier_insert, "insert_entry"),
         (shared_callee, "numeric_reader"),
         ("operator new[](unsigned long)", "allocate_array"),
         ("_memcpy", "copy_bytes"),
-        (
-            "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)",
-            "diagnostic_location",
-        ),
+        (LOG_FILE_AND_LINE, "diagnostic_location"),
         (
             "CReader::GetFileLocationDescription() const",
             "reader_location",

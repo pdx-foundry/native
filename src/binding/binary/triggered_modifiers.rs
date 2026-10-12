@@ -3,8 +3,7 @@
 use super::{declarations::Text, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
-    declarations::Function, decode::decode_arm64, fields,
-    modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
+    declarations::Function, modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
 };
 use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
@@ -63,12 +62,7 @@ pub(in crate::binding) fn read(
             (point, class)
         })
         .collect();
-    let (address, code) = text.function(super::declarations::unique(
-        image.symbols,
-        "GetTokenArray()",
-    )?)?;
-    let rows = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, image.symbols, image.strings);
+    let tokens = text.token_table(image.symbols, image.strings)?;
 
     Ok(TriggeredInput {
         points,

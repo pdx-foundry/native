@@ -540,8 +540,7 @@ impl BoundAnalysis {
             return Ok(Vec::new());
         };
         let input = verified.field_input(candidate.record.clone())?;
-        let result = crate::engine::analysis::fields::analyze(&input)
-            .map_err(|_| AnalysisError::InvalidRange)?;
+        let result = crate::engine::analysis::fields::analyze(&input)?;
 
         let scoped = self.scoped_numeric_facts()?;
         let numeric = self.numeric_facts()?;
@@ -864,7 +863,7 @@ impl BoundAnalysis {
             return Ok(None);
         };
         let input = verified.field_input(candidate.record.clone())?;
-        let result = fields::analyze(&input).map_err(|_| AnalysisError::InvalidRange)?;
+        let result = fields::analyze(&input)?;
         let references = self.reference_facts()?;
         Ok(Some(crate::session::questions::normalized_fields(
             &result, references,

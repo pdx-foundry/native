@@ -3,12 +3,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use object::{Object, ObjectSection, SectionKind};
 
 use crate::engine::analysis::{
+    InputError,
     declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
-    decode::{Instruction, decode_arm64},
+    decode::{Instruction, blr_register, call_or_jump_target, call_target, decode_arm64},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     families::StringLayout,
-    fields::literal_token_names,
+    fields::{Token, recover_decoded},
 };
 use crate::{AnalysisError, DeclarationKind};
 
@@ -203,35 +204,16 @@ fn parse_number(text: &str) -> Option<u64> {
     }
 }
 
+/// The one address of the symbol `name`. A name with no address or with several is an input
+/// error that says which.
 pub(super) fn unique(symbols: &[Symbol], name: &str) -> Result<u64, AnalysisError> {
-    let addresses: BTreeSet<_> = symbols
-        .iter()
-        .filter(|symbol| symbol.name == name)
-        .map(|symbol| symbol.address)
-        .collect();
-    (addresses.len() == 1)
-        .then(|| *addresses.first().unwrap())
-        .ok_or(AnalysisError::InvalidRange)
-}
+    let addresses = addresses(symbols, name);
 
-fn branch_target(word: u32, address: u64) -> Option<u64> {
-    if word >> 26 != 0b100101 {
-        return None;
+    match addresses.len() {
+        0 => Err(InputError(format!("no symbol for {name}")).into()),
+        1 => Ok(addresses.into_iter().next().unwrap()),
+        count => Err(InputError(format!("{count} addresses for {name}")).into()),
     }
-    immediate_target(word, address)
-}
-
-/// The target of a `bl` or of a `b`, which a tail call uses.
-pub(super) fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
-    if word >> 26 != 0b100101 && word >> 26 != 0b000101 {
-        return None;
-    }
-    immediate_target(word, address)
-}
-
-fn immediate_target(word: u32, address: u64) -> Option<u64> {
-    let signed = ((word << 6) as i32 >> 6) as i64;
-    address.checked_add_signed(signed * 4)
 }
 
 /// Every address of one demangled symbol name. The same name can have several addresses, such as
@@ -346,7 +328,7 @@ impl<'a> Text<'a> {
             .iter()
             .enumerate()
             .map(|(index, word)| (self.address + (index * 4) as u64, u32::from_le_bytes(*word)))
-            .filter(|(at, word)| branch_target(*word, *at) == Some(target))
+            .filter(|(at, word)| call_target(*word, *at) == Some(target))
             .map(|(at, _)| at)
             .collect()
     }
@@ -388,9 +370,8 @@ impl<'a> Text<'a> {
             .iter()
             .enumerate()
             .filter_map(|(index, word)| {
-                let word = u32::from_le_bytes(*word);
                 let at = self.address + (index * 4) as u64;
-                (word & 0xffff_fc1f == 0xd63f_0000).then_some((at, (word >> 5) as usize & 0x1f))
+                Some((at, blr_register(u32::from_le_bytes(*word))?))
             })
             .collect()
     }
@@ -404,15 +385,40 @@ impl<'a> Text<'a> {
         })
     }
 
-    /// Literal token names from the engine's token table.
+    /// The engine's token table: every token that `GetTokenArray` constructs, by identity. A
+    /// constructor that cannot be read leaves its token out, and the readable tokens stay: each
+    /// reader reports a token it cannot find as its own gap, and the registry-field method reports
+    /// the table's gaps. A table with gaps and no readable token is an error, because a table that
+    /// could not be read is not an empty one.
+    pub fn token_table(
+        &self,
+        symbols: &[Symbol],
+        strings: &BTreeMap<u64, String>,
+    ) -> Result<BTreeMap<i64, Token>, AnalysisError> {
+        let (start, code) = self.function(unique(symbols, "GetTokenArray()")?)?;
+        let rows = decode_arm64(code, start).map_err(|_| AnalysisError::InvalidRange)?;
+        let (tokens, gaps) = recover_decoded(&rows, symbols, strings);
+
+        match gaps.first() {
+            Some(gap) if tokens.is_empty() => {
+                Err(InputError(format!("The token table has a gap: {}", gap.reason)).into())
+            }
+            _ => Ok(tokens),
+        }
+    }
+
+    /// The literal name of each token in the engine's token table, by 32-bit identity. A token
+    /// with no single literal name has none.
     pub fn token_names(
         &self,
         symbols: &[Symbol],
         strings: &BTreeMap<u64, String>,
     ) -> Result<BTreeMap<u64, String>, AnalysisError> {
-        let start = unique(symbols, "GetTokenArray()")?;
-        let code = self.bytes(start, self.function_length(start))?;
-        literal_token_names(code, start, symbols, strings).map_err(AnalysisError::Input)
+        Ok(self
+            .token_table(symbols, strings)?
+            .into_iter()
+            .filter_map(|(number, token)| Some((number as u32 as u64, token.name?)))
+            .collect())
     }
 
     /// The engine's scope-name table, from its scope-name function. `None` when the function
@@ -568,6 +574,103 @@ mod tests {
         assert!(text.function(0x1004).is_err());
         assert_eq!(text.function_within(0x1004, 1024), None);
         assert_eq!(super::super::weight_blocks::body(&text, 0x1004), None);
+    }
+
+    #[test]
+    fn a_symbol_that_is_missing_or_has_several_addresses_is_an_input_error_that_names_it() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = [
+            symbol("One()", 0x10),
+            symbol("Alias()", 0x20),
+            symbol("Alias()", 0x20),
+            symbol("Two()", 0x30),
+            symbol("Two()", 0x40),
+        ];
+
+        assert_eq!(unique(&symbols, "One()"), Ok(0x10));
+        assert_eq!(unique(&symbols, "Alias()"), Ok(0x20));
+        assert_eq!(
+            unique(&symbols, "Missing()"),
+            Err(InputError("no symbol for Missing()".into()).into())
+        );
+        assert_eq!(
+            unique(&symbols, "Two()"),
+            Err(InputError("2 addresses for Two()".into()).into())
+        );
+    }
+
+    #[test]
+    fn a_token_table_keeps_its_readable_tokens_and_is_an_error_only_when_none_is_readable() {
+        use crate::engine::analysis::assembler::{Arm64, arm64};
+        const START: u64 = 0x1000;
+        const CONSTRUCTOR: u64 = 0x2000;
+        const YES: u64 = 0x8000;
+        const UNREAD: u64 = 0x8010;
+
+        // GetTokenArray names token 7 "yes" and then runs `rest`.
+        let token_array = |rest: fn(&mut Arm64)| {
+            let mut code = Arm64::at(START);
+            arm64!(code; mov w1, #7); // token 7
+            code.address(2, YES).call(CONSTRUCTOR);
+            rest(&mut code);
+            code.bytes()
+        };
+        let symbols = [
+            Symbol {
+                name: "GetTokenArray()".into(),
+                address: START,
+            },
+            Symbol {
+                name: "CToken::CToken(int, char const*)".into(),
+                address: CONSTRUCTOR,
+            },
+        ];
+        let table = |code: &[u8], strings: &BTreeMap<u64, String>| {
+            let text = Text {
+                address: START,
+                code,
+                starts: BTreeSet::from([START]),
+            };
+            let names = text.token_names(&symbols, strings);
+
+            (text.token_table(&symbols, strings), names)
+        };
+        let strings = BTreeMap::from([(YES, "yes".to_owned())]);
+
+        let complete = token_array(|code| arm64!(code; ret));
+        let (tokens, names) = table(&complete, &strings);
+        assert_eq!(tokens.unwrap()[&7].name.as_deref(), Some("yes"));
+        assert_eq!(names.unwrap(), BTreeMap::from([(7, "yes".to_owned())]));
+
+        // Token 8's literal cannot be read, so token 8 is left out and token 7 stays.
+        let one_unreadable = token_array(|code| {
+            arm64!(code; mov w1, #8); // token 8
+            code.address(2, UNREAD).call(CONSTRUCTOR);
+            arm64!(code; ret);
+        });
+        let (tokens, names) = table(&one_unreadable, &strings);
+        let tokens = tokens.unwrap();
+        assert_eq!(tokens[&7].name.as_deref(), Some("yes"));
+        assert!(!tokens.contains_key(&8));
+        assert_eq!(names.unwrap(), BTreeMap::from([(7, "yes".to_owned())]));
+
+        // A branch the recovery cannot follow leaves no readable token: not an empty table.
+        let unresolved_branch = token_array(|code| arm64!(code; br x8));
+        let (tokens, names) = table(&unresolved_branch, &strings);
+        let gap =
+            || AnalysisError::Input(InputError("The token table has a gap: instruction".into()));
+        assert_eq!(tokens.unwrap_err(), gap());
+        assert_eq!(names.unwrap_err(), gap());
+
+        let (tokens, names) = table(&complete, &BTreeMap::new());
+        let AnalysisError::Input(InputError(reason)) = tokens.unwrap_err() else {
+            panic!("a literal that is not read is an input error");
+        };
+        assert!(reason.contains("no literal at 0x8000"), "{reason}");
+        assert!(names.is_err());
     }
 
     #[test]

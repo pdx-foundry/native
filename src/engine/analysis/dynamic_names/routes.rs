@@ -20,9 +20,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::{Caller, stand_in_command};
-use crate::engine::analysis::declarations::{Function, number};
+use crate::engine::analysis::declarations::Function;
 use crate::engine::analysis::decode::{
-    Instruction, decode_arm64, wide_register, written_registers,
+    Instruction, decode_arm64, number, wide_register, written_registers,
 };
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use crate::engine::analysis::stop::Unresolved;

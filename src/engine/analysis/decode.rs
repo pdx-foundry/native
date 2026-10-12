@@ -5,8 +5,6 @@ use std::collections::BTreeMap;
 use capstone::prelude::*;
 use serde::Serialize;
 
-use super::declarations::number;
-
 /// One fully decoded ARM64 instruction. This establishes no higher-level reader semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Instruction {
@@ -117,6 +115,35 @@ pub fn adrp(word: u32, address: u64) -> Option<(usize, u64)> {
         (word & 0x1f) as usize,
         (address & !0xfff).wrapping_add_signed(pages << 12),
     ))
+}
+
+/// The target of a `bl` word at `address`.
+pub fn call_target(word: u32, address: u64) -> Option<u64> {
+    if word >> 26 != 0b100101 {
+        return None;
+    }
+
+    immediate_target(word, address)
+}
+
+/// The target of a `bl` or of a `b`, which a tail call uses.
+pub fn call_or_jump_target(word: u32, address: u64) -> Option<u64> {
+    if word >> 26 != 0b100101 && word >> 26 != 0b000101 {
+        return None;
+    }
+
+    immediate_target(word, address)
+}
+
+fn immediate_target(word: u32, address: u64) -> Option<u64> {
+    let signed = ((word << 6) as i32 >> 6) as i64;
+
+    address.checked_add_signed(signed * 4)
+}
+
+/// The register that a `blr` word calls through.
+pub fn blr_register(word: u32) -> Option<usize> {
+    (word & 0xffff_fc1f == 0xd63f_0000).then_some((word >> 5) as usize & 0x1f)
 }
 
 /// The target of a conditional branch word at `address`: `b.cond`, `cbz`, `cbnz`, `tbz` or
@@ -333,6 +360,20 @@ pub fn wide_register(name: &str) -> Option<usize> {
     name.starts_with('x').then(|| general_register(name))?
 }
 
+/// The value of an operand written as a decimal or `0x` hexadecimal number with an optional `#`
+/// prefix, such as `#0x10`. A negative number gives its two's complement.
+pub(crate) fn number(text: &str) -> Option<u64> {
+    let text = text.strip_prefix('#').unwrap_or(text);
+    if let Some(negative) = text.strip_prefix('-') {
+        return number(negative).map(|value| 0u64.wrapping_sub(value));
+    }
+    if let Some(hex) = text.strip_prefix("0x") {
+        u64::from_str_radix(hex, 16).ok()
+    } else {
+        text.parse().ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,6 +400,64 @@ mod tests {
         );
         assert_eq!(adrp(0x90ff_ffe1, 0x5000), Some((1, 0x1000)));
         assert_eq!(adrp(0x9100_4108, 0x1000), None);
+    }
+
+    fn word(code: Vec<u8>) -> u32 {
+        u32::from_le_bytes(code.try_into().unwrap())
+    }
+
+    #[test]
+    fn a_call_word_gives_its_target_and_a_jump_word_only_to_the_wider_reader() {
+        let call_back = word(arm64!(at 0x1010; bl extern 0x1000));
+        let call_forward = word(arm64!(at 0x1000; bl extern 0x1010));
+        let jump = word(arm64!(at 0x1000; b extern 0x1010));
+
+        assert_eq!(call_target(call_back, 0x1010), Some(0x1000));
+        assert_eq!(call_target(call_forward, 0x1000), Some(0x1010));
+        assert_eq!(call_target(jump, 0x1000), None);
+        assert_eq!(call_or_jump_target(call_forward, 0x1000), Some(0x1010));
+        assert_eq!(call_or_jump_target(jump, 0x1000), Some(0x1010));
+    }
+
+    #[test]
+    fn no_other_instruction_is_a_call_or_a_jump() {
+        let others = [
+            arm64!(at 0x1000; blr x8),
+            arm64!(at 0x1000; br x8),
+            arm64!(at 0x1000; b.eq extern 0x1010),
+            arm64!(at 0x1000; cbz w3, extern 0x1010),
+            arm64!(at 0x1000; ret),
+            arm64!(at 0x1000; nop),
+        ];
+
+        for code in others {
+            let word = word(code);
+
+            assert_eq!(call_target(word, 0x1000), None, "{word:#x}");
+            assert_eq!(call_or_jump_target(word, 0x1000), None, "{word:#x}");
+        }
+    }
+
+    #[test]
+    fn a_blr_word_gives_its_register_and_no_other_call_does() {
+        assert_eq!(blr_register(word(arm64!(at 0x1000; blr x8))), Some(8));
+        assert_eq!(blr_register(word(arm64!(at 0x1000; blr x30))), Some(30));
+        assert_eq!(blr_register(word(arm64!(at 0x1000; br x8))), None);
+        assert_eq!(
+            blr_register(word(arm64!(at 0x1000; bl extern 0x1010))),
+            None
+        );
+        assert_eq!(blr_register(word(arm64!(at 0x1000; ret))), None);
+    }
+
+    #[test]
+    fn a_number_is_decimal_or_hexadecimal_and_a_negative_wraps() {
+        assert_eq!(number("#0x10"), Some(0x10));
+        assert_eq!(number("0x10"), Some(0x10));
+        assert_eq!(number("#16"), Some(16));
+        assert_eq!(number("#-0x8"), Some(0xffff_ffff_ffff_fff8));
+        assert_eq!(number("x8"), None);
+        assert_eq!(number("#0xzz"), None);
     }
 
     #[test]

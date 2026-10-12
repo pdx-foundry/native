@@ -2,7 +2,7 @@
 use super::GrammarInput;
 use crate::engine::analysis::{
     declarations::{self, CommandReader},
-    decode::decode_arm64,
+    decode::{decode_arm64, number},
     evaluate::{Call, Code, Exit, Machine},
     fields::TokenPath,
     stop::Unresolved,
@@ -58,7 +58,7 @@ fn child_reader(
     let candidate = rows.iter().any(|row| {
         row.address == path.terminal
             && row.operation == "bl"
-            && declarations::number(&row.operands).is_some_and(|target| {
+            && number(&row.operands).is_some_and(|target| {
                 if numeric {
                     target == input.numeric_decoder
                 } else {

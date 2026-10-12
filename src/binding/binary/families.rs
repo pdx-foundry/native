@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
 use crate::engine::analysis::{
-    decode::{Instruction, add_immediate, adrp, decode_arm64, general_register, written_registers},
+    decode::{
+        Instruction, add_immediate, adrp, blr_register, call_or_jump_target, decode_arm64,
+        general_register, written_registers,
+    },
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     families::{
@@ -13,10 +16,11 @@ use crate::engine::analysis::{
         loading::{Function, Loading},
     },
     modifier_table::Layout,
+    readers::thunk_target,
 };
 
 use super::super::targets::DeclarationRecipe;
-use super::declarations::{Text, addresses, call_or_jump_target, unique};
+use super::declarations::{Text, addresses, unique};
 use super::language::{GENERATE_MODIFIER, constant_data, generation_calls};
 
 /// Import stubs keep their raw name when it does not demangle.
@@ -39,14 +43,16 @@ pub(super) fn never_return(symbols: &[Symbol]) -> BTreeSet<u64> {
         .collect()
 }
 
-const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
+/// Assignment of a string from text.
+pub(super) const ASSIGN_TEXT: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
 
 const MOVE_ASSIGN: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__move_assign(std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>&, std::__1::integral_constant<bool, false>)";
 
-const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
+/// The array that holds the modifier definitions.
+pub(in crate::binding) const DEFINITIONS: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::_Definitions";
 
 /// The post-read functions that the engine runs for a content object.
-const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
+pub(super) const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
 
 /// The functions that return new memory.
 const ALLOCATIONS: [&str; 3] = ["_calloc", "_malloc", "operator new(unsigned long)"];
@@ -615,20 +621,14 @@ fn function(address: u64, name: &str) -> Function {
     }
 }
 
-/// The thunks of each root in `roots`: `non-virtual thunk to <root>` and `{virtual override
-/// thunk(…, <root>)}`. A thunk adjusts `this` and runs its root; the compiler may give it a copy
-/// of the root's body instead of a branch to the root.
+/// The thunks of each root in `roots`. A thunk adjusts `this` and runs its root; the compiler may
+/// give it a copy of the root's body instead of a branch to the root.
 fn thunks(symbols: &[Symbol], names: &Names, roots: &BTreeSet<u64>) -> BTreeMap<u64, u64> {
     let mut thunks = BTreeMap::new();
     for &root in roots {
         for name in names.of(root) {
-            let non_virtual = format!("non-virtual thunk to {name}");
-            let virtual_override = format!(", {name})}}");
             for symbol in symbols {
-                let thunk = symbol.name == non_virtual
-                    || (symbol.name.starts_with("{virtual override thunk(")
-                        && symbol.name.ends_with(&virtual_override));
-                if thunk {
+                if thunk_target(&symbol.name) == Some(name) {
                     thunks.insert(symbol.address, root);
                 }
             }
@@ -772,7 +772,7 @@ pub(super) fn calls(text: &Text, start: u64) -> Result<Vec<(u64, Call)>, Analysi
         .filter_map(|(index, word)| {
             let at = address + (index * 4) as u64;
             let word = u32::from_le_bytes(*word);
-            if word & 0xffff_fc1f == 0xd63f_0000 {
+            if blr_register(word).is_some() {
                 return Some((at, Call::Indirect));
             }
             let target = call_or_jump_target(word, at)?;
@@ -1072,11 +1072,15 @@ mod tests {
                 "{virtual override thunk({offset(-56)}, CItem::InitPostRead())}",
             ),
             symbol(0x400, "non-virtual thunk to COther::InitPostRead()"),
+            symbol(
+                0x500,
+                "{virtual override thunk({offset(-56)}, {offset(8)}, CItem::InitPostRead())}",
+            ),
         ];
         let names = Names::new(&symbols);
         assert_eq!(
             thunks(&symbols, &names, &BTreeSet::from([0x100])),
-            BTreeMap::from([(0x200, 0x100), (0x300, 0x100)])
+            BTreeMap::from([(0x200, 0x100), (0x300, 0x100), (0x500, 0x100)])
         );
     }
 

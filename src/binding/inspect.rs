@@ -20,8 +20,9 @@ use object::{Architecture, Object};
 use super::binary::declarations::Text;
 use super::binary::fixups::{self, FixupDiagnostic, Fixups};
 use super::binary::inventory::{self, Inventory};
-use crate::engine::analysis::decode::written_registers;
-use crate::engine::analysis::decode::{Instruction, add_immediate, adrp, decode_arm64};
+use crate::engine::analysis::decode::{
+    Instruction, add_immediate, adrp, call_target, decode_arm64, ldr_immediate, written_registers,
+};
 use crate::engine::analysis::stop::Stop;
 
 /// Why an inspection could not be made.
@@ -388,7 +389,11 @@ impl<'a> Image<'a> {
             .into_iter()
             .map(|(at, _)| {
                 let word = self.word(at);
-                let operation = if word >> 26 == 0b100101 { "bl" } else { "b" };
+                let operation = if call_target(word, at).is_some() {
+                    "bl"
+                } else {
+                    "b"
+                };
 
                 Caller {
                     at,
@@ -656,8 +661,8 @@ impl<'a> Image<'a> {
             let value = values.get(&source)?;
             Some((destination, value.wrapping_add(addend)))
         });
-        let loaded_slot = load_unsigned_offset(word)
-            .and_then(|(source, offset)| Some(values.get(&source)? + offset));
+        let loaded_slot =
+            ldr_immediate(word).and_then(|(_, source, offset)| Some(values.get(&source)? + offset));
 
         for register in written_registers(&instruction.operation, &instruction.operands) {
             values.remove(&register);
@@ -795,18 +800,6 @@ fn adr(word: u32, address: u64) -> Option<(usize, u64)> {
     let offset = ((immediate << 11) as i32 >> 11) as i64;
 
     Some(((word & 0x1f) as usize, address.wrapping_add_signed(offset)))
-}
-
-/// The base register and byte offset of a 64-bit `ldr` with an unsigned immediate offset.
-fn load_unsigned_offset(word: u32) -> Option<(usize, u64)> {
-    if word & 0xffc0_0000 != 0xf940_0000 {
-        return None;
-    }
-
-    Some((
-        (word >> 5 & 0x1f) as usize,
-        u64::from(word >> 10 & 0xfff) * 8,
-    ))
 }
 
 impl fmt::Display for Identity {

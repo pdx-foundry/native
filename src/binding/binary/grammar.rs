@@ -15,15 +15,14 @@
 //! An accessor with no single `TPdxNullObject` and a getter with no accessor are bound
 //! `NoNullObject`. The getter analysis keeps them unresolved.
 use super::super::targets::DeclarationRecipe;
-use crate::AnalysisError;
 use crate::engine::analysis::{
     InputError,
     declarations::{DeclarationInput, DeclarationResult, tail_callees},
-    decode::decode_arm64,
     discovery::Symbol,
     fields,
     grammar::{AccessorNullObject, CommandBindings, GrammarInput},
 };
+use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The functions that write an engine error message, or a part of one.
@@ -33,6 +32,24 @@ pub(super) const ERROR_LOGS: [&str; 5] = [
     "CLogStream::operator<<(char const*)",
     "CLogStream::operator<<(CString const&)",
     "CPdxLogFileAndLine::operator()(char const*, ...)",
+];
+
+/// The constructor that starts a file-and-line diagnostic. It receives no part of the message, and
+/// a run must not enter it: it clears a large buffer byte by byte.
+pub(super) const LOG_FILE_AND_LINE: &str =
+    "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)";
+
+/// The reader of a block of effects, member by member.
+pub(super) const EFFECT_MEMBER_READER: &str = "CEffect::ReadMember(CReader&, int, EScopeType)";
+
+/// The reader of a block of triggers, member by member.
+pub(super) const TRIGGER_MEMBER_READER: &str =
+    "CTriggerCollectionBase::ReadMember(CReader&, int, EScopeType)";
+
+/// The member readers of the command blocks, with the family of the commands that each reads.
+pub(super) const CHILD_FAMILIES: [(&str, BlockFamily); 2] = [
+    (TRIGGER_MEMBER_READER, BlockFamily::Trigger),
+    (EFFECT_MEMBER_READER, BlockFamily::Effect),
 ];
 
 #[allow(clippy::too_many_arguments)] // Independent executable inputs and the selected build recipe.
@@ -86,16 +103,12 @@ pub(in crate::binding) fn read(
 
     declarations.constructor_calls = super::receivers::constructor_calls(bytes, symbols)?;
 
-    let token_start = super::declarations::unique(symbols, "GetTokenArray()")?;
-    let (_, token_code) = text.function(token_start)?;
-    let rows = decode_arm64(token_code, token_start).map_err(|_| AnalysisError::InvalidRange)?;
-    let (tokens, _) = fields::recover_decoded(&rows, symbols, strings);
-    let families = recipe
-        .child_families
+    let tokens = text.token_table(symbols, strings)?;
+    let families = CHILD_FAMILIES
         .iter()
         .map(|&(name, family)| (name.into(), family))
         .collect();
-    let numeric_decoder = super::declarations::unique(symbols, recipe.numeric_key_reader)?;
+    let numeric_decoder = super::declarations::unique(symbols, super::numeric::READ_INT_VALUE)?;
     let command_bindings = command_bindings(symbols, &tokens, recipe, kind)?;
     let mut form_input = crate::engine::analysis::grammar::forms::Input {
         reader_value_token_offset: Some(recipe.reader_value_token_offset),
@@ -225,8 +238,6 @@ fn command_bindings(
             symbols,
             "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
         )?,
-        target_from_id: required_signature(symbols, "CEventTarget::CEventTarget(int)")?,
-        target_create_from_token: unique(symbols, "CEventTarget::CreateFromToken(int)")?,
         target_move: unique(symbols, "CEventTarget::operator=(CEventTarget&&)")?,
         target_resolver: unique(
             symbols,

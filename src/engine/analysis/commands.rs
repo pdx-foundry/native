@@ -1,6 +1,5 @@
 //! Shared stand-in objects and call handling for command analysis.
-use super::declarations::number;
-use super::decode::Instruction;
+use super::decode::{Instruction, number};
 use super::evaluate::Machine;
 
 /// Bytes tracked for a stand-in command object.

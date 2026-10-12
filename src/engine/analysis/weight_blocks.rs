@@ -319,7 +319,7 @@ impl<'a> Context<'a> {
                 .iter()
                 .filter(|row| matches!(row.operation.as_str(), "bl" | "b"))
             {
-                let Some(target) = super::declarations::number(&row.operands) else {
+                let Some(target) = super::decode::number(&row.operands) else {
                     continue;
                 };
                 let callee = self.name(target);
@@ -1176,7 +1176,8 @@ impl<'a> Context<'a> {
             .ok_or(Unresolved::new("weight-child-vtable"))?;
         let members: BTreeSet<_> = (0..64)
             .map_while(|slot| self.input.pointers.get(&(point + slot * 8)))
-            .map(|&target| thunk_target(self.name(target)))
+            .map(|&target| self.name(target))
+            .map(|name| readers::thunk_target(name).unwrap_or(name))
             .filter(|name| readers::is_member(name))
             .collect();
         let [member] = <[_; 1]>::try_from(members.into_iter().collect::<Vec<_>>())
@@ -1712,17 +1713,6 @@ fn storing_key(fields: &[RootField], offset: i64) -> Option<String> {
 
 fn is_insert(callee: &str) -> bool {
     callee.contains("CPdxArray<") && callee.contains("::InsertAtEmplace<")
-}
-
-/// The function that a thunk symbol runs, or the name itself.
-fn thunk_target(name: &str) -> &str {
-    if let Some(target) = name.strip_prefix("non-virtual thunk to ") {
-        return target;
-    }
-    name.strip_prefix("{virtual override thunk(")
-        .and_then(|rest| rest.strip_suffix(")}"))
-        .and_then(|rest| rest.split_once("}, "))
-        .map_or(name, |(_, target)| target)
 }
 
 #[cfg(test)]

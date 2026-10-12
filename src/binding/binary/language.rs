@@ -16,7 +16,8 @@ use crate::engine::analysis::{
 
 use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, read_only_data, unique};
-use super::families::decoded;
+use super::families::{ASSIGN_TEXT, decoded};
+use super::grammar::LOG_FILE_AND_LINE;
 
 const DEFINE_MODIFIER: &str = "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::AddDefinition(int, ModifierType, CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, bool, CFixedPoint, bool)";
 /// The functions that register a modifier generated from content. The first registers a name
@@ -26,13 +27,10 @@ pub(super) const GENERATE_MODIFIER: [&str; 2] = [
     "CModifier::AddDynamicModifier(CString const&, bool, bool, bool, int, bool, bool, ModifierCategory, bool, CFixedPoint, bool)",
 ];
 const CATEGORY_FROM_TOKEN: &str = "GetModifierCategoryFromToken(int)";
-const LOG_FILE_AND_LINE: &str =
-    "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)";
 /// Bytes after a call of the category switch that hold its reader's check and message call.
 const CATEGORY_CHECK_WINDOW: u64 = 0x100;
 const CATEGORY_NAME: &str =
     "(anonymous namespace)::GetModifierCategoryName(ModifierCategory, CString&)";
-const ASSIGN_LITERAL: &str = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
 
 /// Read every direct modifier definition call and the category-name function.
 pub(in crate::binding) fn modifiers(
@@ -112,7 +110,7 @@ pub(super) fn categories(
         category_name,
         string_object_size: recipe.string_object_size,
         short_length_offset: recipe.short_string_length_offset,
-        assign_literal: addresses(symbols, ASSIGN_LITERAL),
+        assign_literal: addresses(symbols, ASSIGN_TEXT),
         code: code(text, &[category_name])?,
         data: read_only_data(bytes)?,
     })

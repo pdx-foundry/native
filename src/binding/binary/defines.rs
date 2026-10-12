@@ -21,14 +21,17 @@ pub(in crate::binding) fn read(
         .filter_map(|symbol| Some((symbol.address, reader_spec(&symbol.name)?)))
         .collect();
     let mut sites = Vec::new();
-    for symbol in symbols.iter().filter(|symbol| is_helper(&symbol.name)) {
+    for (symbol, key) in symbols
+        .iter()
+        .filter_map(|symbol| Some((symbol, helper_key(&symbol.name)?)))
+    {
         let rows = text
             .function(symbol.address)
             .ok()
             .and_then(|(address, code)| decode_arm64(code, address).ok())
             .ok_or("define helper could not be decoded");
         sites.push(ReadSite {
-            symbol: symbol.name.clone(),
+            key,
             address: symbol.address,
             rows,
         });
@@ -46,10 +49,18 @@ pub(in crate::binding) fn read(
     })
 }
 
-fn is_helper(name: &str) -> bool {
-    (name.starts_with("NDefines::CDefineRegistryHelper_")
-        || name.starts_with("NUncheckedDefines::CDefineRegistryHelper_"))
-        && name.ends_with("::ReadDefine(CDefinesContainer const&)")
+/// The key of a define helper, the namespace and name that its symbol joins: `NCameraFOV` for
+/// `NDefines::CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesContainer const&)`.
+fn helper_key(symbol: &str) -> Option<String> {
+    let helper = symbol
+        .strip_prefix("NDefines::CDefineRegistryHelper_")
+        .or_else(|| symbol.strip_prefix("NUncheckedDefines::CDefineRegistryHelper_"))?;
+
+    Some(
+        helper
+            .strip_suffix("::ReadDefine(CDefinesContainer const&)")?
+            .into(),
+    )
 }
 
 fn reader_spec(name: &str) -> Option<ReaderSpec> {
@@ -96,6 +107,27 @@ fn reader_spec(name: &str) -> Option<ReaderSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_define_helper_symbol_gives_its_key() {
+        for symbol in [
+            "NDefines::CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesContainer const&)",
+            "NUncheckedDefines::CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesContainer const&)",
+        ] {
+            assert_eq!(
+                helper_key(symbol).as_deref(),
+                Some("NCameraFOV"),
+                "{symbol}"
+            );
+        }
+        for symbol in [
+            "NDefines::CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesTable const&)",
+            "NDefines::CDefineRegistryHelper_NCameraFOV",
+            "CDefineRegistryHelper_NCameraFOV::ReadDefine(CDefinesContainer const&)",
+        ] {
+            assert_eq!(helper_key(symbol), None, "{symbol}");
+        }
+    }
 
     #[test]
     fn reader_signatures_keep_scalar_array_vector_and_custom_types_distinct() {

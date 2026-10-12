@@ -1,7 +1,7 @@
 //! Exact executable binding for shared scoped numeric bodies and vtable address points.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, numeric::READ_INT_VALUE, references::Image};
 use crate::AnalysisError;
 use crate::engine::analysis::{
     decode::decode_arm64,
@@ -62,7 +62,7 @@ pub(in crate::binding) fn read(
             "CIntVariableValue",
             "CIntVariableValue::AssignSimple(CToken const&)",
             SubtypeKind::Integer,
-            Some("CToken::ReadValue(int&) const"),
+            Some(READ_INT_VALUE),
         ),
         (
             "CFixedPointVariableValue",

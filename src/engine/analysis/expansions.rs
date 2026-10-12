@@ -26,8 +26,9 @@
 //! definition that loads after it, and runtime evaluation.
 use std::collections::BTreeSet;
 
-use super::declarations::number;
-use super::decode::{Instruction, general_register, is_control_transfer, written_registers};
+use super::decode::{
+    Instruction, general_register, is_control_transfer, number, written_registers,
+};
 use super::directories::Directory;
 use super::stop::Unresolved;
 use crate::{

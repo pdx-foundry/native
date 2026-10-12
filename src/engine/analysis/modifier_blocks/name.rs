@@ -5,8 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::{
-    declarations::{Function, number},
-    decode::decode_arm64,
+    declarations::Function,
+    decode::{decode_arm64, number},
     discovery::Symbol,
     fields::{ReaderJoin, Value},
     readers,
