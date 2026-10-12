@@ -90,6 +90,12 @@ needs it.
   registries kept, the footprint after a `registry_fields` loop is 20–50 MB higher (415 and
   447 MB in two runs, against 395 MB; index and shared input included). Bound the kept results
   if a host must hold a `Native` in less memory than that.
+- **Accepted limit:** the map lock is not held while a registry is analyzed, so callers that miss
+  the same registry at the same time each run the field method, and the first result is kept.
+  The answers are the same; only work repeats. The three all-registry parity tests walk the
+  registries in the same order on parallel threads, so they can repeat each other's work. Give
+  each registry a once-cell (keeping the rule that a failed run is not kept) if this becomes the
+  slowest part of a parity run or a multi-threaded consumer appears; Atlas asks on one thread.
 - **Accepted limit:** each field input still reads its text function starts (`Text::read`) and
   its constant data, and copies the symbols and strings into the `FieldInput` that the engine
   owns: about 7 ms of a 270 ms `registry_fields` call. Share them if they grow past about 10% of
@@ -97,8 +103,8 @@ needs it.
 
 ## Parity costs
 
-Measured on M452 with SDK-770, SDK-771 and SDK-774, on one Apple Silicon host with 18 cores and
-24 GB, release build, nothing else running. `cargo parity` runs two test binaries one after the
+Measured on M452 at `5edf7e4` (SDK-774 on top of SDK-771 and SDK-770; `pull/212/head`), on one
+Apple Silicon host with 18 cores and 24 GB, release build, nothing else running. `cargo parity` runs two test binaries one after the
 other:
 
 | Binary | Wall | CPU | Peak resident | Peak footprint | Slowest tests (in the run) |
@@ -112,14 +118,22 @@ At `13c94ba`, before those three changes, the walls were 79 s and 172 s, the CPU
 - **The slowest test sets the wall time.** Each binary runs its tests on all cores, so it ends with
   its slowest test. Fewer test threads do not lower the wall time.
 - **Each binary shares one `Native`.** The lib tests take `installed_native()` (`src/session.rs`)
-  and `static_questions` takes `native()`, so the shared fact sets, grammar inputs and kept
-  registry results are computed once per binary. Six tests open their own, because they need a
-  fresh or different instance: the two recorders (`record_answers_to` takes the `Native`), the
-  traced half of each traced pair, `cached_static_answers_refuse_changed_or_missing_executables`
-  (it changes a copy of the executable), `repeated_public_and_binding_queries_agree` and
-  `m452_checks_carry_the_named_receivers_and_their_count_slots` (both need empty caches). These
-  own instances, each with its full facts and grammar inputs, set most of the remaining peak.
-  One `Native` measured step by step at `13c94ba` (later registries with SDK-774):
+  and `static_questions` takes `native()`, so the shared fact sets and grammar inputs are
+  computed once per binary; kept registry results can be computed more than once (see
+  [registry field input](#registry-field-input)). Seven tests open their own, because they need a
+  fresh or different instance: in `static_questions` the two recorders (`record_answers_to` takes
+  the `Native`) and the traced half of each traced pair (`own_native()`); in the lib
+  `cached_static_answers_refuse_changed_or_missing_executables` (it changes a copy of the
+  executable), `repeated_public_and_binding_queries_agree` and
+  `m452_checks_carry_the_named_receivers_and_their_count_slots` (both need empty caches). They
+  build different amounts: `every_tracked_candidate_matches_the_reviewed_tree` computes every
+  tracked file, with the full facts and both grammar kinds, while
+  `recorded_answers_equal_the_real_answers_apart_from_the_basis` builds only the effect grammar
+  and `repeated_public_and_binding_queries_agree` and
+  `cached_static_answers_refuse_changed_or_missing_executables` build no command grammar. The
+  peak is not attributed per test.
+  One `Native` measured step by step at `13c94ba` (the later-registry row with SDK-774, one
+  thread):
 
   | First call on a `Native` | Time | Footprint after |
   | --- | --- | --- |
