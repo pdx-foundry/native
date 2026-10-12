@@ -128,7 +128,7 @@ and [derived names](native/derived-names.md).
 ### Milestone 5 acceptance
 
 The "5 · Registry sweep" milestone description in the [Linear Atlas project](https://linear.app/unnamed-system/project/atlas-65cdd1747212)
-holds the decisions of 2026-10-12, the ticket blockers and the wave order; its "Second review"
+holds the decisions of 2026-10-12 and the ticket blockers; its "Second review"
 section supersedes the first plan where they differ.
 
 **Gate population (D1).** The population is every config type whose `path` is under `common/` or
@@ -165,11 +165,46 @@ joins a directory with several config types, keeping the type selectors; SDK-793
 carry events, pre_triggers and loader rules into snapshots and coverage.
 
 **Pin moves.** Atlas moves its Native pin twice. Pin A (SDK-796) follows the registry, events and
-pre_trigger work: SDK-799, SDK-781, SDK-783, SDK-802 and SDK-793. Pin C (SDK-798) is the sweep's
-recorded commit, after every other ticket: Atlas removes its local path override, pins, makes a
-live run with recording, takes coverage from the live run, and reports the rates and the SDK-591
-cost measurement. SDK-553 then records the commit, the method set, the report and one follow-up
+pre_trigger work: SDK-799, SDK-781, SDK-783, SDK-787, SDK-802 and SDK-793. Pin C (SDK-798) is
+the sweep's recorded commit, after every other ticket: Atlas removes its local path override,
+pins, makes a live run with recording, takes coverage from the live run, and reports the rates and
+the SDK-591 cost measurement. SDK-553 then records the commit, the method set, the report and one follow-up
 ticket per new failure shape.
+
+**Order.** Tickets in one wave can run side by side. Live tickets launch the game, and only one
+game runs at a time.
+
+| Wave | Ticket | Repo | Waits for |
+| --- | --- | --- | --- |
+| 1 | SDK-782 Restate the exit gate in the roadmap | Native | — |
+| 1 | SDK-800 Decide whether a `type_key_filter` subtype can earn coverage | Atlas | — |
+| 1 | SDK-778 Investigate the events loader and nested-definition identity | Native | — |
+| 1 | SDK-779 Read the scheduler table | Native | — |
+| 1 | SDK-799 Check the entry scopes again against `callbacks/v4` | Atlas | — |
+| 1 | SDK-780 Sweep report over a recorded-answers directory | Native | — |
+| 1 | SDK-781 Compare registries with config types | Atlas | — |
+| 1 | SDK-703 Pre_trigger key sets of the two registry fields | Native | — |
+| 2 | SDK-783 Name custom-loader registries, with the listed-name contract | Native | SDK-779 |
+| 2 | SDK-785 Join directories that hold several config types | Atlas | SDK-778, SDK-800 |
+| 2 | SDK-784 Nested definitions (or close it) | Native | SDK-778 |
+| 3 | SDK-786 Join a directory that a caller enumerates | Native | SDK-783 |
+| 3 | SDK-787 Owner join and `registry_fields` | Native | SDK-783 |
+| 3 | SDK-788 Loader-rules operation and file selection | Native | SDK-783 |
+| 4 | SDK-802 `derived_names` and `modifier_families` for new registries | Native | SDK-787 |
+| 4 | SDK-702 Event kinds and their scopes | Native | SDK-778, SDK-783, SDK-787 |
+| 4 | SDK-790 Duplicate, file-order and mod-over-vanilla rules | Native | SDK-788 |
+| 4 | SDK-791 Definition-name rules | Native | SDK-788 |
+| 4 | SDK-792 Repeated key in one fixture file (live) | Native | SDK-788 |
+| 5 | SDK-789 Strategic-resource and planet-class family joins (live) | Native | SDK-786, SDK-802 |
+| 5 | SDK-801 Event pre_trigger key sets | Native | SDK-702, SDK-703 |
+| 5 | SDK-803 Several files in one fixture session (live) | Native | SDK-792 |
+| 6 | SDK-794 Two-registry modifier templates (live) | Native | SDK-789 |
+| 6 | SDK-795 One fixture per loader rule shape (live) | Native | SDK-790, SDK-791, SDK-803 |
+| 6 | SDK-793 Event kinds and pre_triggers into Atlas | Atlas | SDK-785, SDK-702, SDK-703, SDK-801 |
+| 7 | SDK-796 Pin A | Atlas | SDK-799, SDK-781, SDK-783, SDK-787, SDK-802, SDK-793 |
+| 7 | SDK-797 Loader rules into Atlas | Atlas | SDK-785, SDK-788, SDK-790, SDK-791 |
+| 8 | SDK-798 Pin C: the sweep run | Atlas | All of the above |
+| 8 | SDK-553 Record the method set and the follow-up tickets | Native | SDK-798 |
 
 **Baseline (D2).** The sweep is a baseline. Repairs for known failure shapes may land before pin C,
 and the run reflects them; none is mandatory. The rest are labelled deficits in the report.
