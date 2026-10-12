@@ -478,12 +478,13 @@ missing, and two `Unsupported` errors make it unsupported. For scope context, `r
 
 The properties do not mark every limit, so a gap that names the field also makes a complete
 relationship partial. It never makes one complete or failed. Gaps of kind `OutsideMethod` never
-count.
+count. An `UnresolvedCondition` gap does not count: a loader condition is already a `read`
+term, and a use-time selection is not a loader shape.
 
 | Gap kind, subject the field | Relationship left partial |
 | --- | --- |
 | `UnresolvedReader` | Reader kinds |
-| `UnresolvedStorage`, `UnresolvedCondition` | Shapes and conditions |
+| `UnresolvedStorage` | Shapes and conditions |
 | `ReaderSemantics` | References |
 | `NumericConversion` | Numerics |
 | `UnresolvedPath` | Scope context: entry-context and read-scope searches report a missing call path this way |
@@ -519,8 +520,8 @@ tracked baseline in the PR that changes the answers:
 cargo run --release --example registry-sweep -- --baseline .local/population/sweep-answers > tests/population/m452/registry-sweep.json
 ```
 
-The baseline holds one line for each registry: its registry statuses and its field counts by
-relationship and status.
+The baseline holds one line for each registry: its registry statuses, and for each field
+relationship its counts by status and its rate.
 
 ## Keep the knowledge in its home
 

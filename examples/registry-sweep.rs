@@ -15,10 +15,10 @@
 mod population;
 
 use pdx_native::{
-    AcceptedCategories, Answer, BlockFamily, Completeness, EmptyKey, EntryContext, EntryScope,
-    Error, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference, Gap, GapKind,
-    GapSubject, GrammarProperty, KeyMatch, LookupStage, MissingResult, Native, ReaderKind,
-    ReferenceTarget, RepeatBehavior, ValueShape, WeightBlock, WeightOtherKeys,
+    AcceptedCategories, Answer, BlockFamily, Completeness, DerivedName, EmptyKey, EntryContext,
+    EntryScope, Error, Field, FieldCondition, FieldMembers, FieldReadOutcome, FieldReference, Gap,
+    GapKind, GapSubject, GrammarProperty, KeyMatch, LookupStage, MissingResult, ModifierFamily,
+    Native, ReaderKind, ReferenceTarget, RepeatBehavior, ValueShape, WeightBlock, WeightOtherKeys,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -196,7 +196,7 @@ fn error_status<T>(outcome: &Outcome<T>) -> RegistryStatus {
 fn gap_relationship(kind: GapKind) -> Option<&'static str> {
     match kind {
         GapKind::UnresolvedReader => Some(READER_KINDS),
-        GapKind::UnresolvedStorage | GapKind::UnresolvedCondition => Some(SHAPES_AND_CONDITIONS),
+        GapKind::UnresolvedStorage => Some(SHAPES_AND_CONDITIONS),
         GapKind::ReaderSemantics => Some(REFERENCES),
         GapKind::NumericConversion => Some(NUMERICS),
         GapKind::UnresolvedPath => Some(SCOPE_CONTEXT),
@@ -449,15 +449,14 @@ struct Sweep {
 }
 
 impl Sweep {
-    fn add(&mut self, native: &Native, registry: &str) -> Result<(), Error> {
-        let fields = native.registry_fields(registry);
-        let derived = native.derived_names(registry);
-        let families = native.modifier_families(registry);
-        let (fields, derived, families) = (
-            Outcome::of(&fields)?,
-            Outcome::of(&derived)?,
-            Outcome::of(&families)?,
-        );
+    /// Add one registry's outcomes of the three registry questions.
+    fn add(
+        &mut self,
+        registry: &str,
+        fields: Outcome<Vec<Field>>,
+        derived: Outcome<Vec<DerivedName>>,
+        families: Outcome<Vec<ModifierFamily>>,
+    ) {
         self.add_failure_shapes(registry, "registry_fields", &fields);
         self.add_failure_shapes(registry, "derived_names", &derived);
         self.add_failure_shapes(registry, "modifier_families", &families);
@@ -485,13 +484,7 @@ impl Sweep {
         };
         for field in answered {
             let statuses = field_statuses(field, gaps);
-            let reader = field.reader.id.as_ref().map_or("none".to_owned(), |id| {
-                serde_json::to_value(id)
-                    .ok()
-                    .and_then(|id| id.as_str().map(str::to_owned))
-                    .expect("a reader identity is a string")
-            });
-            let by_reader = self.readers.entry(reader).or_default();
+            let by_reader = self.readers.entry(reader_name(field)).or_default();
             for (relationship, status) in &statuses {
                 counts.entry(relationship).or_default().add(*status);
                 by_reader.entry(relationship).or_default().add(*status);
@@ -501,13 +494,9 @@ impl Sweep {
                 .insert(format!("{registry}#{}", field.name), statuses);
         }
         for (relationship, counts) in counts {
-            row.insert(
-                relationship.into(),
-                serde_json::to_value(&counts.0).unwrap(),
-            );
+            row.insert(relationship.into(), counts.report());
         }
         self.registries.insert(registry.to_owned(), row.into());
-        Ok(())
     }
 
     fn add_failure_shapes<T>(&mut self, registry: &str, operation: &str, outcome: &Outcome<T>) {
@@ -574,6 +563,18 @@ impl Sweep {
             "fields": self.fields,
             "failure_shapes": { "gaps": gap_shapes, "errors": self.errors },
         })
+    }
+}
+
+/// The field's reader identity, or `none`. `ReaderId` has no string accessor; it serializes as
+/// its text.
+fn reader_name(field: &Field) -> String {
+    let Some(id) = &field.reader.id else {
+        return "none".to_owned();
+    };
+    match serde_json::to_value(id) {
+        Ok(Value::String(name)) => name,
+        _ => unreachable!("a reader identity serializes as a string"),
     }
 }
 
@@ -648,7 +649,16 @@ fn sweep(directory: &Path) -> Result<Value, Box<dyn std::error::Error>> {
     let registries = native.registries()?;
     let mut sweep = Sweep::default();
     for registry in &registries.value {
-        sweep.add(&native, &registry.name)?;
+        let name = &registry.name;
+        let fields = native.registry_fields(name);
+        let derived = native.derived_names(name);
+        let families = native.modifier_families(name);
+        sweep.add(
+            name,
+            Outcome::of(&fields)?,
+            Outcome::of(&derived)?,
+            Outcome::of(&families)?,
+        );
     }
     Ok(sweep.report(json!(native.build()), serde_json::to_value(&registries)?))
 }
@@ -777,6 +787,7 @@ mod tests {
         let gaps = json!([
             { "kind": "OutsideMethod", "subject": { "kind": "registry", "name": "common/mixed" }, "detail": "Outside." },
             { "kind": "NumericConversion", "subject": { "kind": "field", "name": "cost" }, "detail": "Range." },
+            { "kind": "UnresolvedCondition", "subject": { "kind": "field", "name": "cost" }, "detail": "Use-time context." },
             { "kind": "UnresolvedPath", "subject": { "kind": "field", "name": "potential" }, "detail": "More paths (path-limit)." },
         ]);
         let unsupported = json!({ "Err": { "Unsupported": { "operation": "DerivedNames", "reason": "no names here" } } });
