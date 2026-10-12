@@ -166,10 +166,6 @@ mod tests {
         }
     }
 
-    fn named(forms: Vec<DefinitionForm>, missing: usize) -> Naming {
-        Naming { forms, missing }
-    }
-
     fn definition_name_gaps(answer: &Answer<LoaderRules>) -> Vec<(GapKind, &str)> {
         answer
             .gaps
@@ -198,7 +194,10 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection,
-            &named(vec![root_key()], 0),
+            &Naming {
+                forms: vec![root_key()],
+                missing: 0,
+            },
             build(),
         );
 
@@ -238,7 +237,10 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection,
-            &named(vec![root_key()], 0),
+            &Naming {
+                forms: vec![root_key()],
+                missing: 0,
+            },
             build(),
         );
 
@@ -270,7 +272,15 @@ mod tests {
 
     #[test]
     fn a_loader_with_no_stated_rule_leaves_definition_names_unresolved() {
-        let answer = normalized_rules("common/examples", &selection(), &named(vec![], 0), build());
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Naming {
+                forms: vec![],
+                missing: 0,
+            },
+            build(),
+        );
 
         assert_eq!(answer.value.definition_names, GrammarProperty::Unresolved);
         assert_eq!(
@@ -287,7 +297,10 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection(),
-            &named(vec![root_key()], 1),
+            &Naming {
+                forms: vec![root_key()],
+                missing: 1,
+            },
             build(),
         );
 
@@ -306,7 +319,15 @@ mod tests {
 
     #[test]
     fn no_held_rule_leaves_definition_names_unresolved() {
-        let answer = normalized_rules("common/examples", &selection(), &named(vec![], 2), build());
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Naming {
+                forms: vec![],
+                missing: 2,
+            },
+            build(),
+        );
 
         assert_eq!(answer.value.definition_names, GrammarProperty::Unresolved);
         assert_eq!(definition_name_gaps(&answer).len(), 1);

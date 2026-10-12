@@ -57,8 +57,7 @@ pub(in crate::binding) fn stated_forms(
 
     for template in templates {
         let loader = format!("{}{LOAD_FROM_READER}", template.loader_class);
-        stated
-            .push(holds(&[&loader]).then(|| form(DefinitionStatement::Root, DefinitionName::Key)));
+        stated.push(holds(&[&loader]).then(root_key));
 
         if template.item == TRADITION {
             stated.push(holds(&TRADITION_SWAP_RULE).then(tradition_swap));
@@ -73,31 +72,34 @@ pub(in crate::binding) fn stated_forms(
     stated
 }
 
+fn root_key() -> DefinitionForm {
+    DefinitionForm {
+        statement: DefinitionStatement::Root,
+        name: DefinitionName::Key,
+    }
+}
+
 fn event_namespace() -> DefinitionForm {
-    form(
-        DefinitionStatement::RootKey("namespace".into()),
-        DefinitionName::Value,
-    )
+    DefinitionForm {
+        statement: DefinitionStatement::RootKey("namespace".into()),
+        name: DefinitionName::Value,
+    }
 }
 
 fn event() -> DefinitionForm {
-    form(
-        DefinitionStatement::Root,
-        DefinitionName::Field("id".into()),
-    )
+    DefinitionForm {
+        statement: DefinitionStatement::Root,
+        name: DefinitionName::Field("id".into()),
+    }
 }
 
 fn tradition_swap() -> DefinitionForm {
-    form(
-        DefinitionStatement::Nested {
+    DefinitionForm {
+        statement: DefinitionStatement::Nested {
             field_path: vec!["tradition_swap".into()],
         },
-        DefinitionName::Field("name".into()),
-    )
-}
-
-fn form(statement: DefinitionStatement, name: DefinitionName) -> DefinitionForm {
-    DefinitionForm { statement, name }
+        name: DefinitionName::Field("name".into()),
+    }
 }
 
 #[cfg(test)]
@@ -134,10 +136,7 @@ mod tests {
 
         let stated = stated_forms(&symbols, &[template("CExample")], &BTreeSet::new());
 
-        assert_eq!(
-            stated,
-            [Some(form(DefinitionStatement::Root, DefinitionName::Key))]
-        );
+        assert_eq!(stated, [Some(root_key())]);
     }
 
     #[test]
@@ -155,13 +154,7 @@ mod tests {
 
         let stated = stated_forms(&symbols(&names), &[template(TRADITION)], &BTreeSet::new());
 
-        assert_eq!(
-            stated,
-            [
-                Some(form(DefinitionStatement::Root, DefinitionName::Key)),
-                Some(tradition_swap()),
-            ]
-        );
+        assert_eq!(stated, [Some(root_key()), Some(tradition_swap()),]);
     }
 
     #[test]
