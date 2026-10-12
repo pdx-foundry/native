@@ -2788,3 +2788,21 @@ fn a_scope_in_a_caller_saved_register_does_not_survive_a_call() {
 fn an_owner_without_a_loader_root_has_no_loader_keys() {
     assert!(derive(fixture()).loader.is_none());
 }
+
+#[test]
+fn a_tail_call_out_of_the_loader_does_not_build_the_owner() {
+    let mut input = loader_fixture("w21");
+    replace(&mut input, 0x9028, arm64!(at 0x9028; b extern 0xb000));
+    let result = derive(input);
+    let tail = result
+        .loader
+        .as_ref()
+        .unwrap()
+        .paths
+        .iter()
+        .find(|path| path.domain == [7, 7])
+        .unwrap();
+
+    assert!(!loader_scopes(&result).contains_key("new_engine_field"));
+    assert!(matches!(&tail.outcome, PathOutcome::Gap(stop) if stop.reason == "loader-tail-call"));
+}

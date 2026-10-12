@@ -97,6 +97,22 @@ pub(super) fn root_fields(
     (fields, answer_gaps)
 }
 
+/// The owner's own fields in `fields`, an answer of `result`: the members of each root key when
+/// the loader builds the owner, else the answer itself.
+pub(super) fn owner_fields<'a>(
+    fields: &'a [Field],
+    result: &crate::engine::analysis::fields::RegistryFieldResult,
+) -> &'a [Field] {
+    if result.loader.is_none() {
+        return fields;
+    }
+
+    match fields.first().map(|field| &field.members) {
+        Some(FieldMembers::Fields(members)) => members,
+        _ => &[],
+    }
+}
+
 /// A root key reads one block; how a repeated key is stored is the loader rule's question.
 const SHAPE: FieldShape = FieldShape {
     value: ValueShape::Block,
@@ -106,8 +122,8 @@ const SHAPE: FieldShape = FieldShape {
 /// The reader of the constructed owner, read through its primary address point.
 fn item_reader(loader: &LoaderKeys) -> Reader {
     Reader {
-        numeric: GrammarProperty::Unresolved,
-        scoped_operand: GrammarProperty::Unresolved,
+        numeric: GrammarProperty::Known(None),
+        scoped_operand: GrammarProperty::Known(None),
         id: loader.item_reader.as_ref().map(persistent_reader_id),
         kind: ReaderKind::Block,
         family: loader
@@ -168,14 +184,14 @@ fn read_alternatives(paths: &[&TokenPath], reader: &Reader) -> Vec<FieldReadAlte
 
 /// The scopes that the constructor receives on a key's `paths`; a path that the walk could not
 /// finish may build the owner in a scope that no path names. The engine names scope `0` "scope not
-/// set": the key reads its block in no scope.
+/// set": a key whose every construction passes it reads its block in no scope.
 fn read_scope(
     paths: &[&TokenPath],
     names: Option<&[String]>,
     key: &str,
     gaps: &mut Vec<Gap>,
 ) -> GrammarProperty<Vec<ReadScope>> {
-    let set: Vec<Option<Value>> = paths
+    let scopes: Vec<Option<Value>> = paths
         .iter()
         .filter_map(|path| match &path.outcome {
             PathOutcome::Rejected => None,
@@ -184,14 +200,16 @@ fn read_scope(
             }
             _ => Some(None),
         })
-        .filter(|scope| *scope != Some(Value::Constant(0)))
         .collect();
 
-    if set.is_empty() {
+    if scopes
+        .iter()
+        .all(|scope| *scope == Some(Value::Constant(0)))
+    {
         return GrammarProperty::Known(Vec::new());
     }
 
-    normalize_scopes(set, names, GapSubject::field(key), gaps)
+    normalize_scopes(scopes, names, GapSubject::field(key), gaps)
 }
 
 /// The member field path that a gap names, if it names one.
@@ -422,6 +440,37 @@ mod tests {
         );
         assert!(gaps.iter().any(|gap| gap.detail.starts_with("read-scope")
             && gap.subject == Some(GapSubject::field("country_event"))));
+    }
+
+    #[test]
+    fn a_key_built_in_no_scope_on_one_path_and_a_scope_on_another_is_partial() {
+        let mut loader = loader();
+        loader.paths.push(TokenPath {
+            domain: [4, 5],
+            ..path(5, PathOutcome::Reader(construction(0)))
+        });
+        let (fields, _) = answer(&loader);
+
+        assert!(
+            matches!(fields[0].read_scope, GrammarProperty::Partial(ref scopes) if scopes.len() == 1)
+        );
+    }
+
+    #[test]
+    fn the_owner_fields_of_a_loader_answer_are_the_members_of_its_keys() {
+        let loader = loader();
+        let (fields, _) = answer(&loader);
+        let result = crate::engine::analysis::fields::RegistryFieldResult {
+            loader: Some(loader),
+            ..Default::default()
+        };
+
+        let names: Vec<_> = owner_fields(&fields, &result)
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+        assert_eq!(names, ["trigger"]);
+        assert_eq!(owner_fields(&fields, &Default::default()).len(), 2);
     }
 
     #[test]

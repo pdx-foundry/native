@@ -656,6 +656,16 @@ impl VerifiedAnalysis<'_> {
     /// Read fields for the items of `owner`; reject a class that owns no registry of this
     /// analysis.
     pub(crate) fn field_input(&self, owner: &str) -> Result<FieldInput, AnalysisError> {
+        self.loaded_field_input(owner, None)
+    }
+
+    /// [`Self::field_input`] with the root switch of the custom loader `database`, when the
+    /// registry's own loader builds `owner`.
+    fn loaded_field_input(
+        &self,
+        owner: &str,
+        database: Option<&str>,
+    ) -> Result<FieldInput, AnalysisError> {
         let template = self
             .catalog
             .candidates
@@ -665,12 +675,16 @@ impl VerifiedAnalysis<'_> {
             return Err(AnalysisError::InvalidRange);
         }
 
-        self.read_field_input(owner)
+        self.read_field_input(owner, database)
     }
 
-    /// Read the fields input of `owner`, with the part that every owner shares and the custom
-    /// loader that builds it.
-    fn read_field_input(&self, owner: &str) -> Result<FieldInput, AnalysisError> {
+    /// Read the fields input of `owner`, with the part that every owner shares and the root
+    /// switch of the custom loader `database`, if any.
+    fn read_field_input(
+        &self,
+        owner: &str,
+        database: Option<&str>,
+    ) -> Result<FieldInput, AnalysisError> {
         let image = self.image();
         let shared = self
             .catalog
@@ -678,24 +692,27 @@ impl VerifiedAnalysis<'_> {
             .get_or_init(|| binary::fields::SharedFieldInput::read(&image, self.persistent))
             .as_ref()
             .map_err(Clone::clone)?;
-        let loader = self
-            .loader_database(owner)
-            .map(|database| binary::fields::LoaderSearch {
-                database,
-                reader_token_offset: self.reader_token_offset,
-            });
+        let loader = database.map(|database| binary::fields::LoaderSearch {
+            database,
+            reader_token_offset: self.reader_token_offset,
+        });
 
         binary::fields::read(&image, shared, owner, loader, self.persistent)
     }
 
-    /// The unjoined database whose own loader builds `owner`.
-    fn loader_database(&self, owner: &str) -> Option<&str> {
-        let owners = self.database_schedule().ok()?.loader_owners.as_ref().ok()?;
+    /// The custom-loader database that names `registry`; `None` for a template registry.
+    fn loader_database(&self, registry: &str) -> Option<&str> {
+        if unique_named_candidate(self.named_candidates(), registry).is_some() {
+            return None;
+        }
 
-        owners
-            .iter()
-            .find(|(_, built)| matches!(built, LoaderOwner::Owner(built) if built == owner))
-            .map(|(database, _)| database.as_str())
+        let named = self
+            .database_schedule()
+            .ok()?
+            .loader_registry(registry)?
+            .ok()?;
+
+        Some(named.database)
     }
 }
 
@@ -804,7 +821,7 @@ impl BoundAnalysis {
             return Ok(Some((owner, result)));
         }
 
-        let input = self.registry_field_input(&verified, &owner)?;
+        let input = self.registry_field_input(&verified, registry, &owner)?;
         let result = Arc::new(fields::analyze(&input)?);
         let kept = self
             .kept_registry_fields()
@@ -823,15 +840,16 @@ impl BoundAnalysis {
             .expect("registry field result lock")
     }
 
-    /// The field input of `owner`'s items, with the words that the shared facts supply to its
-    /// constructors: the scopes that weight blocks store and the words that modifier nodes
-    /// initialize.
+    /// The field input of `owner`'s items in `registry`, with the root switch of the registry's
+    /// own loader and the words that the shared facts supply to its constructors: the scopes that
+    /// weight blocks store and the words that modifier nodes initialize.
     pub(crate) fn registry_field_input(
         &self,
         verified: &VerifiedAnalysis<'_>,
+        registry: &str,
         owner: &str,
     ) -> Result<FieldInput, AnalysisError> {
-        let mut input = verified.field_input(owner)?;
+        let mut input = verified.loaded_field_input(owner, verified.loader_database(registry))?;
 
         if let Some(persistent) = &mut input.persistent {
             persistent.requested_words = self.weight_block_facts()?.stored_scopes();

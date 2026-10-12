@@ -1066,6 +1066,13 @@ fn explore_member_with_wrapped_owner(
                         state.clobber_call();
                         continue;
                     }
+
+                    // A tail call to another function leaves the loader: no owner on this path.
+                    leaves.push(state.finish(
+                        row.address,
+                        PathOutcome::Gap(stop("loader-tail-call", Obstacle::Call)),
+                    ));
+                    break;
                 }
                 if let Some(slot) = target.and_then(|target| {
                     input

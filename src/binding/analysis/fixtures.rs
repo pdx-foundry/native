@@ -42,7 +42,7 @@ impl BoundAnalysis {
         let numeric = self.numeric_facts().map_err(|error| error.to_string())?;
         let loader = verified.verify_inline_loader(recipe)?;
         let input = verified
-            .read_field_input(recipe.owner)
+            .read_field_input(recipe.owner, None)
             .map_err(|error| error.to_string())?;
         let root = fields::analyze(&input).map_err(|error| error.to_string())?;
         let key = root
@@ -183,7 +183,7 @@ impl VerifiedAnalysis<'_> {
             .strip_suffix("::ReadMember(CReader&, int)")
             .ok_or("Nested member signature is unsupported")?;
         let nested_input = self
-            .read_field_input(owner)
+            .read_field_input(owner, None)
             .map_err(|error| error.to_string())?;
         let nested_result = fields::analyze(&nested_input).map_err(|error| error.to_string())?;
         let leaf = nested_result

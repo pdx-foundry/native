@@ -508,7 +508,7 @@ impl Native {
         let input = self
             .bound()
             .analysis
-            .registry_field_input(&verified, owner)
+            .registry_field_input(&verified, name, owner)
             .map_err(|e| error(operation, e))?;
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
 
