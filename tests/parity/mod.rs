@@ -70,8 +70,6 @@ pub fn read_scopes(native: &Native, expected: &Value) -> Result<Value> {
     Ok(json!({"build": native.build(), "registries": registries, "commands": commands}))
 }
 
-/// The keys of each selected field's embedded block: the field's reader identity, each key's
-/// reader kind, and the kinds of the gaps on each key.
 /// The scope names of each event kind's read scope; an empty list is no scope.
 pub fn event_kinds(native: &Native) -> Result<Value> {
     let answer = current_answer(native, native.registry_fields("events")?)?;
@@ -90,6 +88,8 @@ pub fn event_kinds(native: &Native) -> Result<Value> {
     Ok(json!(kinds))
 }
 
+/// The keys of each selected field's embedded block: the field's reader identity, each key's
+/// reader kind, and the kinds of the gaps on each key.
 pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
     let mut registries = BTreeMap::new();
     for (registry, selected) in expected

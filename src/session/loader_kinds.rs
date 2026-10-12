@@ -6,7 +6,9 @@
 //! key.
 use super::fields::{persistent_reader_id, prefix_conditions};
 use super::read_scope::normalize_scopes;
-use crate::engine::analysis::fields::{LoaderKeys, PathOutcome, ReaderJoin, RootField, Value};
+use crate::engine::analysis::fields::{
+    LoaderKeys, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+};
 use crate::{
     AcceptedCategories, Field, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative,
     FieldReadOutcome, FieldReference, FieldShape, Gap, GapKind, GapSubject, GrammarProperty,
@@ -31,8 +33,8 @@ pub(super) fn root_fields(
     let mut fields = Vec::new();
 
     for key in &loader.keys {
-        let constructions = constructor_scopes(key);
-        if constructions.is_empty() {
+        let paths = key_paths(key, loader);
+        if !paths.iter().any(|path| builds_owner(path)) {
             answer_gaps.push(Gap {
                 kind: GapKind::UnresolvedPath,
                 subject: Some(GapSubject::registry(registry)),
@@ -45,7 +47,7 @@ pub(super) fn root_fields(
             continue;
         }
 
-        let read = read_alternatives(key, loader, &reader);
+        let read = read_alternatives(&paths, &reader);
         if read.len() > 1 {
             answer_gaps.push(Gap {
                 kind: GapKind::UnresolvedCondition,
@@ -77,7 +79,7 @@ pub(super) fn root_fields(
             uses: Vec::new(),
             reference: FieldReference::NotEstablished,
             entry_contexts: Vec::new(),
-            read_scope: read_scope(constructions, names, &key.name, &mut answer_gaps),
+            read_scope: read_scope(&paths, names, &key.name, &mut answer_gaps),
             accepted_categories: AcceptedCategories::NotApplicable,
         });
     }
@@ -115,32 +117,26 @@ fn item_reader(loader: &LoaderKeys) -> Reader {
     }
 }
 
-/// The scope argument of each of `key`'s constructor calls.
-fn constructor_scopes(key: &RootField) -> Vec<Option<Value>> {
-    key.readers
+/// Every path of the loader's switch that `key`'s token can take, including the rejected and
+/// wider paths that the key's readers leave out.
+fn key_paths<'a>(key: &RootField, loader: &'a LoaderKeys) -> Vec<&'a TokenPath> {
+    loader
+        .paths
         .iter()
-        .filter_map(|join| match join {
-            ReaderJoin::Joined { arguments, .. } => Some(arguments.get("x1").cloned()),
-            _ => None,
-        })
+        .filter(|path| path.domain[0] <= key.token && key.token <= path.domain[1])
         .collect()
 }
 
-/// The distinct outcomes of every path of `key`, including the rejected paths that the key's
-/// readers leave out. One outcome holds on every path; several are each held under a condition
-/// that the method does not resolve.
-fn read_alternatives(
-    key: &RootField,
-    loader: &LoaderKeys,
-    reader: &Reader,
-) -> Vec<FieldReadAlternative> {
+fn builds_owner(path: &TokenPath) -> bool {
+    matches!(path.outcome, PathOutcome::Reader(ReaderJoin::Joined { .. }))
+}
+
+/// The distinct outcomes of a key's `paths`. One outcome holds on every path; several are each
+/// held under a condition that the method does not resolve.
+fn read_alternatives(paths: &[&TokenPath], reader: &Reader) -> Vec<FieldReadAlternative> {
     let mut outcomes = Vec::new();
 
-    for path in &loader.paths {
-        if path.domain != [key.token, key.token] {
-            continue;
-        }
-
+    for path in paths {
         let outcome = match &path.outcome {
             PathOutcome::Reader(ReaderJoin::Joined { .. }) => FieldReadOutcome::Read {
                 reader: reader.clone(),
@@ -170,16 +166,24 @@ fn read_alternatives(
         .collect()
 }
 
-/// The scope that the constructor receives on each path. The engine names scope `0` "scope not
+/// The scopes that the constructor receives on a key's `paths`; a path that the walk could not
+/// finish may build the owner in a scope that no path names. The engine names scope `0` "scope not
 /// set": the key reads its block in no scope.
 fn read_scope(
-    scopes: Vec<Option<Value>>,
+    paths: &[&TokenPath],
     names: Option<&[String]>,
     key: &str,
     gaps: &mut Vec<Gap>,
 ) -> GrammarProperty<Vec<ReadScope>> {
-    let set: Vec<_> = scopes
-        .into_iter()
+    let set: Vec<Option<Value>> = paths
+        .iter()
+        .filter_map(|path| match &path.outcome {
+            PathOutcome::Rejected => None,
+            PathOutcome::Reader(ReaderJoin::Joined { arguments, .. }) => {
+                Some(arguments.get("x1").cloned())
+            }
+            _ => Some(None),
+        })
         .filter(|scope| *scope != Some(Value::Constant(0)))
         .collect();
 
@@ -253,7 +257,6 @@ fn walk_gaps(loader: &LoaderKeys, registry: &str) -> Vec<Gap> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::analysis::fields::TokenPath;
     use crate::engine::analysis::stop::Unresolved;
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -398,6 +401,27 @@ mod tests {
                 .any(|gap| gap.kind == GapKind::UnresolvedCondition
                     && gap.subject == Some(GapSubject::field("event")))
         );
+    }
+
+    #[test]
+    fn a_wider_unresolved_path_over_a_key_leaves_its_read_and_scope_partial() {
+        let mut loader = loader();
+        loader.paths.push(TokenPath {
+            domain: [4, 5],
+            ..path(5, PathOutcome::Gap(Unresolved::new("instruction")))
+        });
+        let (fields, gaps) = answer(&loader);
+
+        let outcomes: Vec<_> = fields[0].read.iter().map(|read| &read.outcome).collect();
+        assert!(matches!(
+            outcomes.as_slice(),
+            [FieldReadOutcome::Read { .. }, FieldReadOutcome::Unresolved]
+        ));
+        assert!(
+            matches!(fields[0].read_scope, GrammarProperty::Partial(ref scopes) if scopes.len() == 1)
+        );
+        assert!(gaps.iter().any(|gap| gap.detail.starts_with("read-scope")
+            && gap.subject == Some(GapSubject::field("country_event"))));
     }
 
     #[test]
