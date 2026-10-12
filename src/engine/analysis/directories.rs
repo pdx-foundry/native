@@ -175,8 +175,10 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             // A load into register 31 discards its value.
             ldr_immediate(word).filter(|(destination, ..)| *destination != 31)
         {
-            registers[destination] = match registers[base] {
-                Value::Constant(address) => Value::Slot(address.wrapping_add(offset)),
+            // Base register 31 is the stack pointer, not the zero register.
+            registers[destination] = match (base, registers[base]) {
+                (31, _) => Value::Unknown,
+                (_, Value::Constant(address)) => Value::Slot(address.wrapping_add(offset)),
                 _ => Value::Unknown,
             };
         } else if let Some(target) = branch_with_link(word, address) {
@@ -626,6 +628,10 @@ mod tests {
         discarded.address(8, SLOT);
         arm64!(discarded; ldr xzr, [x8]; mov x0, xzr);
         discarded.call(ENUMERATE);
+        let mut stack_after_zero = Arm64::at(0x1000);
+        stack_after_zero.address(8, SLOT);
+        arm64!(stack_after_zero; mov xzr, x8; ldr x0, [sp]);
+        stack_after_zero.call(ENUMERATE);
 
         for loader in [
             unresolved,
@@ -634,6 +640,7 @@ mod tests {
             function(dereferenced.bytes()),
             stack,
             function(discarded.bytes()),
+            function(stack_after_zero.bytes()),
         ] {
             assert_eq!(
                 loader_directory(&[loader], &anchors(), &strings(), &pointers()),
