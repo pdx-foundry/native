@@ -262,7 +262,7 @@ lookups and flags on this page.
 | Normalization | None in a lookup or in `CreateFlagIndex` | Lexer normalization is outside the method, including the token number that the trigger lookup compares |
 | Collisions | A scan returns the first equal item; equal flag names are one flag in every store | `FirstEqual`; the shared interner |
 | Missing key | The typed null object; a scripted-trigger placeholder for the trigger lookup | `MissingResult::NullObject` or `ScriptedTriggerPlaceholder`, from the shape's miss edge |
-| Duplicate definitions | A scan returns the first in collection order; a map keeps what loading inserted | Load-time replacement belongs to SDK-552 |
+| Duplicate definitions | A scan returns the first in collection order; a map keeps what loading inserted | A template registry holds one item per key: the [duplicate rule](loader-rules.md#duplicate-definitions) replaces or merges it in place |
 
 ## SDK-482 prototype
 

@@ -1078,8 +1078,8 @@ fn recorded_support_requires_a_file_for_the_operation() {
 #[test]
 fn loader_rules_read_their_registry_file() {
     use pdx_native::{
-        DefinitionForm, DefinitionName, DefinitionStatement, GrammarProperty, LoaderRules,
-        Recursion,
+        DefinitionForm, DefinitionName, DefinitionStatement, DuplicateRule, GrammarProperty,
+        LoaderRules, Recursion,
     };
     let root = recorded();
     write(
@@ -1090,6 +1090,7 @@ fn loader_rules_read_their_registry_file() {
                 "extension": { "Known": ".txt" },
                 "name_contains": { "Known": null },
                 "recursion": "Unresolved",
+                "duplicate_rule": { "Known": "LastWins" },
                 "definition_names": { "Known": [
                     { "statement": "Root", "name": { "Field": "name" } }
                 ] }
@@ -1113,6 +1114,7 @@ fn loader_rules_read_their_registry_file() {
             extension: GrammarProperty::Known(Some(".txt".into())),
             name_contains: GrammarProperty::Known(None),
             recursion: GrammarProperty::<Recursion>::Unresolved,
+            duplicate_rule: GrammarProperty::Known(DuplicateRule::LastWins),
             definition_names: GrammarProperty::Known(vec![DefinitionForm {
                 statement: DefinitionStatement::Root,
                 name: DefinitionName::Field("name".into()),

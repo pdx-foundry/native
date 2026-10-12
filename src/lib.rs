@@ -31,8 +31,8 @@ pub mod supervisor;
 pub use answer::{
     AcceptedCategories, Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes,
     Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Define, DefineValueType,
-    DefinitionForm, DefinitionName, DefinitionStatement, DerivedName, Disposal, EntryContext,
-    EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
+    DefinitionForm, DefinitionName, DefinitionStatement, DerivedName, Disposal, DuplicateRule,
+    EntryContext, EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
     GenerationCondition, KeptCategories, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
     LoaderRules, LocalizationCommand, LocalizationContext, LocalizationContextId,
     LocalizationContextReference, LocalizationDeclarations, LocalizationLink, LocalizationOutput,
