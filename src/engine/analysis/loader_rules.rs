@@ -13,7 +13,17 @@
 //! `false` to `LoadFile`, which passes it on to `LoadFromReader`, which passes it or `false` on.
 //! The method assumes that chain, which the knowledge page checks over every template registry,
 //! and reads the body on the `false` path ([`existing_entry_rule`]). A custom loader has no such
-//! body, so its rule is not established. `docs/native/loader-rules.md` has the engine facts.
+//! body, so its rule is not established.
+//!
+//! The scan runs the entry block to the test of the last argument, then follows the `false` path:
+//! it steps over each conditional branch and follows each unconditional branch inside the body. A
+//! virtual call of the item's destructor, or a direct call that receives the item or a subobject
+//! (an inline destructor calls each member's destructor), destroys the item. After that, a store
+//! at the item's start or a direct call that receives the whole item builds it again. A return
+//! after the item is built again also gives `LastWins`: a tag registry's item holds only its key,
+//! and its handler reads nothing. Another call through a register, or a branch out of the body
+//! that is not the read, ends the scan with no rule. A direct call clears the caller-saved
+//! registers. `docs/native/loader-rules.md` has the engine facts.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
@@ -148,17 +158,6 @@ pub fn selection(calls: &[Enumeration]) -> Selection {
 /// and builds it again first gives [`DuplicateRule::LastWins`]; a path that reads into the item
 /// as it is gives [`DuplicateRule::Merges`]. Any other body gives `None`, including one that does
 /// not test the last argument before its first call or branch.
-///
-/// The scan runs the entry block to the test, then follows the `false` path: it steps over each
-/// conditional branch and follows each unconditional branch inside the body. A virtual call of
-/// the item's destructor, or a direct call that receives the item or a subobject (an inline
-/// destructor calls each member's destructor), destroys it. After that, a store at the item's
-/// start or a direct call that receives the whole item builds it again. A return after the item
-/// is built again also gives `LastWins`: a tag registry's item holds only its key, and its
-/// handler reads nothing. The scan gives `None` at another call through a register and at a
-/// branch out of the body that is not a read. A direct call clears the caller-saved registers,
-/// but `x0` keeps the item that the call received: on Apple ARM64, a constructor or destructor
-/// returns `this`.
 pub fn existing_entry_rule(code: &[u8], address: u64) -> Option<DuplicateRule> {
     let rows = decode_arm64(code, address).ok()?;
     let positions: BTreeMap<u64, usize> = rows
@@ -177,28 +176,27 @@ pub fn existing_entry_rule(code: &[u8], address: u64) -> Option<DuplicateRule> {
 
     for _ in 0..rows.len() {
         let row = rows.get(position)?;
-        let called = match row.operation.as_str() {
+        let call = match row.operation.as_str() {
             "b" => match positions.get(&number(&row.operands)?) {
                 Some(&target) => {
                     position = target;
                     continue;
                 }
-                None => Some(None),
+                None => Call::Direct,
             },
-            "bl" => Some(None),
-            "blr" | "br" => Some(Some(*values.get(&wide_register(&row.operands)?)?)),
+            "bl" => Call::Direct,
+            "blr" | "br" => Call::Indirect(*values.get(&wide_register(&row.operands)?)?),
             "ret" => return (destroyed && rebuilt).then_some(DuplicateRule::LastWins),
-            _ => None,
-        };
-        let Some(through) = called else {
-            rebuilt |= destroyed && writes_item_start(&values, row);
-            track(&mut values, row);
-            position += 1;
-            continue;
+            _ => {
+                rebuilt |= destroyed && writes_item_start(&values, row);
+                track(&mut values, row);
+                position += 1;
+                continue;
+            }
         };
 
         let receives = values.get(&0).copied();
-        let destructor = matches!(through, Some(Held::Slot(slot)) if slot.is_destructor());
+        let destructor = matches!(call, Call::Indirect(Held::Slot(slot)) if slot.is_destructor());
         if destructor && receives == Some(Held::Item(0)) && !destroyed {
             destroyed = true;
         } else if reads_into_item(&values) {
@@ -207,13 +205,15 @@ pub fn existing_entry_rule(code: &[u8], address: u64) -> Option<DuplicateRule> {
                 (true, true) => Some(DuplicateRule::LastWins),
                 (true, false) => None,
             };
-        } else if through.is_some() || row.operation == "b" {
+        } else if matches!(call, Call::Indirect(_)) || row.operation == "b" {
             return None;
         } else if let Some(Held::Item(subobject)) = receives {
             rebuilt |= destroyed && subobject == 0;
             destroyed = true;
         }
         forget(&mut values, row);
+        // On Apple ARM64 a constructor or destructor returns `this`, and the code uses `x0` after
+        // the call without a move.
         if let Some(held @ Held::Item(_)) = receives {
             values.insert(0, held);
         }
@@ -221,6 +221,15 @@ pub fn existing_entry_rule(code: &[u8], address: u64) -> Option<DuplicateRule> {
     }
 
     None
+}
+
+/// A call or a branch out of the body on the scanned path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Call {
+    /// A `bl`, or a `b` to an address outside the body.
+    Direct,
+    /// A `blr` or `br` through a register that holds this value.
+    Indirect(Held),
 }
 
 /// What a register holds on the scanned path.
