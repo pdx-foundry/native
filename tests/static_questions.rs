@@ -1646,9 +1646,12 @@ fn pre_trigger_blocks_share_one_key_table() {
             "{key} is a pre-trigger key"
         );
     }
+}
 
-    // The keys of an embedded block take the read-scope pass like other nested fields.
-    let attitudes = native.registry_fields("common/attitudes").unwrap();
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn embedded_object_keys_receive_the_read_scope_pass() {
+    let attitudes = native().registry_fields("common/attitudes").unwrap();
     let behaviour = find(&attitudes.value, "behaviour", |field| &field.name);
     let pdx_native::FieldMembers::Fields(keys) = &behaviour.members else {
         panic!("behaviour has no keys");
