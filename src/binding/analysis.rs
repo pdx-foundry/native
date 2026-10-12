@@ -8,7 +8,10 @@ use std::{
 use super::binary::families::FamilyIndex;
 use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
-use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::discovery::{
+    Symbol,
+    schedule::{self, ScheduleGap, ScheduleInventory},
+};
 use crate::engine::analysis::families::DatabaseLayout;
 use crate::engine::analysis::fields::{self, FieldInput, RegistryFieldResult};
 use crate::engine::analysis::references::{self, ReferenceFacts};
@@ -404,6 +407,38 @@ impl VerifiedAnalysis<'_> {
 
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
+    }
+
+    /// The database schedule joined to the template candidates. A scheduling function that is
+    /// missing or not unique is a gap with no table owner.
+    pub(crate) fn database_schedule(
+        &self,
+    ) -> Result<Result<ScheduleInventory, ScheduleGap>, AnalysisError> {
+        let symbols = &self.catalog.symbols;
+        let addresses: std::collections::BTreeSet<u64> = symbols
+            .iter()
+            .filter(|symbol| symbol.name.starts_with(schedule::SCHEDULE_FUNCTION))
+            .map(|symbol| symbol.address)
+            .collect();
+        let [start] = addresses.into_iter().collect::<Vec<_>>()[..] else {
+            return Ok(Err(ScheduleGap::NoTableOwner));
+        };
+        let text = binary::declarations::Text::read(&self.executable, symbols)?;
+        let (address, code) = text.function(start)?;
+        let instructions = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
+        let facts = schedule::ScheduleFacts {
+            symbols,
+            pointers: &self.catalog.pointers,
+            strings: &self.catalog.strings,
+            templates: self
+                .catalog
+                .candidates
+                .iter()
+                .map(|candidate| candidate.record.database.as_str())
+                .collect(),
+        };
+
+        Ok(schedule::inventory(&instructions, &facts))
     }
 
     /// Read fields for a candidate from this analysis; reject records from another source.

@@ -1,0 +1,7 @@
+{
+  "completeness": "Partial",
+  "gaps": [
+    {"detail": "Registries with nested or late loaders, or with loaders that the database schedule does not list, are not listed.", "kind": "OutsideMethod", "subject": null},
+    {"detail": "35 of 198 scheduled databases have no template loader, so their content directory is not established.", "kind": "UnnamedRegistries", "subject": null}
+  ]
+}

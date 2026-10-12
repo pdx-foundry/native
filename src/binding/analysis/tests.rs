@@ -1700,3 +1700,29 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         Some([(1, "CSpecialistSubjectType".into())].into())
     );
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates() {
+    let binding = crate::session::installed_native().bound();
+    let schedule = binding
+        .analysis
+        .verified()
+        .unwrap()
+        .database_schedule()
+        .unwrap()
+        .unwrap();
+    assert_eq!(schedule.rows, 198);
+    assert_eq!(schedule.unjoined.len(), 35);
+    assert!(schedule.unjoined.iter().all(Option::is_some));
+    for database in [
+        "CStaticModifierDatabase",
+        "CPlanetClassDatabase",
+        "CEventManager",
+    ] {
+        assert!(
+            schedule.unjoined.contains(&Some(database.into())),
+            "{database}"
+        );
+    }
+}

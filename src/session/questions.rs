@@ -168,7 +168,9 @@ impl Native {
     /// List the engine registries, each named by its content directory.
     ///
     /// The search covers shared database-template candidates. Custom, nested, and late loaders
-    /// are outside it. Completeness says whether every candidate inside that boundary was named.
+    /// are outside it. The engine's database schedule counts the scheduled databases that no
+    /// template candidate covers. Completeness says whether every candidate inside that boundary
+    /// was named and every scheduled database was covered.
     pub fn registries(&self) -> Result<Answer<Vec<Registry>>, Error> {
         self.answer(Operation::Registries, None, || {
             self.registries_from_executable()
@@ -187,16 +189,43 @@ impl Native {
                 Directory::Missing | Directory::Ambiguous(_) => unnamed += 1,
             }
         }
+        let schedule = verified
+            .database_schedule()
+            .map_err(|failure| error(Operation::Registries, failure))?;
         let mut gaps = vec![Gap {
             kind: GapKind::OutsideMethod,
             subject: None,
-            detail: "Registries with custom, nested, or late loaders are not listed.".into(),
+            detail: "Registries with nested or late loaders, or with loaders that the database \
+                     schedule does not list, are not listed."
+                .into(),
         }];
+        let mut unnamed_details = Vec::new();
         if unnamed > 0 {
+            unnamed_details.push(format!(
+                "{unnamed} template registries were found without one content directory."
+            ));
+        }
+        match schedule {
+            Ok(schedule) if !schedule.unjoined.is_empty() => unnamed_details.push(format!(
+                "{} of {} scheduled databases have no template loader, so their content \
+                 directory is not established.",
+                schedule.unjoined.len(),
+                schedule.rows
+            )),
+            Ok(_) => {}
+            Err(_) => gaps.push(Gap {
+                kind: GapKind::UnreadableInput,
+                subject: None,
+                detail: "The database schedule could not be read, so databases outside the \
+                         template method are not counted."
+                    .into(),
+            }),
+        }
+        if !unnamed_details.is_empty() {
             gaps.push(Gap {
                 kind: GapKind::UnnamedRegistries,
                 subject: None,
-                detail: format!("{unnamed} registries were found without one content directory."),
+                detail: unnamed_details.join(" "),
             });
         }
         Ok(Answer {

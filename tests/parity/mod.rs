@@ -101,6 +101,7 @@ pub const DERIVED_NAME_FILES: [(&str, &str); 2] = [
 
 pub const FILES: &[&str] = &[
     "registries.json",
+    "registry-gaps.json",
     "read-scopes.json",
     "fields-traditions.json",
     "fields-tradition_categories.json",
@@ -175,6 +176,10 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
                 .map(|item| &item.name)
                 .collect::<Vec<_>>()
         )),
+        "registry-gaps.json" => {
+            let answer = current_answer(native, native.registries()?)?;
+            Ok(json!({ "completeness": answer.completeness, "gaps": answer.gaps }))
+        }
         "read-scopes.json" => read_scopes(native, expected),
         "references.json" => references(native, expected),
         "command-grammars.json" => {

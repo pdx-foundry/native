@@ -305,26 +305,47 @@ conflict.
   runs a loop before it passes `common/species_names` to the file enumeration. The scan continues
   past a conditional branch, and the target of one forgets every register and built object.
 
-### Scheduler table on M45-release
+### Database schedule
 
-No supported operation reads the scheduling table; the removed scheduler method and its tests are
-at `git show 8d9a073:src/engine/analysis/discovery/scheduler.rs` (with `discovery.rs` and
-`tests_discovery.rs`).
+`Native::registries` reads the table of `NNullObjAndDatabaseInitUtil::SetupDatabases` to count
+the scheduled databases that no template candidate covers (`discovery/schedule.rs`; its module
+comment gives the scan). Each unjoined row is a custom-loader candidate; the answer reports their
+count in its `UnnamedRegistries` gap, with no class name. The scan finds the function by its name
+and derives the end of the fill from the code; no recipe holds an address.
 
-- `NNullObjAndDatabaseInitUtil::SetupDatabases(CPdxArray<SDatabaseObjectFunctions, int>&, ...)`
-  fills the table with literal values from `0x1005eb938` to `0x1005eedf0` (exclusive); scheduling
-  begins at that end address, found by hand. After `mov x19, sp`, the table is at `x19 + 96`:
+- On M452 the function starts at `0x1005eb000`. After `mov x19, sp`, the table is at `x19 + 96`:
   **198 rows of 48 bytes**, six 8-byte slots each: the name as a C-string address, then
-  `TGameDatabase<T>::CreateInstance()`, `DestroyInstance()`, zero (`stp x8, xzr`), `InitInstance()`
-  and `PostReadInitInstance()`. Function addresses come from `__DATA_CONST,__got` slots, so nothing
-  resolves without chained fixups. Row 0 is `CNamedColorDatabase`.
-- 163 rows join exactly one template candidate by the database type in a slot's symbol;
-  `CGameScenarioDatabase` joins none. 35 rows are outside the template method, including
-  `CStaticModifierDatabase`, `CStrategicResourceDatabase`, `CPlanetClassDatabase`,
-  `CSpecialProjectDatabase`, `COnActionDatabase` and `CTraitDatabase` (SDK-551).
-- Pitfalls: without `mov x19, sp`, every row is a gap, never an empty table; the stack probe
-  `blr x16` (`___chkstk_darwin`) at `0x1005eb960` is an unknown call before it; a new value in `x19`
-  invalidates the table owner; the row count is not a registry count.
+  `CreateInstance()`, `DestroyInstance()`, a fourth slot, `InitInstance()` and
+  `PostReadInitInstance()`. The fourth slot is zero (`stp x8, xzr`) or a `CanInitialize()`
+  function; 126 rows have the function. Row 0 is `CNamedColorDatabase`. Every slot of every row
+  resolves.
+- The fill ends at `0x1005ee4b8` (`ldrsw x8, [x0, #0x14]`), the first instruction that is not a
+  literal step. The code after it copies `0xc6` (198) rows of `0x30` bytes from `x19 + 0x60`.
+  The compiler reorders the stores: a slot can be stored long after its row, such as
+  `str x9, [x19, #0x1f90]` near the end.
+- A template row's functions are `TGameDatabase<T>::…` in `__DATA_CONST,__got` slots, so they
+  resolve only through the chained fixups. A custom-loader row's functions are the database's
+  own (`CStaticModifierDatabase::CreateInstance()`), often through `adrp` and `add`.
+- 163 rows join exactly one template candidate by the database type in their function symbols;
+  `CGameScenarioDatabase` is the one candidate with no row. 35 rows are outside the template
+  method: `CStaticModifierDatabase`, `CWeaponTagDatabase`, `CStrategicResourceDatabase`,
+  `CShipBehaviorDatabase`, `CAmbientObjectDatabase`, `CEmpireFlagDatabase`, `CGfxCultureDatabase`,
+  `CProjectileGfxDatabase`, `CPortraitDatabase`, `COpinionModifierDatabase`, `CPlanetClassDatabase`,
+  `CAdvisorDatabase`, `CPingMapDatabase`, `CFallenEmpiresDatabase`, `CShipDesignTemplatesDatabase`,
+  `CSpeciesNamesDatabase`, `CNameListDatabase`, `CDesignerDatabase`, `CEventManager`,
+  `CSpecialProjectDatabase`, `COnActionDatabase`, `CTraitDatabase`, `CPrescriptedSpeciesDatabase`,
+  `CDiploPhraseDatabase`, `CMessageSystem`, `CAlertSystem`, `CTerraformDatabase`,
+  `CStartScreenMessageDatabase`, `CSystemInitializerDataBase`, `CGalaxyTemplateDatabase`,
+  `CWorldGfxDatabase`, `CColorsDatabase`, `CGameSettingsDatabase`, `CEmpireDesignDatabase` and
+  `CScriptableLocalizationDatabase`. Some are not script registries (`CMessageSystem`,
+  `CAlertSystem`); the row count is not a registry count. M45-release had the same counts.
+- Pitfalls, checked again on M452: the stack probe `blr x16` (`___chkstk_darwin`) at
+  `0x1005eb028` is a call before the table owner, so the scan accepts calls before `mov x19, sp`
+  and stops at the first branch; without that move the answer is a gap, never an empty table. A
+  new value in `x19` during the fill invalidates the owner and is a gap. An `ldr` from a `__got`
+  slot gives nothing without the chained fixups.
+- The M45-release reader decoded a hand-found window (`0x1005eb938` to `0x1005eedf0`) and was
+  removed in `e9261a1`; the current reader derives the end instead.
 
 ### Owner vtables on M45-release
 
