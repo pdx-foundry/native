@@ -189,9 +189,7 @@ impl Native {
                 Directory::Missing | Directory::Ambiguous(_) => unnamed += 1,
             }
         }
-        let schedule = verified
-            .database_schedule()
-            .map_err(|failure| error(Operation::Registries, failure))?;
+        let schedule = verified.database_schedule();
         let mut gaps = vec![Gap {
             kind: GapKind::OutsideMethod,
             subject: None,
@@ -206,13 +204,27 @@ impl Native {
             ));
         }
         match schedule {
-            Ok(schedule) if !schedule.unjoined.is_empty() => unnamed_details.push(format!(
-                "{} of {} scheduled databases have no template loader, so their content \
-                 directory is not established.",
-                schedule.unjoined.len(),
-                schedule.rows
-            )),
-            Ok(_) => {}
+            Ok(schedule) => {
+                if !schedule.unjoined.is_empty() {
+                    unnamed_details.push(format!(
+                        "{} of {} scheduled databases have no template loader, so their content \
+                         directory is not established.",
+                        schedule.unjoined.len(),
+                        schedule.rows
+                    ));
+                }
+                if schedule.unresolved > 0 {
+                    gaps.push(Gap {
+                        kind: GapKind::UnreadableInput,
+                        subject: None,
+                        detail: format!(
+                            "{} of {} scheduled databases name no single database type, so \
+                             whether a template loader covers them is not established.",
+                            schedule.unresolved, schedule.rows
+                        ),
+                    });
+                }
+            }
             Err(_) => gaps.push(Gap {
                 kind: GapKind::UnreadableInput,
                 subject: None,

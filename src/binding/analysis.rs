@@ -410,10 +410,8 @@ impl VerifiedAnalysis<'_> {
     }
 
     /// The database schedule joined to the template candidates. A scheduling function that is
-    /// missing or not unique is a gap with no table owner.
-    pub(crate) fn database_schedule(
-        &self,
-    ) -> Result<Result<ScheduleInventory, ScheduleGap>, AnalysisError> {
+    /// missing, not unique or undecodable is a gap.
+    pub(crate) fn database_schedule(&self) -> Result<ScheduleInventory, ScheduleGap> {
         let symbols = &self.catalog.symbols;
         let addresses: std::collections::BTreeSet<u64> = symbols
             .iter()
@@ -421,11 +419,13 @@ impl VerifiedAnalysis<'_> {
             .map(|symbol| symbol.address)
             .collect();
         let [start] = addresses.into_iter().collect::<Vec<_>>()[..] else {
-            return Ok(Err(ScheduleGap::NoTableOwner));
+            return Err(ScheduleGap::Unreadable);
         };
-        let text = binary::declarations::Text::read(&self.executable, symbols)?;
-        let (address, code) = text.function(start)?;
-        let instructions = decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)?;
+        let instructions = binary::declarations::Text::read(&self.executable, symbols)
+            .and_then(|text| text.function(start))
+            .ok()
+            .and_then(|(address, code)| decode_arm64(code, address).ok())
+            .ok_or(ScheduleGap::Unreadable)?;
         let facts = schedule::ScheduleFacts {
             symbols,
             pointers: &self.catalog.pointers,
@@ -438,7 +438,7 @@ impl VerifiedAnalysis<'_> {
                 .collect(),
         };
 
-        Ok(schedule::inventory(&instructions, &facts))
+        schedule::inventory(&instructions, &facts)
     }
 
     /// Read fields for a candidate from this analysis; reject records from another source.

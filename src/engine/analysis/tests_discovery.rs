@@ -121,7 +121,8 @@ fn a_schedule_row_with_no_template_candidate_is_counted_as_unjoined() {
         schedule(true, |_| {}),
         Ok(ScheduleInventory {
             rows: 2,
-            unjoined: vec![Some("CCustomDatabase".into())],
+            unjoined: vec!["CCustomDatabase".into()],
+            unresolved: 0,
         })
     );
 }

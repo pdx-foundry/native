@@ -1710,18 +1710,20 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         .verified()
         .unwrap()
         .database_schedule()
-        .unwrap()
         .unwrap();
     assert_eq!(schedule.rows, 198);
     assert_eq!(schedule.unjoined.len(), 35);
-    assert!(schedule.unjoined.iter().all(Option::is_some));
+    assert_eq!(schedule.unresolved, 0);
     for database in [
         "CStaticModifierDatabase",
         "CPlanetClassDatabase",
         "CEventManager",
     ] {
         assert!(
-            schedule.unjoined.contains(&Some(database.into())),
+            schedule
+                .unjoined
+                .iter()
+                .any(|unjoined| unjoined == database),
             "{database}"
         );
     }

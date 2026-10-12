@@ -7,11 +7,11 @@
 //! instruction that is not one of its literal steps; the code after it schedules the rows. The
 //! table starts at the lowest owner slot that holds a text literal.
 //!
-//! The scan tracks `adrp`, the 64-bit `add` and `ldr` of an immediate, register moves and the
-//! stores. A function address is often loaded from a `__got` slot, so it resolves only through
+//! The scan tracks `adrp`, the 64-bit `add` and `ldr` of an immediate, and the stores. A register
+//! move forgets its destination; M452 copies no slot value through one. A function address is often loaded from a `__got` slot, so it resolves only through
 //! the resolved pointers. A row's database type is the class that its function symbols name; a
 //! row joins the template candidate of that database. A row that joins none is a candidate for a
-//! custom loader. A missing table owner, or a new value in it during the fill, is a gap, never an
+//! custom loader; a row whose functions name no single type is unresolved. A missing table owner, or a new value in it during the fill, is a gap, never an
 //! empty table.
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,9 +38,10 @@ const FRAME_POINTER: usize = 29;
 pub struct ScheduleInventory {
     /// Rows in the table.
     pub rows: usize,
-    /// The database type of each row that joins no template candidate, in table order; `None`
-    /// when the row's functions name no single type.
-    pub unjoined: Vec<Option<String>>,
+    /// The database type of each row that joins no template candidate, in table order.
+    pub unjoined: Vec<String>,
+    /// Rows whose functions name no single database type, so no join is established.
+    pub unresolved: usize,
 }
 
 /// Why the schedule could not be read.
@@ -52,6 +53,8 @@ pub enum ScheduleGap {
     OwnerChanged,
     /// The fill stored no text literal into the table.
     NoRows,
+    /// The scheduling function is missing, not unique, or cannot be decoded.
+    Unreadable,
 }
 
 /// The facts of the executable that the schedule reads, besides the scheduling function.
@@ -72,16 +75,24 @@ pub fn inventory(
     facts: &ScheduleFacts<'_>,
 ) -> Result<ScheduleInventory, ScheduleGap> {
     let rows = table(instructions, facts)?;
-    let unjoined = rows
+    let databases: Vec<_> = rows
         .iter()
         .map(|slots| row_database(slots, facts.symbols))
-        .filter(|database| !database.is_some_and(|database| facts.templates.contains(database)))
-        .map(|database| database.map(str::to_owned))
+        .collect();
+    let unjoined = databases
+        .iter()
+        .flatten()
+        .filter(|database| !facts.templates.contains(*database))
+        .map(|database| (*database).to_owned())
         .collect();
 
     Ok(ScheduleInventory {
         rows: rows.len(),
         unjoined,
+        unresolved: databases
+            .iter()
+            .filter(|database| database.is_none())
+            .count(),
     })
 }
 
