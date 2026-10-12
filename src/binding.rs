@@ -537,7 +537,7 @@ impl ExecutionPlan {
             };
 
         Ok(crate::protocol::observation::FixtureSetup {
-            file: fixture.file().into(),
+            files: fixture.files.keys().cloned().collect(),
             validation_complete_entry,
             questions,
             registry,

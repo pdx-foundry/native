@@ -1059,6 +1059,8 @@ mod tests {
         assert_eq!(summary.diagnostics.shown[1], "Sequence gap 1");
     }
 
+    const FIXTURE: &str = "common/tradition_categories/atlas.txt";
+
     fn outcome(
         field: &str,
         parsing: FixtureParsing,
@@ -1067,7 +1069,6 @@ mod tests {
     ) -> FixtureFieldOutcome {
         FixtureFieldOutcome {
             question: FixtureFieldQuestion::new("common/tradition_categories", "atlas", field),
-            file: "common/tradition_categories/atlas.txt".into(),
             definitions: Vec::new(),
             parsing,
             storage,
@@ -1085,6 +1086,7 @@ mod tests {
 
     fn fixture_answer(coverage: DiagnosticCoverage) -> Answer<FixtureObservation> {
         let occurrence = |occurrence, return_line| ParsedFieldOccurrence {
+            file: FIXTURE.into(),
             line: 2,
             occurrence,
             return_line,
@@ -1103,6 +1105,7 @@ mod tests {
             FixtureParsing::NotRequested,
             FixtureStorage::Observed {
                 occurrences: vec![StoredFieldOccurrence {
+                    file: FIXTURE.into(),
                     line: 3,
                     occurrence: 1,
                     value: crate::FixtureValue::String("x".into()),
@@ -1115,6 +1118,7 @@ mod tests {
 
         Answer {
             value: FixtureObservation {
+                loaded_files: vec![FIXTURE.into()],
                 field_outcomes: vec![parsed, stored],
                 diagnostics: vec![
                     diagnostic("engine-parser-log"),

@@ -312,7 +312,7 @@ class PauseTests(unittest.TestCase):
         for diagnostics in [False, True]:
             with self.subTest(diagnostics=diagnostics):
                 config = dict(validation_complete_entry=None, registry=outcome, bindings=bindings,
-                              file='common/traditions/example.txt',
+                              files=['common/traditions/example.txt'],
                               questions=[dict(index=0, definition='one', token=1, diagnostics=diagnostics)])
                 observer = worker.FixtureObserver(config)
                 expected = ['fixture_load', 'fixture_constructor', 'fixture_reader', 'fixture_member']
@@ -357,11 +357,12 @@ class ParserObservationTests(unittest.TestCase):
                         parsing=True, diagnostics=True, storage=dict(unbound='No storage decoder'))
         registry = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
             reader_return=40, inline=None)
-        self.observer = worker.FixtureObserver(dict(validation_complete_entry=None, file=self.file,
+        self.observer = worker.FixtureObserver(dict(validation_complete_entry=None, files=[self.file],
             registry=registry, bindings=dict(malformed_entry=50, unexpected_entry=60, validation=None),
             questions=[question]))
-        self.observer.loading = True
-        self.observer.definitions['one'] = [dict(owner=0x2000, line=1)]
+        self.observer.current = self.file
+        self.observer.loaded = [self.file]
+        self.observer.definitions['one'] = [dict(owner=0x2000, file=self.file, line=1)]
         self.observer.emit = Mock()
         self.observer.stored_string = Mock(side_effect=AssertionError('block storage was read'))
         self.observer.return_hook = Mock()
@@ -439,7 +440,7 @@ class ParserObservationTests(unittest.TestCase):
     def construct(self, owner, line):
         name = protocol.HOOK['fixture_constructor_return'] + str(line)
         worker.breakpoints[name] = Mock()
-        self.observer.pending_constructors[name] = dict(owner=owner, definition='one', line=line)
+        self.observer.pending_constructors[name] = dict(owner=owner, definition='one', file=self.file, line=line)
         self.observer.on_constructor_return(7, name)
 
     def finish_with_bound_storage(self):
@@ -470,6 +471,52 @@ class ParserObservationTests(unittest.TestCase):
         self.assertIsNone(terminal['owner'])
         self.assertIsNone(terminal['final_value'])
         self.assertIn('several owners', terminal['unavailable'])
+
+    def two_files(self):
+        second = 'common/traditions/second.txt'
+        self.observer.files = [self.file, second]
+        self.observer.current = None
+        self.observer.loaded = []
+        self.observer.finish_questions = Mock()
+        worker.breakpoints[protocol.HOOK['fixture_return']] = Mock()
+        return second
+
+    def test_several_files_emit_the_terminals_once_after_the_last_return(self):
+        second = self.two_files()
+        for file in [second, self.file]:
+            self.observer.start_file(file, 7)
+            self.observer.on_return(Mock(), 7)
+        self.observer.finish_questions.assert_called_once()
+        worker.breakpoints[protocol.HOOK['fixture_return']].SetEnabled.assert_called_with(False)
+        self.assertEqual([(call.args[0], call.kwargs.get('file')) for call in self.observer.emit.call_args_list
+                          if call.args[0] in {'load-start', 'load-returned'}],
+                         [('load-start', second), ('load-returned', second),
+                          ('load-start', self.file), ('load-returned', self.file)])
+        self.assertTrue(self.observer.returned)
+
+    def test_a_fixture_file_cannot_load_twice_or_inside_another(self):
+        second = self.two_files()
+        self.observer.start_file(self.file, 7)
+        with self.assertRaises(RuntimeError):
+            self.observer.start_file(second, 7)
+        self.observer.on_return(Mock(), 7)
+        self.observer.finish_questions.assert_not_called()
+        with self.assertRaises(RuntimeError):
+            self.observer.start_file(self.file, 7)
+
+    def test_a_log_or_expanded_source_resolves_to_the_fixture_file_that_it_names(self):
+        second = self.two_files()
+        diagnostic = worker.interpret_fixture_log(f'file: {second} line: 4', self.observer.files, False)
+        self.assertEqual((diagnostic['file'], diagnostic['line']), (second, 4))
+        both = worker.interpret_fixture_log(f'file: {self.file} line: 2 file: {second} line: 4',
+                                            self.observer.files, False)
+        self.assertEqual((both['file'], both['line']), (None, None))
+        inline = f'{second}:5(inline_script) common/inline_scripts/a.txt'
+        self.assertEqual(self.observer.fixture_line(inline, 1), (second, 5))
+        ambiguous = f'file: {self.file} line: 2 file: {self.file} line: 4 file: {second} line: 6'
+        diagnostic = worker.interpret_fixture_log(ambiguous, self.observer.files, False)
+        self.assertEqual((diagnostic['file'], diagnostic['line']), (None, None))
+        self.assertIsNone(self.observer.fixture_line(ambiguous, 1))
 
     def test_unbound_parser_does_not_report_a_complete_empty_observation(self):
         self.observer.questions[0]['token'] = None
@@ -509,11 +556,11 @@ class ParserObservationTests(unittest.TestCase):
     def test_unresolved_or_ambiguous_log_source_is_retained(self):
         for text in [f'Unknown command @ {self.file}',
                      f'file: {self.file} line: 2 file: {self.file} line: 4']:
-            diagnostic = worker.interpret_fixture_log(text, self.file, True)
+            diagnostic = worker.interpret_fixture_log(text, [self.file], True)
             self.assertEqual(diagnostic['text'], text)
             self.assertIsNone(diagnostic['line'])
         self.assertIsNone(worker.interpret_fixture_log(
-            'file: other.txt line: 3', self.file, True))
+            'file: other.txt line: 3', [self.file], True))
 
     def test_stream_log_reads_the_formatted_c_string(self):
         self.observer.bindings['validation'] = dict(stream_log_text_register='x1')
@@ -565,10 +612,10 @@ class ParserObservationTests(unittest.TestCase):
         inline = f'{self.file}:5(inline_script) common/inline_scripts/paragon/swap.txt'
         generated = f'scripted effect example_effect at file: {self.file} line: 9'
         nested = f'{self.file}:4(inline_script) common/inline_scripts/a.txt:2(inline_script) common/inline_scripts/b.txt'
-        self.assertEqual(self.observer.fixture_line(self.file, 3), 3)
-        self.assertEqual(self.observer.fixture_line(inline, 3), 5)
-        self.assertEqual(self.observer.fixture_line(generated, 11), 9)
-        self.assertEqual(self.observer.fixture_line(nested, 1), 4)
+        self.assertEqual(self.observer.fixture_line(self.file, 3), (self.file, 3))
+        self.assertEqual(self.observer.fixture_line(inline, 3), (self.file, 5))
+        self.assertEqual(self.observer.fixture_line(generated, 11), (self.file, 9))
+        self.assertEqual(self.observer.fixture_line(nested, 1), (self.file, 4))
         for unrelated in ['common/traditions/other.txt',
                           'common/traditions/other.txt:5(inline_script) common/inline_scripts/a.txt',
                           f'scripted effect example_effect at file: common/traditions/other.txt line: 9']:
@@ -612,13 +659,13 @@ class ParserObservationTests(unittest.TestCase):
     def test_an_engine_log_from_expanded_text_joins_the_call_line(self):
         text = (f'Error: "Malformed token: x, near line: 3" in file: '
                 f'"{self.file}:5(inline_script) common/inline_scripts/a.txt" near line: 3')
-        diagnostic = worker.interpret_fixture_log(text, self.file, False)
+        diagnostic = worker.interpret_fixture_log(text, [self.file], False)
         self.assertEqual(diagnostic['line'], 5)
 
     def test_the_fixture_reader_and_the_script_checks_accept_both_source_message_forms(self):
         for text in [f'Wrong scope at  file: {self.file} line: 7',
                      f'Error: "Unexpected token: x" in file: "{self.file}" near line: 7']:
-            diagnostic = worker.interpret_fixture_log(text, self.file, True)
+            diagnostic = worker.interpret_fixture_log(text, [self.file], True)
             self.assertEqual(diagnostic['line'], 7, text)
             check, line, _ = script_checks.attribute_message(text, {self.file: 1})
             self.assertEqual((check, line), (1, 7), text)
@@ -645,7 +692,7 @@ class NumericStorageTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
 
     def test_scoped_storage_keeps_literal_and_reference_slots_independent(self):
-        observer = worker.FixtureObserver(dict(validation_complete_entry=None, file='common/synthetic/test.txt',
+        observer = worker.FixtureObserver(dict(validation_complete_entry=None, files=['common/synthetic/test.txt'],
             registry=dict(inline=None), bindings=dict(), questions=[]))
         layout = dict(literal=80, location=16, trigger=48, script_value=56,
                       modifier=64, modifier_unset=999, variable=96)
@@ -661,7 +708,7 @@ class NumericStorageTests(unittest.TestCase):
             has_modifier=False, variable='older_variable')})
 
     def test_signed_storage_uses_the_bound_width_and_owner_offset(self):
-        observer = worker.FixtureObserver(dict(validation_complete_entry=None, file='common/synthetic/test.txt',
+        observer = worker.FixtureObserver(dict(validation_complete_entry=None, files=['common/synthetic/test.txt'],
             registry=dict(inline=None), bindings=dict(), questions=[]))
         for decoder, width, raw, expected in [
             ('Integer', 4, 0x80000000, {'Integer': -2147483648}),
@@ -746,19 +793,20 @@ class NestedFixtureTests(unittest.TestCase):
             parsing=True, diagnostics=True)
         binding = dict(load_entry=10, reader_entry=20, constructor_entry=24, member_entry=30,
             reader_return=40, inline=dict(root_return=24, key_storage=dict(offset=8, decoder='String')))
-        config = dict(file='common/example/nested.txt', questions=[self.question],
+        config = dict(files=['common/example/nested.txt'], questions=[self.question],
             validation_complete_entry=None, registry=binding,
             bindings=dict(malformed_entry=50, unexpected_entry=60, validation=dict(log_entry=1,
                 unformatted_log_entry=2, stream_log_entry=3, sourced_log_entry=4)))
         self.observer = worker.InlineFixtureObserver(config)
-        self.observer.loading = True
+        self.observer.current = 'common/example/nested.txt'
+        self.observer.loaded = ['common/example/nested.txt']
         self.observer.thread = 7
         self.observer.active_reader = 2000
         self.frame = Mock()
         self.frame.GetThread().GetThreadID.return_value = 7
         self.registers = {'x0': 1000, 'x1': 2000, 'w2': 7}
         patch.object(worker, 'register', side_effect=lambda frame, name: self.registers[name]).start()
-        self.observer.location = Mock(return_value=(config['file'], 2))
+        self.observer.location = Mock(return_value=(config['files'][0], 2))
         self.observer.emit = Mock()
         self.observer.return_hook = Mock(side_effect=lambda frame, name: worker.breakpoints.setdefault(name, Mock()))
         self.observer.stored_value = Mock(side_effect=lambda process, owner, storage:

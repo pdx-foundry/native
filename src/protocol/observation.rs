@@ -644,7 +644,8 @@ impl FixtureQuestionSetup {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixtureSetup {
-    pub file: String,
+    /// The request's fixture files, in path order.
+    pub files: Vec<String>,
     /// The terminal after content validation, when the window includes validation.
     pub validation_complete_entry: Option<u64>,
     pub questions: Vec<FixtureQuestionSetup>,
@@ -964,9 +965,7 @@ pub(crate) enum FixtureEvent {
     DiagnosticsUnavailable {
         reason: String,
     },
-    ValidationComplete {
-        file: String,
-    },
+    ValidationComplete,
     LoadReturned {
         file: String,
     },

@@ -292,6 +292,7 @@ enum FixtureOutcomeCase {
     MaximumQuestions,
     UnrelatedDefinitions,
     RepeatedDefinition,
+    TwoFiles,
 }
 
 fn cases() -> Vec<(String, Case)> {
@@ -724,6 +725,7 @@ fn cases() -> Vec<(String, Case)> {
             "repeated_definition",
             FixtureOutcomeCase::RepeatedDefinition,
         ),
+        ("two_files", FixtureOutcomeCase::TwoFiles),
     ] {
         cases.push((
             format!("fixture_outcome_{name}"),
@@ -1125,6 +1127,7 @@ fn numeric_fixture(
                 let line = text.lines().count() as u64 + 1;
                 writeln!(text, " {field} = {input}")?;
                 occurrences.push(StoredFieldOccurrence {
+                    file: format!("{registry}/native_numeric.txt"),
                     line,
                     occurrence: index as u64 + 1,
                     value: value.clone(),
@@ -1883,6 +1886,9 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
     if matches!(case, FixtureOutcomeCase::UnrelatedDefinitions) {
         return unrelated_definitions_request();
     }
+    if matches!(case, FixtureOutcomeCase::TwoFiles) {
+        return two_files_request();
+    }
     if matches!(case, FixtureOutcomeCase::RepeatedDefinition) {
         return FixtureRequest::field_outcomes(
             "common/traditions/native_fixture.txt",
@@ -1909,7 +1915,8 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
         FixtureOutcomeCase::SameOwner
         | FixtureOutcomeCase::MaximumQuestions
         | FixtureOutcomeCase::UnrelatedDefinitions
-        | FixtureOutcomeCase::RepeatedDefinition => unreachable!(),
+        | FixtureOutcomeCase::RepeatedDefinition
+        | FixtureOutcomeCase::TwoFiles => unreachable!(),
     };
     let mut question =
         FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "unlocks_agenda");
@@ -1920,6 +1927,31 @@ fn fixture_outcome_request(case: FixtureOutcomeCase) -> pdx_native::FixtureReque
         "common/traditions/native_fixture.txt",
         format!("native_fixture_tradition = {{\n{body}}}\n"),
         [question],
+    )
+}
+
+const FIRST_FIXTURE: &str = "common/traditions/native_fixture_a.txt";
+const SECOND_FIXTURE: &str = "common/traditions/native_fixture_b.txt";
+
+/// A tradition in two files, whose second definition omits `custom_tooltip`, and one key that
+/// only each file holds.
+fn two_files_request() -> pdx_native::FixtureRequest {
+    use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    let agenda = |definition| FixtureFieldQuestion::new(TRADITIONS, definition, "unlocks_agenda");
+    FixtureRequest::field_outcomes(
+        FIRST_FIXTURE,
+        "native_fixture_tradition = {\n custom_tooltip = \"tip_a\"\n unlocks_agenda = \"agenda_a\"\n}\nnative_fixture_only_a = {\n unlocks_agenda = \"only_a\"\n}\n",
+        [
+            FixtureFieldQuestion::new(TRADITIONS, "native_fixture_tradition", "custom_tooltip"),
+            agenda("native_fixture_tradition").with_parsing(),
+            agenda("native_fixture_only_a"),
+            agenda("native_fixture_only_b"),
+        ],
+    )
+    .with_file(
+        SECOND_FIXTURE,
+        "native_fixture_tradition = {\n unlocks_agenda = \"agenda_b\"\n}\nnative_fixture_only_b = {\n unlocks_agenda = \"only_b\"\n}\n",
     )
 }
 
@@ -2001,6 +2033,7 @@ fn assert_fixture_outcome(
         FixtureOutcomeCase::UnrelatedDefinitions => assert_unrelated_definitions(answer),
         FixtureOutcomeCase::SameOwner => assert_same_owner(answer),
         FixtureOutcomeCase::RepeatedDefinition => assert_repeated_definition(answer),
+        FixtureOutcomeCase::TwoFiles => assert_two_files(answer),
         FixtureOutcomeCase::Valid
         | FixtureOutcomeCase::Omitted
         | FixtureOutcomeCase::Repeated
@@ -2047,6 +2080,7 @@ fn assert_repeated_definition(answer: &Answer<pdx_native::FixtureObservation>) -
         Some("agenda_two"),
     )?;
     let parsed = [(3, 1), (6, 2)].map(|(line, occurrence)| ParsedFieldOccurrence {
+        file: "common/traditions/native_fixture.txt".into(),
         line,
         occurrence,
         return_line: Some(line),
@@ -2072,6 +2106,109 @@ fn assert_repeated_definition(answer: &Answer<pdx_native::FixtureObservation>) -
         )
     {
         return Err(format!("repeated-definition diagnostic: {answer:?}").into());
+    }
+    Ok(())
+}
+
+/// Checks a tradition defined in two files: the loader reads them in byte order, and the second
+/// definition replaces the first at the same owner, as a repeat in one file does.
+fn assert_two_files(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FixtureParsing, ParsedFieldOccurrence};
+
+    let [only_a, only_b, tooltip, agenda] = answer.value.field_outcomes.as_slice() else {
+        return Err(format!("two-file outcomes: {answer:?}").into());
+    };
+    if answer.value.loaded_files != [FIRST_FIXTURE, SECOND_FIXTURE] {
+        return Err(format!("two-file load order: {answer:?}").into());
+    }
+    let one_owner = tooltip
+        .definitions
+        .iter()
+        .all(|definition| definition.owner == tooltip.definitions[0].owner);
+    if definition_sources(tooltip) != [(FIRST_FIXTURE, 1), (SECOND_FIXTURE, 1)]
+        || !one_owner
+        || tooltip.definitions != agenda.definitions
+        || definition_sources(only_a) != [(FIRST_FIXTURE, 5)]
+        || definition_sources(only_b) != [(SECOND_FIXTURE, 4)]
+    {
+        return Err(format!("two-file definitions: {answer:?}").into());
+    }
+    assert_located_storage(only_a, &[(FIRST_FIXTURE, 6, 1, "only_a")], "only_a")?;
+    assert_located_storage(only_b, &[(SECOND_FIXTURE, 5, 1, "only_b")], "only_b")?;
+    assert_located_storage(tooltip, &[(FIRST_FIXTURE, 2, 1, "tip_a")], "")?;
+    assert_located_storage(
+        agenda,
+        &[
+            (FIRST_FIXTURE, 3, 1, "agenda_a"),
+            (SECOND_FIXTURE, 2, 2, "agenda_b"),
+        ],
+        "agenda_b",
+    )?;
+    let parsed = [(FIRST_FIXTURE, 3, 1), (SECOND_FIXTURE, 2, 2)].map(|(file, line, occurrence)| {
+        ParsedFieldOccurrence {
+            file: file.into(),
+            line,
+            occurrence,
+            return_line: Some(line),
+        }
+    });
+    if agenda.parsing
+        != (FixtureParsing::Observed {
+            occurrences: parsed.to_vec(),
+            completeness: Completeness::Complete,
+        })
+    {
+        return Err(format!("two-file parsing: {answer:?}").into());
+    }
+    let [diagnostic] = answer.value.diagnostics.as_slice() else {
+        return Err(format!("two-file diagnostics: {answer:?}").into());
+    };
+    if !diagnostic
+        .text
+        .starts_with("Object with key: native_fixture_tradition already exists")
+        || !matches!(
+            &diagnostic.join,
+            DiagnosticJoin::Source { file, line: 1, definition: None, field: None,
+                occurrence: None } if file == SECOND_FIXTURE
+        )
+    {
+        return Err(format!("two-file diagnostic: {answer:?}").into());
+    }
+    Ok(())
+}
+
+fn definition_sources(outcome: &pdx_native::FixtureFieldOutcome) -> Vec<(&str, u64)> {
+    outcome
+        .definitions
+        .iter()
+        .map(|definition| (definition.file.as_str(), definition.line))
+        .collect()
+}
+
+/// Checks string storage whose occurrences name their files: `(file, line, occurrence, value)`.
+fn assert_located_storage(
+    outcome: &pdx_native::FixtureFieldOutcome,
+    expected: &[(&str, u64, u64, &str)],
+    expected_final: &str,
+) -> Outcome {
+    use pdx_native::{FixtureStorage, FixtureValue, StoredFieldOccurrence};
+
+    let occurrences = expected
+        .iter()
+        .map(|(file, line, occurrence, value)| StoredFieldOccurrence {
+            file: (*file).into(),
+            line: *line,
+            occurrence: *occurrence,
+            value: FixtureValue::String((*value).into()),
+        })
+        .collect();
+    let expected = FixtureStorage::Observed {
+        occurrences,
+        final_value: Some(FixtureValue::String(expected_final.into())),
+        completeness: Completeness::Complete,
+    };
+    if outcome.storage != expected {
+        return Err(format!("located field storage: {outcome:?}").into());
     }
     Ok(())
 }
@@ -2114,7 +2251,8 @@ fn assert_agenda_outcome(
         FixtureOutcomeCase::SameOwner
         | FixtureOutcomeCase::MaximumQuestions
         | FixtureOutcomeCase::UnrelatedDefinitions
-        | FixtureOutcomeCase::RepeatedDefinition => unreachable!(),
+        | FixtureOutcomeCase::RepeatedDefinition
+        | FixtureOutcomeCase::TwoFiles => unreachable!(),
     }
     match case {
         FixtureOutcomeCase::Malformed => {
@@ -2424,7 +2562,7 @@ fn assert_first_fixture_result(
                     .iter()
                     .find(|outcome| outcome.question.field == field)
                     .ok_or("category field outcome missing")?;
-                if outcome.file != "common/tradition_categories/atlas.txt"
+                if answer.value.loaded_files != ["common/tradition_categories/atlas.txt"]
                     || outcome.question.definition != "atlas_early_category"
                     || definition_lines(outcome) != [1]
                 {
@@ -3496,6 +3634,7 @@ async fn fixture_nested_numeric(control: Fault) -> Outcome {
             let line = text.lines().count() as u64 + 1;
             writeln!(text, "  fleet_power = {input}")?;
             occurrences.push(StoredFieldOccurrence {
+                file: format!("{registry}/native_nested.txt"),
                 line,
                 occurrence: index as u64 + 1,
                 value: FixtureValue::FixedPoint {
