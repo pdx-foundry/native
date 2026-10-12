@@ -497,7 +497,7 @@ mod tests {
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m452_scoped_numeric_shared_proofs() {
-        let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        let native = crate::session::installed_native();
         let input = native
             .bound()
             .analysis
@@ -631,7 +631,7 @@ mod tests {
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m452_scoped_numeric_static_parity() {
-        let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        let native = crate::session::installed_native();
         let agenda = native.registry_fields("common/council_agendas").unwrap();
         let cost = agenda
             .value
@@ -672,7 +672,7 @@ mod tests {
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m452_scoped_numeric_command_parity() {
-        let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        let native = crate::session::installed_native();
         let answer = native
             .command_grammar(crate::DeclarationKind::Effect, "set_timed_country_flag")
             .unwrap();
@@ -701,12 +701,12 @@ mod tests {
 
 #[cfg(test)]
 mod constructor_parity {
-    use crate::{DeclarationKind, GrammarProperty, Native};
+    use crate::{DeclarationKind, GrammarProperty};
 
     #[test]
     #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
     fn m452_constructor_initial_storage_parity() {
-        let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        let native = crate::session::installed_native();
         let field = |kind: DeclarationKind, command: &str, key: &str| {
             let answer = native.command_grammar(kind, command).unwrap();
             let (GrammarProperty::Known(fields) | GrammarProperty::Partial(fields)) =

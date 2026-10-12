@@ -599,7 +599,7 @@ fn a_pair_load_from_owner_storage_clears_both_registers() {
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
 fn m452_duration_execution_proofs() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     let (input, _) = analysis
         .grammar_input(crate::DeclarationKind::Effect)
@@ -653,7 +653,7 @@ fn m452_duration_execution_proofs() {
 #[test]
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
 fn m452_duration_static_parity() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let expected: serde_json::Map<String, serde_json::Value> = serde_json::from_str(include_str!(
         "../../../../tests/expected/duration-m452/static.json"
     ))
@@ -858,7 +858,7 @@ fn the_authored_trait_execute_requires_the_product_and_consumer() {
 #[ignore = "requires the exact supported executable through STELLARIS_PATH"]
 fn m452_duration_stack_and_presence_parity() {
     use crate::{DeclarationKind, DurationCombination, GrammarProperty};
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let scoped = native
         .scoped_numeric_facts(crate::Operation::CommandGrammar)
         .unwrap();
@@ -962,7 +962,7 @@ fn m452_duration_stack_and_presence_parity() {
         );
     }
     for registry in ["common/council_agendas", "common/governments/authorities"] {
-        let owners = crate::internals::duration_groups::registry(&native, registry).unwrap();
+        let owners = crate::internals::duration_groups::registry(native, registry).unwrap();
         assert!(!owners.is_empty());
         for owner in owners {
             assert!(owner.inventory.groups.is_empty(), "{registry}: {owner:?}");

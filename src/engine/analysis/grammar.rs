@@ -1843,8 +1843,7 @@ mod tests {
     #[test]
     #[ignore = "requires the exact installed M452 executable"]
     fn m452_control_grammar_reader_join() {
-        let path = std::env::var("STELLARIS_PATH").expect("set STELLARIS_PATH");
-        let native = crate::Native::open(path).unwrap();
+        let native = crate::session::installed_native();
         let mut failures = Vec::new();
         for (kind, commands) in [
             (

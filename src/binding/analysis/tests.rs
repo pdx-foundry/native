@@ -5,7 +5,7 @@ use std::fs;
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     let fields = analysis
         .fixture_registry_fields("common/traditions")
@@ -382,9 +382,7 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_named_candidate_has_one_initial_loader_entry() {
-    let installation =
-        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
-    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let binding = crate::session::installed_native().bound();
     let candidates = binding.analysis.verified().unwrap();
     assert_eq!(candidates.named_candidates().len(), 164);
     assert!(
@@ -403,9 +401,7 @@ fn every_named_candidate_has_one_initial_loader_entry() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
-    let installation =
-        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
-    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let binding = crate::session::installed_native().bound();
     let index = binding.analysis.family_index().unwrap();
     let registries: Vec<String> = index
         .registries
@@ -456,9 +452,7 @@ fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_registry_keys_follow_their_item_constructors() {
-    let installation =
-        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
-    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let binding = crate::session::installed_native().bound();
     let selected = ["common/bypass".into(), "common/traditions".into()];
     let bindings = binding.registry_bindings(&selected).unwrap();
     assert_eq!(
@@ -474,9 +468,7 @@ fn m452_registry_keys_follow_their_item_constructors() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_registry_key_storage_sweep() {
-    let installation =
-        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
-    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let binding = crate::session::installed_native().bound();
     let verified = binding.analysis.verified().unwrap();
     let names: Vec<String> = verified
         .named_candidates()
@@ -512,6 +504,8 @@ fn repeated_public_and_binding_queries_agree() {
     use crate::Native;
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
+    // Not the shared `installed_native`: the first queries must compute what the repeats read
+    // from the caches.
     let native = Native::open(installation).unwrap();
     let first = native.registries().unwrap();
     assert_eq!(native.registries().unwrap(), first);
@@ -789,7 +783,7 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_persistent_field_families() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let verified = native.bound().analysis.verified().unwrap();
     for registry in ["common/traditions", "common/council_agendas"] {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
@@ -818,7 +812,7 @@ fn m452_persistent_field_families() {
 fn m452_command_grammar_foundations_resolve_and_reuse_inputs() {
     use crate::DeclarationKind::{Effect, Trigger};
 
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     let verified = analysis.verified().unwrap();
     let name_at = |address| {
@@ -1347,7 +1341,7 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
 #[test]
 #[ignore = "requires STELLARIS_PATH; reports every numeric registry field"]
 fn numeric_fixture_storage_population() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     for registry in native.registries().unwrap().value {
         let FixtureRegistryFields { fields, bindings } =
@@ -1368,7 +1362,7 @@ fn numeric_fixture_storage_population() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     let request = crate::FixtureRequest::field_outcomes(
         "common/special_projects/native.txt",
@@ -1402,7 +1396,7 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
 #[test]
 #[ignore = "requires exact M452 through STELLARIS_PATH"]
 fn scoped_fixture_destinations() {
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     let analysis = &native.bound().analysis;
     let verified = analysis.verified().unwrap();
     for registry in ["common/council_agendas", "common/megastructures"] {
@@ -1434,7 +1428,7 @@ fn scoped_fixture_destinations() {
 #[ignore = "requires exact M452 through STELLARIS_PATH"]
 fn m452_float_and_short_fixture_storage_bindings() {
     use crate::protocol::observation::FixtureStorageDecoder;
-    let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+    let native = crate::session::installed_native();
     assert_eq!(
         native.build().0,
         "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
@@ -1601,9 +1595,7 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     use crate::BlockFamily::{Effect, Trigger};
     use crate::engine::analysis::callbacks::blocks::TypePointers;
 
-    let installation =
-        std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
-    let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
+    let binding = crate::session::installed_native().bound();
     let analysis = &binding.analysis;
     let recipe = analysis.declarations;
     let input = analysis.verified().unwrap().block_input(recipe).unwrap();

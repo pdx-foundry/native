@@ -1148,7 +1148,7 @@ mod string_tests {
     #[test]
     #[ignore = "requires STELLARIS_PATH with M452"]
     fn exact_build_string_and_token_constructor_effects() {
-        let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
+        let native = crate::session::installed_native();
         assert_eq!(
             native.build().0,
             "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
