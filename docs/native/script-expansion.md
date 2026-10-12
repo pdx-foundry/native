@@ -35,6 +35,13 @@ to the line of the call:
 - A deferred validation message from an instance names the line in the definition, as
   `common/scripted_effects/00_scripted_effects.txt:8853 @ scripted effect <name> at file: …`.
 
+**The source in a message (M452).** A message names its source as `file: <name>`, or in a quoted
+error as `in file: "<name>"`. An optional ` line: <n>` or ` near line: <n>` follows.
+`stored_values.SOURCE_MESSAGE` holds this format once, and the fixture validation reader and the
+script-check reader both use it. The fixture reader keeps a line only when the text points at one
+line of the fixture. The script-check reader attributes a message only when it names exactly one
+source.
+
 **Checks.** Each message literal is the `x1` argument of the next call, to
 `CPdxLogFileAndLine::operator()`, `CLogStream::operator<<`, `PdxStrFmt<512>`, or a `CString`
 builder:

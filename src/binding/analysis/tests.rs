@@ -1384,12 +1384,14 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
     assert_eq!(binding.reader_entry, 0x100b9dfbc);
     assert_eq!(binding.reader_return, 0x100b9de94);
     let question = &questions[0];
-    assert_eq!(question.storage_unavailable, None);
     assert_eq!(question.token, Some(18433));
     let nested = question.nested.as_ref().unwrap();
     assert_eq!(nested.owner_offset, 0x5a0);
     assert_eq!(nested.member_entry, 0x100b965a8);
-    let storage = question.storage.unwrap();
+    let crate::protocol::observation::FixtureQuestionStorage::Bound(storage) = &question.storage
+    else {
+        panic!("{:?}", question.storage)
+    };
     assert_eq!(storage.offset, 0x5d8);
     assert_eq!(
         storage.decoder,

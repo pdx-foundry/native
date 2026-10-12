@@ -397,6 +397,17 @@ fn content_parent_symlinks_are_unavailable() {
 }
 
 #[test]
+fn a_scope_analysis_that_fails_is_a_reason_and_leaves_the_call_binding() {
+    let (directory, _) = installation();
+    let (installed, _) = Installation::open(directory.path()).unwrap();
+    let binding = authored_binding(installed, Some(super::compose::synthetic_variation()));
+
+    // The authored executable is in no catalogue, so no scope function is found.
+    assert!(binding.script_scopes().is_err());
+    assert!(binding.script_check_binding().is_some());
+}
+
+#[test]
 fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     use super::{ExecutionPlan, compose, platform::ObservationSetup};
     use crate::protocol::session::{Fault, ObservationControl, SessionRequest};
@@ -452,7 +463,7 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         }),
     };
     let error = plan
-        .observer(&request.work_directory, "test", &request, &registries)
+        .observer(&request.work_directory, "test", &request, None, &registries)
         .err()
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");

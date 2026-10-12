@@ -19,7 +19,9 @@ database's; the child count is at `+0x1c`. Nothing is evaluated or executed.
 **Scope width.** `EScopeType` is a 64-bit bit value (planet 2, country 4, fleet 64); `GetScopeName`
 must receive all 64 bits. Bits 0–41 have names, including colony at bit 40 and mission at bit 41.
 Country and observer-country are different bits (2 and 19) with the same displayed name. A 32-bit
-parameter silently truncated bits above 31 in an early trial.
+parameter silently truncated bits above 31 in an early trial. The supervisor maps a scope identity
+to its bit, and the worker receives only the bit. A scope analysis that fails rejects each check
+with its reason; the session and the loaded modifier table are unaffected.
 
 **Capture.** `CFilterLogger::Log(int, CString const&, int, CString const&)` receives the final
 message in `x4`, before ordinary-log duplicate suppression; a breakpoint at its entry captures the

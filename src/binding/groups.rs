@@ -23,8 +23,6 @@ pub(super) fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
             sourced_log_owner_register: "x19".into(),
             sourced_log_source_offset: 0x28,
             sourced_log_generated_frame_offset: 0x50,
-            source_file_prefix: "file: ".into(),
-            source_line_prefix: " line: ".into(),
         }),
     }
 }

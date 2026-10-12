@@ -128,12 +128,13 @@ pub(super) async fn paired_file(
     } else {
         (DeclarationKind::Effect, pdx_native::BlockFamily::Effect)
     };
+    assert_reader_family(native, field, family)?;
     let mut game = native
         .start_game(options().loaded_modifiers().fixture(request))
         .await?;
     let mut result = async {
         let file_answer = game.observe_fixture().await?;
-        let failures = validation_failures(family, &file, samples, &file_answer);
+        let failures = validation_failures(&file, samples, &file_answer);
         if !failures.is_empty() { return Err(failures.join("; ").into()); }
         game.close().await?;
         game = native.start_game(options().loaded_modifiers()).await?;

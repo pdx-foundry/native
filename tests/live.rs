@@ -927,11 +927,29 @@ async fn fixture_argument(
     script_checks::paired_file(native, field, samples).await
 }
 
+/// A fixture outcome does not carry its reader. The reader of the traditions field is the one
+/// that `registry_fields` establishes: a string with an identity.
+fn assert_string_reader(native: &Native, field: &str) -> Outcome {
+    use pdx_native::ReaderKind;
+
+    let fields = native.registry_fields(TRADITIONS)?;
+    let reader = fields
+        .value
+        .iter()
+        .find(|candidate| candidate.name == field)
+        .map(|candidate| &candidate.reader);
+    match reader {
+        Some(reader) if reader.kind == ReaderKind::String && reader.id.is_some() => Ok(()),
+        _ => Err(format!("{field} reader: {reader:?}").into()),
+    }
+}
+
 async fn fixture_outcome(case: FixtureOutcomeCase) -> Outcome {
     let request = fixture_outcome_request(case);
     let recorded = tempfile::tempdir()?;
     let native = Native::open(std::env::var_os("STELLARIS_PATH").unwrap())?
         .record_answers_to(recorded.path());
+    assert_string_reader(&native, "unlocks_agenda")?;
     let mut game = native
         .start_game(options().fixture(request.clone()))
         .await?;
@@ -1706,6 +1724,21 @@ async fn fixture_modifier_category(native: &Native) -> Outcome {
     result
 }
 
+/// A fixture outcome does not carry its reader. The traditions field has the block family that
+/// `registry_fields` establishes.
+fn assert_reader_family(native: &Native, field: &str, family: pdx_native::BlockFamily) -> Outcome {
+    let fields = native.registry_fields(TRADITIONS)?;
+    let established = fields
+        .value
+        .iter()
+        .find(|candidate| candidate.name == field)
+        .map(|candidate| candidate.reader.family);
+    if established != Some(family) {
+        return Err(format!("{field} reader family: {established:?}, expected {family:?}").into());
+    }
+    Ok(())
+}
+
 /// Validate every sample in one session, so the session pays for loading all content once.
 async fn fixture_validation(
     native: &Native,
@@ -1714,6 +1747,8 @@ async fn fixture_validation(
     samples: &[ValidationSample],
 ) -> Outcome {
     use pdx_native::{FixtureFieldQuestion, FixtureRequest};
+
+    assert_reader_family(native, field, family)?;
 
     let file = format!("common/traditions/native_validation_{field}.txt");
     let text: String = samples
@@ -1728,7 +1763,7 @@ async fn fixture_validation(
     let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
         let answer = game.observe_fixture().await?;
-        let failures = validation_failures(family, &file, samples, &answer);
+        let failures = validation_failures(&file, samples, &answer);
         if failures.is_empty() {
             return Ok(());
         }
@@ -1750,7 +1785,6 @@ async fn fixture_validation(
 /// rejected one has a diagnostic of its stage on its child's line. A diagnostic that no sample
 /// owns is a failure too.
 fn validation_failures(
-    expected_family: pdx_native::BlockFamily,
     file: &str,
     samples: &[ValidationSample],
     answer: &Answer<pdx_native::FixtureObservation>,
@@ -1784,10 +1818,9 @@ fn validation_failures(
             matches!(&outcome.parsing,
                 FixtureParsing::Observed { completeness: Completeness::Complete, occurrences }
                     if occurrences.len() == 1)
-                && outcome.reader.family == expected_family
         });
         if !parsed {
-            failures.push(format!("{}: parsing or reader: {outcome:?}", sample.name));
+            failures.push(format!("{}: parsing: {outcome:?}", sample.name));
         }
 
         let Some(stage) = sample.stage else {
@@ -1981,7 +2014,7 @@ fn assert_agenda_outcome(
     case: FixtureOutcomeCase,
     answer: &Answer<pdx_native::FixtureObservation>,
 ) -> Outcome {
-    use pdx_native::{DiagnosticJoin, ReaderKind};
+    use pdx_native::DiagnosticJoin;
 
     let outcome = answer
         .value
@@ -1991,7 +2024,6 @@ fn assert_agenda_outcome(
     if outcome.question.field != "unlocks_agenda"
         || outcome.owner.is_none()
         || outcome.definition_line != Some(1)
-        || outcome.reader.kind != ReaderKind::String
     {
         return Err(format!("field outcome identity: {answer:?}").into());
     }
@@ -2064,7 +2096,7 @@ fn assert_agenda_outcome(
 }
 
 fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
-    use pdx_native::{DiagnosticCoverage, ReaderKind};
+    use pdx_native::DiagnosticCoverage;
 
     if answer.completeness != Completeness::Complete
         || answer.value.diagnostic_coverage != DiagnosticCoverage::NotRequested
@@ -2072,10 +2104,6 @@ fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> 
         || answer.value.field_outcomes.len() != 32
     {
         return Err(format!("maximum field questions: {answer:?}").into());
-    }
-    let expected_reader = answer.value.field_outcomes[0].reader.clone();
-    if expected_reader.kind != ReaderKind::String || expected_reader.id.is_none() {
-        return Err(format!("maximum field reader: {answer:?}").into());
     }
     for (index, outcome) in answer.value.field_outcomes.iter().enumerate() {
         let definition = format!("native_fixture_tradition_{index:02}");
@@ -2086,7 +2114,6 @@ fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> 
             || outcome.question.field != "unlocks_agenda"
             || outcome.owner.is_none()
             || outcome.definition_line != Some(definition_line)
-            || outcome.reader != expected_reader
         {
             return Err(format!("maximum field outcome {index}: {answer:?}").into());
         }
@@ -2096,7 +2123,7 @@ fn assert_maximum_questions(answer: &Answer<pdx_native::FixtureObservation>) -> 
 }
 
 fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>) -> Outcome {
-    use pdx_native::{DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, ReaderKind};
+    use pdx_native::{DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow};
 
     let [outcome] = answer.value.field_outcomes.as_slice() else {
         return Err(format!("unrelated definition outcome: {answer:?}").into());
@@ -2136,8 +2163,6 @@ fn assert_unrelated_definitions(answer: &Answer<pdx_native::FixtureObservation>)
         || outcome.question.definition != "native_fixture_target"
         || outcome.owner.is_none()
         || outcome.definition_line != Some(260)
-        || outcome.reader.kind != ReaderKind::String
-        || outcome.reader.id.is_none()
         || !outcome.diagnostics.is_empty()
         || diagnostic.text != "Unexpected token"
         || diagnostic.stage != "reader-unexpected-report"

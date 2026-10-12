@@ -114,7 +114,7 @@ class CaptureTests(unittest.TestCase):
 
 class CheckSetupTests(unittest.TestCase):
     BINDING = dict(logger_entry=1, logger_text_register='x4', logger_level_register='w1',
-                   string_tag_offset=23, scopes={'country': 1}, trigger={})
+                   string_tag_offset=23, trigger={})
 
     def start_check(self, invalid=(), control=None):
         """Run one check whose first engine call fails, in a frame that cannot read `invalid`."""

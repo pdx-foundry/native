@@ -10,7 +10,7 @@ use crate::engine::analysis::{
 };
 use crate::protocol::observation::{
     FixtureInlineLoader, FixtureNestedField, FixtureOutcomeRegistryBinding, FixtureQuestionSetup,
-    FixtureStorageBinding, FixtureStorageDecoder,
+    FixtureQuestionStorage, FixtureStorageBinding, FixtureStorageDecoder,
 };
 
 impl BoundAnalysis {
@@ -66,24 +66,33 @@ impl BoundAnalysis {
         };
         let mut questions = Vec::new();
         for (index, question) in request.field_questions.iter().enumerate() {
-            let mut setup = FixtureQuestionSetup::unresolved(index, question);
-            match verified.nested_fixture_storage(question, &root, recipe, numeric) {
+            let setup = match verified.nested_fixture_storage(question, &root, recipe, numeric) {
                 Ok((token, storage, callee, nested)) => {
-                    setup.token = Some(token);
-                    setup.reader_id = Some(crate::ReaderId::from_callee(&callee).0);
-                    setup.reader_kind = storage.decoder.reader_kind();
-                    setup.reader_family = crate::BlockFamily::NotApplicable;
-                    setup.storage = Some(FixtureStorageBinding {
+                    let bound = FixtureStorageBinding {
                         offset: nested
                             .owner_offset
                             .checked_add(storage.offset)
                             .ok_or("Fixture storage offset overflow")?,
                         decoder: storage.decoder,
-                    });
-                    setup.nested = Some(nested);
+                    };
+                    let reader = crate::ReaderId::from_callee(&callee);
+                    let storage = FixtureQuestionStorage::for_reader(
+                        Some(&reader),
+                        bound.decoder.reader_kind(),
+                        bound,
+                    );
+                    FixtureQuestionSetup {
+                        token: Some(token),
+                        nested: Some(nested),
+                        ..FixtureQuestionSetup::new(index, question, storage)
+                    }
                 }
-                Err(reason) => setup.storage_unavailable = Some(reason),
-            }
+                Err(reason) => FixtureQuestionSetup::new(
+                    index,
+                    question,
+                    FixtureQuestionStorage::UnresolvedReader(reason),
+                ),
+            };
             questions.push(setup);
         }
         Ok(Some((binding, questions)))

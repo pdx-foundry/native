@@ -213,7 +213,6 @@ fn m452_script_checks() -> crate::protocol::script_check::ScriptCheckBinding {
                 trigger_database,
             ],
         },
-        scopes: Default::default(),
     }
 }
 

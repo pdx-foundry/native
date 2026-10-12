@@ -1,6 +1,5 @@
 //! Exact-build call data and the private request/reply files for a script check.
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -69,7 +68,6 @@ pub(crate) struct ScriptCheckBinding {
     pub logger_level_register: String,
     pub trigger: CommandBinding,
     pub effect: CommandBinding,
-    pub scopes: BTreeMap<String, u64>,
 }
 
 /// The command kind that a check reads. The worker selects the command binding by the wire

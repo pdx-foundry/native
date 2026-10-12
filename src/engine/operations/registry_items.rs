@@ -106,7 +106,6 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                     || ended
                     || directory != name
                     || !pointer(owner)
-                    || *count > 100_000
                     || record.thread.unwrap_or(0) == 0
                 {
                     diagnostics.push("Invalid or repeated registry snapshot".into());
@@ -125,7 +124,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
                     owner == expected_owner && *index < count && thread == record.thread
                 }) && !ended
                     && *index >= next_index;
-                let key_readable = !key.is_empty() && key.len() < 4095 && !key.contains('\0');
+                let key_readable = !key.is_empty() && !key.contains('\0');
                 let witnessed = slot_witnessed && pointer(object) && key_readable;
 
                 // Claim the key before the object: a new key stays claimed when its object repeats,
@@ -702,7 +701,6 @@ mod tests {
             (5, "thread", json!(8)),
             (6, "directory", json!("common/other")),
             (6, "owner", json!("0x0")),
-            (6, "count", json!(100001)),
             (7, "owner", json!("0x2000")),
             (7, "index", json!(1)),
             (7, "key", json!("")),
