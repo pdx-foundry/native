@@ -171,7 +171,6 @@ pub(super) fn modifier_input(
         (cold.as_str(), "cold_cleanup"),
         (recipe.numeric_modifier_insert, "insert_entry"),
         (shared_callee, "numeric_reader"),
-        ("CReader::Read(int&)", "other_integer_reader"),
         ("operator new[](unsigned long)", "allocate_array"),
         ("_memcpy", "copy_bytes"),
         (

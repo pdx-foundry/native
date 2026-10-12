@@ -38,51 +38,22 @@ pub struct InitializationLookup {
     pub item_offset: i64,
     /// The lookup semantics that the shapes establish.
     pub lookup: Lookup,
+    /// The names that the matched shape bound.
+    pub execution: Execution,
 }
 
-/// Matched executable names retained for the binding of an initializer stage.
-pub(crate) enum Execution {
+/// The executable names that the matched shape bound, for the binding of an initializer stage
+/// to addresses.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Execution {
     /// A complete inline lookup with no effects outside the matched lookup.
-    Inline { always: bool, null: String },
+    Inline { null: String },
     /// A complete initializer that calls this established getter.
     Getter {
         database: String,
         getter: String,
         null: String,
     },
-}
-
-/// Retain execution details only after the ordinary reference method establishes the lookup.
-pub(crate) fn execution(input: &super::ReferenceInput, name: &str) -> Option<Execution> {
-    let method = Method { input };
-    let Initialization::Lookup(lookup) = method.initialization(name) else {
-        return None;
-    };
-    let lines = method.lines(name)?;
-    if let Some(bindings) = INITIALIZER_GETTER.matches(&lines) {
-        let getter = bindings["getter"].clone();
-        let body = method.lines(&getter)?;
-        let search = super::GETTER_SCAN
-            .matches(&body)
-            .or_else(|| NULL_GETTER.matches(&body))?;
-        return Some(Execution::Getter {
-            database: bindings["database"].clone(),
-            getter,
-            null: search["null"].clone(),
-        });
-    }
-    let matched = [
-        &*INITIALIZER_SCAN,
-        &*INITIALIZER_SCAN_NONEMPTY,
-        &*INITIALIZER_MAP,
-        &*INITIALIZER_MAP_NONEMPTY,
-    ]
-    .into_iter()
-    .find_map(|shape| shape.matches(&lines))?;
-    Some(Execution::Inline {
-        always: lookup.lookup.empty_key_looked_up == Some(true),
-        null: matched["null"].clone(),
-    })
 }
 
 /// The database that a global names: `D` in `TGameDatabase<D>::_pInstance` or in `D::_pInstance`.
@@ -115,6 +86,7 @@ struct Found {
     item_offset: i64,
     key_match: Option<KeyMatch>,
     empty_key_looked_up: bool,
+    execution: Execution,
 }
 
 impl Method<'_> {
@@ -142,9 +114,10 @@ impl Method<'_> {
                 lookup: Lookup {
                     stage: Stage::OwnerInitialization,
                     key_match: found.key_match,
-                    empty_key_looked_up: Some(found.empty_key_looked_up),
-                    on_missing: Some(Missing::NullObject),
+                    empty_key_looked_up: found.empty_key_looked_up,
+                    on_missing: Missing::NullObject,
                 },
+                execution: found.execution,
             }),
             Err(stop) => Initialization::Unresolved(stop),
         }
@@ -190,6 +163,9 @@ impl Method<'_> {
             item_offset: offset(bindings, "output").ok_or_else(layout)?,
             key_match: self.map_find(bindings),
             empty_key_looked_up,
+            execution: Execution::Inline {
+                null: bindings["null"].clone(),
+            },
         })
     }
 
@@ -207,7 +183,7 @@ impl Method<'_> {
         let body = self
             .lines(getter)
             .ok_or_else(|| Unresolved::new("initializer-getter-body"))?;
-        let key_match = self.getter_search(&body)?;
+        let (key_match, null) = self.getter_search(&body)?;
 
         Ok(Found {
             database: database.to_owned(),
@@ -215,12 +191,18 @@ impl Method<'_> {
             item_offset: offset(bindings, "output").ok_or_else(layout)?,
             key_match,
             empty_key_looked_up: true,
+            execution: Execution::Getter {
+                database: bindings["database"].clone(),
+                getter: getter.clone(),
+                null,
+            },
         })
     }
 
-    /// The key match of a getter body: a scan of the getter's own items, or a hash search whose
-    /// element type is the null object's type. An unqualified hash search gives `None`.
-    fn getter_search(&self, body: &[Line]) -> Result<Option<KeyMatch>, Unresolved> {
+    /// The key match of a getter body and the null object that its miss yields: a scan of the
+    /// getter's own items, or a hash search whose element type is the null object's type. An
+    /// unqualified hash search has no key match.
+    fn getter_search(&self, body: &[Line]) -> Result<(Option<KeyMatch>, String), Unresolved> {
         if let Some(scan) = super::GETTER_SCAN.matches(body) {
             if !null_object(&scan) {
                 return Err(no_null_object());
@@ -228,7 +210,7 @@ impl Method<'_> {
             if !super::string_array_layout(&scan) {
                 return Err(layout());
             }
-            return Ok(Some(KeyMatch::FirstEqual));
+            return Ok((Some(KeyMatch::FirstEqual), scan["null"].clone()));
         }
         let Some(search) = NULL_GETTER.matches(body) else {
             return Err(Unresolved::new("initializer-getter-shape"));
@@ -242,7 +224,7 @@ impl Method<'_> {
             .and_then(|lines| HASH_FIND.matches(&lines))
             .is_some_and(|find| item_key(&find));
 
-        Ok(qualified.then_some(KeyMatch::Equal))
+        Ok((qualified.then_some(KeyMatch::Equal), search["null"].clone()))
     }
 }
 
@@ -263,6 +245,9 @@ fn scan(bindings: &Bindings, empty_key_looked_up: bool) -> Result<Found, Unresol
         item_offset: offset(bindings, "output").ok_or_else(layout)?,
         key_match: Some(KeyMatch::FirstEqual),
         empty_key_looked_up,
+        execution: Execution::Inline {
+            null: bindings["null"].clone(),
+        },
     })
 }
 

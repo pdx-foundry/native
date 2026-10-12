@@ -1,6 +1,7 @@
 //! Recognize child-position tests from their load provenance, never from a command name.
 use super::{GrammarInput, ReaderJoin, TokenPath, Value};
 use crate::ChildOrderCondition;
+use crate::engine::analysis::fields::named_key;
 
 #[derive(Debug)]
 pub struct Rule {
@@ -10,13 +11,10 @@ pub struct Rule {
 }
 
 pub(super) fn rule(input: &GrammarInput, path: &TokenPath) -> Option<Rule> {
-    if path.domain[0] != path.domain[1] || path.conditions.is_empty() {
+    if path.conditions.is_empty() {
         return None;
     }
-    let child = input
-        .tokens
-        .get(&path.domain[0])
-        .filter(|token| !token.ambiguous)?;
+    let (_, child) = named_key(path.domain, &input.tokens)?;
     let super::PathOutcome::Reader(join @ ReaderJoin::Joined { callee, .. }) = &path.outcome else {
         return None;
     };
@@ -36,13 +34,7 @@ pub(super) fn rule(input: &GrammarInput, path: &TokenPath) -> Option<Rule> {
             }
             let keys: Option<Vec<_>> = tokens
                 .iter()
-                .map(|token| {
-                    input
-                        .tokens
-                        .get(token)
-                        .filter(|token| !token.ambiguous)
-                        .map(|token| token.name.clone())
-                })
+                .map(|token| input.tokens.get(token)?.name.clone())
                 .collect();
             Some(ChildOrderCondition::Previous {
                 keys: keys?,
@@ -66,7 +58,7 @@ pub(super) fn rule(input: &GrammarInput, path: &TokenPath) -> Option<Rule> {
         None => super::OrderOutcome::Reader(join.clone()),
     };
     Some(Rule {
-        child: child.name.clone(),
+        child: child.to_owned(),
         conditions,
         outcome,
     })

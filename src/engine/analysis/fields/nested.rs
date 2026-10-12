@@ -114,15 +114,16 @@ pub(super) fn discover(
             }
             for (index, object) in input.objects.iter().enumerate() {
                 if object.constructors.contains(&target) {
-                    if let Some(mask) = containers.and_then(|known| known.mask(target, machine)) {
-                        machine.label(containers::LABEL, mask);
-                    }
                     let at = machine.known_register(0, "constructed-object")?;
                     if machine.labelled(ALLOCATED | at) != Some(1) {
                         return Err(Unresolved::new("object-not-allocated"));
                     }
                     if machine.labelled(INSERTED_OBJECT) == Some(at) {
                         return Err(Unresolved::new("inserted-object-reconstructed"));
+                    }
+                    match containers.and_then(|known| known.mask(target, machine)) {
+                        Some(mask) => machine.label(containers::LABEL | at, mask),
+                        None => machine.unlabel(containers::LABEL | at),
                     }
                     for (&offset, &point) in &object.vtables {
                         machine.write(at + offset, 8, point);
@@ -178,7 +179,9 @@ pub(super) fn discover(
                     path.machine.labelled(INSERTED_CLASS)?,
                     path.machine.labelled(INSERTED_OFFSET)?,
                 );
-                Some((inserted, path.machine.labelled(containers::LABEL)))
+                let object = path.machine.labelled(INSERTED_OBJECT)?;
+
+                Some((inserted, path.machine.labelled(containers::LABEL | object)))
             })
             .collect();
         let Some(joined) = joined.filter(|joined| !joined.is_empty()) else {

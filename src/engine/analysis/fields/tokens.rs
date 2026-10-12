@@ -82,11 +82,23 @@ pub(super) fn names_by_address(symbols: &[Symbol]) -> BTreeMap<u64, Option<&str>
     }
     names
 }
+/// A token that the engine's token constructor names.
 #[derive(Debug)]
 pub(crate) struct Token {
-    pub name: String,
+    /// The literal name, or `None` once constructor calls give the token different names.
+    pub name: Option<String>,
     pub constructor: u64,
-    pub ambiguous: bool,
+}
+
+/// The token and name of the one key that `domain` holds: a singleton interval whose token has
+/// one name.
+pub(crate) fn named_key(domain: [i64; 2], tokens: &BTreeMap<i64, Token>) -> Option<(&Token, &str)> {
+    if domain[0] != domain[1] {
+        return None;
+    }
+    let token = tokens.get(&domain[0])?;
+
+    Some((token, token.name.as_deref()?))
 }
 pub(super) fn recover(input: &FieldInput) -> (BTreeMap<i64, Token>, Vec<FieldGap>) {
     let rows = match function(
@@ -209,8 +221,8 @@ pub(crate) fn recover_decoded(
             continue;
         };
         if let Some(previous) = tokens.get_mut(&token) {
-            if previous.name != *name {
-                previous.ambiguous = true;
+            if previous.name.as_ref().is_some_and(|known| known != name) {
+                previous.name = None;
                 gaps.push(token_table_gap(format!(
                     "conflicting names for token {token}"
                 )));
@@ -219,9 +231,8 @@ pub(crate) fn recover_decoded(
             tokens.insert(
                 token,
                 Token {
-                    name: name.clone(),
+                    name: Some(name.clone()),
                     constructor: row.address,
-                    ambiguous: false,
                 },
             );
         }
@@ -269,5 +280,25 @@ mod function_tests {
                 .is_err()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn a_named_key_is_a_singleton_interval_of_one_named_token() {
+        let named = |name: Option<&str>| Token {
+            name: name.map(String::from),
+            constructor: 0x40,
+        };
+        let tokens = BTreeMap::from([(7, named(Some("limit"))), (8, named(None))]);
+
+        let (token, name) = named_key([7, 7], &tokens).unwrap();
+        assert_eq!((token.constructor, name), (0x40, "limit"));
+        assert!(named_key([7, 8], &tokens).is_none(), "a wider interval");
+        assert!(named_key([8, 8], &tokens).is_none(), "a conflicting name");
+        assert!(named_key([9, 9], &tokens).is_none(), "an unknown token");
     }
 }

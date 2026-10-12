@@ -114,9 +114,9 @@ fixed keys that stay open are `description_parameters` (11 places).
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived
 call target and the original owner, reader and token arguments. The shared member walk limits
 depth and detects cycles. A store overlapping the owner vtable stops the path before virtual
-resolution or member delegation. The modifier walk opts into `orr` updates that drop result
-provenance; existing field and command walks keep their prior instruction boundary. This permits
-the subsequent string reader for `apply_modifier_to_other_planets` to join.
+resolution or member delegation. Every member walk forgets the result of `orr`, as it does for
+`ubfx` and `and`. This permits the subsequent string reader for `apply_modifier_to_other_planets`
+to join.
 
 The description serializer constructor stores its wrapped owner at offset 8. A stack-object
 member call with that proven wrapper resolves the description destination. A wrong receiver,

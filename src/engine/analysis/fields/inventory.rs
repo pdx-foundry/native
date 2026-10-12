@@ -1,4 +1,4 @@
-use super::tokens::Token;
+use super::tokens::{Token, named_key};
 use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
 use std::collections::BTreeMap;
 
@@ -9,12 +9,12 @@ pub(crate) fn fields_and_gaps(
     let mut gaps = Vec::new();
     let mut fields = BTreeMap::<i64, RootField>::new();
     for path in paths {
-        if path.domain[0] != path.domain[1] || !matches!(path.outcome, PathOutcome::Reader(_)) {
+        if !matches!(path.outcome, PathOutcome::Reader(_)) {
             continue;
         }
-        if let Some(token) = tokens.get(&path.domain[0]).filter(|t| !t.ambiguous) {
+        if let Some((token, name)) = named_key(path.domain, tokens) {
             fields.entry(path.domain[0]).or_insert_with(|| RootField {
-                name: token.name.clone(),
+                name: name.to_owned(),
                 token: path.domain[0],
                 constructor: token.constructor,
                 paths: vec![],
@@ -67,4 +67,83 @@ pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
     }
     partition_accounted &= cursor == i32::MAX as i64 + 1;
     partition_accounted
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{RegistryFieldResult, Value, storage_offset};
+    use super::*;
+    use crate::engine::analysis::names;
+    use crate::engine::analysis::stop::Unresolved;
+
+    const STORED_AT: i64 = 0x40;
+
+    fn path(domain: [i64; 2], outcome: PathOutcome) -> TokenPath {
+        TokenPath {
+            domain,
+            conditions: Vec::new(),
+            instructions: Vec::new(),
+            terminal: 0,
+            outcome,
+        }
+    }
+
+    fn string_field() -> PathOutcome {
+        PathOutcome::Reader(ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: BTreeMap::from([
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(STORED_AT)),
+            ]),
+            tail: true,
+        })
+    }
+
+    fn unresolved() -> PathOutcome {
+        PathOutcome::Gap(Unresolved::new("reader not established"))
+    }
+
+    /// The derived storage of a registry whose only named token 5 has these paths.
+    fn derived(paths: Vec<TokenPath>) -> (Option<i64>, usize) {
+        let token = Token {
+            name: Some("name".into()),
+            constructor: 0,
+        };
+        let (fields, gaps) = fields_and_gaps(&paths, &BTreeMap::from([(5, token)]));
+        let partition_accounted = partition_accounted(&paths);
+        let offset = storage_offset(&fields[0], partition_accounted);
+        let result = RegistryFieldResult {
+            uses: Vec::new(),
+            persistent: BTreeMap::new(),
+            persistent_points: BTreeMap::new(),
+            scoped_destinations: BTreeMap::new(),
+            stored_words: BTreeMap::new(),
+            container_masks: BTreeMap::new(),
+            collections: Vec::new(),
+            fields,
+            paths,
+            gaps,
+            partition_accounted,
+        };
+        (offset, names::storage(&result).strings.len())
+    }
+
+    #[test]
+    fn an_overlapping_wider_path_withholds_the_storage_of_a_singleton_field() {
+        let overlapping = vec![
+            path([i32::MIN as i64, i32::MAX as i64], unresolved()),
+            path([5, 5], string_field()),
+        ];
+        assert_eq!(derived(overlapping), (None, 0));
+    }
+
+    #[test]
+    fn an_accounted_partition_keeps_the_storage_of_a_singleton_field() {
+        let accounted = vec![
+            path([i32::MIN as i64, 4], unresolved()),
+            path([5, 5], string_field()),
+            path([6, i32::MAX as i64], unresolved()),
+        ];
+        assert_eq!(derived(accounted), (Some(STORED_AT), 1));
+    }
 }

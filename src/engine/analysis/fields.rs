@@ -33,8 +33,8 @@
 //!   case that reaches a call is a `JumpTable` gap that names the table and the root. When a wide
 //!   interval that leaves through the table's guard does not end at the rejection, a case of
 //!   that table without a known reader is treated as the default.
-//! - Bit-field reads (`ubfx`, `and`) forget their result. A word integer read into a stack
-//!   temporary can join its reader; the join does not establish final member storage.
+//! - Bit-field reads and ORs (`ubfx`, `and`, `orr`) forget their result. A word integer read into
+//!   a stack temporary can join its reader; the join does not establish final member storage.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
 //! - Inputs: at most 128 functions and 4 MiB of aggregate code, with a 1 MiB per-function
@@ -65,7 +65,7 @@ pub(crate) use inventory::fields_and_gaps;
 pub(crate) use member::{follow_member, serializer_owner_slot};
 pub(crate) use persistent::constructor_points;
 pub use records::*;
-pub(crate) use tokens::{Token, recover_decoded};
+pub(crate) use tokens::{Token, named_key, recover_decoded};
 pub(crate) use uses::{has_owner_receiver, storage_offset};
 
 use super::InputError;
@@ -83,8 +83,7 @@ pub(crate) fn literal_token_names(
     let (tokens, _) = tokens::recover_decoded(&rows, symbols, strings);
     Ok(tokens
         .into_iter()
-        .filter(|(_, token)| !token.ambiguous)
-        .map(|(number, token)| (number as u32 as u64, token.name))
+        .filter_map(|(number, token)| Some((number as u32 as u64, token.name?)))
         .collect())
 }
 
@@ -136,7 +135,7 @@ pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, I
         ));
     }
     let collections = nested::discover(input, &fields, &tokens);
-    let uses = uses::discover(input, &fields, &collections);
+    let uses = uses::discover(input, &fields, &collections, partition_accounted);
     if !collections.is_empty() {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));

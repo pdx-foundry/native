@@ -149,7 +149,7 @@ pub enum Missing {
     ScriptedTriggerPlaceholder,
 }
 
-/// The lookup semantics that complete shapes establish. `None` is an unresolved fact.
+/// The lookup semantics that complete shapes establish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lookup {
     /// When the lookup runs.
@@ -157,9 +157,9 @@ pub struct Lookup {
     /// Which item the key selects, when the search was qualified.
     pub key_match: Option<KeyMatch>,
     /// Whether an empty key is looked up like any other key.
-    pub empty_key_looked_up: Option<bool>,
+    pub empty_key_looked_up: bool,
     /// What a key that selects no item yields.
-    pub on_missing: Option<Missing>,
+    pub on_missing: Missing,
 }
 
 /// Everything established about one reference reader.
@@ -171,6 +171,9 @@ pub struct ReaderLookup {
     pub directory: Option<String>,
     /// The lookup, or why no shape established it.
     pub lookup: Result<Lookup, Unresolved>,
+    /// The typed null object global that a missing key yields; `Some` exactly when the lookup is
+    /// established.
+    pub null_object: Option<String>,
 }
 
 /// Reference facts for every reference reader that a method may join.
@@ -222,7 +225,10 @@ pub fn analyze(input: &ReferenceInput) -> ReferenceFacts {
         .iter()
         .filter_map(|callee| {
             let reference = reader(callee)?;
-            let lookup = method.lookup(callee, reference);
+            let (lookup, null_object) = match method.lookup(callee, reference) {
+                Ok((lookup, null_object)) => (Ok(lookup), Some(null_object)),
+                Err(unresolved) => (Err(unresolved), None),
+            };
 
             Some((
                 callee.clone(),
@@ -230,6 +236,7 @@ pub fn analyze(input: &ReferenceInput) -> ReferenceFacts {
                     database: reference.database.to_owned(),
                     directory: method.directory(reference.database),
                     lookup,
+                    null_object,
                 },
             ))
         })
@@ -260,28 +267,13 @@ struct Method<'a> {
     input: &'a ReferenceInput,
 }
 
-/// The null-object global of an already-qualified deferred single-item lookup.
-pub(crate) fn deferred_null(input: &ReferenceInput, callee: &str) -> Option<String> {
-    let method = Method { input };
-    let reader = reader(callee)?;
-    method.deferred(callee, reader.database).ok()?;
-    let registration = DEFERRED.matches(&method.lines(callee)?)?;
-    let operator = lambda_operator(&registration["lambda"])?;
-    let lambda = method.lines(&operator)?;
-    if let Some(bindings) = LAMBDA_MAP.matches(&lambda) {
-        return Some(bindings["null"].clone());
-    }
-    if let Some(bindings) = LAMBDA_FORWARD.matches(&lambda) {
-        let scan = FORWARDED_SCAN.matches(&method.lines(&bindings["forwarded"])?)?;
-        return Some(scan["null"].clone());
-    }
-    let bindings = LAMBDA_GETTER.matches(&lambda)?;
-    let scan = GETTER_SCAN.matches(&method.lines(&bindings["getter"])?)?;
-    Some(scan["null"].clone())
-}
-
 impl Method<'_> {
-    fn lookup(&self, callee: &str, reader: ReferenceReader<'_>) -> Result<Lookup, Unresolved> {
+    /// The lookup of a reader, and the typed null object that its miss yields.
+    fn lookup(
+        &self,
+        callee: &str,
+        reader: ReferenceReader<'_>,
+    ) -> Result<(Lookup, String), Unresolved> {
         match reader.form {
             ReaderForm::Immediate => self.immediate(callee),
             ReaderForm::Deferred => self.deferred(callee, reader.database),
@@ -305,32 +297,36 @@ impl Method<'_> {
     }
 
     /// `ReadKeyReference<D>` looks the key up inside the call, in the database it is given.
-    fn immediate(&self, callee: &str) -> Result<Lookup, Unresolved> {
+    fn immediate(&self, callee: &str) -> Result<(Lookup, String), Unresolved> {
         let lines = self
             .lines(callee)
             .ok_or_else(|| Unresolved::new("reference-reader-body"))?;
         let own_clone =
             |bindings: &Bindings| bindings["cold"] == format!("{callee} [clone .cold.1]");
         let search = if let Some(bindings) = IMMEDIATE_SCAN.matches(&lines) {
-            (null_object(&bindings) && own_clone(&bindings)).then_some(Some(KeyMatch::FirstEqual))
+            (null_object(&bindings) && own_clone(&bindings))
+                .then(|| (Some(KeyMatch::FirstEqual), bindings["null"].clone()))
         } else if let Some(bindings) = IMMEDIATE_MAP.matches(&lines) {
-            (null_object(&bindings) && own_clone(&bindings)).then(|| self.map_find(&bindings))
+            (null_object(&bindings) && own_clone(&bindings))
+                .then(|| (self.map_find(&bindings), bindings["null"].clone()))
         } else {
             None
         };
-        let key_match = search.ok_or_else(|| Unresolved::new("reference-reader-shape"))?;
+        let (key_match, null) = search.ok_or_else(|| Unresolved::new("reference-reader-shape"))?;
 
-        Ok(Lookup {
+        let lookup = Lookup {
             stage: Stage::WhileReading,
             key_match,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
-        })
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
+        };
+
+        Ok((lookup, null))
     }
 
     /// `ReadKeyReferenceDeferred<D>` registers the reader's token text and a lambda for the same
     /// database; the lambda's search gives the lookup semantics.
-    fn deferred(&self, callee: &str, database: &str) -> Result<Lookup, Unresolved> {
+    fn deferred(&self, callee: &str, database: &str) -> Result<(Lookup, String), Unresolved> {
         let lines = self
             .lines(callee)
             .ok_or_else(|| Unresolved::new("reference-reader-body"))?;
@@ -346,16 +342,18 @@ impl Method<'_> {
         let lambda = self
             .lines(&operator)
             .ok_or_else(|| Unresolved::new("reference-lambda-body"))?;
-        let search = self
+        let (key_match, null) = self
             .lambda_search(&lambda, database)
             .ok_or_else(|| Unresolved::new("reference-lambda-shape"))?;
 
-        Ok(Lookup {
+        let lookup = Lookup {
             stage: Stage::Deferred,
-            key_match: search,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
-        })
+            key_match,
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
+        };
+
+        Ok((lookup, null))
     }
 
     /// The trigger lookup forwards the token's number and text to a search of the trigger map,
@@ -379,18 +377,19 @@ impl Method<'_> {
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: None,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
+            empty_key_looked_up: true,
+            on_missing: Missing::ScriptedTriggerPlaceholder,
         })
     }
 
-    /// The key match of a resolver lambda's search, or `None` when no lambda shape matches with
-    /// this database. An unqualified map search gives `Some(None)`.
-    fn lambda_search(&self, lambda: &[Line], database: &str) -> Option<Option<KeyMatch>> {
+    /// The key match of a resolver lambda's search and the null object that its miss yields, or
+    /// `None` when no lambda shape matches with this database. An unqualified map search has no
+    /// key match.
+    fn lambda_search(&self, lambda: &[Line], database: &str) -> Option<(Option<KeyMatch>, String)> {
         let instance = format!("TGameDatabase<{database}>::_pInstance");
         if let Some(bindings) = LAMBDA_MAP.matches(lambda) {
             return (bindings["database"] == instance && null_object(&bindings))
-                .then(|| self.map_find(&bindings));
+                .then(|| (self.map_find(&bindings), bindings["null"].clone()));
         }
         if let Some(bindings) = LAMBDA_FORWARD.matches(lambda) {
             let forwarded = &bindings["forwarded"];
@@ -399,7 +398,7 @@ impl Method<'_> {
             }
             let scan = FORWARDED_SCAN.matches(&self.lines(forwarded)?)?;
             return (scan["database"] == instance && null_object(&scan))
-                .then_some(Some(KeyMatch::FirstEqual));
+                .then(|| (Some(KeyMatch::FirstEqual), scan["null"].clone()));
         }
         if let Some(bindings) = LAMBDA_GETTER.matches(lambda) {
             let getter = &bindings["getter"];
@@ -411,7 +410,7 @@ impl Method<'_> {
             }
             let scan = GETTER_SCAN.matches(&self.lines(getter)?)?;
             return (null_object(&scan) && string_array_layout(&scan))
-                .then_some(Some(KeyMatch::FirstEqual));
+                .then(|| (Some(KeyMatch::FirstEqual), scan["null"].clone()));
         }
 
         None

@@ -192,7 +192,7 @@ fn command_bindings(
     let boolean_tokens: [Result<i64, AnalysisError>; 2] = recipe.boolean_tokens.map(|name| {
         let mut matches = tokens
             .iter()
-            .filter(|(_, token)| token.name == name && !token.ambiguous);
+            .filter(|(_, token)| token.name.as_deref() == Some(name));
         match (matches.next(), matches.next()) {
             (Some((&id, _)), None) => Ok(id),
             _ => Err(InputError(format!("Boolean token {name} is missing or ambiguous")).into()),
@@ -324,7 +324,7 @@ pub(in crate::binding) fn initializers(
         grammar::forms::{Initializer, LookupExecution},
         references::{
             self,
-            initialization::{self, Execution, Initialization},
+            initialization::{Execution, Initialization},
         },
     };
     let facts = references::analyze(input);
@@ -333,9 +333,11 @@ pub(in crate::binding) fn initializers(
             && references::reader(name)
                 .is_some_and(|reader| reader.form == references::ReaderForm::Deferred)
         {
-            let null = references::deferred_null(input, name)
+            let null = fact
+                .null_object
+                .as_deref()
                 .ok_or_else(|| InputError(format!("deferred null object missing for {name}")))?;
-            let null = super::declarations::unique(symbols, &null)?;
+            let null = super::declarations::unique(symbols, null)?;
             qualified_references.extend(
                 symbols
                     .iter()
@@ -353,28 +355,25 @@ pub(in crate::binding) fn initializers(
             .collect();
         let initializer = match fact {
             Initialization::NoLookup => Initializer::NoLookup,
-            Initialization::Lookup(lookup) => match initialization::execution(input, &name) {
-                Some(Execution::Inline { always, null }) => Initializer::Lookup {
-                    lookup,
-                    execution: LookupExecution::Inline {
-                        always,
-                        null: super::declarations::unique(symbols, &null)?,
+            Initialization::Lookup(lookup) => {
+                let execution = match &lookup.execution {
+                    Execution::Inline { null } => LookupExecution::Inline {
+                        always: lookup.lookup.empty_key_looked_up,
+                        null: super::declarations::unique(symbols, null)?,
                     },
-                },
-                Some(Execution::Getter {
-                    database,
-                    getter,
-                    null,
-                }) => Initializer::Lookup {
-                    lookup,
-                    execution: LookupExecution::Getter {
-                        database: super::declarations::unique(symbols, &database)?,
-                        getter: super::declarations::unique(symbols, &getter)?,
-                        null: super::declarations::unique(symbols, &null)?,
+                    Execution::Getter {
+                        database,
+                        getter,
+                        null,
+                    } => LookupExecution::Getter {
+                        database: super::declarations::unique(symbols, database)?,
+                        getter: super::declarations::unique(symbols, getter)?,
+                        null: super::declarations::unique(symbols, null)?,
                     },
-                },
-                None => Initializer::Unresolved,
-            },
+                };
+
+                Initializer::Lookup { lookup, execution }
+            }
             Initialization::Unresolved(_) => Initializer::Unresolved,
         };
         for address in addresses {

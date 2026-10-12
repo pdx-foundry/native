@@ -6,11 +6,11 @@ use super::language::{gap_for_subject, registry_gap};
 use super::questions::error;
 use crate::engine::analysis::families::Part;
 use crate::engine::analysis::names::{
-    self, Condition, METHOD, Miss, Name, NameResult, Stage, Target, Term,
+    self, Condition, METHOD, Miss, Name, NameResult, Stage, Term,
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DerivedName, Error, FieldCondition, Gap, GapKind,
-    GapSubject, LookupStage, MissingName, NameLookup, Operation, Source,
+    GapSubject, LookupStage, MissingName, Operation, Source,
 };
 
 /// What the method does not search.
@@ -171,11 +171,7 @@ fn name_gaps(name: &Name, template: &str) -> Vec<Gap> {
 fn public_name(name: &Name) -> DerivedName {
     DerivedName {
         name: public_parts(&name.parts),
-        lookup: match name.target {
-            Target::Localization => NameLookup::Localization,
-            Target::Sprite => NameLookup::Sprite,
-            Target::File => NameLookup::File,
-        },
+        lookup: name.target,
         stage: match name.stage {
             Stage::WhenUsed => LookupStage::WhenUsed,
             Stage::OwnerInitialization => LookupStage::OwnerInitialization,
@@ -215,13 +211,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::NamePart;
     use crate::engine::analysis::stop::Unresolved;
+    use crate::{NameLookup, NamePart};
 
     fn name(parts: Vec<Part>, on_missing: Miss, condition: Condition) -> Name {
         Name {
             parts,
-            target: Target::Localization,
+            target: NameLookup::Localization,
             stage: Stage::WhenUsed,
             on_missing,
             condition,

@@ -455,16 +455,20 @@ fn conflicting_names_for_one_token_never_select_an_arbitrary_name() {
         adrp x2, extern 0x8000;
         add x2, x2, #0x10; // "conflicting_field"
         bl extern 0x3000;
+        mov w1, #7;
+        adrp x2, extern 0x8000;
+        add x2, x2, #0; // the first name again
+        bl extern 0x3000;
         ret
     );
     let result = derive(input);
     assert!(result.fields.is_empty());
-    assert!(
-        result
-            .gaps
-            .iter()
-            .any(|g| g.reason.contains("conflicting names"))
-    );
+    let conflicts = result
+        .gaps
+        .iter()
+        .filter(|g| g.reason.contains("conflicting names"))
+        .count();
+    assert_eq!(conflicts, 1);
 }
 
 #[test]
@@ -1743,6 +1747,52 @@ fn compound_array_requires_emplace_before_reading_last_string() {
 }
 
 #[test]
+fn only_a_plain_string_read_gives_a_derived_name_its_storage() {
+    use crate::engine::analysis::names::{StoredField, storage};
+    let array = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1;
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        bl extern 0xd000;
+        ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+        mov w10, #0x28; madd x8, x9, x10, x8;
+        sub x1, x8, #0x28; mov x0, x20; b extern 0xf000
+    );
+    let scalar = arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        add x8, x0, #0x80; mov x0, x1; mov x1, x8; b extern 0xf000
+    );
+
+    let array = derive(compound_fixture(array));
+    assert!(matches!(
+        array.fields[0].readers[..],
+        [ReaderJoin::Stored {
+            kind: crate::ReaderKind::String,
+            destination: Some(0x80),
+            ..
+        }]
+    ));
+    assert_eq!(storage(&array).strings, []);
+
+    let scalar = derive(compound_fixture(scalar));
+    assert!(matches!(
+        scalar.fields[0].readers[..],
+        [ReaderJoin::Joined { .. }]
+    ));
+    assert_eq!(
+        storage(&scalar).strings,
+        [StoredField {
+            path: vec!["new_engine_field".into()],
+            offset: 0x80,
+            element: None,
+        }]
+    );
+}
+
+#[test]
 fn compound_tail_call_does_not_return_to_the_next_instruction() {
     let code = arm64!(at 0x1000;
         cmp w2, #7; b.eq extern 0x1010;
@@ -2448,6 +2498,62 @@ fn a_collected_container_has_the_mask_that_its_factory_passes() {
     assert_eq!(clause_mask(constant), Some(Ok(0x400a_ca7e)));
     assert_eq!(clause_mask(zero_fill), Some(Ok(0x403f_dafe)));
     assert_eq!(clause_mask(factory_fixture()), None);
+}
+
+/// The mask of the container that the collection inserts. The root builds `inserted` with
+/// `build`, and also a container with another mask before it and another after it that it never
+/// inserts. Constructor `0x9100` gives its category argument as the mask; `0x9400` gives none.
+fn inserted_container_mask(build: impl Fn(&mut Arm64)) -> Option<Result<u64, &'static str>> {
+    let mut input = nested_fixture();
+    let mut root = Arm64::at(0x1000);
+    arm64!(root;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000;
+        mov w2, #0x100;
+        bl extern 0x9100; // a container that is never inserted
+        bl extern 0x9000;
+        mov x21, x0
+    );
+    build(&mut root);
+    arm64!(root;
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40;
+        mov x2, sp;
+        bl extern 0x9300; // insertion
+        bl extern 0x9000;
+        mov w2, #0x200;
+        bl extern 0x9100; // another container that is never inserted
+        ret
+    );
+    input.functions[0].code = root.bytes();
+    input.objects[0].constructors.push(0x9400);
+    let mut binding = persistent_fixture().persistent.unwrap();
+    binding.containers.category = BTreeSet::from([0x9100]);
+    input.persistent = Some(binding);
+
+    clause_mask(input)
+}
+
+#[test]
+fn an_inserted_container_keeps_its_own_mask_beside_other_containers() {
+    let masked = |code: &mut Arm64| arm64!(code; mov w2, #0x80; bl extern 0x9100);
+    let unmasked = |code: &mut Arm64| arm64!(code; bl extern 0x9400);
+    let masked_then_unmasked =
+        |code: &mut Arm64| arm64!(code; mov w2, #0x80; bl extern 0x9100; bl extern 0x9400);
+
+    assert_eq!(inserted_container_mask(masked), Some(Ok(0x80)));
+    assert_eq!(inserted_container_mask(unmasked), None);
+    assert_eq!(inserted_container_mask(masked_then_unmasked), None);
 }
 
 #[test]

@@ -28,8 +28,6 @@ pub(crate) struct DispatchInput<'a> {
     pub read_only_data: &'a [DataSection],
     pub reader_token_offset: Option<u64>,
     pub member_delegates: bool,
-    /// Permit unmodeled OR updates without widening existing field or command methods.
-    pub bitwise_updates: bool,
     /// The constructor-proven owner address point and executable pointer slots.
     pub owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
     /// Constructors whose body proves a wrapped owner pointer at this object offset.
@@ -73,7 +71,6 @@ impl<'a> DispatchInput<'a> {
             read_only_data,
             reader_token_offset: Some(reader_token_offset),
             member_delegates: true,
-            bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
             virtual_delegate: None,
@@ -787,9 +784,8 @@ fn apply(
                 state.assign(base, updated);
             }
         }
-        // Bit-field reads do not set flags; their result is not followed.
-        ("ubfx" | "and", [destination, ..]) => state.assign(destination, None),
-        ("orr", [destination, ..]) if input.bitwise_updates => state.assign(destination, None),
+        // Bit-field reads and ORs do not set flags; their result is not followed.
+        ("ubfx" | "and" | "orr", [destination, ..]) => state.assign(destination, None),
         ("adrp" | "adr", [destination, address]) => {
             state.assign(destination, number(address).map(Value::Constant))
         }
@@ -823,7 +819,6 @@ pub(super) fn explore_owner(input: &FieldInput, owner: &str) -> (Vec<TokenPath>,
             read_only_data: &input.read_only_data,
             reader_token_offset: None,
             member_delegates: false,
-            bitwise_updates: false,
             owner_vtable: None,
             serializer_constructors: None,
             virtual_delegate: None,
@@ -1305,6 +1300,8 @@ fn call_outcome(
             Obstacle::Call,
         )))
     } else {
+        // Offset 0 is the reader itself. A default `KeyReaders` leaves the value token unbound.
+        let value_token = Some(input.key_readers.value_token).filter(|&offset| offset != 0);
         PathOutcome::Reader(reader_join(
             name,
             state,
@@ -1312,7 +1309,7 @@ fn call_outcome(
             entry,
             tail,
             input.member_delegates,
-            Some(input.key_readers.value_token),
+            value_token,
         ))
     }
 }
@@ -1791,7 +1788,7 @@ mod tests {
     use crate::engine::analysis::{assembler::arm64, declarations::Function};
 
     #[test]
-    fn bitwise_updates_extend_only_the_opted_in_member_walk() {
+    fn an_or_update_forgets_its_result_and_the_walk_goes_on() {
         let root = "Owner::ReadMember(CReader&, int)";
         let symbols = vec![
             Symbol {
@@ -1820,17 +1817,57 @@ mod tests {
             },
         )]);
         let readers = super::super::KeyReaders::default();
-        let mut input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
-        let (paths, _) = explore_member(&input, root);
-        assert!(
-            matches!(&paths[0].outcome, PathOutcome::Gap(stop) if stop.reason == "instruction")
-        );
-        input.bitwise_updates = true;
+        let input = DispatchInput::command(&functions, &symbols, &[], 0x38, &readers);
         let (paths, _) = explore_member(&input, root);
         assert!(
             matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
             if callee == "CReader::Read(CString&, bool)")
         );
+    }
+
+    #[test]
+    fn an_unbound_value_token_joins_no_assignment() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let assign = "CVariableValue::Assign(CToken const&, EScopeType, CString const&)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: assign.into(),
+                address: 0x2000,
+            },
+        ];
+        let functions = |code| {
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )])
+        };
+        let unchanged_reader = functions(arm64!(at 0x1000; b extern 0x2000));
+        let value_token_slot = functions(arm64!(at 0x1000;
+            add x1, x1, #0x278; // the reader's value token
+            b extern 0x2000
+        ));
+        let bound = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let default = super::super::KeyReaders::default();
+        let joins = |functions, readers| {
+            let input = DispatchInput::command(functions, &symbols, &[], 0x38, readers);
+            let (paths, _) = explore_member(&input, root);
+            matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
+                if callee == assign)
+        };
+
+        assert!(joins(&value_token_slot, &bound));
+        assert!(!joins(&unchanged_reader, &bound));
+        assert!(!joins(&unchanged_reader, &default));
     }
 
     #[test]

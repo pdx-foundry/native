@@ -521,7 +521,9 @@ fn cache_uses_slot_functions_and_established_receiver_bytes() {
 }
 
 fn lookup() -> InitializationLookup {
-    use crate::engine::analysis::references::{KeyMatch, Lookup, Stage as LookupStage};
+    use crate::engine::analysis::references::{
+        KeyMatch, Lookup, Stage as LookupStage, initialization::Execution,
+    };
     InitializationLookup {
         database: "Database".into(),
         directory: Some("example".into()),
@@ -530,8 +532,11 @@ fn lookup() -> InitializationLookup {
         lookup: Lookup {
             stage: LookupStage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
+        },
+        execution: Execution::Inline {
+            null: "TPdxNullObject<Item>::_pInstance".into(),
         },
     }
 }

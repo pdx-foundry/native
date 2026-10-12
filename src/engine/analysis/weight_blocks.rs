@@ -385,53 +385,57 @@ impl<'a> Context<'a> {
             if disposition(&ends) == grammar.other_keys {
                 continue;
             }
-            if literal.ambiguous {
+            let Some(name) = &literal.name else {
                 grammar
                     .stops
                     .push((None, Unresolved::new("weight-token-name")));
                 grammar.undetermined_keys = true;
                 continue;
-            }
+            };
             match key(&ends) {
                 Key::Operation(operand, repeat) => {
                     repeats.insert(repeat);
                     if let Some(scope) = operand.as_ref().and_then(|operand| operand.scope.clone())
                     {
-                        grammar.key_scopes.insert(literal.name.clone(), scope);
+                        grammar.key_scopes.insert(name.clone(), scope);
                     }
                     grammar.operations.push(Operation {
-                        key: literal.name.clone(),
+                        key: name.clone(),
                         operand,
                     });
                 }
                 Key::Nested(child) => {
                     let entry = self.nested(&child, depth, grammars);
                     if let Some(scope) = &child.scope {
-                        grammar
-                            .key_scopes
-                            .insert(literal.name.clone(), scope.clone());
+                        grammar.key_scopes.insert(name.clone(), scope.clone());
                     }
-                    self.push_field(&mut grammar, token as u64, literal, &ends);
-                    grammar.nested.insert(literal.name.clone(), entry);
+                    self.push_field(&mut grammar, token as u64, name, literal.constructor, &ends);
+                    grammar.nested.insert(name.clone(), entry);
                 }
                 Key::Field => {
                     if let Some(scope) = ends.iter().find_map(|end| end.scope.clone()) {
-                        grammar.key_scopes.insert(literal.name.clone(), scope);
+                        grammar.key_scopes.insert(name.clone(), scope);
                     }
                     if let Some(offset) = ends.iter().find_map(|end| end.dependent) {
-                        dependents.insert(literal.name.clone(), offset);
+                        dependents.insert(name.clone(), offset);
                     }
-                    self.push_field(&mut grammar, token as u64, literal, &ends);
+                    self.push_field(&mut grammar, token as u64, name, literal.constructor, &ends);
                 }
                 Key::Unresolved(stop) => match self.keyword(&member, token as u64, &stop) {
                     Some((keyword, domain)) => {
-                        self.push_field(&mut grammar, token as u64, literal, &[keyword]);
+                        self.push_field(
+                            &mut grammar,
+                            token as u64,
+                            name,
+                            literal.constructor,
+                            &[keyword],
+                        );
                         if let Some(domain) = domain {
-                            grammar.keyword_domains.insert(literal.name.clone(), domain);
+                            grammar.keyword_domains.insert(name.clone(), domain);
                         }
                     }
                     None => {
-                        grammar.stops.push((Some(literal.name.clone()), stop));
+                        grammar.stops.push((Some(name.clone()), stop));
                         grammar.undetermined_keys = true;
                     }
                 },
@@ -646,8 +650,8 @@ impl<'a> Context<'a> {
                 fallback.is_none_or(|fallback| !results.contains(&Some(fallback)))
             })
             .map(|(value, results)| {
-                let literal = self.input.tokens.get(&(*value as i64))?;
-                (results.len() == 1 && !literal.ambiguous).then(|| literal.name.clone())
+                let name = self.input.tokens.get(&(*value as i64))?.name.clone()?;
+                (results.len() == 1).then_some(name)
             })
             .collect::<Option<Vec<_>>>()?;
         names.sort();
@@ -695,9 +699,16 @@ impl<'a> Context<'a> {
         }
     }
 
-    /// Add the key `literal` with one path for each distinct outcome of its ends. Outcomes that
+    /// Add the key `name` with one path for each distinct outcome of its ends. Outcomes that
     /// every end shares hold unconditionally.
-    fn push_field(&self, grammar: &mut Grammar, token: u64, literal: &Token, ends: &[End]) {
+    fn push_field(
+        &self,
+        grammar: &mut Grammar,
+        token: u64,
+        name: &str,
+        constructor: u64,
+        ends: &[End],
+    ) {
         let mut alternatives: Vec<(PathOutcome, &End)> = Vec::new();
         for end in ends {
             let outcome = end.outcome();
@@ -714,9 +725,7 @@ impl<'a> Context<'a> {
                 PathOutcome::Reader(join) => readers.push(join.clone()),
                 PathOutcome::Gap(stop) => {
                     readers.push(ReaderJoin::Missing(stop.clone()));
-                    grammar
-                        .stops
-                        .push((Some(literal.name.clone()), stop.clone()));
+                    grammar.stops.push((Some(name.into()), stop.clone()));
                 }
                 PathOutcome::Rejected => {}
             }
@@ -736,9 +745,9 @@ impl<'a> Context<'a> {
         }
 
         grammar.fields.push(RootField {
-            name: literal.name.clone(),
+            name: name.into(),
             token: token as i64,
-            constructor: literal.constructor,
+            constructor,
             paths: indices,
             readers,
         });

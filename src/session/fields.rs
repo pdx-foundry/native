@@ -163,7 +163,7 @@ fn stores_last_deferred_key(callee: &str, references: &ReferenceFacts) -> bool {
             &fact.lookup,
             Ok(Lookup {
                 stage: references::Stage::Deferred,
-                on_missing: Some(Missing::NullObject),
+                on_missing: Missing::NullObject,
                 ..
             })
         )
@@ -457,15 +457,14 @@ pub(super) fn reference_lookup(
             Some(references::KeyMatch::FirstEqual) => KeyMatch::FirstEqual,
             None => KeyMatch::Unresolved,
         },
-        empty_key: match lookup.empty_key_looked_up {
-            Some(true) => EmptyKey::LookedUp,
-            Some(false) => EmptyKey::NotLookedUp,
-            None => EmptyKey::Unresolved,
+        empty_key: if lookup.empty_key_looked_up {
+            EmptyKey::LookedUp
+        } else {
+            EmptyKey::NotLookedUp
         },
         on_missing: match lookup.on_missing {
-            Some(Missing::NullObject) => MissingResult::NullObject,
-            Some(Missing::ScriptedTriggerPlaceholder) => MissingResult::ScriptedTriggerPlaceholder,
-            None => MissingResult::Unresolved,
+            Missing::NullObject => MissingResult::NullObject,
+            Missing::ScriptedTriggerPlaceholder => MissingResult::ScriptedTriggerPlaceholder,
         },
     }
 }
@@ -911,9 +910,10 @@ mod tests {
                         lookup: Ok(Lookup {
                             stage: Stage::Deferred,
                             key_match: None,
-                            empty_key_looked_up: Some(true),
-                            on_missing: Some(Missing::NullObject),
+                            empty_key_looked_up: true,
+                            on_missing: Missing::NullObject,
                         }),
+                        null_object: Some("TPdxNullObject<CStaticModifier>::_pInstance".into()),
                     },
                 ),
                 (
@@ -922,6 +922,7 @@ mod tests {
                         database: "CShipDatabase".into(),
                         directory: None,
                         lookup: Err(Unresolved::new("reference-lambda-shape")),
+                        null_object: None,
                     },
                 ),
             ]),
@@ -1075,9 +1076,10 @@ mod tests {
             lookup: Ok(Lookup {
                 stage: Stage::Deferred,
                 key_match: None,
-                empty_key_looked_up: Some(true),
-                on_missing: Some(Missing::NullObject),
+                empty_key_looked_up: true,
+                on_missing: Missing::NullObject,
             }),
+            null_object: Some(format!("TPdxNullObject<{database}>::_pInstance")),
         };
         let references = ReferenceFacts {
             readers: BTreeMap::from([
@@ -1147,7 +1149,7 @@ mod tests {
     }
 
     fn initialization(key_offset: i64) -> InitializationLookup {
-        use crate::engine::analysis::references::Stage;
+        use crate::engine::analysis::references::{Stage, initialization::Execution};
 
         InitializationLookup {
             database: "CShipSizeDatabase".into(),
@@ -1157,8 +1159,11 @@ mod tests {
             lookup: Lookup {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(references::KeyMatch::Equal),
-                empty_key_looked_up: Some(false),
-                on_missing: Some(Missing::NullObject),
+                empty_key_looked_up: false,
+                on_missing: Missing::NullObject,
+            },
+            execution: Execution::Inline {
+                null: "TPdxNullObject<CShipSize>::_pInstance".into(),
             },
         }
     }
@@ -1375,9 +1380,10 @@ mod tests {
                     lookup: Ok(Lookup {
                         stage: Stage::Deferred,
                         key_match: None,
-                        empty_key_looked_up: Some(true),
-                        on_missing: Some(Missing::NullObject),
+                        empty_key_looked_up: true,
+                        on_missing: Missing::NullObject,
                     }),
+                    null_object: Some("TPdxNullObject<CShip>::_pInstance".into()),
                 },
             )]),
             initializers: BTreeMap::new(),

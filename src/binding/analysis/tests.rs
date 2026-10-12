@@ -708,8 +708,14 @@ fn m452_command_grammar_foundations_resolve_and_reuse_inputs() {
         assert_eq!(bindings.validation_slot, validation);
         assert_eq!(bindings.target_getter_slot, target_getter);
         assert_eq!(bindings.boolean_tokens, [0x3ff8, 0x2cac]);
-        assert_eq!(cached.0.tokens[&bindings.boolean_tokens[0]].name, "yes");
-        assert_eq!(cached.0.tokens[&bindings.boolean_tokens[1]].name, "no");
+        assert_eq!(
+            cached.0.tokens[&bindings.boolean_tokens[0]].name.as_deref(),
+            Some("yes")
+        );
+        assert_eq!(
+            cached.0.tokens[&bindings.boolean_tokens[1]].name.as_deref(),
+            Some("no")
+        );
         for (addresses, name, count) in [
             (&bindings.token_copy, "CToken::CToken(CToken const&)", 2),
             (

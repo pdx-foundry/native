@@ -65,7 +65,6 @@ pub(crate) fn analyze(input: &ModifierBlockInput, numeric: &NumericFacts) -> Mod
         input.reader_token_offset,
         &input.key_readers,
     );
-    dispatch.bitwise_updates = true;
     dispatch.serializer_constructors = Some(&input.serializer_constructors);
     ModifierBlockFacts {
         points: input
@@ -259,7 +258,7 @@ fn inherited_paths(
     default: &[&TokenPath],
 ) -> Vec<TokenPath> {
     let data = ReaderJoin::Joined {
-        callee: "CReader::Read(int&)".into(),
+        callee: tokens.data_reader,
         arguments: BTreeMap::new(),
         tail: false,
     };
@@ -377,9 +376,8 @@ mod tests {
             tokens: BTreeMap::from([(
                 7,
                 Token {
-                    name: "authored_key".into(),
+                    name: Some("authored_key".into()),
                     constructor: 0,
-                    ambiguous: false,
                 },
             )]),
             key_readers: KeyReaders::default(),
@@ -416,9 +414,41 @@ mod tests {
     }
 
     #[test]
+    fn the_inherited_data_path_joins_the_reader_that_the_member_shape_names() {
+        let tokens = numeric::modifier::MemberTokens {
+            name: 27,
+            data: 240,
+            data_reader: "CExample::ReadInteger(int&)".into(),
+            name_read_slot: 0x10,
+        };
+        let default = TokenPath {
+            domain: [200, 300],
+            conditions: vec![],
+            instructions: vec![],
+            terminal: 0,
+            outcome: PathOutcome::Rejected,
+        };
+        let name = ReaderJoin::Missing(Unresolved::new("name-reader"));
+
+        let paths = inherited_paths(tokens, name, &[&default]);
+
+        assert_eq!(
+            paths.len(),
+            1,
+            "only the data token is in the default's domain"
+        );
+        assert_eq!(paths[0].domain, [240, 240]);
+        assert!(matches!(
+            &paths[0].outcome,
+            PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
+                if callee == "CExample::ReadInteger(int&)"
+        ));
+    }
+
+    #[test]
     fn ambiguous_tokens_and_missing_default_routes_remain_gaps() {
         let mut input = input();
-        input.tokens.get_mut(&7).unwrap().ambiguous = true;
+        input.tokens.get_mut(&7).unwrap().name = None;
         input.symbols.retain(|symbol| symbol.address != 0x3000);
         let facts = analyze(&input, &NumericFacts::default());
         let variant = facts.points[&0x8000].as_ref().unwrap();

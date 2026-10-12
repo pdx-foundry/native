@@ -472,9 +472,8 @@ fn input(read_name: &str, member_name: &str) -> WeightBlockInput {
                 (
                     token,
                     Token {
-                        name: name.into(),
+                        name: Some(name.into()),
                         constructor: 0,
-                        ambiguous: false,
                     },
                 )
             })
@@ -796,7 +795,7 @@ fn a_value_compared_with_fixed_names_is_a_keyword() {
 #[test]
 fn a_recognized_value_without_one_literal_name_leaves_the_domain_unknown() {
     let mut input = modifier_input();
-    input.tokens.get_mut(&22).unwrap().ambiguous = true;
+    input.tokens.get_mut(&22).unwrap().name = None;
     let bodies = bodies(Variation::default(), ReadVariation::default());
     let body = |address: u64| bodies.get(&address).map(Vec::as_slice);
 

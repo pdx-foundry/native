@@ -1,7 +1,6 @@
 //! Read the inputs of the derived-name method from executable text.
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::AnalysisError;
 use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
@@ -9,9 +8,10 @@ use crate::engine::analysis::{
     fields::has_owner_receiver,
     names::{
         LogArguments, Miss, NameArgument, NameInput, RegistryInput, ResultView, Role, Root, Sink,
-        Stage, Target,
+        Stage,
     },
 };
+use crate::{AnalysisError, NameLookup};
 
 use super::declarations::{Text, addresses};
 use super::families::{Call, NamedRegistry, Names, calls, constructors, decoded, entered, loading};
@@ -21,52 +21,52 @@ use super::grammar::ERROR_LOGS;
 /// `LocalizeString` finds no key and returns null, and `PdxLocalizeAndReplaceView` then uses the
 /// key's own text and writes no diagnostic. `docs/native/derived-names.md` records the three
 /// hand-read checks of this rule.
-const SINKS: [(&str, Target, Role, NameArgument, Option<Miss>); 7] = [
+const SINKS: [(&str, NameLookup, Role, NameArgument, Option<Miss>); 7] = [
     (
         LOCALIZE,
-        Target::Localization,
+        NameLookup::Localization,
         Role::Lookup,
         NameArgument::View { text: 0, length: 1 },
         Some(Miss::ShowsKey),
     ),
     (
         "HasLocalizeKey(CPdxStringView)",
-        Target::Localization,
+        NameLookup::Localization,
         Role::Check,
         NameArgument::View { text: 0, length: 1 },
         None,
     ),
     (
         "PdxHasLocalizeKey(CPdxStringView)",
-        Target::Localization,
+        NameLookup::Localization,
         Role::Check,
         NameArgument::View { text: 0, length: 1 },
         None,
     ),
     (
         "CGuiGraphics::SpriteExists(CString) const",
-        Target::Sprite,
+        NameLookup::Sprite,
         Role::Check,
         NameArgument::Object(1),
         None,
     ),
     (
         "CGuiGraphics::GetSpriteType(CString const&) const",
-        Target::Sprite,
+        NameLookup::Sprite,
         Role::Lookup,
         NameArgument::Object(1),
         None,
     ),
     (
         "VFSExists(CString const&)",
-        Target::File,
+        NameLookup::File,
         Role::Check,
         NameArgument::Object(0),
         None,
     ),
     (
         "VFSExists(char const*)",
-        Target::File,
+        NameLookup::File,
         Role::Check,
         NameArgument::Text(0),
         None,

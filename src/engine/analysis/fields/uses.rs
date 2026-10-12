@@ -315,29 +315,34 @@ fn flow(
 }
 
 /// The one storage offset that every reader of `field` writes, when they agree.
-pub(crate) fn storage_offset(field: &RootField) -> Option<i64> {
+///
+/// A field holds only the singleton token paths, while the public reader joins every covering
+/// path. An overlap breaks the accounted partition, and then the readers here may disagree with
+/// the public ones, so no offset is proven.
+pub(crate) fn storage_offset(field: &RootField, partition_accounted: bool) -> Option<i64> {
+    if !partition_accounted {
+        return None;
+    }
     let mut offsets = BTreeSet::new();
     for join in &field.readers {
         offsets.insert(crate::engine::analysis::readers::destination(join)?);
     }
     (offsets.len() == 1).then(|| *offsets.first().unwrap())
 }
-fn named(
-    origin: &Origin,
-    fields: &[RootField],
-    collections: &[CollectionField],
-) -> Option<Vec<String>> {
-    let (members, at, mut path) = match origin {
-        Origin::Owner(at) => (fields, *at, Vec::new()),
+fn named(origin: &Origin, storage: Storage<'_>) -> Option<Vec<String>> {
+    let (members, partition_accounted, at, mut path) = match origin {
+        Origin::Owner(at) => (storage.fields, storage.partition_accounted, *at, Vec::new()),
         Origin::Selected {
             collection, offset, ..
         } => {
-            let collection = &collections[*collection];
-            let parent = fields
+            let collection = &storage.collections[*collection];
+            let parent = storage
+                .fields
                 .iter()
                 .find(|field| field.token == collection.token)?;
             (
                 collection.fields.fields.as_slice(),
+                collection.fields.partition_accounted,
                 *offset,
                 vec![parent.name.clone()],
             )
@@ -346,7 +351,7 @@ fn named(
     };
     let mut matches = members
         .iter()
-        .filter(|field| storage_offset(field) == Some(at));
+        .filter(|field| storage_offset(field, partition_accounted) == Some(at));
     let field = matches.next()?;
     if matches.next().is_some() {
         return None;
@@ -372,19 +377,17 @@ struct TestedField {
     element: Option<(usize, u64)>,
 }
 
-fn tested(
-    values: Values,
-    fields: &[RootField],
-    collections: &[CollectionField],
-) -> Vec<TestedField> {
+fn tested(values: Values, storage: Storage<'_>) -> Vec<TestedField> {
     values
         .iter()
         .filter_map(|value| match value {
             Origin::Loaded(origin, 1) => {
-                let path = named(origin, fields, collections)?;
+                let path = named(origin, storage)?;
                 let members = match origin.as_ref() {
-                    Origin::Owner(_) => fields,
-                    Origin::Selected { collection, .. } => &collections[*collection].fields.fields,
+                    Origin::Owner(_) => storage.fields,
+                    Origin::Selected { collection, .. } => {
+                        &storage.collections[*collection].fields.fields
+                    }
                     _ => return None,
                 };
                 let field = members
@@ -406,6 +409,8 @@ fn tested(
 struct Storage<'a> {
     fields: &'a [RootField],
     collections: &'a [CollectionField],
+    /// Whether the owner's token partition is accounted, so its fields prove storage offsets.
+    partition_accounted: bool,
 }
 
 /// Whether the signature establishes a direct const member of this owner class.
@@ -443,6 +448,7 @@ pub(super) fn discover(
     input: &FieldInput,
     fields: &[RootField],
     collections: &[CollectionField],
+    partition_accounted: bool,
 ) -> Vec<StorageSelection> {
     if collections.is_empty() {
         return Vec::new();
@@ -456,6 +462,7 @@ pub(super) fn discover(
     let storage = Storage {
         fields,
         collections,
+        partition_accounted,
     };
     let mut found = Vec::new();
     for function in input
@@ -588,11 +595,7 @@ impl Method<'_> {
             return Vec::new();
         };
         let mut found = Vec::new();
-        for tested in tested(
-            value(&state, register),
-            self.storage.fields,
-            self.storage.collections,
-        ) {
+        for tested in tested(value(&state, register), self.storage) {
             let branch = number(target)
                 .and_then(|at| self.indexes.get(&(at as u64)))
                 .copied()
@@ -637,15 +640,10 @@ impl Method<'_> {
             return Vec::new();
         };
         let mut found = Vec::new();
-        for tested in tested(
-            value(&state, register),
-            self.storage.fields,
-            self.storage.collections,
-        ) {
+        for tested in tested(value(&state, register), self.storage) {
             for (operand, zero) in [(args[1], args[3] == "eq"), (args[2], args[3] == "ne")] {
                 for origin in value(&state, operand) {
-                    if let Some(field) =
-                        named(&origin, self.storage.fields, self.storage.collections)
+                    if let Some(field) = named(&origin, self.storage)
                         && same_element(&origin, tested.element)
                     {
                         found.push((field, tested.path.clone(), zero));
@@ -668,10 +666,6 @@ fn arm(
     subject: Option<(usize, u64)>,
     receivers: &BTreeSet<u64>,
 ) -> BTreeSet<Vec<String>> {
-    let Storage {
-        fields,
-        collections,
-    } = storage;
     let mut pending = vec![(start, registers, BTreeSet::new())];
     let mut found = BTreeSet::new();
     let mut steps = 0;
@@ -693,7 +687,7 @@ fn arm(
                 && number(&row.operands).is_some_and(|target| receivers.contains(&(target as u64)));
             if row.operation == "ret" || consumes_receiver {
                 for origin in value(&state, "x0") {
-                    if let Some(path) = named(&origin, fields, collections)
+                    if let Some(path) = named(&origin, storage)
                         && same_element(&origin, subject)
                     {
                         found.insert(path);
@@ -704,7 +698,7 @@ fn arm(
                 continue;
             }
         }
-        transfer(row, &mut state, collections);
+        transfer(row, &mut state, storage.collections);
         for next in successors(rows, indexes, pc) {
             pending.push((next, state.clone(), seen.clone()));
         }
@@ -800,7 +794,7 @@ mod tests {
             ret
         );
         let fields = vec![member("children", 7, 0x40, "CReader::Read(CPersistent&)")];
-        let found = discover(&input(code), &fields, &collections());
+        let found = discover(&input(code), &fields, &collections(), true);
         assert!(
             found
                 .iter()
@@ -809,8 +803,8 @@ mod tests {
                     && selection.zero)
         );
     }
-    #[test]
-    fn conditional_select_retains_both_storage_alternatives() {
+    /// Selects a collection element's text or the owner's own `base` by the element's flag.
+    fn select_between_element_and_owner() -> (FieldInput, Vec<RootField>) {
         let code = arm64!(at 0x1000;
             mov x20, x0;
             ldr x8, [x20, #0x48];
@@ -826,13 +820,30 @@ mod tests {
             member("children", 7, 0x40, "CReader::Read(CPersistent&)"),
             member("base", 10, 0x80, "CReader::Read(CString&, bool)"),
         ];
-        let found = discover(&input(code), &fields, &collections());
+        (input(code), fields)
+    }
+    #[test]
+    fn conditional_select_retains_both_storage_alternatives() {
+        let (input, fields) = select_between_element_and_owner();
+        let found = discover(&input, &fields, &collections(), true);
         assert_eq!(found.len(), 2);
         assert!(
             found
                 .iter()
                 .any(|selection| selection.field == ["base"] && !selection.zero)
         );
+    }
+    #[test]
+    fn an_unaccounted_partition_proves_no_storage_offset() {
+        let (input, fields) = select_between_element_and_owner();
+
+        let owner_unaccounted = discover(&input, &fields, &collections(), false);
+        assert_eq!(owner_unaccounted.len(), 1, "{owner_unaccounted:?}");
+        assert_eq!(owner_unaccounted[0].field, ["children", "text"]);
+
+        let mut element_unaccounted = collections();
+        element_unaccounted[0].fields.partition_accounted = false;
+        assert!(discover(&input, &fields, &element_unaccounted, true).is_empty());
     }
     #[test]
     fn unused_call_registers_do_not_establish_field_uses() {
@@ -853,7 +864,7 @@ mod tests {
             name: "NoArguments()".into(),
             address: 0x9000,
         });
-        assert!(discover(&input, &fields, &collections()).is_empty());
+        assert!(discover(&input, &fields, &collections(), true).is_empty());
     }
 
     #[test]
@@ -865,7 +876,7 @@ mod tests {
             ret
         );
         let fields = vec![member("children", 7, 0x40, "CReader::Read(CPersistent&)")];
-        assert!(discover(&input(code), &fields, &collections()).is_empty());
+        assert!(discover(&input(code), &fields, &collections(), true).is_empty());
     }
     #[test]
     fn separate_loop_iterations_do_not_prove_the_same_receiver() {
@@ -884,7 +895,7 @@ mod tests {
             ret
         );
         let fields = vec![member("children", 7, 0x40, "CReader::Read(CPersistent&)")];
-        assert!(discover(&input(code), &fields, &collections()).is_empty());
+        assert!(discover(&input(code), &fields, &collections(), true).is_empty());
     }
 
     #[test]
@@ -905,7 +916,7 @@ mod tests {
             member("children", 7, 0x40, "CReader::Read(CPersistent&)"),
             member("base", 10, 0x80, "CReader::Read(CString&, bool)"),
         ];
-        assert!(discover(&input(code), &fields, &collections()).is_empty());
+        assert!(discover(&input(code), &fields, &collections(), true).is_empty());
     }
     #[test]
     fn owner_scope_alone_does_not_establish_a_receiver() {
@@ -922,7 +933,7 @@ mod tests {
         );
         let fields = vec![member("children", 7, 0x40, "CReader::Read(CPersistent&)")];
         let mut input = input(code);
-        assert!(!discover(&input, &fields, &collections()).is_empty());
+        assert!(!discover(&input, &fields, &collections(), true).is_empty());
         for name in [
             "CExample::Select(void*)",
             "CExample::Nested::Select() const",
@@ -931,7 +942,7 @@ mod tests {
         ] {
             input.functions[0].name = name.into();
             assert!(
-                discover(&input, &fields, &collections()).is_empty(),
+                discover(&input, &fields, &collections(), true).is_empty(),
                 "{name}"
             );
         }

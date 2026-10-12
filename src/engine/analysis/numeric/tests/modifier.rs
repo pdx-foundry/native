@@ -196,7 +196,7 @@ fn member_rows() -> (Vec<Instruction>, BTreeMap<u64, String>) {
     (
         decode_arm64(&bytes, 0x4000).unwrap(),
         BTreeMap::from([
-            (0x9060, "other_integer_reader".into()),
+            (0x9060, "CReader::Read(int&)".into()),
             (0x8120, "definitions".into()),
             (0x9040, "numeric_reader".into()),
             (0x9080, "allocate_array".into()),
@@ -444,6 +444,7 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
         super::super::modifier::MemberTokens {
             name: 27,
             data: 240,
+            data_reader: "CReader::Read(int&)".into(),
             name_read_slot: 0x10,
         }
     );
@@ -459,6 +460,7 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
         super::super::modifier::MemberTokens {
             name: 29,
             data: 240,
+            data_reader: "CReader::Read(int&)".into(),
             name_read_slot: 0x10,
         }
     );
@@ -469,4 +471,25 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
         .unwrap();
     comparison.operands = "w1,#0x1d".into();
     assert!(super::super::modifier::member_tokens(&input).is_err());
+}
+
+#[test]
+fn the_inherited_data_reader_is_the_callee_that_the_shape_names() {
+    let mut input = input();
+    input.names.insert(0x9060, "COther::Read(int&)".to_owned());
+    assert_eq!(
+        super::super::modifier::member_tokens(&input)
+            .unwrap()
+            .data_reader,
+        "COther::Read(int&)"
+    );
+
+    input.names.remove(&0x9060);
+    assert_eq!(
+        super::super::modifier::member_tokens(&input)
+            .unwrap_err()
+            .reason,
+        "modifier-base-token",
+        "an unnamed callee is no reader"
+    );
 }

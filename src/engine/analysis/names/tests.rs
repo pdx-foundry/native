@@ -91,7 +91,7 @@ fn input() -> NameInput {
     let view_lookup = Sink {
         result: Some(ResultView { size: 0x10 }),
         ..sink(
-            Target::Localization,
+            NameLookup::Localization,
             Role::Lookup,
             view,
             Some(Miss::ShowsKey),
@@ -102,16 +102,24 @@ fn input() -> NameInput {
             (
                 LOOKUP,
                 sink(
-                    Target::Localization,
+                    NameLookup::Localization,
                     Role::Lookup,
                     view,
                     Some(Miss::ShowsKey),
                 ),
             ),
-            (CHECK, sink(Target::Localization, Role::Check, view, None)),
+            (
+                CHECK,
+                sink(NameLookup::Localization, Role::Check, view, None),
+            ),
             (
                 SPRITE_LOOKUP,
-                sink(Target::Sprite, Role::Lookup, NameArgument::Object(1), None),
+                sink(
+                    NameLookup::Sprite,
+                    Role::Lookup,
+                    NameArgument::Object(1),
+                    None,
+                ),
             ),
             (VIEW_LOOKUP, view_lookup),
         ]
@@ -310,7 +318,7 @@ fn a_literal_and_the_key_looked_up_without_a_check_show_the_key_and_are_always_u
         result.names,
         [Name {
             parts: vec![literal("prefix_"), Part::ItemKey],
-            target: Target::Localization,
+            target: NameLookup::Localization,
             stage: Stage::WhenUsed,
             on_missing: Miss::ShowsKey,
             condition: Condition::Always,
@@ -330,7 +338,7 @@ fn an_unchecked_lookup_without_a_stated_rule_has_an_unresolved_miss() {
     let result = analyze_root(code, &Storage::default());
 
     let name = named(&result, &key_desc());
-    assert_eq!(name.target, Target::Sprite);
+    assert_eq!(name.target, NameLookup::Sprite);
     assert_eq!(name.on_missing, Miss::Unresolved);
     assert_eq!(name.condition, Condition::Always);
 }
@@ -888,19 +896,35 @@ fn a_name_that_a_fixed_buffer_bounds_is_a_gap() {
     assert_eq!(result.failures.get("name-limit"), Some(&1));
 }
 
-/// A root field with the token `token` that `kind`'s reader stores at `offset`.
+/// A root field with the token `token` that `kind`'s reader stores at `offset`. A string is read
+/// by the plain string reader; the other kinds have a compound reader.
 fn stored(name: &str, token: i64, kind: crate::ReaderKind, offset: i64) -> RootField {
+    use crate::engine::analysis::fields::Value;
+
+    let reader = if kind == crate::ReaderKind::String {
+        ReaderJoin::Joined {
+            callee: "CReader::Read(CString&, bool)".into(),
+            arguments: BTreeMap::from([
+                ("x0".into(), Value::Reader(0)),
+                ("x1".into(), Value::Owner(offset)),
+            ]),
+            tail: true,
+        }
+    } else {
+        ReaderJoin::Stored {
+            callee: "reader".into(),
+            kind,
+            destination: Some(offset),
+            repeat: crate::RepeatBehavior::Replace,
+        }
+    };
+
     RootField {
         name: name.into(),
         token,
         constructor: 0,
         paths: Vec::new(),
-        readers: vec![ReaderJoin::Stored {
-            callee: "reader".into(),
-            kind,
-            destination: Some(offset),
-            repeat: crate::RepeatBehavior::Replace,
-        }],
+        readers: vec![reader],
     }
 }
 

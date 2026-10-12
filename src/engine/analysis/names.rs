@@ -53,8 +53,9 @@ use super::families::{
     Node, NotEstablished, Part, Sources, StringFunctions, StringLayout, ending,
     every_returned_path, key_storage, loading, write_source,
 };
-use super::fields::{RegistryFieldResult, RootField, StorageSelection, storage_offset};
+use super::fields::{ReaderJoin, RegistryFieldResult, RootField, StorageSelection, storage_offset};
 use super::stop::Unresolved;
+use crate::NameLookup;
 
 #[cfg(test)]
 mod tests;
@@ -85,7 +86,7 @@ pub struct NameInput {
 /// A function that checks or looks up a name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sink {
-    pub target: Target,
+    pub target: NameLookup,
     pub role: Role,
     pub argument: NameArgument,
     /// What a name gives that this lookup does not find, when no check of the name came first.
@@ -101,14 +102,6 @@ pub struct Sink {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResultView {
     pub size: u64,
-}
-
-/// What a sink searches for a name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Target {
-    Localization,
-    Sprite,
-    File,
 }
 
 /// Whether a sink only tests that a name exists, or looks it up for use.
@@ -223,7 +216,7 @@ pub struct NameResult {
 pub struct Name {
     /// At least one part is the item key or a field; none is unresolved.
     pub parts: Vec<Part>,
-    pub target: Target,
+    pub target: NameLookup,
     pub stage: Stage,
     pub on_missing: Miss,
     pub condition: Condition,
@@ -266,7 +259,7 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
         selections: result.uses.clone(),
         ..Storage::default()
     };
-    collect_fields(&mut storage, &result.fields, &[], None);
+    collect_fields(&mut storage, result, &[], None);
 
     for collection in &result.collections {
         let (Some(data_offset), Some(count_offset)) =
@@ -288,12 +281,7 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
             count_offset,
         });
         let prefix = [parent.name.clone()];
-        collect_fields(
-            &mut storage,
-            &collection.fields.fields,
-            &prefix,
-            Some(element),
-        );
+        collect_fields(&mut storage, &collection.fields, &prefix, Some(element));
     }
 
     storage
@@ -301,12 +289,13 @@ pub fn storage(result: &RegistryFieldResult) -> Storage {
 
 fn collect_fields(
     storage: &mut Storage,
-    fields: &[RootField],
+    result: &RegistryFieldResult,
     prefix: &[String],
     element: Option<usize>,
 ) {
-    for field in fields {
-        let Some(offset) = storage_offset(field).and_then(|offset| u64::try_from(offset).ok())
+    for field in &result.fields {
+        let Some(offset) = storage_offset(field, result.partition_accounted)
+            .and_then(|offset| u64::try_from(offset).ok())
         else {
             continue;
         };
@@ -316,11 +305,21 @@ fn collect_fields(
             element,
         };
         match super::readers::classify(&field.readers).kind {
-            crate::ReaderKind::String => storage.strings.push(stored),
+            crate::ReaderKind::String if reads_plain_string(field) => storage.strings.push(stored),
             crate::ReaderKind::Boolean => storage.flags.push(stored),
             _ => {}
         }
     }
+}
+
+/// Whether the reader of the string `field` writes a plain `CString` at its offset. A compound
+/// reader (`ReaderJoin::Stored`) reports the kind of a value that is not a plain `CString`: a
+/// string array's destination holds the array header, not a string.
+fn reads_plain_string(field: &RootField) -> bool {
+    field
+        .readers
+        .iter()
+        .all(|join| matches!(join, ReaderJoin::Joined { .. }))
 }
 
 /// Follow every root of the registry.
@@ -405,10 +404,10 @@ enum Kind {
 }
 
 /// A name and what it is checked or looked up in, by the name's text in one run.
-type NameKey = (Target, String);
+type NameKey = (NameLookup, String);
 
 /// A derived name's parts and lookup target, independent of the run.
-type NameId = (Vec<Part>, Target);
+type NameId = (Vec<Part>, NameLookup);
 
 /// The fixed inputs of one run.
 struct Plan<'s> {
@@ -432,7 +431,7 @@ struct Event {
 enum EventKind {
     Use {
         role: Role,
-        target: Target,
+        target: NameLookup,
         name: Node,
         unchecked_miss: Option<Miss>,
     },

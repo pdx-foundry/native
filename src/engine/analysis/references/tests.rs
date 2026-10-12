@@ -280,9 +280,13 @@ fn a_deferred_reader_with_a_forwarded_scan_is_a_deferred_first_equal_lookup() {
         Ok(Lookup {
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         })
+    );
+    assert_eq!(
+        fact.null_object.as_deref(),
+        Some("TPdxNullObject<CShip>::_pInstance")
     );
 }
 
@@ -345,10 +349,9 @@ fn a_miss_that_selects_no_null_object_is_not_a_lookup() {
         ],
     );
 
-    assert_eq!(
-        lookup(&image, SHIP).lookup.unwrap_err().reason,
-        "reference-lambda-shape"
-    );
+    let fact = lookup(&image, SHIP);
+    assert_eq!(fact.null_object, None);
+    assert_eq!(fact.lookup.unwrap_err().reason, "reference-lambda-shape");
 }
 
 #[test]
@@ -385,8 +388,12 @@ fn a_map_search_is_equal_only_when_its_find_is_qualified() {
                 ("null", "TPdxNullObject<CShip>::_pInstance"),
             ],
         );
-    let unqualified = lookup(&image, SHIP).lookup.unwrap();
-    assert_eq!(unqualified.key_match, None);
+    let unqualified = lookup(&image, SHIP);
+    assert_eq!(unqualified.lookup.unwrap().key_match, None);
+    assert_eq!(
+        unqualified.null_object.as_deref(),
+        Some("TPdxNullObject<CShip>::_pInstance")
+    );
 
     image.add(FIND, shape("map_find"), &[]);
     let qualified = lookup(&image, SHIP).lookup.unwrap();
@@ -408,14 +415,19 @@ fn an_immediate_reader_looks_up_while_reading_and_names_its_own_clone() {
     ];
     let mut image = Image::default();
     image.add(SHIP_IMMEDIATE, shape("immediate_scan"), &values);
+    let fact = lookup(&image, SHIP_IMMEDIATE);
     assert_eq!(
-        lookup(&image, SHIP_IMMEDIATE).lookup,
+        fact.lookup,
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::NullObject),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
         })
+    );
+    assert_eq!(
+        fact.null_object.as_deref(),
+        Some("TPdxNullObject<CShip>::_pInstance")
     );
 
     let foreign = [
@@ -456,14 +468,19 @@ fn a_getter_scan_requires_one_consistent_key_layout() {
                     ("null", "TPdxNullObject<CShip>::_pInstance"),
                 ],
             );
-        lookup(&image, SHIP).lookup
+        lookup(&image, SHIP)
     };
 
+    let consistent = getter("0x16f");
     assert_eq!(
-        getter("0x16f").unwrap().key_match,
+        consistent.lookup.unwrap().key_match,
         Some(KeyMatch::FirstEqual)
     );
-    assert!(getter("0x170").is_err());
+    assert_eq!(
+        consistent.null_object.as_deref(),
+        Some("TPdxNullObject<CShip>::_pInstance")
+    );
+    assert!(getter("0x170").lookup.is_err());
 }
 
 #[test]
@@ -532,8 +549,8 @@ fn the_trigger_lookup_runs_while_reading_and_makes_a_placeholder_on_a_miss() {
         Ok(Lookup {
             stage: Stage::WhileReading,
             key_match: None,
-            empty_key_looked_up: Some(true),
-            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
+            empty_key_looked_up: true,
+            on_missing: Missing::ScriptedTriggerPlaceholder,
         })
     );
 }
