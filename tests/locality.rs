@@ -790,10 +790,7 @@ fn locality_rules_accept_methods_and_reject_shortcuts() {
             "fn f(kind: &str) { match kind { \"reader-join\" => {}, _ => {} } }",
             true,
         ),
-        (
-            "fn f(h: &Hello) -> bool { h.version != VERSION || h.build != BUILD }",
-            true,
-        ),
+        ("fn f(h: &Hello) -> bool { h.build != BUILD }", true),
         (
             "fn f(p: &Plan, r: &Request) -> bool { p.build() != r.build }",
             true,

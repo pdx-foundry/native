@@ -8,6 +8,9 @@ spec = importlib.util.spec_from_file_location('native_wire', PATH)
 wire = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wire)
 
+REGISTERS = {'owner': 'x0', 'return': 'lr', 'file': 'x1', 'reader': 'x1', 'field-token': 'w2'}
+MACHINE = dict(architecture='arm64', spawn_preference=0, registers=REGISTERS)
+
 
 class ProtocolTests(unittest.TestCase):
     def test_fixed_size_call_arguments_enforce_length_and_integer_width(self):
@@ -34,6 +37,15 @@ class ProtocolTests(unittest.TestCase):
                 wire.encode('script_reply', dict(reply, result={'Ok': dict(observation=observation,
                     durations=dict(complete=True, stored=[dict(stored, **{field: value})]))}))
 
+    def test_script_checks_allow_only_trigger_and_effect(self):
+        request = dict(attempt='a', check=1, kind='trigger', scope=5, text='x = y', durations=[])
+        for kind in ['trigger', 'effect']:
+            with self.subTest(kind=kind):
+                self.assertEqual(wire.decode('script_check', wire.encode('script_check', dict(request, kind=kind)))['kind'], kind)
+        for kind in ['Trigger', 'Effect', 'scope', '', None]:
+            with self.subTest(kind=kind), self.assertRaises(ValueError):
+                wire.encode('script_check', dict(request, kind=kind))
+
     def test_worker_accepts_a_fixture_request_with_typed_engine_bindings(self):
         outcome = dict(load_entry=16384, reader_entry=16400, reader_return=16416,
                        constructor_entry=16432, member_entry=16448, inline=None)
@@ -42,14 +54,48 @@ class ProtocolTests(unittest.TestCase):
                        bindings=dict(validation=None, reader_lexer_offset=48, lexer_file_offset=8,
                        file_name_offset=32, string_tag_offset=23, file_line_offset=8,
                        malformed_entry=16464, unexpected_entry=16480))
-        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
-                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+        request = dict(attempt='a', game=1, executable='/game', target='build',
+                       source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180,
                        fixture=fixture, modifiers=None, script_checks=None)
         self.assertEqual(wire.decode('request', wire.encode('request', request)), request)
         outcome['load_entry'] = 'not an integer'
         with self.assertRaises(ValueError):
             wire.encode('request', request)
+
+    def test_machine_requires_each_entry_register(self):
+        root = wire.SCHEMAS['request']
+        machine_schema = root['$defs']['Machine']
+        self.assertEqual(set(root['$defs']['EntryRegisters']['required']), set(REGISTERS))
+        wire.validate(MACHINE, machine_schema, root)
+        missing = [{key: value for key, value in REGISTERS.items() if key != name} for name in REGISTERS]
+        for registers in missing + [dict(REGISTERS, extra='x2')]:
+            with self.subTest(registers=registers), self.assertRaises(ValueError):
+                wire.validate(dict(MACHINE, registers=registers), machine_schema, root)
+
+    def test_registry_key_storage_is_one_offset_or_one_reason(self):
+        root = wire.SCHEMAS['request']
+        bindings = {
+            'RegistryBinding': dict(name='traditions', directory='common/traditions', load_entry=1,
+                                    directory_offset=2, data_offset=3, count_offset=4, pointer_size=8,
+                                    string_tag_offset=23),
+            'ModifierRegistryBinding': dict(instance=1, directory_offset=2, data_offset=3, count_offset=4,
+                                            pointer_size=8),
+        }
+        for name, binding in bindings.items():
+            schema = root['$defs'][name]
+            for storage in [dict(offset=16), dict(unavailable='item key storage was not established')]:
+                with self.subTest(binding=name, storage=storage):
+                    wire.validate(dict(binding, key_storage=storage), schema, root)
+            for storage in [dict(offset=16, unavailable='both'), dict(), dict(offset=None), dict(offset=-1),
+                            dict(unavailable=None), None, 16]:
+                with self.subTest(binding=name, storage=storage), self.assertRaises(ValueError):
+                    wire.validate(dict(binding, key_storage=storage), schema, root)
+            for legacy in [dict(key_offset=16), dict(key_unavailable=None)]:
+                with self.subTest(binding=name, legacy=legacy), self.assertRaises(ValueError):
+                    wire.validate(dict(binding, key_storage=dict(offset=16), **legacy), schema, root)
+            with self.subTest(binding=name), self.assertRaises(ValueError):
+                wire.validate(binding, schema, root)
 
     def test_nested_fixture_binding_and_diagnostic_codec(self):
         root = wire.SCHEMAS['request']
@@ -80,8 +126,8 @@ class ProtocolTests(unittest.TestCase):
                 wire.encode('reader_kind', kind)
 
     def test_fault_wire_has_one_target_and_kind(self):
-        request = dict(version=wire.VERSION, attempt='a', game=1, executable='/game', target='build',
-                       source_hashes={}, machine=dict(architecture='arm64', spawn_preference=0, registers={}),
+        request = dict(attempt='a', game=1, executable='/game', target='build',
+                       source_hashes={}, machine=MACHINE,
                        registries={}, fault=None, deadline_seconds=180, fixture=None, modifiers=None, script_checks=None)
         for target in [{'registry': 'common/traditions'}, 'fixture', 'modifiers']:
             for control in wire.CONTROL.values():
@@ -147,8 +193,14 @@ class ProtocolTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 wire.encode('record', dict(row, **changes))
 
+    def test_no_wire_message_carries_a_version(self):
+        self.assertFalse(hasattr(wire, 'VERSION'))
+        for name in ['request', 'hello', 'grant']:
+            with self.subTest(schema=name):
+                self.assertNotIn('version', wire.SCHEMAS[name]['properties'])
+
     def test_handshake_and_grant_reject_unknown_fields(self):
-        grant = dict(version=wire.VERSION, attempt='a', game=10, worker=11)
+        grant = dict(attempt='a', game=10, worker=11)
         self.assertEqual(wire.decode('grant', wire.encode('grant', grant)), grant)
         for value in [dict(grant, bypass=True), dict(grant, game=-1), dict(grant, worker='11')]:
             with self.assertRaises(ValueError):

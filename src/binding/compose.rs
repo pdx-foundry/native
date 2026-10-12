@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 /// The live observation of one build, resolved for the compiled host.
 pub(super) struct ResolvedObservation {
-    pub machine: super::Machine,
+    pub machine: crate::protocol::observation::Machine,
     pub fixture: Option<crate::protocol::observation::FixtureBinding>,
     pub script_checks: Option<crate::protocol::script_check::ScriptCheckBinding>,
     pub strategy: platform::StrategyResolution,

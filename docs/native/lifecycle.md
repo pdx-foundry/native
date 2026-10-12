@@ -52,9 +52,12 @@ build limits.
 
 The supervisor stays the game's direct parent and spawns LLDB with embedded Python as the worker
 (an external Python cannot import `lldb` without Xcode's interpreter setup). Before the game
-resumes, worker and supervisor exchange a handshake: protocol revision, attempt identity, process
-identities, executable identity, and LLDB and Python versions. The trace is an append-only
-sequence with a terminal record.
+resumes, worker and supervisor exchange a handshake: the hash of each worker package file,
+attempt identity, process identities, executable identity, and LLDB and Python versions. The trace
+is an append-only sequence with a terminal record.
+
+The wire carries no hand-bumped version. A changed protocol changes the Native build, which caller
+and supervisor compare, and `protocol.py`, whose hash the worker compares with the supervisor's.
 
 `worker.py::decide_pause` makes the pause decision from observed progress. A fixture never owns
 the pause. The private request carries one fault with an observation target and a control kind;

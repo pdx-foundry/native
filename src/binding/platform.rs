@@ -41,7 +41,7 @@ pub(in crate::binding) struct ObservationSetup<'a> {
     pub modifiers: Option<crate::protocol::observation::ModifierTableBinding>,
     pub script_checks: Option<crate::protocol::script_check::ScriptCheckBinding>,
     pub startup_seconds: u64,
-    pub machine: &'a super::Machine,
+    pub machine: &'a crate::protocol::observation::Machine,
     pub package: &'a std::collections::BTreeMap<String, Vec<u8>>,
 }
 

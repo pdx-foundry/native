@@ -385,14 +385,6 @@ impl ExecutionPlan {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct Machine {
-    pub architecture: String,
-    pub spawn_preference: i32,
-    pub registers: std::collections::BTreeMap<String, String>,
-}
-
 impl std::fmt::Debug for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Binding")

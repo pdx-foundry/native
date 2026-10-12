@@ -10,21 +10,14 @@
 //! documentation was entered and returned on the launch thread, the stream has no hole up to the
 //! terminal, the file is the one that the stream names, and every name is distinct. Otherwise the
 //! reason is returned and no table is.
-use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord, single};
-use crate::protocol::observation::{ModifierEntry, ModifierTable, RegistryKeys};
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use super::event_stream::{self, OwnerEvent, single};
+use crate::protocol::{
+    observation::{ModifierTable, WorkerEvent, WorkerRecord},
+    session::ObservedModifiers,
+};
+use std::collections::BTreeSet;
 
 use crate::protocol::hooks::MODIFIERS_DOCUMENTATION as HOOK;
-
-/// The accepted table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ObservedModifiers {
-    /// Each entry's name and category mask, in table order.
-    pub entries: Vec<ModifierEntry>,
-    /// The item keys of each requested registry, or why they could not be read.
-    pub registries: BTreeMap<String, RegistryKeys>,
-}
 
 /// Join the stream, the owner events and the table file of the session `attempt`. `registries`
 /// are the registries whose keys the session requested.
@@ -125,6 +118,8 @@ pub(crate) fn reduce(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::observation::{ModifierEntry, RegistryKeys};
+    use std::collections::BTreeMap;
 
     const ATTEMPT: &str = "a";
     const THREAD: u64 = 7;

@@ -10,7 +10,6 @@ pub(crate) mod observation;
 pub(crate) mod script_check;
 pub(crate) mod session;
 
-const VERSION: u32 = 10;
 /// A `Paused` reply holds the items of every observed registry, which the worker's stream
 /// bounds, and the loaded modifier table, which its file bounds; the other messages are small.
 const MAX_MESSAGE: usize = observation::MAX_TRACE + observation::MAX_MODIFIER_TABLE + 64 * 1024;
@@ -28,7 +27,6 @@ pub(crate) const BUILD: &str = concat!(
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Hello {
-    pub version: u32,
     pub build: String,
     /// Process number of the caller. The supervisor must be its direct child.
     pub controller: u32,
@@ -36,15 +34,11 @@ pub(crate) struct Hello {
 impl Hello {
     pub fn current() -> Self {
         Self {
-            version: VERSION,
             build: BUILD.into(),
             controller: std::process::id(),
         }
     }
     pub fn validate(&self) -> Result<(), SupervisorError> {
-        if self.version != VERSION {
-            return Err(SupervisorError("Protocol version mismatch".into()));
-        }
         if self.build != BUILD {
             return Err(SupervisorError(format!(
                 "The supervisor links Native build {BUILD}, and the caller links {}",
@@ -70,20 +64,10 @@ pub(crate) enum Reply {
     Ready,
     /// The game is held at its pause, with what the session established about each registry.
     Paused {
-        readiness: crate::GameReadiness,
+        readiness: session::GameReadiness,
         fixture: Box<Option<Result<crate::Answer<crate::FixtureObservation>, crate::Error>>>,
-        modifiers: Box<
-            Option<
-                Result<
-                    crate::engine::operations::loaded_modifiers::ObservedModifiers,
-                    crate::Error,
-                >,
-            >,
-        >,
-        registries: std::collections::BTreeMap<
-            String,
-            crate::engine::operations::registry_items::RegistryItems,
-        >,
+        modifiers: Box<Option<Result<session::ObservedModifiers, crate::Error>>>,
+        registries: std::collections::BTreeMap<String, session::RegistryItems>,
     },
     /// Acknowledges a registry, fixture or modifier read.
     ObservationRead { request: u64 },
@@ -128,7 +112,6 @@ mod tests {
     #[test]
     fn rejects_mismatch_oversize_truncation_and_unknown_fields() {
         let valid = Hello {
-            version: VERSION,
             build: BUILD.into(),
             controller: u32::MAX,
         };
@@ -136,15 +119,6 @@ mod tests {
         assert!(
             Hello {
                 build: "different-linked-build".into(),
-                version: VERSION,
-                controller: u32::MAX,
-            }
-            .validate()
-            .is_err()
-        );
-        assert!(
-            Hello {
-                version: VERSION + 1,
                 ..valid
             }
             .validate()
@@ -154,7 +128,7 @@ mod tests {
         let mut frame = Vec::new();
         write(
             &mut frame,
-            &serde_json::json!({"version":VERSION,"build":BUILD,"controller":1,"bypass":true}),
+            &serde_json::json!({"build":BUILD,"controller":1,"bypass":true}),
         )
         .unwrap();
         assert!(read::<Hello>(frame.as_slice()).is_err());

@@ -8,14 +8,14 @@
 use crate::{
     Completeness, DiagnosticCoverage, FixtureObservation, FixtureParsing, FixtureStorage,
     answer::Disposal,
-    engine::operations::{
-        event_stream::{self, Hook, WorkerEvent, WorkerRecord},
-        loaded_modifiers::ObservedModifiers,
-        registry_items::{Observed, RegistryItems},
-    },
+    engine::operations::event_stream,
     protocol::{
         self,
-        session::{SessionOutcome, SessionReport, SessionRequest},
+        observation::{Hook, WorkerEvent, WorkerRecord},
+        session::{
+            Observed, ObservedModifiers, RegistryItems, SessionOutcome, SessionReport,
+            SessionRequest,
+        },
     },
     supervisor::SupervisorError,
     work_directory as files,

@@ -169,7 +169,6 @@ impl Observer {
         files::write_new(&work_directory.join("raw-trace.jsonl"), b"")?;
         files::write_json(&work_directory.join("tool.json"), &tool)?;
         let request = WorkerRequest {
-            version: observation::VERSION.into(),
             attempt: attempt.into(),
             game: 0,
             executable: executable
@@ -264,7 +263,6 @@ impl Observer {
                 files::publish_json(
                     &self.output.join("resume-granted.json"),
                     &ResumeGrant {
-                        version: observation::VERSION.into(),
                         attempt: self.request.attempt.clone(),
                         game: self.request.game,
                         worker: pid,
@@ -401,11 +399,7 @@ impl Observer {
             scope: *scope,
             text: input.text.clone(),
             durations,
-            kind: match input.kind {
-                crate::DeclarationKind::Trigger => "trigger",
-                crate::DeclarationKind::Effect => "effect",
-            }
-            .into(),
+            kind: input.kind.into(),
         })
     }
 
@@ -424,8 +418,9 @@ impl Observer {
         if !path.try_exists()? {
             return Ok(None);
         }
-        let reply: crate::protocol::script_check::CheckReply =
-            serde_json::from_slice(&files::read_bounded(&path, 256 * 1024)?)?;
+        let reply: crate::protocol::script_check::CheckReply = serde_json::from_slice(
+            &files::read_bounded(&path, crate::protocol::script_check::MAX_REPLY)?,
+        )?;
         if reply.attempt != self.request.attempt || reply.check != check {
             return Err(SupervisorError("foreign script-check reply".into()));
         }
@@ -451,8 +446,7 @@ impl Observer {
     }
 
     fn validate_hello(&self, hello: &WorkerHello, pid: u32) -> Result<(), SupervisorError> {
-        if hello.version != observation::VERSION
-            || hello.attempt != self.request.attempt
+        if hello.attempt != self.request.attempt
             || hello.game != self.request.game
             || hello.worker != pid
             || hello.target != self.request.target
@@ -580,8 +574,7 @@ pub(crate) fn test_observer(
                     directory_offset: 0,
                     data_offset: 0,
                     count_offset: 0,
-                    key_offset: Some(0),
-                    key_unavailable: None,
+                    key_storage: observation::KeyStorage::Offset(0),
                     pointer_size: 8,
                     string_tag_offset: 23,
                 },
@@ -591,7 +584,6 @@ pub(crate) fn test_observer(
     Observer {
         output: root.into(),
         request: WorkerRequest {
-            version: observation::VERSION.into(),
             attempt: "unit".into(),
             game,
             executable: "/not-used".into(),
@@ -812,10 +804,9 @@ mod tests {
             "the launched stub did not join the worker group"
         );
         let raw = fs::read(root.path().join("raw-trace.jsonl")).unwrap();
-        let record: crate::engine::operations::event_stream::WorkerRecord =
-            serde_json::from_slice(&raw).unwrap();
+        let record: observation::WorkerRecord = serde_json::from_slice(&raw).unwrap();
         assert!(
-            matches!(record.event, crate::engine::operations::event_stream::WorkerEvent::CapabilityUnavailable { reason } if reason.contains("debugger attach timed out"))
+            matches!(record.event, observation::WorkerEvent::CapabilityUnavailable { reason } if reason.contains("debugger attach timed out"))
         );
         assert!(
             group_members(group, Duration::from_secs(1))
@@ -877,14 +868,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut observer = observer(root.path(), Command::new("/bin/sleep").arg("30"));
         let pid = observer.worker.as_ref().unwrap().id();
-        let hello = serde_json::json!({"version": observation::VERSION, "attempt":"unit", "game":123, "worker":pid, "target":"target", "source_hashes":{}, "python":"python", "lldb":"lldb", "module":"module"});
+        let hello = serde_json::json!({"attempt":"unit", "game":123, "worker":pid, "target":"target", "source_hashes":{}, "python":"python", "lldb":"lldb", "module":"module"});
         assert!(
             observer
                 .validate_hello(&serde_json::from_value(hello.clone()).unwrap(), pid)
                 .is_ok()
         );
         for field in [
-            "version",
             "attempt",
             "target",
             "python",

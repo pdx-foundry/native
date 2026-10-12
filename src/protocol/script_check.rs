@@ -72,12 +72,32 @@ pub(crate) struct ScriptCheckBinding {
     pub scopes: BTreeMap<String, u64>,
 }
 
+/// The command kind that a check reads. The worker selects the command binding by the wire
+/// name, so each name is a field of [`ScriptCheckBinding`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CheckKind {
+    /// A trigger command.
+    Trigger,
+    /// An effect command.
+    Effect,
+}
+
+impl From<crate::DeclarationKind> for CheckKind {
+    fn from(kind: crate::DeclarationKind) -> Self {
+        match kind {
+            crate::DeclarationKind::Trigger => Self::Trigger,
+            crate::DeclarationKind::Effect => Self::Effect,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CheckRequest {
     pub attempt: String,
     pub check: u64,
-    pub kind: String,
+    pub kind: CheckKind,
     pub scope: u64,
     pub text: String,
     /// Receivers of the commands that the text names, at most `MAX_DURATION_RECEIVERS`.
@@ -86,6 +106,9 @@ pub(crate) struct CheckRequest {
 
 /// The most receivers that one check carries.
 pub(crate) const MAX_DURATION_RECEIVERS: usize = 64;
+
+/// The most bytes of the worker's reply file for one check.
+pub(crate) const MAX_REPLY: usize = 256 * 1024;
 
 /// The duration slots of one command receiver, which the worker matches by vtable.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -174,6 +197,32 @@ impl CheckedScript {
             unjoined: self.observation.unjoined,
             hooks_active: self.observation.hooks_active,
             bound_reached: self.observation.bound_reached,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_check_kind_names_a_command_binding() {
+        let schema = schemars::schema_for!(CheckKind);
+        let kinds: Vec<&str> = schema
+            .get("oneOf")
+            .and_then(serde_json::Value::as_array)
+            .expect("the check kinds are documented unit variants")
+            .iter()
+            .map(|kind| kind["const"].as_str().unwrap())
+            .collect();
+        assert_eq!(kinds, ["trigger", "effect"]);
+
+        let binding = serde_json::to_value(ScriptCheckBinding::default()).unwrap();
+        for kind in kinds {
+            assert!(
+                serde_json::from_value::<CommandBinding>(binding[kind].clone()).is_ok(),
+                "{kind} is not a command of the script-check binding"
+            );
         }
     }
 }

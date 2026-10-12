@@ -24,8 +24,8 @@ use crate::engine::analysis::{
     families,
     modifiers::{self, CategoryInput, CategoryNames, DefinitionSite, Tags},
 };
-use crate::engine::operations::loaded_modifiers::ObservedModifiers;
 use crate::protocol::observation::RegistryKeys;
+use crate::protocol::session::ObservedModifiers;
 
 /// Name and revision of the loaded modifier method.
 pub(crate) const METHOD: &str = "loaded-modifiers/v1";

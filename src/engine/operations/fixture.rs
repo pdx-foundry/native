@@ -3,10 +3,12 @@
 //!
 //! The producer numbers the occurrences of a field. A record whose number skips ahead of the last
 //! kept one stays, with a gap for the lost occurrence; a repeated or earlier number is refused.
-use super::event_stream::{self, OwnerEvent, WorkerEvent, WorkerRecord};
+use super::event_stream::{self, OwnerEvent};
 use crate::protocol::{
     hooks,
-    observation::{FixtureStorageDecoder, diagnostic_stage},
+    observation::{
+        FixtureEvent, FixtureStorageDecoder, WorkerEvent, WorkerRecord, diagnostic_stage,
+    },
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
@@ -14,104 +16,10 @@ use crate::{
     FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue, Gap, GapKind, GapSubject,
     Operation, ParsedFieldOccurrence, Reader, ReaderId, ReaderKind, Source, StoredFieldOccurrence,
 };
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The producer numbers at most this many occurrences of one field, and refuses more.
 const MAX_OCCURRENCE: u64 = 128;
-
-/// Worker events inside one fixture window. Thread and sequence belong to the outer record.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-pub(crate) enum FixtureEvent {
-    LoadStart {
-        file: String,
-    },
-    Definition {
-        file: String,
-        line: u64,
-        definition: String,
-        owner: String,
-    },
-    FieldAuthority {
-        question: u64,
-        reader_id: Option<String>,
-        reader_kind: ReaderKind,
-        #[serde(default)]
-        reader_family: crate::BlockFamily,
-        storage_decoder: Option<FixtureStorageDecoder>,
-        unavailable: Option<String>,
-    },
-    FieldStorage {
-        question: u64,
-        file: String,
-        line: u64,
-        definition: String,
-        field: String,
-        owner: String,
-        occurrence: u64,
-        value: FixtureValue,
-    },
-    FieldParse {
-        question: u64,
-        file: String,
-        line: u64,
-        definition: String,
-        field: String,
-        owner: String,
-        occurrence: u64,
-        returned: bool,
-    },
-    ParsingTerminal {
-        question: u64,
-        count: u64,
-        unavailable: Option<String>,
-    },
-    Diagnostic {
-        text: String,
-        stage: String,
-        file: Option<String>,
-        line: Option<u64>,
-        definition: Option<String>,
-        field: Option<String>,
-        occurrence: Option<u64>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        parent_field: Option<String>,
-    },
-    FieldTerminal {
-        question: u64,
-        owner: Option<String>,
-        definition_line: Option<u64>,
-        reader_id: Option<String>,
-        reader_kind: ReaderKind,
-        #[serde(default)]
-        reader_family: crate::BlockFamily,
-        final_value: Option<FixtureValue>,
-        unavailable: Option<String>,
-    },
-    DiagnosticsTerminal {
-        count: u64,
-    },
-    DiagnosticsUnavailable {
-        reason: String,
-    },
-    ValidationComplete {
-        file: String,
-    },
-    LoadReturned {
-        file: String,
-    },
-    End {
-        #[serde(default)]
-        field_outcomes: u64,
-        #[serde(default)]
-        diagnostics: u64,
-        producer_last_sequence: u64,
-    },
-    Unavailable {
-        reason: String,
-    },
-}
 
 pub(crate) fn reduce(
     request: &FixtureRequest,

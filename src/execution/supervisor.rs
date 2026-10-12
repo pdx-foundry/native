@@ -336,7 +336,7 @@ fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, Supervi
 }
 
 fn worker_exit_result(
-    records: &[event_stream::WorkerRecord],
+    records: &[protocol::observation::WorkerRecord],
 ) -> Result<SessionOutcome, SupervisorError> {
     let cause = records
         .iter()
@@ -624,7 +624,7 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 mod tests {
     use super::*;
-    use crate::engine::operations::registry_items::Observed;
+    use crate::protocol::session::Observed;
     use std::{
         os::unix::fs::PermissionsExt,
         process::{Command, Stdio},
@@ -808,7 +808,7 @@ mod tests {
         }
         let script = format!(
             r#"
-printf '{{"version":"%s","attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{{}},"python":"python","lldb":"lldb","module":"module"}}' "$NATIVE_VERSION" "$GAME_PID" "$$" > hello.json.pending
+printf '{{"attempt":"unit","game":%s,"worker":%s,"target":"target","source_hashes":{{}},"python":"python","lldb":"lldb","module":"module"}}' "$GAME_PID" "$$" > hello.json.pending
 mv hello.json.pending hello.json
 while [ ! -f resume-granted.json ]; do sleep 0.01; done
 {after_resume}
@@ -819,7 +819,6 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
             .arg("-c")
             .arg(script)
             .current_dir(directory)
-            .env("NATIVE_VERSION", crate::protocol::observation::VERSION)
             .env("GAME_PID", game_pid.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::null());

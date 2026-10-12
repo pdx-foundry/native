@@ -93,10 +93,6 @@ pub(super) fn modifier_table_binding(
             .registries
             .into_iter()
             .map(|(directory, (instance, key_offset))| {
-                let (key_offset, key_unavailable) = match key_offset {
-                    Ok(offset) => (Some(offset), None),
-                    Err(reason) => (None, Some(reason)),
-                };
                 (
                     directory,
                     crate::protocol::observation::ModifierRegistryBinding {
@@ -105,8 +101,7 @@ pub(super) fn modifier_table_binding(
                         data_offset: registry.data_offset,
                         count_offset: registry.count_offset,
                         pointer_size: registry.pointer_size,
-                        key_offset,
-                        key_unavailable,
+                        key_storage: key_storage(key_offset),
                     },
                 )
             })
@@ -120,10 +115,6 @@ pub(super) fn registry_binding(
     load_entry: u64,
     key_offset: Result<u64, String>,
 ) -> crate::protocol::observation::RegistryBinding {
-    let (key_offset, key_unavailable) = match key_offset {
-        Ok(offset) => (Some(offset), None),
-        Err(reason) => (None, Some(reason)),
-    };
     crate::protocol::observation::RegistryBinding {
         name: directory.into(),
         directory: directory.into(),
@@ -131,9 +122,17 @@ pub(super) fn registry_binding(
         directory_offset: layout.directory_offset,
         data_offset: layout.data_offset,
         count_offset: layout.count_offset,
-        key_offset,
-        key_unavailable,
+        key_storage: key_storage(key_offset),
         pointer_size: layout.pointer_size,
         string_tag_offset: layout.string_tag_offset,
+    }
+}
+
+fn key_storage(key_offset: Result<u64, String>) -> crate::protocol::observation::KeyStorage {
+    use crate::protocol::observation::KeyStorage;
+
+    match key_offset {
+        Ok(offset) => KeyStorage::Offset(offset),
+        Err(reason) => KeyStorage::Unavailable(reason),
     }
 }
