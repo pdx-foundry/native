@@ -8,37 +8,52 @@
 //! ([`directories::enumeration_calls`]): a literal text, a null pointer, or a constant depth. Any
 //! other value is not established.
 //!
-//! A definition's name is a stated rule of the loader's code, not read from it: each stated form
-//! holds when the build has the code that the rule names. `docs/native/loader-rules.md` has the
-//! engine facts and the stated rules.
+//! A definition's name is a stated rule of the loader's code, not read from it: each stated rule
+//! holds when the build has the code that the rule names. A rule gives the forms that name every
+//! definition they select, and the obstacles that keep its other definitions out of any form.
+//! `docs/native/loader-rules.md` has the engine facts and the stated rules.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::directories::{self, Anchors, Constructor, Value};
 use crate::{DefinitionForm, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v2";
+pub const METHOD: &str = "loader-rules/v3";
 
-/// A definition form that a stated rule of one of the registry's loaders gives, or `None` when
-/// the build lacks the code that the rule names.
-pub type StatedForm = Option<DefinitionForm>;
+/// What a stated rule of one of the registry's loaders gives, or `None` when the build lacks the
+/// code that the rule names.
+pub type StatedRule = Option<Rule>;
+
+/// The definition forms of one stated rule, and why the rule names some definitions in no form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rule {
+    /// Forms that each name every definition they select.
+    pub forms: Vec<DefinitionForm>,
+    /// What the forms cannot state, such as a field that renames a definition. Each is a gap's
+    /// detail.
+    pub obstacles: Vec<&'static str>,
+}
 
 /// What a registry's loaders show.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoaderEvidence {
     /// The arguments of every file enumeration that the loaders make.
     pub enumerations: Vec<Enumeration>,
-    /// The definition forms that the loaders' stated rules give.
-    pub stated: Vec<StatedForm>,
+    /// The loaders' stated definition-name rules.
+    pub stated: Vec<StatedRule>,
 }
 
 /// The definition forms of a registry's loaders that the build holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Naming {
+    /// How many stated rules the loaders have.
+    pub rules: usize,
     /// Each distinct form, in the order of the stated rules.
     pub forms: Vec<DefinitionForm>,
     /// How many stated rules name code that the build lacks.
     pub missing: usize,
+    /// The obstacles of the rules that the build holds, in rule order.
+    pub obstacles: Vec<&'static str>,
 }
 
 /// What one text argument of an enumeration call holds.
@@ -111,18 +126,26 @@ pub fn selection(calls: &[Enumeration]) -> Selection {
     }
 }
 
-/// The distinct forms of `stated`, and how many rules the build does not hold.
-pub fn naming(stated: &[StatedForm]) -> Naming {
+/// The distinct forms and the obstacles of the rules in `stated` that the build holds, and how many
+/// rules it does not hold.
+pub fn naming(stated: &[StatedRule]) -> Naming {
     let mut forms = Vec::new();
-    for form in stated.iter().flatten() {
-        if !forms.contains(form) {
-            forms.push(form.clone());
+    let mut obstacles = Vec::new();
+    for rule in stated.iter().flatten() {
+        for form in &rule.forms {
+            if !forms.contains(form) {
+                forms.push(form.clone());
+            }
         }
+
+        obstacles.extend(&rule.obstacles);
     }
 
     Naming {
+        rules: stated.len(),
         forms,
-        missing: stated.iter().filter(|form| form.is_none()).count(),
+        missing: stated.iter().filter(|rule| rule.is_none()).count(),
+        obstacles,
     }
 }
 
@@ -355,23 +378,32 @@ mod tests {
         }
     }
 
+    fn rule(forms: Vec<DefinitionForm>, obstacles: Vec<&'static str>) -> StatedRule {
+        Some(Rule { forms, obstacles })
+    }
+
     #[test]
-    fn naming_keeps_each_distinct_form_in_rule_order_and_counts_the_missing_rules() {
+    fn naming_keeps_each_distinct_form_and_obstacle_in_rule_order_and_counts_the_missing_rules() {
         let stated = [
-            Some(form(DefinitionName::Key)),
+            rule(vec![form(DefinitionName::Key)], vec![]),
             None,
-            Some(form(DefinitionName::Field("id".into()))),
-            Some(form(DefinitionName::Key)),
+            rule(
+                vec![form(DefinitionName::Field("id".into()))],
+                vec!["renamed"],
+            ),
+            rule(vec![form(DefinitionName::Key)], vec!["unnamed"]),
         ];
 
         assert_eq!(
             naming(&stated),
             Naming {
+                rules: 4,
                 forms: vec![
                     form(DefinitionName::Key),
                     form(DefinitionName::Field("id".into()))
                 ],
                 missing: 1,
+                obstacles: vec!["renamed", "unnamed"],
             }
         );
     }

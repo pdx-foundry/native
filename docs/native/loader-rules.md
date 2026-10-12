@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v2`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v3`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads) and how it names each form of
 definition in them. The folder is the registry name. The duplicate-definition rule, the file order
 and the mod-over-vanilla rule (SDK-790) are gaps whose subjects are `duplicate_rule` and
@@ -112,21 +112,90 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
   `has_active_tradition` (`0x1021bedb0`) compares the key with each tradition's key and then
   with `+0xf8` of each swap that does not inherit effects. `CTraditionType` is also the item of
   `common/ascension_perks`, so its swaps have the same name. A swap's name identifies it only
-  together with its owner ([registry fields](registry-fields.md#registry-names)); the other swap
-  classes have no name lookup and are not stated.
+  together with its owner ([registry fields](registry-fields.md#registry-names)).
+- **Other swap blocks.** Each swap class reads `name` (`0x1b`) into its own member.
+  - `CTechnology::ReadMember` (`0x100c8098c`) reads `technology_swap` into a `CTechnologySwap`;
+    `CTechnologySwap::ReadMember` (`0x100ca7d9c`) reads `name` into `+0x308`, and `InitPostRead`
+    (`0x100ca8278`) forms the swap's localization key from it. No lookup compares it.
+  - `CGovernmentAuthorityType::ReadMember` (`0x1007f3b5c`) reads `advanced_authority_swap` into a
+    `CAdvancedAuthoritySwap`, whose `ReadMember` (`0x1007f28f4`) reads `name` into `+0x2c8`.
+    `CGovernmentAuthorityType::GetSwapByKey(CString)` (`0x1007f6d50`) and `GetSwapTooltip`
+    (`0x1007f7a44`) compare a key with `+0x2c8` of each of the owner's swaps.
+  - `CGovernmentCivicType::ReadMember` (`0x1007fc04c`) reads `swap_type` into a
+    `CGovernmentCivicTypeSwap` (`name` into `+0xc0`). `Initialize(CString const&)`
+    (`0x1007fad94`) uses the owner's name when `name` is empty.
+  - `CJobType::ReadMember` (`0x1008b426c`) reads `swappable_data`; its serializer
+    (`CSwapCollection<SPopJobTypeSwap, …>::CSerializer::ReadMember`, `0x1008bea40`) reads each
+    `swap_type` into a `CSwappableBase`, whose constructor (`0x100c7185c`) copies the job's key
+    into the name (`+0xf0`) before `CSwappableBase::ReadMember` (`0x100c71e44`) reads `name`.
+  - `SPopCategorySwap` (`common/pop_categories`) has the same collection shape; it is not stated.
+- **Custom loaders.** Each loader below loops `CReader::ReadSimpleStatement()` over a file unless
+  stated. `ReadSimpleStatement` does not expand `inline_script`; `CPersistent::Read` does, inside
+  a definition's block.
+  - Root key (the loader builds the item from the statement key, and the lookup compares it):
+    `CFallenEmpiresDatabase::InitFromFile` (`0x10050e054`, `GetFallenEmpireByName`),
+    `COnActionDatabase::Init` (`0x1009b09a4`, `GetOnActionList`; a repeated key merges),
+    `COpinionModifierDatabase::Init` (`0x1009c1cf4`, `GetModifier`),
+    `CStrategicResourceDatabase::Init` (`0x100c647f4`, `GetResource`) and
+    `CTraitDatabase::ReadTraits` (`0x100cffb7c`, `GetTrait`; it expands `inline_script` itself).
+  - One root key, named by a field: `CShipBehaviorDatabase` takes only `ship_behavior`
+    (`0x311c`); `CShipBehaviorReader::CreateAndRead` (`0x1011b79b4`) reads `name` into `+8`, which
+    `AddBehavior` hashes and compares. `CSpecialProjectDatabase::Init` (`0x100b9ddec`) takes only
+    `special_project` (`0x2d8b`); `CSpecialProjectType::ReadMember` reads `key` (`0xdc`) into
+    `+8`, which the second pass of `Init` compares. `CWorldGfxDatabase::ReadMember`
+    (`0x101bc252c`) takes only `gfx_settings` (`0x2e6f`); `CWorldGraphicalMapData::ReadMember`
+    reads `world` (`0x3fe8`) into `+8` and its hash into `+0x30`, which `GetWorldGfxIndex`
+    compares. Other root keys are skipped, or reported for `gfx_settings`.
+  - No name: `CColorsDatabase::Init` (`0x1012fb45c`) reads six fixed keys (`species`, `country`,
+    …) of anonymous `rgb`/`hsv` entries, read by index. `CStartScreenMessageDatabase::InitInstance`
+    (`0x100c5db64`) reads `part` blocks into an array by their `location`; `localization` is text
+    that `InitPostRead` localizes, and no function compares it. `CTerraformDatabase::InitInstance`
+    (`0x100cb0254`) reads `terraform_link` blocks, read by index (`GetLink(int)`).
+  - A field that changes the name: `CAmbientObjectData::ReadMember` (`0x100f34ef0`) reads `name`
+    (`0x1b`) and `tag` (`0x3ff4`) into the same member, and `FindObjectData` compares its hash;
+    the loader takes only `ambient_object` (`0x3109`). `CShipDesign::ReadMember` (`0x1011bd5e4`)
+    reads `name` as a `CPersistentName` (`CPersistentName::Read`, `0x100a1c0d8`): a block value
+    `name = { key = x … }` names the design by `key`; `FindShipDesignByName` compares it; the
+    loader takes only `ship_design` (`0x2c6f`). `CStaticModifier::ReadMember` (`0x100977690`)
+    calls `SetKey` for a `key` field (`0xdc`) after the root key set it.
+    `CEmpireDesign::ReadMember` (`0x100468d84`) reads `key` into the root key's member `+8`.
+  - A reserved root key: `CPlanetClassDatabase::Init` (`0x10115a26c`) builds a
+    `CPlanetClassRandomList` from `random_list` (`0x2714`) and a planet class from any other key.
+    `CEmpireDesignDatabase::InitFromFile` (`0x10046cb90`) reads `default` into the database.
+  - Two loaders of `prescripted_countries`: the design loader names every other root key a
+    design; `CPrescriptedSpeciesDatabase::InitInstance` (`0x100aa72d4`) takes only
+    `prescripted_country` (`0x2d93`) and names it by `key` (`Find`, `0x100aa77a4`).
+  - Names that no statement form holds: `CWeaponTagDatabase::InitInstance` (`0x1001d9f8c`) passes
+    every token of the file to `SComponentTag::RegisterTag`. `CSpeciesNamesDatabase::Init`
+    (`0x100bab6e0`) names a collection by a species-class root key or by a key under
+    `named_lists`, and each name set by its key inside a collection. `CDiploPhraseDatabase::Init`
+    (`0x1003fe2bc`) names a phrase by its key under `greetings`, or two levels under any other
+    root key. `CEmpireFlagDatabase::Init` (`0x10047c768`) takes each `.dds` file as a flag named by
+    its file name, in a category named by its folder, and reads `colors.txt` and `usage.txt`
+    apart.
 
 ### Stated rules (recorded manual exception)
 
 - **Claim.** A template loader names each root definition by its key
   (`Root` / `Key`). The events loader names a `namespace = x` statement by its value
   (`RootKey("namespace")` / `Value`) and every other accepted root statement by its `id` field
-  (`Root` / `Field("id")`). A registry whose item is `CTraditionType` names each
-  `tradition_swap` block by its `name` field (`Nested { ["tradition_swap"] }` / `Field("name")`).
+  (`Root` / `Field("id")`). An item of class `CTraditionType`, `CTechnology` or
+  `CGovernmentAuthorityType` names each `tradition_swap`, `technology_swap` or
+  `advanced_authority_swap` block by its `name` field (`Nested { [block] }` / `Field("name")`).
+  The custom loaders above name their definitions by root key (`Root` / `Key`), by a field of
+  one root key (`RootKey(k)` / `Field(f)`), or not at all (no form). Each other custom loader,
+  and the civic and job swaps, has an obstacle that no form states.
 - **Conditions.** Each rule's functions are bound: the candidate's `LoadFromReader`;
   `ReadEventsFile` and the `CNameSpace` hash `Find`; `ReadEventsFile`, `CEvent::ReadMember` and
-  `GetIDInNameSpace`; `CTraditionType::ReadMember` and `CTraditionSwap::ReadMember`. A rule whose
-  function is missing makes the property `Partial`, or `Unresolved` when no rule holds, with a
-  gap whose subject is `definition_names`.
+  `GetIDInNameSpace`; the item's `ReadMember` and the swap reader; and the loader and lookup
+  functions of each custom rule (`src/binding/binary/definition_names.rs`). A rule whose
+  function is missing makes the property `Partial`, or `Unresolved` when no form holds, with an
+  `UnresolvedPath` gap whose subject is `definition_names`.
+- **Obstacles.** A rule with an obstacle states no form for the definitions it affects; each
+  obstacle is an `OutsideMethod` gap whose subject is `definition_names` and whose detail names
+  it. A form is stated only when it names every definition it selects: a field that renames a
+  definition, a second field that sets the name, a block-valued name, a reserved root key or a
+  second loader of the same statements would make a stated form wrong for some definitions.
 - **Obstacle.** The name reaches the item, the namespace table or the swap's member through
   stack copies, inlined construction and a later lookup or list insertion. No method follows a
   key or a field value into the member that the loader or a lookup compares, and a constructor's
@@ -137,8 +206,9 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
 The checks are the disassembly above for both template shapes, the fixture observation (a
 template definition is found by its root key), and parity.
 
-The method states no file-name form and no skipped wrapper key: no stated rule shows one. That
-does not prove that the 20 unstated custom loaders have none.
+The answer has no file-name form, no bare-token form, no nested-key form at a variable depth and
+no skipped root key; the loaders that need one have an obstacle gap. A `Known` answer with no
+form means that the loader names none of its definitions.
 
 Pitfall: a constructor that takes `(int, CString const&)` is not proof of the root key; some
 template loaders reach the item through `ReadNewEntry`, and the signature does not show where the
@@ -151,8 +221,17 @@ string comes from.
   `per_relation`) as a definition.
 - `common/country_container`: the config's `skip_root_key = collection` skips the root key; the
   template loader names the definition `collection`.
-- The `swapped_*` types other than `swapped_tradition` and `swapped_ascension_perk` have no
-  stated form.
+- `swapped_technology` and `swapped_authority` agree (`name`). `swapped_civic` and `swapped_job`
+  take `name`, but a swap without it takes its name from its owner.
+- `common/ambient_objects` (`name_field = name`), `common/global_ship_designs` (`name`),
+  `common/ship_behaviors` (`name`), `common/special_projects` (`key`) and `gfx/worldgfx` (`world`)
+  agree with the loader. For ambient objects `tag` also sets the name, and a design's `name` can
+  be a block named by its `key`; these two keep an obstacle gap.
+- `common/start_screen_messages` (`name_field = localization`): the loader names no part;
+  `localization` is display text that no function compares, and parts with the same text are all
+  kept.
+- `common/species_names` (`name_field = name`): the loader names collections and name sets by
+  keys (a species class, a key under `named_lists`, and each set's key), not by a `name` field.
 
 ## Result on M452
 
@@ -165,24 +244,23 @@ All 185 listed registries have every file-selection property `Known`; none is un
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
 | Every file, every level | 1 (`flags`) |
 
-Definition names: 165 `Known`, 20 `Unresolved`, none `Partial`.
+Definition names: 174 `Known`, 2 `Partial` and 9 `Unresolved`; each `Partial` or `Unresolved`
+answer has an obstacle gap.
 
 | Forms | Registries |
 | --- | ---: |
-| Root key | 162 |
-| Root key, and `tradition_swap` by `name` | 2 (`common/traditions`, `common/ascension_perks`) |
+| Root key | 163 (158 template, 5 custom) |
+| Root key, and swaps by `name` | 4 (`common/traditions`, `common/ascension_perks`, `common/technology`, `common/governments/authorities`) |
+| One root key, by a field | 3 (`common/ship_behaviors` by `name`, `common/special_projects` by `key`, `gfx/worldgfx` by `world`) |
 | `namespace` by value, and other root keys by `id` | 1 (`events`) |
-| Unresolved: a custom loader with no stated rule | 20 |
-
-The 20 unresolved registries are the custom loaders other than `events`: `common/ambient_objects`,
-`common/colors`, `common/component_tags`, `common/diplo_phrases`, `common/fallen_empires`,
-`common/global_ship_designs`, `common/on_actions`, `common/opinion_modifiers`,
-`common/planet_classes`, `common/ship_behaviors`, `common/special_projects`, `common/species_names`,
-`common/start_screen_messages`, `common/static_modifiers`, `common/strategic_resources`,
-`common/terraform`, `common/traits`, `flags`, `gfx/worldgfx` and `prescripted_countries`.
+| No named definition (`Known`, no form) | 3 (`common/colors`, `common/start_screen_messages`, `common/terraform`) |
+| Partial: root key; the swap has an obstacle | 2 (`common/governments/civics`, `common/pop_jobs`) |
+| Unresolved: an obstacle | 9 (`common/ambient_objects`, `common/component_tags`, `common/diplo_phrases`, `common/global_ship_designs`, `common/planet_classes`, `common/species_names`, `common/static_modifiers`, `flags`, `prescripted_countries`) |
 
 `tests/expected/m452/loader-rules.json` holds each registry's answer; `cargo parity` checks it,
 `loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every
 registry in `registries()`, and
 `loader_rules_state_the_definition_name_forms_of_template_and_event_loaders` checks
-`common/traditions`, `events` and `common/diplomacy_economy`.
+`common/traditions`, `events` and `common/diplomacy_economy`, and
+`loader_rules_state_a_rule_or_an_obstacle_for_every_custom_loader` checks that no registry is
+left with no stated rule. The parity file keeps every `definition_names` gap with its kind.

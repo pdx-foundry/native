@@ -647,7 +647,8 @@ pub struct LoaderRules {
     pub name_contains: crate::GrammarProperty<Option<String>>,
     /// The subdirectories that the enumeration lists below the folder.
     pub recursion: crate::GrammarProperty<Recursion>,
-    /// How the loader names each form of definition in the registry's files.
+    /// How the loader names each form of definition in the registry's files. `Known` with no
+    /// form means that the loader names none of its definitions.
     pub definition_names: crate::GrammarProperty<Vec<DefinitionForm>>,
 }
 

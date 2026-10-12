@@ -1,742 +1,742 @@
 {
   "common/agreement_presets": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_resources": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_term_values": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_terms": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_budget": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/operations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/spynetworks": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/targets": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ambient_objects": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "a `tag` field sets the same name as the `name` field"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/anomalies": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/archaeological_site_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/armies": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/artifact_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ascension_perk_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ascension_perks": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/asteroid_belts": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/astral_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/astral_rifts": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/attitudes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/bombardment_stances": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/buildings": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/button_effects": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/bypass": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/casus_belli": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/cloaking_strength_levels": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation_exceptions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colors": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": []}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_slot_templates": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_tags": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "each token of a file is a definition named by its text"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/council_agendas": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_container": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_customization": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/card_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/focus_cards": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/focus_rewards": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_limits/ownership_limits": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_limits/ship_of_size_limits": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_levels": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_objectives": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_paths": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/decisions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/deposit_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/deposits": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplo_phrases": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplomacy_economy": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplomatic_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/districts": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/dust_clouds": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/dynamic_text": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/economic_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/economic_plans": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/edicts": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_assets": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_operation_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_operation_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ethic_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ethics": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/event_chains": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/fallen_empires": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_law_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_laws": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_perks": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/first_contact": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/frontend_backgrounds": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/galactic_community_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/galactic_focuses": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_concept_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_concepts": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_scenarios": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/global_ship_designs": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "a `name` field whose value is a block names the definition by the block's `key` field"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "common/governments": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/authorities": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["advanced_authority_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/civics": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [["OutsideMethod", "definition_names", "a `swap_type` block without a `name` field takes its name from its owner"]],
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/councilors": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/greeting_overlay_sounds": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/intel_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/intel_levels": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/job_tags": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/lawsuits": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/leader_classes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/leader_tiers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/map_modes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/megastructure_overclock_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/megastructures": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/menace_perks": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/missions/mission_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/missions/missions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/mutations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/named_colors": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/notification_modifiers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/observation_station_missions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/on_actions": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/opinion_modifiers": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/callings": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/deeds": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/psionic_auras": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/personalities": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/planet_classes": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "a root statement with the key `random_list` is not a definition"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/planet_modifiers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/policies": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/policy_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_faction_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_jobs": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [["OutsideMethod", "definition_names", "a `swappable_data` `swap_type` block without a `name` field takes its owner's key"]],
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/portrait_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/portrait_sets": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/precursor_civilizations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/prescripted_flags": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/relics": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolution_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolution_groups": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolutions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resource_converters": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resource_regions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/script_values": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_effects": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_modifiers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_triggers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/sector_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_behaviors": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "ship_behavior"}}]}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_sets": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_sizes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/situation_log/categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/situations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/special_projects": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "special_project"}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specialist_subject_perks": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specialist_subject_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_archetypes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_classes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_names": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/citizenship_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/colonization_controls": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/living_standards": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/migration_controls": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/military_service_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/population_controls": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/purge_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/slavery_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/subspecies_integration_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specimens": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/star_classes": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/star_classes/randomizers": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_buildings": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_levels": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_modules": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/start_screen_messages": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": []}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/static_modifiers": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/storm_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/strategic_resources": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/system_tooltips": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/system_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/target_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["technology_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology/category": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology/tier": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology_ages/preftl": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/terraform": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": []}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "common/timeline_events": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/tradable_actions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/tradition_categories": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/traditions": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/trait_tags": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/traits": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/war_goals": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/zone_slots": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/zones": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "dlc_metadata/dlc_recommendations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "events": {
-    "rules": {"definition_names": {"Known": [{"name": "Value", "statement": {"RootKey": "namespace"}}, {"name": {"Field": "id"}, "statement": "Root"}]}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Value", "statement": {"RootKey": "namespace"}}, {"name": {"Field": "id"}, "statement": "Root"}]}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "flags": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "definitions are image files named by their file name"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "gfx/portraits/sprite_configurations": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "gfx/projectiles/planet_destruction": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "gfx/worldgfx": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "world"}, "statement": {"RootKey": "gfx_settings"}}]}, "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "interface/resource_groups": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "map/galaxy": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "prescripted_countries": {
-    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
+    "gaps": [["OutsideMethod", "definition_names", "a root statement with the key `default` is not a definition"], ["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"], ["OutsideMethod", "definition_names", "a second loader reads root statements with the key `prescripted_country` and names them by their `key` field"]],
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "sound/advisor_voice_types": {
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "gaps": [],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   }
 }

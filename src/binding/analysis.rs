@@ -512,7 +512,7 @@ impl VerifiedAnalysis<'_> {
 
         Ok(Some(LoaderEvidence {
             enumerations: binary::references::loader_enumerations(&text, &self.image(), &classes),
-            stated: binary::definition_names::stated_forms(
+            stated: binary::definition_names::stated_rules(
                 &self.catalog.symbols,
                 &templates,
                 &databases,
