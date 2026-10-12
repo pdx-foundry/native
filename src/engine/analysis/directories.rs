@@ -31,7 +31,9 @@
 //! a literal that the scan did not read.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::decode::{add_immediate, adrp, conditional_branch_target, sub_immediate};
+use super::decode::{
+    add_immediate, adrp, call_or_jump_target, conditional_branch_target, sub_immediate,
+};
 
 /// Method revision recorded in each answer's source.
 pub const METHOD: &str = "registry-directories/v5";
@@ -89,11 +91,23 @@ pub enum Argument {
     Unknown,
 }
 
+/// What the scan knows a register holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Value {
+pub(super) enum Value {
     Unknown,
     Constant(u64),
     Stack(u64),
+}
+
+/// The file-selection argument registers at one file-enumeration call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct EnumerationCall {
+    /// The third argument: the text that a file name must end with.
+    pub suffix: Value,
+    /// The fourth argument: the text that a file name must contain.
+    pub substring: Value,
+    /// The fifth argument: the depth.
+    pub depth: Value,
 }
 
 /// A `CString` built from a literal: where it was built, and the literal's address.
@@ -143,30 +157,7 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             registers.fill(Value::Unknown);
             objects.clear();
         }
-        if let Some((destination, page)) = adrp(word, address) {
-            registers[destination] = Value::Constant(page);
-        } else if let Some((destination, source, offset, sign)) = add_immediate(word)
-            .map(|(destination, source, addend)| (destination, source, addend, 1))
-            .or_else(|| {
-                sub_immediate(word)
-                    .map(|(destination, source, subtrahend)| (destination, source, subtrahend, -1))
-            })
-        {
-            // Register 31 is the stack pointer: a source gives a stack address, and a write to it
-            // is not followed.
-            let offset = (offset as i64 * sign) as u64;
-            let value = match (source, registers[source]) {
-                (31, _) => Value::Stack(offset),
-                (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(offset)),
-                (_, Value::Stack(base)) => Value::Stack(base.wrapping_add(offset)),
-                _ => Value::Unknown,
-            };
-            if destination != 31 {
-                registers[destination] = value;
-            }
-        } else if let Some((destination, source)) = move_register(word) {
-            registers[destination] = registers[source];
-        } else if let Some(target) = branch_with_link(word, address) {
+        if let Some(target) = branch_with_link(word, address) {
             if anchors.file_enumerations.contains(&target) {
                 found.enumerated.push(registers[0]);
             }
@@ -210,18 +201,108 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
                 }
             }
         } else {
-            // Any other instruction may write its low register field, and a load or store with
-            // writeback also writes its base register.
-            if let Some(base) = writeback_base(word) {
-                registers[base] = Value::Unknown;
-            }
-            for register in second_written(word) {
-                registers[register] = Value::Unknown;
-            }
-            registers[(word & 31) as usize] = Value::Unknown;
+            step(&mut registers, word, address);
         }
     }
     found
+}
+
+/// The file-selection arguments at every file-enumeration call in one function, as the call's own
+/// basic block sets them.
+///
+/// Unlike [`scan`], this scan reads the whole function. Every branch target and every word after an
+/// unconditional branch starts a block with every register unknown, so a value is known only
+/// when the block that makes the call sets it. A shared template loader chooses its directory
+/// on two paths, then sets the other arguments after they join.
+pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Vec<EnumerationCall> {
+    let words = function.code.as_chunks::<4>().0;
+    let starts = block_starts(words, function.address);
+    let mut registers = [Value::Unknown; 32];
+    let mut calls = Vec::new();
+    for (index, word) in words.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
+        let address = function.address + index as u64 * 4;
+        if starts.contains(&address) {
+            registers.fill(Value::Unknown);
+        }
+
+        if let Some(target) = branch_with_link(word, address) {
+            if anchors.file_enumerations.contains(&target) {
+                calls.push(EnumerationCall {
+                    suffix: registers[2],
+                    substring: registers[3],
+                    depth: registers[4],
+                });
+            }
+            registers[..=18].fill(Value::Unknown);
+        } else if unconditional_branch(word).is_some() {
+            registers[..=18].fill(Value::Unknown);
+        } else {
+            step(&mut registers, word, address);
+        }
+    }
+    calls
+}
+
+/// The addresses in `words`, which start at `address`, where a basic block starts: each target of
+/// a branch, and each word after a branch that does not return.
+fn block_starts(words: &[[u8; 4]], address: u64) -> BTreeSet<u64> {
+    let mut starts = join_points(words, address);
+    for (index, word) in words.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
+        let at = address + index as u64 * 4;
+        if let Some(Transfer::Stop) = unconditional_branch(word) {
+            starts.insert(at + 4);
+            starts.extend(call_or_jump_target(word, at));
+        }
+    }
+    starts
+}
+
+/// Follow one word that is neither a call nor an unconditional branch. An `adrp`, an `add` or
+/// `sub` of an immediate, a register move and an immediate move give the value that they write;
+/// any other word makes every register that it may write unknown.
+fn step(registers: &mut [Value; 32], word: u32, address: u64) {
+    if let Some((destination, page)) = adrp(word, address) {
+        registers[destination] = Value::Constant(page);
+    } else if let Some((destination, source, offset, sign)) = add_immediate(word)
+        .map(|(destination, source, addend)| (destination, source, addend, 1))
+        .or_else(|| {
+            sub_immediate(word)
+                .map(|(destination, source, subtrahend)| (destination, source, subtrahend, -1))
+        })
+    {
+        // Register 31 is the stack pointer: a source gives a stack address, and a write to it
+        // is not followed.
+        let offset = (offset as i64 * sign) as u64;
+        let value = match (source, registers[source]) {
+            (31, _) => Value::Stack(offset),
+            (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(offset)),
+            (_, Value::Stack(base)) => Value::Stack(base.wrapping_add(offset)),
+            _ => Value::Unknown,
+        };
+        if destination != 31 {
+            registers[destination] = value;
+        }
+    } else if let Some((destination, source)) = move_register(word) {
+        // In a register move, register 31 is the zero register.
+        registers[destination] = match source {
+            31 => Value::Constant(0),
+            _ => registers[source],
+        };
+    } else if let Some((destination, value)) = move_wide_immediate(word) {
+        registers[destination] = Value::Constant(value);
+    } else {
+        // Any other instruction may write its low register field, and a load or store with
+        // writeback also writes its base register.
+        if let Some(base) = writeback_base(word) {
+            registers[base] = Value::Unknown;
+        }
+        for register in second_written(word) {
+            registers[register] = Value::Unknown;
+        }
+        registers[(word & 31) as usize] = Value::Unknown;
+    }
 }
 
 /// The destination and source registers of a 64-bit register move, `mov xd, xm`, which is
@@ -229,6 +310,27 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
 fn move_register(word: u32) -> Option<(usize, usize)> {
     (word & 0xffe0_ffe0 == 0xaa00_03e0)
         .then_some(((word & 31) as usize, (word >> 16 & 31) as usize))
+}
+
+/// The destination and value of a `movz` or `movn` word, the immediate forms of `mov`. A 32-bit
+/// form gives the 32-bit value. A write to the zero register is not a move.
+fn move_wide_immediate(word: u32) -> Option<(usize, u64)> {
+    let destination = (word & 31) as usize;
+    if destination == 31 {
+        return None;
+    }
+
+    let inverted = match word & 0x7f80_0000 {
+        0x5280_0000 => false,
+        0x1280_0000 => true,
+        _ => return None,
+    };
+    let wide = word >> 31 == 1;
+    let shifted = u64::from(word >> 5 & 0xffff) << (16 * (word >> 21 & 3));
+    let value = if inverted { !shifted } else { shifted };
+    let value = if wide { value } else { value & 0xffff_ffff };
+
+    Some((destination, value))
 }
 
 /// The target of a `bl` word at `address`.

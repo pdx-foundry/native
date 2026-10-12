@@ -346,6 +346,8 @@ pub enum Operation {
     ModifierCategoryKeys,
     /// `Native::script_expansions`
     ScriptExpansions,
+    /// `Native::loader_rules`
+    LoaderRules,
 }
 
 /// One define whose name and value type the executable reads.
@@ -407,6 +409,7 @@ impl Operation {
         Self::ModifierNodes,
         Self::ModifierCategoryKeys,
         Self::ScriptExpansions,
+        Self::LoaderRules,
     ];
 
     /// The operation's stable snake_case name, such as `registry_fields`.
@@ -433,6 +436,7 @@ impl Operation {
             Self::ModifierNodes => "modifier_nodes",
             Self::ModifierCategoryKeys => "modifier_category_keys",
             Self::ScriptExpansions => "script_expansions",
+            Self::LoaderRules => "loader_rules",
         }
     }
 }
@@ -471,7 +475,8 @@ mod operation_tests {
             | Operation::ModifierNodes
             | Operation::ModifierCategoryKeys
             | Operation::ScriptExpansions
-            | Operation::CheckScript => 21,
+            | Operation::LoaderRules
+            | Operation::CheckScript => 22,
         }
     }
 
@@ -626,6 +631,33 @@ impl std::error::Error for Error {}
 pub struct Registry {
     /// Content directory relative to the game root, such as `common/traditions`.
     pub name: String,
+}
+
+/// The file enumeration of one registry's loader. The folder is the registry name.
+///
+/// The enumeration lists each file of the folder whose name passes every filter, at the depths
+/// that [`recursion`](Self::recursion) states, and never lists a name that starts with `.`. A
+/// property that is not [`GrammarProperty::Known`](crate::GrammarProperty::Known) has a gap.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoaderRules {
+    /// The text that a file name must end with, such as `.txt`. `Known(None)` is no filter: the
+    /// enumeration lists files of every extension.
+    pub extension: crate::GrammarProperty<Option<String>>,
+    /// Text that a file name must contain anywhere. `Known(None)` is no filter.
+    pub name_contains: crate::GrammarProperty<Option<String>>,
+    /// The subdirectories that the enumeration lists below the folder.
+    pub recursion: crate::GrammarProperty<Recursion>,
+}
+
+/// The subdirectories that a loader's file enumeration lists below its folder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Recursion {
+    /// Only the files directly in the folder.
+    None,
+    /// The folder and this many levels of subdirectories below it.
+    Levels(u32),
+    /// Every level of subdirectories.
+    Unlimited,
 }
 
 /// One root field of a registry's definitions.

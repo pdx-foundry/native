@@ -119,6 +119,30 @@ pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
     Ok(json!(registries))
 }
 
+/// The loader rules of each registry that the tracked file selects, with the property and
+/// detail of each unresolved property.
+pub fn loader_rules(native: &Native, expected: &Value) -> Result<Value> {
+    let mut registries = BTreeMap::new();
+    for registry in expected
+        .as_object()
+        .ok_or("expected loader-rule registry selection")?
+        .keys()
+    {
+        let answer = current_answer(native, native.loader_rules(registry)?)?;
+        let unresolved: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.kind == GapKind::UnresolvedPath)
+            .map(|gap| json!([gap.subject.as_ref().map(GapSubject::name), gap.detail]))
+            .collect();
+        registries.insert(
+            registry,
+            json!({"rules": answer.value, "unresolved": unresolved}),
+        );
+    }
+    Ok(json!(registries))
+}
+
 #[cfg(test)]
 mod comparison_tests;
 
@@ -184,6 +208,7 @@ pub const FILES: &[&str] = &[
     "scope-inventory.json",
     "scope-links.json",
     "pre-triggers.json",
+    "loader-rules.json",
 ];
 
 pub fn expected_directory() -> PathBuf {
@@ -231,6 +256,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             Ok(json!({ "completeness": answer.completeness, "gaps": answer.gaps }))
         }
         "read-scopes.json" => read_scopes(native, expected),
+        "loader-rules.json" => loader_rules(native, expected),
         "references.json" => references(native, expected),
         "command-grammars.json" => {
             let mut answers = BTreeMap::new();
