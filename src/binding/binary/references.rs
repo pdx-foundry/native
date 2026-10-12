@@ -23,6 +23,9 @@ const DEPTH: usize = 2;
 /// The name suffix of an owner's initializer.
 const INITIALIZER: &str = "::PostInit()";
 
+/// The name part of a template database's handler for a key that it already holds.
+const EXISTING_ENTRY: &str = "::ReadExistingEntry(CReader&, CString const&, ";
+
 /// The signature suffix of a callee that an initializer's lookup can reach: a getter or a search
 /// that takes the key string.
 const KEY_SEARCH: &str = "(CString const&) const";
@@ -208,6 +211,52 @@ pub(in crate::binding) fn loader_enumerations(
         .collect();
 
     loader_rules::enumerations(&functions, &anchors, image.strings)
+}
+
+/// The duplicate rule of each template database in `databases`, from the one existing-entry
+/// handler in its primary vtable. `None` when the vtable has no such handler or several, or
+/// [`loader_rules::existing_entry_rule`] does not read the handler's body.
+pub(in crate::binding) fn existing_entry_rules(
+    text: &Text<'_>,
+    image: &Image<'_>,
+    databases: &BTreeSet<String>,
+) -> Vec<Option<crate::DuplicateRule>> {
+    let symbols = image.index.over(image.symbols);
+    let handler_of = |database: &String| {
+        let vtables: Vec<u64> = symbols
+            .named(&format!("vtable for {database}"))
+            .map(|symbol| symbol.address)
+            .collect();
+        let &[vtable] = vtables.as_slice() else {
+            return None;
+        };
+        let handlers: BTreeSet<u64> = primary_slots(image, vtable)
+            .filter(|&target| {
+                symbols
+                    .at(&BTreeSet::from([target]))
+                    .any(|symbol| symbol.name.contains(EXISTING_ENTRY))
+            })
+            .collect();
+
+        (handlers.len() == 1).then(|| *handlers.first().expect("one handler"))
+    };
+
+    databases
+        .iter()
+        .map(|database| {
+            let (address, code) = text.function(handler_of(database)?).ok()?;
+
+            loader_rules::existing_entry_rule(code, address)
+        })
+        .collect()
+}
+
+/// The targets of the primary vtable that starts at `start`: the pointer slots after its offset to
+/// the top and its type information, up to the first slot that holds no pointer.
+fn primary_slots<'a>(image: &'a Image<'_>, start: u64) -> impl Iterator<Item = u64> + 'a {
+    (start + 16..)
+        .step_by(8)
+        .map_while(|slot| image.pointers.get(&slot).copied())
 }
 
 /// The functions that a canonical body calls, and the call operators of the resolver lambdas

@@ -281,7 +281,8 @@ From the SDK-489 prototype on M45-observe (`atlas-ownership/prototype/registry-o
   separate duplicate files are processed in a/b order. A category duplicate reconstructs the same
   object and keeps its numeric ID; a modifier duplicate reuses the owner. The category loader reads
   a `.bin` fixture. Final merged values were not measured: these runs establish no extension
-  policy, physical-file resolution or "last value wins" (SDK-552).
+  policy, physical-file resolution or "last value wins". On M452 the
+  [loader rules](loader-rules.md) state these from the code.
 - Failed approaches: one observer form had too much overhead and others failed to start; the first
   transfer to the AI budget failed until the owner rule was revised.
 

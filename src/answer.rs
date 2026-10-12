@@ -633,7 +633,8 @@ pub struct Registry {
     pub name: String,
 }
 
-/// The file enumeration of one registry's loader. The folder is the registry name.
+/// How one registry's loader selects its files and treats a repeated key. The folder is the
+/// registry name.
 ///
 /// The enumeration lists each file of the folder whose name passes every filter, at the depths
 /// that [`recursion`](Self::recursion) states, and never lists a name that starts with `.`. A
@@ -647,6 +648,20 @@ pub struct LoaderRules {
     pub name_contains: crate::GrammarProperty<Option<String>>,
     /// The subdirectories that the enumeration lists below the folder.
     pub recursion: crate::GrammarProperty<Recursion>,
+    /// What the loader does with a later definition of a key that it already holds, from the same
+    /// file or a later one.
+    pub duplicate_rule: crate::GrammarProperty<DuplicateRule>,
+}
+
+/// What a loader does with a later definition of a key that it already holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum DuplicateRule {
+    /// The later definition replaces the earlier one. The item keeps the earlier one's index and
+    /// place in the registry, and the game logs the key and the later definition's location.
+    LastWins,
+    /// The later definition is read into the earlier item with no reset: each field that it
+    /// sets is read again by that field's reader, and the other fields keep their values.
+    Merges,
 }
 
 /// The subdirectories that a loader's file enumeration lists below its folder.

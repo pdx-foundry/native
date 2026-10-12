@@ -431,19 +431,20 @@ impl VerifiedAnalysis<'_> {
         &self.catalog.candidates
     }
 
-    /// The arguments of every file enumeration that a loader of `registry` makes. The loaders are
-    /// the template loader and database class of each candidate named `registry`, and each
-    /// scheduled database whose own loader enumerates it. `None` when no loader names it.
-    pub(crate) fn loader_enumerations(
+    /// The code of the loaders of `registry`: the arguments of every file enumeration that they
+    /// make, and the duplicate rule of each template database's existing-entry handler. The
+    /// loaders are the template loader and database class of each candidate named `registry`, and
+    /// each scheduled database whose own loader enumerates it. `None` when no loader names it.
+    pub(crate) fn loader_code(
         &self,
         registry: &str,
-    ) -> Result<Option<Vec<crate::engine::analysis::loader_rules::Enumeration>>, AnalysisError>
-    {
+    ) -> Result<Option<crate::engine::analysis::loader_rules::LoaderCode>, AnalysisError> {
         use crate::engine::analysis::directories::Directory;
 
         let names_registry =
             |directory: &Directory| matches!(directory, Directory::Named(name) if name == registry);
         let mut classes = std::collections::BTreeSet::new();
+        let mut template_databases = std::collections::BTreeSet::new();
         for candidate in self
             .named_candidates()
             .iter()
@@ -451,6 +452,7 @@ impl VerifiedAnalysis<'_> {
         {
             classes.insert(candidate.record.loader_class.clone());
             classes.insert(candidate.record.database.clone());
+            template_databases.insert(candidate.record.database.clone());
         }
         if let Ok(schedule) = self.database_schedule() {
             classes.extend(
@@ -466,12 +468,16 @@ impl VerifiedAnalysis<'_> {
         }
 
         let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
+        let image = self.image();
 
-        Ok(Some(binary::references::loader_enumerations(
-            &text,
-            &self.image(),
-            &classes,
-        )))
+        Ok(Some(crate::engine::analysis::loader_rules::LoaderCode {
+            enumerations: binary::references::loader_enumerations(&text, &image, &classes),
+            existing_entries: binary::references::existing_entry_rules(
+                &text,
+                &image,
+                &template_databases,
+            ),
+        }))
     }
 
     /// The database schedule joined to the template candidates, read once per catalog. A

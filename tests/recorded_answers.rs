@@ -1077,7 +1077,7 @@ fn recorded_support_requires_a_file_for_the_operation() {
 
 #[test]
 fn loader_rules_read_their_registry_file() {
-    use pdx_native::{GrammarProperty, LoaderRules, Recursion};
+    use pdx_native::{DuplicateRule, GrammarProperty, LoaderRules, Recursion};
     let root = recorded();
     write(
         root.path(),
@@ -1086,7 +1086,8 @@ fn loader_rules_read_their_registry_file() {
             "value": {
                 "extension": { "Known": ".txt" },
                 "name_contains": { "Known": null },
-                "recursion": "Unresolved"
+                "recursion": "Unresolved",
+                "duplicate_rule": { "Known": "LastWins" }
             },
             "completeness": "Partial",
             "gaps": [{ "kind": "UnresolvedPath",
@@ -1107,6 +1108,7 @@ fn loader_rules_read_their_registry_file() {
             extension: GrammarProperty::Known(Some(".txt".into())),
             name_contains: GrammarProperty::Known(None),
             recursion: GrammarProperty::<Recursion>::Unresolved,
+            duplicate_rule: GrammarProperty::Known(DuplicateRule::LastWins),
         }
     );
     assert!(matches!(

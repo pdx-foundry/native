@@ -1,12 +1,14 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v1`) states how a registry's loader selects its
-files: the file-name filters and the subdirectories that it reads. The folder is the registry
-name. The duplicate-definition rule, the file order and the mod-over-vanilla rule (SDK-790) and the
-definition-name rules (SDK-791) are gaps whose subjects are `duplicate_rule`, `file_order` and
-`definition_names`. The code is `src/engine/analysis/loader_rules.rs`,
-`directories::enumeration_calls`, `src/binding/analysis.rs` (`loader_enumerations`) and
-`src/session/loader_rules.rs`.
+`Native::loader_rules(registry)` (`loader-rules/v2`) states how a registry's loader selects its
+files (the file-name filters and the subdirectories that it reads) and what it does with a later
+definition of a key that it holds. The folder is the registry name. The file order and the
+mod-over-vanilla rule are stated once on this page, for the build; each answer has an
+`OutsideMethod` gap for each (subjects `file_order`, `mod_over_vanilla`) that says that no fixture
+verifies it. The definition-name rules (SDK-791) are a gap whose subject is `definition_names`.
+The code is `src/engine/analysis/loader_rules.rs`, `directories::enumeration_calls`,
+`src/binding/analysis.rs` (`loader_code`), `src/binding/binary/references.rs`
+(`existing_entry_rules`) and `src/session/loader_rules.rs`.
 
 ## The file enumeration on M452
 
@@ -68,8 +70,9 @@ with an `UnresolvedPath` gap whose subject is the property (`extension`, `name_c
   with every register unknown at each branch target and after each unconditional branch.
 - Pitfall: `w4` is an `int`; `mov w4, #-1` is `movn` and gives `0xffffffff` in the register.
 
-Outside the method: a file that the loader opens by a literal name, a check of the name after
-the enumeration, and the mounted directories that the enumeration searches.
+Outside the method: a file that the loader opens by a literal name and a check of the name after
+the enumeration. The mounted directories that the enumeration searches are the
+[mod-over-vanilla rule](#mod-over-vanilla).
 
 ## Single named files
 
@@ -84,6 +87,121 @@ The config reads three types from one named file in `common` (`path_file`, in
 `loader_rules` gives `UnknownRegistry` for these names. A single-file loader becomes a registry
 question only when `registries()` lists it.
 
+## Duplicate definitions
+
+Facts from `c621723d…` (M452).
+
+- `TSingleObjectGameDatabase<Db, Item, B>::LoadFromReader` scans the item array (`+0x48`, count
+  `+0x54`) for an equal key: length, then bytes. For a hit it calls the database's vtable slot at
+  `+0x28` from the address point with the existing item in `x3`. A later definition in the same
+  file and one in a later file take the same path; the registry holds one item per key.
+- The last argument (`w4`) is `false` at the first load. `Init` calls `LoadFile` (slot `+0x20`)
+  with `mov w2, #0`; `LoadFile` passes its flag to `LoadFromReader` (`mov x19, x2` …
+  `mov x2, x19`); `LoadFromReader` passes `mov w4, #0` on the path for a database word `+0x70` of
+  1 and its own flag (`mov x22, x2` … `mov x4, x22`) on the other. A text survey of all 164
+  template databases with the inspector found this chain in each. The method assumes it and does
+  not read it; a reload that passes `true` is outside it.
+- Every one of the 164 database vtables holds a template `ReadExistingEntry` at that slot: 158
+  `TSingleObjectGameDatabase<…>::ReadExistingEntry` (151 with `false`, 7 with `true`) and 6
+  `TExtendableObjectGameDatabase<…>::ReadExistingEntry`.
+- `TSingleObjectGameDatabase<…>::ReadExistingEntry` (`0x10003ff78` for advisor voice types): with
+  `false` it logs `Object with key: %s already exists, using the one at %s` (the later
+  definition's location), calls the item's destructor (slot 0), zeroes the item, constructs it
+  with its old index (`ldr w24, [x19, #8]`) and the key, and reads the later definition into it
+  (`CPersistent::Read`, slot `0x20` of the vtable at `+0x38`). So the last definition wins, and the
+  item keeps the earlier one's index and place. With `true` it does the same without the log.
+- `TExtendableObjectGameDatabase<…>::ReadExistingEntry` (`0x1007f8f28` for authorities): with
+  `false` it tail-calls `CPersistent::Read` on the existing item, with no destructor and no log,
+  so the later definition merges into the earlier item. With `true` it destroys, zeroes,
+  constructs and reads, as the template above.
+
+### Method
+
+`existing_entry_rules` (binding) finds the one function in each template database's primary
+vtable whose name holds `::ReadExistingEntry(CReader&, CString const&, `.
+`existing_entry_rule` (engine) reads its body. The test of `w4` must be the first branch
+(`tbz`/`tbnz` bit 0, or `cbz`/`cbnz`); the scan runs the entry block, then the `false` path in
+address order, steps over each conditional branch and follows each `b` inside the body. It tracks
+the registers that hold the item (`x3`) or a subobject, a vtable pointer of a subobject, a slot of
+that vtable, the reader (`x1`) and constants. The read is the first call that receives an item
+subobject in `x0` and the reader in `x1`.
+
+- No destruction before the read gives `Merges`. A destruction, then a rebuild, then the read gives
+  `LastWins`. A destruction with no rebuild, any other call through a register, or a branch out
+  of the body that is not the read gives no rule (`UnreadBody`).
+- Destruction: a call through slot 0 of the primary vtable with the whole item in `x0`, or a
+  direct call that receives the item or a subobject (an inline destructor calls each member's
+  destructor). Rebuild: after a destruction, a store at the item's start (the primary vtable
+  pointer, or the zeroing) or a direct call that receives the whole item.
+- A return after a rebuild also gives `LastWins`: the handlers of `common/job_tags` and
+  `common/trait_tags` (database word `+0x70` is 1) build the item again and read nothing.
+- The registry's template databases must agree. A registry with no template database (a custom
+  loader) gives `NotFollowed`.
+- Pitfall: most handlers inline the constructor, the destructor or both (strings, member arrays,
+  vtable stores), so a rule that asks for an item-constructor call misses 36 registries.
+- Pitfall: the read is often devirtualized: `add x0, x20, #0x38; mov x1, x19;
+  bl CPersistent::Read(CReader&)`, or the subobject address comes from a pre-index store
+  (`str x9, [x0, #0x38]!`) or a register constant (`mov w8, #0x1a18; add x0, x19, x8`).
+- Pitfall: on Apple ARM64 a constructor or destructor returns `this`, and the code then uses `x0`
+  without a move. The scan keeps the item in `x0` after a direct call that received it.
+- Pitfall: `x1` holds the reader on entry, so the destructor call (which ignores `x1`) has the
+  reader in `x1`. The scan tests for the destructor before it tests for the read.
+
+The method does not read `common/component_slot_templates`: its handler reads through a
+serializer object on the stack (`CReader::Read(CPersistent&)` with the reader in `x0`). Its rule
+stays `Unresolved`.
+
+### Custom loaders
+
+A registry whose own database class loads it has no `ReadExistingEntry`, so its rule is
+`Unresolved` with a `duplicate_rule` gap. Each class has its own insert code; examples read by
+hand, which no method checks:
+
+- `CTraitDatabase::ReadTraits` constructs each trait and appends it to the array, with no check of
+  the key.
+- `CShipBehaviorDatabase::AddBehavior` finds an existing behavior by the key's hash; for a valid
+  one it logs `A behavior with the name "%s" already exists! names should be unique!` and deletes
+  the new one.
+- `CDesignerDatabase::Init` (`A ship design named "%s" already exists! %s`) and
+  `CEventManager::ReadEventsFile` (`an event with id [%s] already exists! %s`) log a duplicate;
+  what they keep is not read.
+
+## File order
+
+Facts from `c621723d…` (M452). `VFSEnumerateFiles` (`0x102547350`) runs
+`EnumerateFilesRecursive`, then `std::__stable_sort` with `CPdxArray<CString, int>::SLessThan`,
+which calls `CString::operator<` (`0x102526e28`: `memcmp` over the shorter length, then the
+shorter name first), then `std::__unique` with `equal_to`. So the loader receives each name once,
+in byte order of its path below the folder: case-sensitive, so `B.txt` before `a.txt`, and
+`_` (`0x5f`) after `/` (`0x2f`) and after upper-case letters. The template `Init` loads the names in
+array order (index from 0, step `0x28`). A pre-enumerated result has the same arguments and comes
+from the same function.
+
+Limits: no fixture verifies the order. A custom loader's own loop over the names is not read.
+
+## Mod over vanilla
+
+Facts from `c621723d…` (M452).
+
+- Every mount passes `appendToPath = 0` to `PHYSFS_mount` (`VFSMount(char const**, int)` at
+  `0x102545f7c`, `VFSMount(char const*, char const*)`, `VFSMountBaseDir`), so each new mount goes
+  first in the search path.
+- `StartVFS` calls `VFSInit` (`+0x38`), which mounts the game directory, and then
+  `CDLCManager::AppendVerifiedToPath` (`+0x1e8`). That function sorts the DLC and mod descriptors
+  with `std::__stable_sort` and `CDLCGreater`, mounts each, and adds each `replace_path` folder with
+  `VFSAddSuppressedFolder`.
+- PhysFS lists a name from every search-path entry, and the sort and `__unique` above keep it
+  once. PhysFS opens a name from the first search-path entry that holds it (library behavior; the
+  open path is not decoded here).
+
+So a mod's file with the same path below the folder as a game file replaces it, and other files
+join the game's files in one sorted list. Then the duplicate rule applies to keys across the
+files.
+
+Limits: no fixture verifies these rules (decision D3; SDK-803 may add a second mount). The order
+between two mods (`CDLCGreater`) and the effect of a suppressed folder on the enumeration are not
+established.
+
 ## Result on M452
 
 All 183 listed registries have every file-selection property `Known`; none is unresolved.
@@ -93,6 +211,13 @@ All 183 listed registries have every file-selection property `Known`; none is un
 | Every file, folder only | 174 |
 | `.txt`, folder only | 7 |
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
+
+| Duplicate rule | Registries |
+| --- | ---: |
+| `LastWins` | 157 |
+| `Merges` | 6 (`common/country_limits/ownership_limits`, `common/economic_plans`, `common/governments/authorities`, `common/portrait_categories`, `common/portrait_sets`, `common/species_classes`) |
+| `Unresolved`, custom loader | 19 |
+| `Unresolved`, handler not read | 1 (`common/component_slot_templates`) |
 
 `tests/expected/m452/loader-rules.json` holds each registry's answer; `cargo parity` checks it,
 and `loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every
