@@ -1,7 +1,7 @@
 mod analysis;
 pub(crate) use analysis::{
-    BlockFacts, BoundAnalysis, NamedCandidate, PreparedDurations, VerifiedAnalysis,
-    scoped_operand_decoder, unique_named_candidate,
+    BlockFacts, BoundAnalysis, FixtureRegistryFields, NamedCandidate, PreparedDurations,
+    VerifiedAnalysis, scoped_operand_decoder, unique_named_candidate,
 };
 mod binary;
 mod compose;
@@ -16,7 +16,6 @@ mod targets;
 mod tests;
 
 use crate::{OpenError, UnavailableReason};
-use binary::families::DEFINITIONS;
 
 /// Returns after content validation; the loaded modifier table is complete there.
 const MODIFIER_LOG_DEFINITIONS: &str = "CModifier::LogDefinitions()";
@@ -51,9 +50,6 @@ fn initial_loader(candidate: &NamedCandidate, directory: &str) -> Result<u64, St
     candidate
         .record
         .initial_loader
-        .as_ref()
-        .and_then(|address| address.strip_prefix("0x"))
-        .and_then(|address| u64::from_str_radix(address, 16).ok())
         .ok_or_else(|| format!("{directory}: initial loader entry is unavailable"))
 }
 
@@ -110,7 +106,7 @@ fn registry_mod_descriptor(
 /// only binding value that the session and the supervisor see; target records and platform
 /// leaves stay below here.
 pub(crate) struct Binding {
-    pub(crate) analysis: Option<std::sync::Arc<BoundAnalysis>>,
+    pub(crate) analysis: std::sync::Arc<BoundAnalysis>,
     /// `None` only in tests that bind an authored installation.
     operation: Option<compose::ResolvedObservation>,
     installation: installation::Installation,
@@ -141,8 +137,6 @@ impl Binding {
         };
         let input = self
             .analysis
-            .as_ref()
-            .ok_or_else(|| crate::supervisor::SupervisorError("scope analysis unavailable".into()))?
             .scope_input()
             .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
         let scopes = crate::engine::analysis::scopes::scopes(&input)
@@ -162,17 +156,12 @@ impl Binding {
     pub(crate) fn open(installation: &std::path::Path) -> Result<Self, OpenError> {
         let (installation, bytes) = installation::Installation::open(installation)?;
         let image = binary::identify(&bytes, installation.executable_hash())?;
-        let operation = compose::compose(&image)?;
         let invalidated = std::sync::Arc::new(std::sync::Mutex::new(None));
-        let analysis = Some(std::sync::Arc::new(compose::analysis(
-            &image,
-            installation.clone(),
-            invalidated.clone(),
-        )?));
+        let composition = compose::compose(&image, installation, invalidated.clone())?;
         Ok(Self {
-            analysis,
-            operation: Some(operation),
-            installation,
+            analysis: std::sync::Arc::new(composition.analysis),
+            operation: Some(composition.operation),
+            installation: composition.installation,
             invalidated,
         })
     }
@@ -213,8 +202,6 @@ impl Binding {
             .ok_or("this build has no registry observation layout")?;
         let verified = self
             .analysis
-            .as_ref()
-            .ok_or("this build has no static registry analysis")?
             .verified()
             .map_err(|error| error.to_string())?;
         directories
@@ -244,11 +231,9 @@ impl Binding {
         };
         let verified = self
             .analysis
-            .as_ref()
-            .ok_or("this build has no static registry analysis")?
             .verified()
             .map_err(|error| error.to_string())?;
-        let table = verified.modifier_table_layout(layout.string_tag_offset())?;
+        let table = verified.modifier_table(layout.string_tag_offset())?;
         let mut instances = std::collections::BTreeMap::new();
         for directory in registries {
             let candidate = named_candidate(verified.named_candidates(), directory)?;
@@ -260,11 +245,11 @@ impl Binding {
             instances.insert(directory.clone(), registry_instance(instance, key_offset));
         }
         Ok(groups::modifier_table_binding(
-            table,
+            table.layout,
             layout,
             groups::ModifierTableSymbols {
-                documentation_entry: verified.symbol(MODIFIER_LOG_DEFINITIONS)?,
-                definitions: verified.symbol(DEFINITIONS)?,
+                documentation_entry: table.documentation_entry,
+                definitions: table.definitions,
                 registries: instances,
             },
         ))
@@ -274,19 +259,12 @@ impl Binding {
         self.operation
             .as_ref()
             .is_some_and(|operation| operation.registry_layout.is_some())
-            && self.has_declarations_method()
     }
 
     pub(crate) fn has_fixture_method(&self) -> bool {
         self.operation
             .as_ref()
             .is_some_and(|operation| operation.fixture.is_some())
-    }
-
-    pub(crate) fn has_declarations_method(&self) -> bool {
-        self.analysis
-            .as_ref()
-            .is_some_and(|analysis| analysis.has_declarations_method())
     }
 
     pub(crate) fn target_integrity(&self) -> Option<UnavailableReason> {
@@ -345,7 +323,6 @@ impl ExecutionPlan {
     pub fn open(
         installation: &std::path::Path,
     ) -> Result<Self, crate::supervisor::SupervisorError> {
-        platform::lifecycle::available()?;
         let binding = Binding::open(installation)
             .map_err(|error| crate::supervisor::SupervisorError(error.to_string()))?;
         Ok(Self { binding })
@@ -378,14 +355,6 @@ impl ExecutionPlan {
                     "Registry content unavailable: {reason:?}"
                 ))
             })
-    }
-    pub fn session_content_unchanged(
-        &self,
-        directories: &[String],
-        expected: &installation::ContentIdentity,
-    ) -> bool {
-        self.installation()
-            .session_content_unchanged(directories, expected)
     }
     fn operation(&self) -> &compose::ResolvedObservation {
         self.binding
@@ -540,17 +509,15 @@ impl ExecutionPlan {
                 "Fixture registry has no verified loader and owner boundary".into(),
             ));
         };
-        let fields = analysis
-            .registry_fields(registry)
-            .map_err(analysis_error)?
-            .unwrap_or_default();
-        let fixture_fields = analysis.fixture_fields(registry).map_err(analysis_error)?;
+        let FixtureRegistryFields { fields, bindings } = analysis
+            .fixture_registry_fields(registry)
+            .map_err(analysis_error)?;
         let questions = fixture
             .field_questions
             .iter()
             .enumerate()
             .map(|(index, question)| {
-                Self::fixture_question_setup(&fields, &fixture_fields, index, question)
+                Self::fixture_question_setup(&fields, &bindings, index, question)
             })
             .collect();
 
@@ -569,9 +536,7 @@ impl ExecutionPlan {
             .fixture
             .clone()
             .ok_or_else(|| SupervisorError("No fixture binding for this build".into()))?;
-        let analysis = self.binding.analysis.as_ref().ok_or_else(|| {
-            SupervisorError("No static reader authority for fixture questions".into())
-        })?;
+        let analysis = &self.binding.analysis;
         let validation_complete_entry =
             if fixture.window == crate::FixtureWindow::InitialFileLoadAndValidation {
                 if bindings.validation.is_none() {
@@ -617,14 +582,6 @@ impl ExecutionPlan {
         >,
     ) -> Result<Observer, crate::supervisor::SupervisorError> {
         let operation = self.operation();
-        if let Some(fault) = &request.fault
-            && let crate::protocol::session::ObservationTarget::Registry(registry) = &fault.target
-            && !registries.contains_key(registry)
-        {
-            return Err(crate::supervisor::SupervisorError(
-                "The fault names a registry that the session does not observe".into(),
-            ));
-        }
         (operation.strategy.prepare)(platform::ObservationSetup {
             work_directory,
             attempt,
@@ -672,7 +629,8 @@ impl ExecutionPlan {
     }
     /// Give the private game profile a mod that replaces the observed registries' directories
     /// with copies of the pinned installed files. The session then observes known content,
-    /// whatever mods the user has.
+    /// whatever mods the user has. The installed content must still be the pinned `content` when
+    /// the profile is ready.
     pub(crate) fn prepare_registry_profile(
         &self,
         work_directory: &std::path::Path,
@@ -712,9 +670,6 @@ impl ExecutionPlan {
         }
 
         if let Some(fixture) = fixture {
-            fixture
-                .validate()
-                .map_err(|error| SupervisorError(error.to_string()))?;
             for (relative, text) in &fixture.files {
                 files::write_new(&mount.join(relative), text.as_bytes())?;
             }
@@ -727,6 +682,18 @@ impl ExecutionPlan {
         files::write_new(
             &profile.join("dlc_load.json"),
             br#"{"enabled_mods":["mod/native_registry.mod"],"disabled_dlcs":[]}"#,
-        )
+        )?;
+
+        let directories: Vec<String> = registries.keys().cloned().collect();
+        if !self
+            .installation()
+            .session_content_unchanged(&directories, content)
+        {
+            return Err(SupervisorError(
+                "Registry content changed during profile preparation".into(),
+            ));
+        }
+
+        Ok(())
     }
 }

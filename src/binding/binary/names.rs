@@ -1,4 +1,8 @@
 //! Read the inputs of the derived-name method from executable text.
+//!
+//! `LOCALIZED_VIEW` keeps the size of the localisation lookup's result view here. It is a
+//! per-build layout fact that stays with its reader, not a recipe field. The build is in
+//! `docs/native/targets.md` and its facts are on `docs/native/derived-names.md`.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::{

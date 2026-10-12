@@ -31,7 +31,7 @@ impl Native {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::DerivedNames, Some(registry), || {
             let operation = Operation::DerivedNames;
-            let analysis = self.declaration_analysis(operation)?;
+            let analysis = &self.bound().analysis;
             let code = analysis
                 .registry_names(registry)
                 .map_err(|failure| error(operation, failure))?

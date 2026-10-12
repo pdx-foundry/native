@@ -50,7 +50,8 @@ pub struct Run {
 pub fn run(native: &Native, kind: DeclarationKind, name: &str) -> Result<Run, Error> {
     native.method_result(Operation::CommandGrammar, || {
         let (input, inventory) = native
-            .declaration_analysis(Operation::CommandGrammar)?
+            .bound()
+            .analysis
             .grammar_input(kind)
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
         if matches!(
@@ -129,7 +130,8 @@ pub fn population(
 ) -> Result<Population, Error> {
     native.method_result(Operation::CommandGrammar, || {
         let (input, inventory) = native
-            .declaration_analysis(Operation::CommandGrammar)?
+            .bound()
+            .analysis
             .grammar_input(kind)
             .map_err(|failure| super::questions::error(Operation::CommandGrammar, failure))?;
         let (names, unknown_registrations) = inventory_names(inventory);

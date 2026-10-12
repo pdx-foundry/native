@@ -623,6 +623,51 @@ class NumericStorageTests(unittest.TestCase):
                 observer.stored_value(Mock(), 0x2000, dict(offset=48, decoder='Integer'))
 
 
+class ModifierRegistryKeyTests(unittest.TestCase):
+    """The keys of a registry are read through the bound CString tag offset, not a fixed size."""
+    INSTANCE, DATABASE, POINTERS, ITEMS = 0x100, 0x200, 0x400, (0x500, 0x600)
+    REGISTRY = dict(instance=0x9000, pointer_size=8, directory_offset=0x10, key_offset=0x10,
+                    count_offset=0x54, data_offset=0x48, key_unavailable=None)
+
+    @staticmethod
+    def short_string(text, tag_offset):
+        return text.encode().ljust(tag_offset, b'\0') + bytes([len(text)])
+
+    def process_memory(self, tag_offset, keys):
+        image = bytearray(0x800)
+
+        def put(address, data):
+            image[address:address + len(data)] = data
+
+        put(self.INSTANCE, self.DATABASE.to_bytes(8, 'little'))
+        put(self.DATABASE + self.REGISTRY['directory_offset'], self.short_string('common/example', tag_offset))
+        put(self.DATABASE + self.REGISTRY['count_offset'], len(keys).to_bytes(4, 'little'))
+        put(self.DATABASE + self.REGISTRY['data_offset'], self.POINTERS.to_bytes(8, 'little'))
+        for item, key in zip(self.ITEMS, keys):
+            put(self.POINTERS + 8 * self.ITEMS.index(item), item.to_bytes(8, 'little'))
+            put(item + self.REGISTRY['key_offset'], self.short_string(key, tag_offset))
+
+        def read(process, address, size):
+            if address + size > len(image):
+                raise RuntimeError('native memory access failed')
+            return bytes(image[address:address + size])
+
+        return read
+
+    def registry_keys(self, tag_offset):
+        target = Mock()
+        target.ResolveFileAddress.return_value.GetLoadAddress.return_value = self.INSTANCE
+        with patch.object(worker, 'request', dict(fault=None)), \
+                patch.object(worker, 'memory', self.process_memory(tag_offset, ['one', 'two'])):
+            observer = worker.ModifierObserver(dict(string_tag_offset=tag_offset))
+            return observer.registry_keys(Mock(), target, 'common/example', self.REGISTRY)
+
+    def test_keys_are_read_at_the_bound_tag_offset(self):
+        for tag_offset in [23, 31]:
+            with self.subTest(tag_offset=tag_offset):
+                self.assertEqual(self.registry_keys(tag_offset), {'keys': ['one', 'two']})
+
+
 if __name__ == '__main__':
     unittest.main()
 

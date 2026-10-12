@@ -45,7 +45,8 @@ impl Native {
         self.answer(Operation::LocalizationDeclarations, None, || {
             let operation = Operation::LocalizationDeclarations;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .localization_input()
                 .map_err(|failure| error(operation, failure))?;
             let result =

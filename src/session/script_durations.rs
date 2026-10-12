@@ -117,7 +117,7 @@ mod tests {
     #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
     fn m452_checks_carry_the_named_receivers_and_their_count_slots() {
         let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-        let analysis = native.bound().analysis.as_ref().unwrap();
+        let analysis = &native.bound().analysis;
         assert!(
             duration_receivers(analysis, DeclarationKind::Effect, "add_modifier = {}").is_empty()
         );

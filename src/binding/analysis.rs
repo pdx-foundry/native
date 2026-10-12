@@ -16,7 +16,7 @@ use crate::{AnalysisError, UnavailableReason};
 mod fixtures;
 
 pub(crate) struct BoundAnalysis {
-    declarations: Option<&'static super::targets::DeclarationRecipe>,
+    declarations: &'static super::targets::DeclarationRecipe,
     /// Where a template database holds its items, when the build has a template layout.
     database: Option<DatabaseLayout>,
     installation: Installation,
@@ -91,6 +91,22 @@ impl FixtureLoader {
     }
 }
 
+/// The loaded modifier table's layout, with the two executable locations that it was read from.
+pub(in crate::binding) struct ModifierTable {
+    pub layout: crate::engine::analysis::modifier_table::Layout,
+    /// Entry of `CModifier::LogDefinitions`, which returns once the table is complete.
+    pub documentation_entry: u64,
+    /// Address of the definitions array header.
+    pub definitions: u64,
+}
+
+/// A registry's public root fields and the storage that the fixture reads for each.
+#[derive(Default)]
+pub(crate) struct FixtureRegistryFields {
+    pub fields: Vec<crate::Field>,
+    pub bindings: Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>,
+}
+
 /// One fresh integrity check and the immutable analysis derived from this installation.
 /// Verified static facts that a live session reads for its script-check duration tables.
 pub(crate) struct PreparedDurations<'a> {
@@ -103,7 +119,7 @@ pub(crate) struct PreparedDurations<'a> {
 pub(crate) struct VerifiedAnalysis<'a> {
     executable: Arc<[u8]>,
     catalog: &'a Catalog,
-    persistent: Option<&'static super::targets::PersistentRecipe>,
+    persistent: &'static super::targets::PersistentRecipe,
 }
 
 impl VerifiedAnalysis<'_> {
@@ -123,7 +139,7 @@ impl VerifiedAnalysis<'_> {
         &self,
         recipe: &super::targets::DeclarationRecipe,
     ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
-        binary::scoped_numeric::read(&self.image(), recipe.reader_value_token_offset)
+        binary::scoped_numeric::read(&self.image(), recipe.persistent.value_token)
     }
 
     /// The address of the one symbol with this demangled name.
@@ -147,11 +163,15 @@ impl VerifiedAnalysis<'_> {
     /// loader address where the reader returns.
     fn loader_reader_call(
         &self,
-        load_entry: u64,
         record: &crate::engine::analysis::discovery::CandidateRecord,
     ) -> Result<Option<(u64, u64)>, AnalysisError> {
-        let code = binary::code_range(&self.executable, load_entry, 256)?;
-        fixture_reader_boundary(&code, load_entry, &record.loader, &self.catalog.symbols)
+        let code = binary::code_range(&self.executable, record.address, 256)?;
+        fixture_reader_boundary(
+            &code,
+            record.address,
+            &record.loader_class,
+            &self.catalog.symbols,
+        )
     }
 
     /// Join the owner's constructor directly, or through the matching template's new-entry reader.
@@ -180,22 +200,28 @@ impl VerifiedAnalysis<'_> {
 
     /// Derive the loaded arrays from the executable readers before authorizing live access.
     /// `string_tag_offset` is the bound CString length/long-form flag byte offset.
-    pub(in crate::binding) fn modifier_table_layout(
+    pub(in crate::binding) fn modifier_table(
         &self,
         string_tag_offset: u64,
-    ) -> Result<crate::engine::analysis::modifier_table::Layout, String> {
-        let input = binary::modifier_table::read(
+    ) -> Result<ModifierTable, String> {
+        let (input, documentation_entry) = binary::modifier_table::read(
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.pointers,
             string_tag_offset,
         )
         .map_err(|error| format!("modifier table input: {error}"))?;
-        crate::engine::analysis::modifier_table::derive(&input).map_err(|reason| {
+        let layout = crate::engine::analysis::modifier_table::derive(&input).map_err(|reason| {
             format!(
                 "modifier table layout was not established: {}",
                 reason.reason
             )
+        })?;
+
+        Ok(ModifierTable {
+            layout,
+            documentation_entry,
+            definitions: input.definitions,
         })
     }
 
@@ -320,8 +346,9 @@ impl VerifiedAnalysis<'_> {
             .filter_map(|(_, rows)| rows.last().map(|call| call.address))
             .collect();
         let table = self
-            .modifier_table_layout(recipe.short_string_length_offset)
-            .ok();
+            .modifier_table(recipe.short_string_length_offset)
+            .ok()
+            .map(|table| table.layout);
 
         binary::families::index(
             &self.executable,
@@ -383,9 +410,6 @@ impl BoundAnalysis {
     pub(crate) fn defines_input(
         &self,
     ) -> Result<crate::engine::analysis::defines::DefineInput, AnalysisError> {
-        if self.declarations.is_none() {
-            return Err(AnalysisError::InvalidRange);
-        }
         let verified = self.verified()?;
         binary::defines::read(
             &verified.executable,
@@ -403,16 +427,8 @@ impl BoundAnalysis {
         let Some(selected) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(None);
         };
-        let Some(load_entry) = selected
-            .record
-            .address
-            .strip_prefix("0x")
-            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
-        else {
-            return Ok(None);
-        };
-        let Some((reader_entry, reader_return)) =
-            verified.loader_reader_call(load_entry, &selected.record)?
+        let load_entry = selected.record.address;
+        let Some((reader_entry, reader_return)) = verified.loader_reader_call(&selected.record)?
         else {
             return Ok(None);
         };
@@ -439,36 +455,46 @@ impl BoundAnalysis {
         }))
     }
 
-    /// Bind root field tokens, with storage only when reader arguments prove it.
-    pub(crate) fn fixture_fields(
+    /// A registry's root fields and the storage that the fixture reads for each, from one run of
+    /// the field method. The method analyzes the bare field input, without the `requested_words`
+    /// and `initialized_words` that `Native::registry_fields` adds to its own input. A storage
+    /// binding exists only when reader arguments prove it. A registry without one candidate has
+    /// no fields.
+    pub(crate) fn fixture_registry_fields(
         &self,
         registry: &str,
-    ) -> Result<Vec<crate::protocol::observation::FixtureOutcomeFieldBinding>, AnalysisError> {
+    ) -> Result<FixtureRegistryFields, AnalysisError> {
         let verified = self.verified()?;
         let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
-            return Ok(Vec::new());
+            return Ok(FixtureRegistryFields::default());
         };
         let input = verified.field_input(candidate.record.clone())?;
         let result = crate::engine::analysis::fields::analyze(&input)?;
 
+        let references = self.reference_facts()?;
         let scoped = self.scoped_numeric_facts()?;
         let numeric = self.numeric_facts()?;
-        Ok(result
+        let bindings = result
             .fields
             .iter()
             .filter_map(|field| {
                 Some(crate::protocol::observation::FixtureOutcomeFieldBinding {
                     token: u64::try_from(field.token).ok()?,
                     name: field.name.clone(),
-                    storage: fixture_storage_binding(field, &result.paths)
+                    storage: fixture_storage_binding(field, &result.paths, numeric)
                         .or_else(|| scoped_fixture_storage(field, &result, scoped, numeric)),
                 })
             })
-            .collect())
+            .collect();
+
+        Ok(FixtureRegistryFields {
+            fields: crate::session::questions::normalized_fields(&result, references),
+            bindings,
+        })
     }
 
     pub(super) fn new(
-        declarations: Option<&'static super::targets::DeclarationRecipe>,
+        declarations: &'static super::targets::DeclarationRecipe,
         database: Option<DatabaseLayout>,
         installation: Installation,
         invalidated: Arc<Mutex<Option<UnavailableReason>>>,
@@ -526,7 +552,7 @@ impl BoundAnalysis {
             .as_ref()
             .map_err(Clone::clone)?;
         Ok(VerifiedAnalysis {
-            persistent: self.declarations.map(|recipe| &recipe.persistent),
+            persistent: &self.declarations.persistent,
             executable,
             catalog,
         })
@@ -581,13 +607,10 @@ fn fixture_constructor_route(
 fn fixture_reader_boundary(
     code: &[u8],
     load_entry: u64,
-    loader: &str,
+    loader_class: &str,
     symbols: &[Symbol],
 ) -> Result<Option<(u64, u64)>, AnalysisError> {
-    let Some(database) = loader.strip_suffix("::LoadFile(char const*, bool)") else {
-        return Ok(None);
-    };
-    let expected_reader = format!("{database}::LoadFromReader(CReader&, bool)");
+    let expected_reader = format!("{loader_class}::LoadFromReader(CReader&, bool)");
     let rows = decode_arm64(code, load_entry).map_err(|_| AnalysisError::InvalidRange)?;
     let matches: Vec<_> = rows
         .windows(3)
@@ -623,6 +646,7 @@ fn fixture_reader_boundary(
 fn fixture_storage_binding(
     field: &crate::engine::analysis::fields::RootField,
     paths: &[crate::engine::analysis::fields::TokenPath],
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
 ) -> Option<crate::protocol::observation::FixtureStorageBinding> {
     use crate::engine::analysis::fields::{ReaderJoin, Value};
     use crate::protocol::observation::FixtureStorageBinding;
@@ -647,7 +671,7 @@ fn fixture_storage_binding(
         return None;
     };
     // Reader identity selects storage only after the exact-build installation is verified.
-    let decoder = fixture_decoder(callee)?;
+    let decoder = fixture_decoder(callee, numeric)?;
     Some(FixtureStorageBinding {
         offset: u64::try_from(*offset).ok()?,
         decoder,
@@ -740,45 +764,49 @@ pub(crate) fn scoped_operand_decoder(
     })
 }
 
-fn fixture_decoder(callee: &str) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
+/// The storage decoder of a reader that writes its value straight into the owner. A fixed-point
+/// reader has none unless the numeric facts establish its scale.
+fn fixture_decoder(
+    callee: &str,
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+) -> Option<crate::protocol::observation::FixtureStorageDecoder> {
     use crate::protocol::observation::FixtureStorageDecoder;
     Some(match callee {
         "CReader::Read(CString&, bool)" => FixtureStorageDecoder::String,
         "CReader::Read(int&)" => FixtureStorageDecoder::Integer,
         "CReader::Read(float&)" => FixtureStorageDecoder::Float,
         "CReader::Read(short&)" => FixtureStorageDecoder::Integer16,
-        "CReader::Read(CFixedPoint&)" => FixtureStorageDecoder::FixedPoint { scale: 100_000 },
-        "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
-            FixtureStorageDecoder::FixedPoint { scale: 32_768 }
+        "CReader::Read(CFixedPoint&)"
+        | "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)" => {
+            FixtureStorageDecoder::FixedPoint {
+                scale: known_scale(numeric, callee)?,
+            }
         }
         _ => return None,
     })
 }
 
+/// The stored units per whole value of the numeric reader `callee`, when its conversion
+/// establishes that scale completely.
+fn known_scale(
+    numeric: &crate::engine::analysis::numeric::NumericFacts,
+    callee: &str,
+) -> Option<u64> {
+    use crate::GrammarProperty;
+    let (GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion))) =
+        &numeric.readers.get(callee)?.conversion
+    else {
+        return None;
+    };
+    let GrammarProperty::Known(Some(scale)) = conversion.scale else {
+        return None;
+    };
+
+    Some(scale)
+}
+
 #[cfg(test)]
 mod tests;
-
-impl BoundAnalysis {
-    /// Resolve public field readers from the same executable analysis used by
-    /// `Native::registry_fields`.
-    pub(crate) fn registry_fields(
-        &self,
-        registry: &str,
-    ) -> Result<Option<Vec<crate::Field>>, AnalysisError> {
-        use crate::engine::analysis::fields;
-
-        let verified = self.verified()?;
-        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
-            return Ok(None);
-        };
-        let input = verified.field_input(candidate.record.clone())?;
-        let result = fields::analyze(&input)?;
-        let references = self.reference_facts()?;
-        Ok(Some(crate::session::questions::normalized_fields(
-            &result, references,
-        )))
-    }
-}
 
 /// The contexts of registry field blocks, with the scope names that name their types.
 pub(crate) struct BlockFacts {
@@ -864,8 +892,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.numeric
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::numeric::read(&verified.image(), recipe)?;
+                let input = binary::numeric::read(&verified.image(), self.declarations)?;
                 Ok(crate::engine::analysis::numeric::analyze(&input))
             })
             .as_ref()
@@ -879,11 +906,10 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.modifier_blocks
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let input = binary::modifier_blocks::read(
                     &verified.image(),
                     &verified.catalog.candidates,
-                    recipe,
+                    self.declarations,
                 )?;
                 Ok(crate::engine::analysis::modifier_blocks::analyze(
                     &input,
@@ -901,12 +927,12 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.weight_blocks
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
                 )?;
-                let input = binary::weight_blocks::read(&verified.image(), &text, recipe)?;
+                let input =
+                    binary::weight_blocks::read(&verified.image(), &text, self.declarations)?;
                 let bodies = |address| binary::weight_blocks::body(&text, address);
                 Ok(crate::engine::analysis::weight_blocks::analyze(
                     &input, &bodies,
@@ -924,8 +950,8 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.triggered_modifiers
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::triggered_modifiers::read(&verified.image(), recipe)?;
+                let input =
+                    binary::triggered_modifiers::read(&verified.image(), self.declarations)?;
                 Ok(crate::engine::analysis::modifier_blocks::triggered::analyze(&input))
             })
             .as_ref()
@@ -939,8 +965,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.scoped_numeric
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = verified.scoped_numeric_input(recipe)?;
+                let input = verified.scoped_numeric_input(self.declarations)?;
                 Ok(crate::engine::analysis::scoped_numeric::analyze(&input))
             })
             .as_ref()
@@ -952,8 +977,7 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.block_facts
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = verified.block_input(recipe)?;
+                let input = verified.block_input(self.declarations)?;
                 Ok(BlockFacts {
                     entries: crate::engine::analysis::callbacks::blocks::analyze_blocks(&input),
                     scope_names: input.scope_names,
@@ -967,9 +991,7 @@ impl BoundAnalysis {
     pub(crate) fn scoped_numeric_input_for_test(
         &self,
     ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
-        let verified = self.verified()?;
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        verified.scoped_numeric_input(recipe)
+        self.verified()?.scoped_numeric_input(self.declarations)
     }
 
     /// The timed-flag execute body, decoded.
@@ -991,16 +1013,11 @@ impl BoundAnalysis {
             .map_err(Clone::clone)
     }
 
-    pub(crate) fn has_declarations_method(&self) -> bool {
-        self.declarations.is_some()
-    }
-
     pub(crate) fn declaration_input(
         &self,
         kind: crate::DeclarationKind,
     ) -> Result<crate::engine::analysis::declarations::DeclarationInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.declaration_input(kind, recipe)
+        self.verified()?.declaration_input(kind, self.declarations)
     }
 
     pub(crate) fn grammar_input(
@@ -1016,9 +1033,8 @@ impl BoundAnalysis {
         kind: crate::DeclarationKind,
         verified: &VerifiedAnalysis<'_>,
     ) -> Result<&(GrammarInput, DeclarationResult), AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         self.grammar[grammar_slot(kind)]
-            .get_or_init(|| verified.grammar_input(kind, recipe))
+            .get_or_init(|| verified.grammar_input(kind, self.declarations))
             .as_ref()
             .map_err(Clone::clone)
     }
@@ -1065,12 +1081,11 @@ impl BoundAnalysis {
         use crate::DeclarationKind;
         use crate::engine::analysis::dynamic_names::{CommandFamily, DynamicNameInput};
 
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         let catalog = verified.catalog;
         let families = [
-            (DeclarationKind::Effect, recipe.effect_names),
-            (DeclarationKind::Trigger, recipe.trigger_names),
+            (DeclarationKind::Effect, self.declarations.effect_names),
+            (DeclarationKind::Trigger, self.declarations.trigger_names),
         ]
         .into_iter()
         .map(|(kind, slots)| {
@@ -1087,7 +1102,7 @@ impl BoundAnalysis {
         Ok(DynamicNameInput {
             families,
             functions: binary::dynamic_names::flag_functions(&catalog.symbols)?,
-            scope_type_offset: recipe.callbacks.scope_type_offset,
+            scope_type_offset: self.declarations.callbacks.scope_type_offset,
             names: binary::references::names(
                 &catalog.symbols,
                 &catalog.pointers,
@@ -1100,30 +1115,27 @@ impl BoundAnalysis {
     pub(crate) fn modifier_input(
         &self,
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.modifier_input(recipe)
+        self.verified()?.modifier_input(self.declarations)
     }
 
     /// The category switch, the reader checks after each call of it, and the token names.
     pub(crate) fn category_key_input(
         &self,
     ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::category_keys(
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
-            recipe,
+            self.declarations,
         )
     }
 
     /// The engine functions, classified callers and message sites of each script expansion
-    /// mechanism. The stated forms in the input belong to builds with a declaration recipe.
+    /// mechanism.
     pub(crate) fn expansion_input(
         &self,
     ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
-        self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::expansions::read(
             &verified.executable,
@@ -1141,12 +1153,12 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.modifier_nodes
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
                 )?;
-                let input = binary::modifier_nodes::read(&verified.image(), &text, recipe)?;
+                let input =
+                    binary::modifier_nodes::read(&verified.image(), &text, self.declarations)?;
                 let bodies = |start| text.code_from(start);
                 Ok(crate::engine::analysis::modifier_nodes::analyze(
                     &input, &bodies,
@@ -1163,11 +1175,10 @@ impl BoundAnalysis {
         let verified = self.verified()?;
         self.category_input
             .get_or_init(|| {
-                let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
                 binary::language::category_input(
                     &verified.executable,
                     &verified.catalog.symbols,
-                    recipe,
+                    self.declarations,
                 )
             })
             .as_ref()
@@ -1176,11 +1187,10 @@ impl BoundAnalysis {
 
     /// Every generation call, its joins to the named registries, and each registry's code.
     pub(crate) fn family_index(&self) -> Result<&FamilyIndex, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let database = self.database.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         self.families
-            .get_or_init(|| verified.family_index(recipe, database))
+            .get_or_init(|| verified.family_index(self.declarations, database))
             .as_ref()
             .map_err(Clone::clone)
     }
@@ -1188,13 +1198,12 @@ impl BoundAnalysis {
     pub(crate) fn scope_input(
         &self,
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::scopes(
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
-            recipe,
+            self.declarations,
         )
     }
 
@@ -1239,7 +1248,6 @@ impl BoundAnalysis {
     pub(crate) fn localization_input(
         &self,
     ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
         let verified = self.verified()?;
         binary::language::localization(
             &verified.executable,
@@ -1247,14 +1255,13 @@ impl BoundAnalysis {
             &verified.catalog.strings,
             &verified.catalog.pointers,
             &verified.catalog.bound_slots,
-            recipe,
+            self.declarations,
         )
     }
 
     pub(crate) fn callbacks_input(
         &self,
     ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
-        let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        binary::callbacks::callbacks(&self.verified()?.image(), recipe)
+        binary::callbacks::callbacks(&self.verified()?.image(), self.declarations)
     }
 }

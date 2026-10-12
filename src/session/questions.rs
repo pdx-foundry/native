@@ -101,9 +101,6 @@ impl Native {
         if operation == Operation::ObserveFixture && !binding.has_fixture_method() {
             return Support::Unsupported("this build has no fixture observation recipe".into());
         }
-        if operation.is_declaration() && !binding.has_declarations_method() {
-            return Support::Unsupported("this build has no declaration recipe".into());
-        }
         match operation {
             Operation::Defines
             | Operation::Registries
@@ -122,12 +119,9 @@ impl Native {
             | Operation::DerivedNames
             | Operation::ModifierNodes
             | Operation::ModifierCategoryKeys
-            | Operation::ScriptExpansions => match &binding.analysis {
-                Some(analysis) => match analysis.executable() {
-                    Ok(_) => Support::Supported,
-                    Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
-                },
-                None => Support::Unsupported("this build has no static analysis recipe".into()),
+            | Operation::ScriptExpansions => match binding.analysis.executable() {
+                Ok(_) => Support::Supported,
+                Err(reason) => Support::Unsupported(error(operation, reason).to_string()),
             },
             Operation::LoadedModifiers if !binding.has_modifier_table_method() => {
                 Support::Unsupported("this build has no loaded modifier table recipe".into())
@@ -143,38 +137,11 @@ impl Native {
         }
     }
 
-    /// The bound analysis of a build whose declaration methods have been ported.
-    pub(super) fn declaration_analysis(
-        &self,
-        operation: Operation,
-    ) -> Result<&crate::binding::BoundAnalysis, Error> {
-        let analysis = self
-            .bound()
-            .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?;
-        if !analysis.has_declarations_method() {
-            return Err(Error::Unsupported {
-                operation,
-                reason: "this build has no declaration recipe".into(),
-            });
-        }
-        Ok(analysis)
-    }
-
     fn verified_analysis(&self, operation: Operation) -> Result<VerifiedAnalysis<'_>, Error> {
-        let analysis = self
-            .bound()
+        self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?;
-        analysis.verified().map_err(|e| error(operation, e))
+            .verified()
+            .map_err(|e| error(operation, e))
     }
 
     /// Read effect or trigger declarations from the registration calls in executable text.
@@ -188,7 +155,8 @@ impl Native {
         self.answer(Operation::Declarations, Some(kind.subject()), || {
             let operation = Operation::Declarations;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .declaration_input(kind)
                 .map_err(|failure| error(operation, failure))?;
             let result =
@@ -281,11 +249,6 @@ impl Native {
     pub(crate) fn block_facts(&self) -> Result<&crate::binding::BlockFacts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation: Operation::RegistryFields,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .block_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
@@ -295,11 +258,6 @@ impl Native {
     ) -> Result<&crate::engine::analysis::modifier_blocks::ModifierBlockFacts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation: Operation::RegistryFields,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .modifier_block_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
@@ -309,35 +267,22 @@ impl Native {
     ) -> Result<&crate::engine::analysis::weight_blocks::WeightBlockFacts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation: Operation::RegistryFields,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .weight_block_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
     fn category_input(&self) -> Result<&CategoryInput, Error> {
-        self.registry_field_analysis()?
+        self.bound()
+            .analysis
             .category_input()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
     fn modifier_node_result(&self) -> Result<&ModifierNodeResult, Error> {
-        self.registry_field_analysis()?
-            .modifier_node_result()
-            .map_err(|failure| error(Operation::RegistryFields, failure))
-    }
-
-    fn registry_field_analysis(&self) -> Result<&crate::binding::BoundAnalysis, Error> {
         self.bound()
             .analysis
-            .as_deref()
-            .ok_or_else(|| Error::Unsupported {
-                operation: Operation::RegistryFields,
-                reason: "this build has no static analysis recipe".into(),
-            })
+            .modifier_node_result()
+            .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
     pub(crate) fn triggered_modifier_facts(
@@ -345,11 +290,6 @@ impl Native {
     ) -> Result<&crate::engine::analysis::modifier_blocks::triggered::TriggeredFacts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation: Operation::RegistryFields,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .triggered_modifier_facts()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
@@ -360,11 +300,6 @@ impl Native {
     ) -> Result<&crate::engine::analysis::numeric::NumericFacts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .numeric_facts()
             .map_err(|failure| error(operation, failure))
     }
@@ -375,26 +310,14 @@ impl Native {
     ) -> Result<&crate::engine::analysis::scoped_numeric::Facts, Error> {
         self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?
             .scoped_numeric_facts()
             .map_err(|failure| error(operation, failure))
     }
 
     /// The lookup of every reference reader in the opened executable.
     pub(crate) fn reference_facts(&self, operation: Operation) -> Result<&ReferenceFacts, Error> {
-        let analysis = self
-            .bound()
+        self.bound()
             .analysis
-            .as_ref()
-            .ok_or_else(|| Error::Unsupported {
-                operation,
-                reason: "this build has no static analysis recipe".into(),
-            })?;
-        analysis
             .reference_facts()
             .map_err(|failure| error(operation, failure))
     }

@@ -192,11 +192,6 @@ fn run(
         files::write_json(&work.join("request.json"), &request)?;
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
-        if !plan.session_content_unchanged(&request.registries, &content) {
-            return Err(SupervisorError(
-                "Registry content changed during profile preparation".into(),
-            ));
-        }
         let observer =
             observer.insert(plan.observer(&work, &report.attempt, &request, &registries)?);
         match input.try_recv() {

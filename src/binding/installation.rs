@@ -7,7 +7,6 @@ use std::{
     time::SystemTime,
 };
 
-use super::targets::M45_DEFAULT_REGISTRIES;
 use crate::work_directory::sha256;
 use crate::{OpenError, UnavailableReason};
 
@@ -29,6 +28,7 @@ pub(super) struct Installation {
 }
 
 impl Installation {
+    /// Open the installation. It pins no registry content until `with_default_registries`.
     pub fn open(hint: &Path) -> Result<(Self, Arc<[u8]>), OpenError> {
         let metadata = fs::metadata(hint).map_err(|error| access_error(hint, error))?;
         let executable = if metadata.is_file() {
@@ -46,23 +46,31 @@ impl Installation {
         let (executable_stamp, bytes) =
             read_stamped(&executable).map_err(|error| access_error(&executable, error))?;
         let bytes: Arc<[u8]> = bytes.into();
-        let default_directories: Vec<String> = M45_DEFAULT_REGISTRIES
-            .iter()
-            .map(|name| (*name).into())
-            .collect();
         Ok((
             Self {
                 executable_hash: sha256(&bytes),
                 executable_bytes: bytes.clone(),
                 executable_stamp,
-                content: content_snapshot(&root, &default_directories, false),
-                default_directories,
+                content: content_snapshot(&root, &[], false),
+                default_directories: Vec::new(),
                 root,
                 locator,
                 executable,
             },
             bytes,
         ))
+    }
+
+    /// Pin the content of the build's default registries, which only the identified build names.
+    pub fn with_default_registries(self, registries: &[&str]) -> Self {
+        let default_directories: Vec<String> =
+            registries.iter().map(|name| (*name).into()).collect();
+
+        Self {
+            content: content_snapshot(&self.root, &default_directories, false),
+            default_directories,
+            ..self
+        }
     }
 
     /// The executable bytes verified at `open`. A static read hashes the file again only when
@@ -339,6 +347,25 @@ mod tests {
         assert_eq!(
             installation.target_integrity(),
             Some(UnavailableReason::TargetChanged)
+        );
+    }
+
+    #[test]
+    fn only_the_registries_that_the_build_names_are_pinned() {
+        let root = tempfile::tempdir().unwrap();
+        for directory in ["common/named", "common/other"] {
+            fs::create_dir_all(root.path().join(directory)).unwrap();
+        }
+        fs::write(root.path().join("launcher-settings.json"), "{}").unwrap();
+        fs::write(root.path().join("stellaris"), "authored test bytes").unwrap();
+        let (installation, _) = Installation::open(&root.path().join("stellaris")).unwrap();
+        let installation = installation.with_default_registries(&["common/named"]);
+        fs::write(root.path().join("common/other/added.txt"), "unpinned").unwrap();
+        assert_eq!(installation.default_content_integrity(), None);
+        fs::write(root.path().join("common/named/added.txt"), "pinned").unwrap();
+        assert_eq!(
+            installation.default_content_integrity(),
+            Some(UnavailableReason::ContentChanged)
         );
     }
 }

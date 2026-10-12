@@ -4,25 +4,29 @@ use super::{
     families::{DEFINITIONS, string_functions},
 };
 use crate::AnalysisError;
+use crate::binding::MODIFIER_LOG_DEFINITIONS;
 use crate::engine::analysis::{
     decode::decode_arm64, discovery::Symbol, modifier_table::Input, strings::StringLayout,
 };
 use std::collections::BTreeMap;
 
+/// The table method's input, and the entry of `LogDefinitions`, which returns once content
+/// validation has completed the loaded table.
 pub(in crate::binding) fn read(
     bytes: &[u8],
     symbols: &[Symbol],
     pointers: &BTreeMap<u64, u64>,
     string_tag_offset: u64,
-) -> Result<Input, AnalysisError> {
+) -> Result<(Input, u64), AnalysisError> {
     let text = Text::read(bytes, symbols)?;
-    let rows = |name| {
-        let (address, bytes) = text.function(unique(symbols, name)?)?;
+    let rows = |entry| {
+        let (address, bytes) = text.function(entry)?;
         decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)
     };
-    Ok(Input {
-        documentation: rows("CModifier::LogDefinitions()")?,
-        get_string: rows("CStaticLexer::GetString(int)")?,
+    let documentation_entry = unique(symbols, MODIFIER_LOG_DEFINITIONS)?;
+    let input = Input {
+        documentation: rows(documentation_entry)?,
+        get_string: rows(unique(symbols, "CStaticLexer::GetString(int)")?)?,
         definitions: unique(symbols, DEFINITIONS)?,
         category_name: unique(
             symbols,
@@ -36,5 +40,7 @@ pub(in crate::binding) fn read(
         string_layout: StringLayout {
             flag_byte: string_tag_offset,
         },
-    })
+    };
+
+    Ok((input, documentation_entry))
 }

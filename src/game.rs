@@ -271,7 +271,7 @@ impl Game {
         }
         self.keep_on_error(result)
     }
-    /// The duration receivers that a live check carries; none without a static analysis.
+    /// The duration receivers that a live check carries; none for a game with no binding.
     fn duration_receivers(
         &self,
         input: &crate::ScriptCheck,
@@ -283,11 +283,11 @@ impl Game {
         else {
             return Vec::new();
         };
-        let Some(analysis) = &binding.analysis else {
-            return Vec::new();
-        };
-
-        crate::session::script_durations::duration_receivers(analysis, input.kind, &input.text)
+        crate::session::script_durations::duration_receivers(
+            &binding.analysis,
+            input.kind,
+            &input.text,
+        )
     }
 
     /// Return the modifiers that the engine holds after all content has loaded, with their

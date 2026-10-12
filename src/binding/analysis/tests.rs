@@ -1,12 +1,16 @@
 use super::*;
+use crate::GrammarProperty;
 use std::fs;
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
-    let fields = analysis.fixture_fields("common/traditions").unwrap();
+    let analysis = &native.bound().analysis;
+    let fields = analysis
+        .fixture_registry_fields("common/traditions")
+        .unwrap()
+        .bindings;
     let found: Vec<_> = fields
         .iter()
         .filter_map(|field| Some((field.name.as_str(), field.token, field.storage?.offset)))
@@ -39,7 +43,10 @@ fn fixture_bindings_follow_reader_arguments_and_owner_symbols() {
             member_entry: 0x100ae1e84,
         })
     );
-    let relic_fields = analysis.fixture_fields("common/relics").unwrap();
+    let relic_fields = analysis
+        .fixture_registry_fields("common/relics")
+        .unwrap()
+        .bindings;
     assert!(relic_fields.iter().any(|field| field.name == "portrait"
         && field.storage.map(|storage| storage.offset) == Some(728)));
     assert_eq!(
@@ -62,7 +69,12 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     )
     .unwrap();
     let (installation, _) = Installation::open(&path).unwrap();
-    let analysis = BoundAnalysis::new(None, None, installation, Default::default());
+    let analysis = BoundAnalysis::new(
+        crate::binding::targets::test_declarations(),
+        None,
+        installation,
+        Default::default(),
+    );
     (root, analysis)
 }
 
@@ -83,10 +95,9 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
             record: CandidateRecord {
                 database: "CSyntheticDatabase".into(),
                 owner_candidate: "CSyntheticOwner".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: false,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named(name.clone()),
         })
@@ -105,7 +116,7 @@ fn session_admission_follows_the_registries_that_the_executable_declares() {
     let plan = ExecutionPlan {
         binding: Binding {
             invalidated: analysis.invalidated.clone(),
-            analysis: Some(std::sync::Arc::new(analysis)),
+            analysis: std::sync::Arc::new(analysis),
             operation: Some(compose::synthetic_variation()),
             installation,
         },
@@ -145,16 +156,20 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
     let path = root.path().join("image");
     fs::write(&path, support::macho_with_text(&loader)).unwrap();
     let (installation, _) = Installation::open(&path).unwrap();
-    let analysis = BoundAnalysis::new(None, None, installation.clone(), Default::default());
+    let analysis = BoundAnalysis::new(
+        crate::binding::targets::test_declarations(),
+        None,
+        installation.clone(),
+        Default::default(),
+    );
     let catalog = Catalog {
         candidates: vec![NamedCandidate {
             record: CandidateRecord {
                 database: "CTraditionDatabase".into(),
                 owner_candidate: "CTraditionType".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: true,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named("common/traditions".into()),
         }],
@@ -169,7 +184,7 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
     let plan = ExecutionPlan {
         binding: Binding {
             invalidated: analysis.invalidated.clone(),
-            analysis: Some(std::sync::Arc::new(analysis)),
+            analysis: std::sync::Arc::new(analysis),
             operation: Some(compose::synthetic_variation()),
             installation,
         },
@@ -191,6 +206,67 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
 }
 
 #[test]
+fn field_input_refuses_a_record_that_the_catalog_does_not_hold() {
+    use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
+
+    // The symbols that the key readers need, so that the held record reads.
+    let symbols = [
+        "CToken::CToken(CToken const&)",
+        "CEventTarget::CEventTarget(CToken, EScopeType, CString const&)",
+        "CEventTarget::operator=(CEventTarget&&)",
+        "void CPdxArray<CString, int>::SetSizeAndEmplace<>(int, const&)",
+        "void CPdxOptional<CString>::SetEmplace<char const*>(char const*&&)",
+        "CReader::Read(CString&, bool)",
+        "CReader::Read(CPersistent&)",
+    ]
+    .into_iter()
+    .zip(0x9000..)
+    .map(|(name, address)| Symbol {
+        address,
+        name: name.into(),
+    })
+    .collect();
+    let held = CandidateRecord {
+        database: "CTraditionDatabase".into(),
+        owner_candidate: "CTraditionType".into(),
+        loader_class: "loader".into(),
+        address: 0x1000,
+        initial_loader: Some(0x2000),
+    };
+    let (_image, analysis) = fixture();
+    let catalog = Catalog {
+        candidates: vec![NamedCandidate {
+            record: held.clone(),
+            directory: Directory::Named("common/traditions".into()),
+        }],
+        symbols,
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let verified = analysis.verified().unwrap();
+
+    assert!(verified.field_input(held.clone()).is_ok());
+    for foreign in [
+        CandidateRecord {
+            owner_candidate: "COther".into(),
+            ..held.clone()
+        },
+        CandidateRecord {
+            address: 0x1004,
+            ..held.clone()
+        },
+    ] {
+        assert!(matches!(
+            verified.field_input(foreign),
+            Err(AnalysisError::InvalidRange)
+        ));
+    }
+}
+
+#[test]
 fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root() {
     use crate::engine::analysis::{directories::Directory, discovery::CandidateRecord};
     use crate::{Error, Native};
@@ -201,10 +277,9 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
             record: CandidateRecord {
                 database: "CTraditionDatabase".into(),
                 owner_candidate: "CTraditionType".into(),
-                loader: "loader".into(),
-                address: "0x1000".into(),
-                initial_loader: Some("0x2000".into()),
-                has_named_member_reader: true,
+                loader_class: "loader".into(),
+                address: 0x1000,
+                initial_loader: Some(0x2000),
             },
             directory: Directory::Named("common/traditions".into()),
         }],
@@ -218,7 +293,7 @@ fn an_unknown_registry_name_is_recorded_as_its_error_inside_the_recording_root()
     let binding = crate::binding::Binding {
         installation: analysis.installation.clone(),
         invalidated: analysis.invalidated.clone(),
-        analysis: Some(std::sync::Arc::new(analysis)),
+        analysis: std::sync::Arc::new(analysis),
         operation: None,
     };
     let base = tempfile::tempdir().unwrap();
@@ -273,7 +348,7 @@ fn static_support_checks_the_pinned_executable_without_requiring_content() {
         let binding = crate::binding::Binding {
             installation: analysis.installation.clone(),
             invalidated: analysis.invalidated.clone(),
-            analysis: Some(std::sync::Arc::new(analysis)),
+            analysis: std::sync::Arc::new(analysis),
             operation: None,
         };
         let native = Native::from_binding(binding);
@@ -310,7 +385,7 @@ fn every_named_candidate_has_one_initial_loader_entry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let candidates = binding.analysis.as_ref().unwrap().verified().unwrap();
+    let candidates = binding.analysis.verified().unwrap();
     assert_eq!(candidates.named_candidates().len(), 164);
     assert!(
         candidates
@@ -331,7 +406,7 @@ fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let index = binding.analysis.as_ref().unwrap().family_index().unwrap();
+    let index = binding.analysis.family_index().unwrap();
     let registries: Vec<String> = index
         .registries
         .iter()
@@ -390,7 +465,7 @@ fn m452_registry_key_storage_sweep() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let verified = binding.analysis.as_ref().unwrap().verified().unwrap();
+    let verified = binding.analysis.verified().unwrap();
     let names: Vec<String> = verified
         .named_candidates()
         .iter()
@@ -448,11 +523,9 @@ fn repeated_public_and_binding_queries_agree() {
         let fixture_fields = native
             .bound()
             .analysis
-            .as_ref()
+            .fixture_registry_fields(registry)
             .unwrap()
-            .registry_fields(registry)
-            .unwrap()
-            .unwrap();
+            .fields;
         assert_eq!(readers(&fixture_fields), readers(&fields.value));
     }
     let selected = [
@@ -607,7 +680,12 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     fs::write(&replacement, &image).unwrap();
     symlink(&original, &hint).unwrap();
     let (installation, _) = Installation::open(&hint).unwrap();
-    let analysis = BoundAnalysis::new(None, None, installation, Default::default());
+    let analysis = BoundAnalysis::new(
+        crate::binding::targets::test_declarations(),
+        None,
+        installation,
+        Default::default(),
+    );
     assert_eq!(*analysis.executable().unwrap(), *image);
     fs::remove_file(&hint).unwrap();
     symlink(&replacement, &hint).unwrap();
@@ -699,13 +777,7 @@ fn range_reader_selects_the_same_arm64_slice_from_a_universal_image() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_persistent_field_families() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let verified = native
-        .bound()
-        .analysis
-        .as_ref()
-        .unwrap()
-        .verified()
-        .unwrap();
+    let verified = native.bound().analysis.verified().unwrap();
     for registry in ["common/traditions", "common/council_agendas"] {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
         let input = verified.field_input(candidate.record.clone()).unwrap();
@@ -734,7 +806,7 @@ fn m452_command_grammar_foundations_resolve_and_reuse_inputs() {
     use crate::DeclarationKind::{Effect, Trigger};
 
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     let verified = analysis.verified().unwrap();
     let name_at = |address| {
         verified
@@ -1078,6 +1150,73 @@ fn cached_grammar_still_checks_executable_integrity() {
     ));
 }
 
+const CFIXED_POINT_READER: &str = "CReader::Read(CFixedPoint&)";
+const FPML_READER: &str =
+    "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)";
+/// Scales that no engine reader has, so that a decoder can only have taken them from the facts.
+const CFIXED_POINT_SCALE: u64 = 1_000;
+pub(super) const FPML_SCALE: u64 = 64;
+
+/// Numeric facts whose two fixed-point readers have these scales.
+pub(super) fn fixed_point_numeric(
+    cfixed_point: GrammarProperty<Option<u64>>,
+    fpml: GrammarProperty<Option<u64>>,
+) -> crate::engine::analysis::numeric::NumericFacts {
+    use crate::engine::analysis::numeric::NumericReader;
+    let reader = |scale| NumericReader {
+        conversion: GrammarProperty::Known(Some(crate::NumericConversion {
+            scale,
+            ..Default::default()
+        })),
+        gaps: Vec::new(),
+        boundary: Vec::new(),
+    };
+
+    crate::engine::analysis::numeric::NumericFacts {
+        readers: [
+            (CFIXED_POINT_READER.into(), reader(cfixed_point)),
+            (FPML_READER.into(), reader(fpml)),
+        ]
+        .into(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_fixed_point_reader_has_a_storage_decoder_only_with_a_known_scale() {
+    use crate::engine::analysis::numeric::NumericFacts;
+    use crate::protocol::observation::FixtureStorageDecoder;
+    let both = [CFIXED_POINT_READER, FPML_READER];
+
+    let numeric = fixed_point_numeric(
+        GrammarProperty::Known(Some(250)),
+        GrammarProperty::Unresolved,
+    );
+    assert_eq!(
+        fixture_decoder(CFIXED_POINT_READER, &numeric),
+        Some(FixtureStorageDecoder::FixedPoint { scale: 250 })
+    );
+    assert_eq!(fixture_decoder(FPML_READER, &numeric), None);
+
+    for scale in [
+        GrammarProperty::Partial(Some(250)),
+        GrammarProperty::Known(None),
+        GrammarProperty::Unresolved,
+    ] {
+        let numeric = fixed_point_numeric(scale.clone(), scale);
+        for callee in both {
+            assert_eq!(fixture_decoder(callee, &numeric), None, "{callee}");
+        }
+    }
+    for callee in both {
+        assert_eq!(fixture_decoder(callee, &NumericFacts::default()), None);
+    }
+    assert_eq!(
+        fixture_decoder("CReader::Read(int&)", &NumericFacts::default()),
+        Some(FixtureStorageDecoder::Integer)
+    );
+}
+
 #[test]
 fn fixture_storage_requires_one_unconditional_owner_destination() {
     use crate::engine::analysis::fields::{
@@ -1106,17 +1245,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
         terminal: 0x1000,
         outcome: PathOutcome::Reader(field.readers[0].clone()),
     }];
+    let numeric = fixed_point_numeric(
+        GrammarProperty::Known(Some(CFIXED_POINT_SCALE)),
+        GrammarProperty::Known(Some(FPML_SCALE)),
+    );
     for (callee, decoder) in [
         ("CReader::Read(int&)", FixtureStorageDecoder::Integer),
         ("CReader::Read(float&)", FixtureStorageDecoder::Float),
         ("CReader::Read(short&)", FixtureStorageDecoder::Integer16),
         (
-            "CReader::Read(CFixedPoint&)",
-            FixtureStorageDecoder::FixedPoint { scale: 100_000 },
+            CFIXED_POINT_READER,
+            FixtureStorageDecoder::FixedPoint {
+                scale: CFIXED_POINT_SCALE,
+            },
         ),
         (
-            "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
-            FixtureStorageDecoder::FixedPoint { scale: 32_768 },
+            FPML_READER,
+            FixtureStorageDecoder::FixedPoint { scale: FPML_SCALE },
         ),
         (
             "CReader::Read(CString&, bool)",
@@ -1127,7 +1272,7 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
             unreachable!()
         };
         *target = callee.into();
-        let bound = fixture_storage_binding(&field, &paths).unwrap();
+        let bound = fixture_storage_binding(&field, &paths, &numeric).unwrap();
         assert_eq!(bound.offset, 48);
         assert_eq!(bound.decoder, decoder);
         let mut scratch_changed = field.clone();
@@ -1136,23 +1281,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
         };
         arguments.remove("x8");
         assert_eq!(
-            fixture_storage_binding(&scratch_changed, &paths)
+            fixture_storage_binding(&scratch_changed, &paths, &numeric)
                 .unwrap()
                 .decoder,
             decoder
         );
         let mut ambiguous = paths.clone();
         ambiguous[0].domain = [7, 8];
-        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        assert!(fixture_storage_binding(&field, &ambiguous, &numeric).is_none());
         ambiguous[0].domain = [8, 8];
-        assert!(fixture_storage_binding(&field, &ambiguous).is_none());
+        assert!(fixture_storage_binding(&field, &ambiguous, &numeric).is_none());
         for (register, value) in [("x0", Value::Owner(0)), ("x1", Value::Constant(48))] {
             let mut missing = field.clone();
             let ReaderJoin::Joined { arguments, .. } = &mut missing.readers[0] else {
                 unreachable!()
             };
             arguments.insert(register.into(), value);
-            assert!(fixture_storage_binding(&missing, &paths).is_none());
+            assert!(fixture_storage_binding(&missing, &paths, &numeric).is_none());
         }
     }
     let original = field.clone();
@@ -1166,23 +1311,23 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
             unreachable!()
         };
         arguments.insert(register.into(), value);
-        assert!(fixture_storage_binding(&field, &paths).is_none());
+        assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     }
     field = original.clone();
     let ReaderJoin::Joined { callee, .. } = &mut field.readers[0] else {
         unreachable!()
     };
     *callee = "CReader::Read(unsigned int&)".into();
-    assert!(fixture_storage_binding(&field, &paths).is_none());
+    assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     field = original.clone();
     field.readers.push(field.readers[0].clone());
-    assert!(fixture_storage_binding(&field, &paths).is_none());
+    assert!(fixture_storage_binding(&field, &paths, &numeric).is_none());
     paths[0].conditions.push(Condition {
         at: 0x1000,
         value: None,
         zero: true,
     });
-    assert!(fixture_storage_binding(&original, &paths).is_none());
+    assert!(fixture_storage_binding(&original, &paths, &numeric).is_none());
 }
 
 /// Report storage coverage independently of whether the registry has a live loader boundary.
@@ -1190,13 +1335,10 @@ fn fixture_storage_requires_one_unconditional_owner_destination() {
 #[ignore = "requires STELLARIS_PATH; reports every numeric registry field"]
 fn numeric_fixture_storage_population() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     for registry in native.registries().unwrap().value {
-        let fields = analysis
-            .registry_fields(&registry.name)
-            .unwrap()
-            .unwrap_or_default();
-        let bindings = analysis.fixture_fields(&registry.name).unwrap();
+        let FixtureRegistryFields { fields, bindings } =
+            analysis.fixture_registry_fields(&registry.name).unwrap();
         let numeric: Vec<_> = fields.iter().filter(|field|
             matches!(field.reader.kind, crate::ReaderKind::Integer | crate::ReaderKind::FixedPoint | crate::ReaderKind::Float))
             .map(|field| serde_json::json!({"field": field.name, "reader": field.reader,
@@ -1214,7 +1356,7 @@ fn numeric_fixture_storage_population() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     let request = crate::FixtureRequest::field_outcomes(
         "common/special_projects/native.txt",
         "special_project = { key = test }",
@@ -1246,13 +1388,13 @@ fn nested_fixture_bindings_derive_owner_key_and_numeric_storage() {
 #[ignore = "requires exact M452 through STELLARIS_PATH"]
 fn scoped_fixture_destinations() {
     let native = crate::Native::open(std::env::var_os("STELLARIS_PATH").unwrap()).unwrap();
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     let verified = analysis.verified().unwrap();
     for registry in ["common/council_agendas", "common/megastructures"] {
         let candidate = unique_named_candidate(verified.named_candidates(), registry).unwrap();
         let input = verified.field_input(candidate.record.clone()).unwrap();
         let result = crate::engine::analysis::fields::analyze(&input).unwrap();
-        let bindings = analysis.fixture_fields(registry).unwrap();
+        let bindings = analysis.fixture_registry_fields(registry).unwrap().bindings;
         for field in &result.fields {
             if matches!(
                 field.name.as_str(),
@@ -1282,7 +1424,7 @@ fn m452_float_and_short_fixture_storage_bindings() {
         native.build().0,
         "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b"
     );
-    let analysis = native.bound().analysis.as_ref().unwrap();
+    let analysis = &native.bound().analysis;
     for (registry, fields, decoder) in [
         (
             "common/star_classes",
@@ -1314,7 +1456,7 @@ fn m452_float_and_short_fixture_storage_bindings() {
             FixtureStorageDecoder::Integer16,
         ),
     ] {
-        let bindings = analysis.fixture_fields(registry).unwrap();
+        let bindings = analysis.fixture_registry_fields(registry).unwrap().bindings;
         assert!(
             analysis.fixture_loader(registry).unwrap().is_some(),
             "{registry}"
@@ -1337,12 +1479,11 @@ fn m452_float_and_short_fixture_storage_bindings() {
 fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanup() {
     use crate::engine::analysis::assembler::arm64;
     for specialization in ["true", "false"] {
-        let database = format!("TSingleObjectGameDatabase<Database, Owner, {specialization}>");
-        let loader = format!("{database}::LoadFile(char const*, bool)");
+        let loader_class = format!("TSingleObjectGameDatabase<Database, Owner, {specialization}>");
         let symbols = vec![
             Symbol {
                 address: 0x2000,
-                name: format!("{database}::LoadFromReader(CReader&, bool)"),
+                name: format!("{loader_class}::LoadFromReader(CReader&, bool)"),
             },
             Symbol {
                 address: 0x3000,
@@ -1351,11 +1492,11 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
         ];
         let code = arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret);
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols).unwrap(),
             Some((0x2000, 0x1004))
         );
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &loader, &symbols[..1]).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols[..1]).unwrap(),
             None
         );
         for code in [
@@ -1365,7 +1506,7 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
             arm64!(at 0x1000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; bl extern 0x2000; mov x0, sp; bl extern 0x3000; ret),
         ] {
             assert_eq!(
-                fixture_reader_boundary(&code, 0x1000, &loader, &symbols).unwrap(),
+                fixture_reader_boundary(&code, 0x1000, &loader_class, &symbols).unwrap(),
                 None
             );
         }
@@ -1374,9 +1515,9 @@ fn fixture_loader_boundary_preserves_template_specialization_and_requires_cleanu
         } else {
             "true"
         };
-        let wrong_loader = loader.replace(specialization, opposite);
+        let wrong_class = loader_class.replace(specialization, opposite);
         assert_eq!(
-            fixture_reader_boundary(&code, 0x1000, &wrong_loader, &symbols).unwrap(),
+            fixture_reader_boundary(&code, 0x1000, &wrong_class, &symbols).unwrap(),
             None
         );
     }
@@ -1448,8 +1589,8 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     let installation =
         std::env::var_os("STELLARIS_PATH").expect("STELLARIS_PATH names the installation");
     let binding = crate::binding::Binding::open(std::path::Path::new(&installation)).unwrap();
-    let analysis = binding.analysis.as_ref().unwrap();
-    let recipe = analysis.declarations.unwrap();
+    let analysis = &binding.analysis;
+    let recipe = analysis.declarations;
     let input = analysis.verified().unwrap().block_input(recipe).unwrap();
     assert_eq!(
         input.evaluation_slots,

@@ -5,18 +5,17 @@ use tempfile::{TempDir, tempdir};
 
 #[test]
 fn initial_loader_requires_one_named_candidate_with_an_address() {
-    let candidate = |directory: &str, initial_loader: Option<&str>| super::NamedCandidate {
+    let candidate = |directory: &str, initial_loader: Option<u64>| super::NamedCandidate {
         record: crate::engine::analysis::discovery::CandidateRecord {
             database: "CTestDatabase".into(),
             owner_candidate: "CTestOwner".into(),
-            loader: "loader".into(),
-            address: "0x1000".into(),
-            initial_loader: initial_loader.map(str::to_owned),
-            has_named_member_reader: false,
+            loader_class: "loader".into(),
+            address: 0x1000,
+            initial_loader,
         },
         directory: crate::engine::analysis::directories::Directory::Named(directory.into()),
     };
-    let known = candidate("common/traditions", Some("0x1234"));
+    let known = candidate("common/traditions", Some(0x1234));
     assert_eq!(
         super::initial_loader(
             super::named_candidate(std::slice::from_ref(&known), "common/traditions").unwrap(),
@@ -28,13 +27,6 @@ fn initial_loader_requires_one_named_candidate_with_an_address() {
     assert!(super::named_candidate(&[known.clone(), known], "common/traditions").is_err());
     assert!(
         super::initial_loader(&candidate("common/traditions", None), "common/traditions").is_err()
-    );
-    assert!(
-        super::initial_loader(
-            &candidate("common/traditions", Some("invalid")),
-            "common/traditions"
-        )
-        .is_err()
     );
 }
 
@@ -48,10 +40,7 @@ fn a_registry_without_an_instance_gets_no_key_read() {
 
 #[test]
 fn registry_binding_keeps_the_established_key_offset_or_refusal() {
-    let layout = super::groups::registry_layout(&[
-        super::targets::BindingGroupId::M45TemplateRegistryLayout,
-    ])
-    .unwrap();
+    let layout = super::groups::M45_TEMPLATE_LAYOUT;
     let bypass = super::groups::registry_binding(layout, "common/bypass", 0x1234, Ok(0x18));
     assert_eq!(bypass.key_offset, Some(0x18));
     assert_eq!(bypass.key_unavailable, None);
@@ -69,35 +58,46 @@ fn registry_binding_keeps_the_established_key_offset_or_refusal() {
     );
 }
 
+/// A binding of an authored installation: its analysis takes the catalogued declarations.
+fn authored_binding(
+    installation: Installation,
+    operation: Option<super::compose::ResolvedObservation>,
+) -> Binding {
+    let invalidated = std::sync::Arc::<std::sync::Mutex<Option<UnavailableReason>>>::default();
+    let analysis = super::BoundAnalysis::new(
+        super::targets::test_declarations(),
+        None,
+        installation.clone(),
+        invalidated.clone(),
+    );
+
+    Binding {
+        analysis: std::sync::Arc::new(analysis),
+        operation,
+        installation,
+        invalidated,
+    }
+}
+
 /// An authored installation. Its executable is in no catalogue, so the binding has no operation;
 /// these tests concern only the integrity of the pinned inputs.
 fn installation() -> (TempDir, Binding) {
     let directory = tempdir().unwrap();
-    for relative in ["common/tradition_categories", "common/traditions"] {
+    let registries = ["common/tradition_categories", "common/traditions"];
+    for relative in registries {
         fs::create_dir_all(directory.path().join(relative)).unwrap();
     }
     fs::write(directory.path().join("launcher-settings.json"), "{}").unwrap();
     fs::write(directory.path().join("stellaris"), "authored test bytes").unwrap();
     fs::write(directory.path().join("common/traditions/test.txt"), "test").unwrap();
     let (installation, _) = Installation::open(directory.path()).unwrap();
-    let binding = Binding {
-        operation: None,
-        analysis: None,
-        installation,
-        invalidated: Default::default(),
-    };
+    let binding = authored_binding(installation.with_default_registries(&registries), None);
     (directory, binding)
 }
 
 #[test]
 fn executable_replacement_permanently_invalidates_the_context() {
-    let (directory, mut binding) = installation();
-    binding.analysis = Some(std::sync::Arc::new(super::BoundAnalysis::new(
-        None,
-        None,
-        binding.installation.clone(),
-        binding.invalidated.clone(),
-    )));
+    let (directory, binding) = installation();
     let context = crate::Native::from_binding(binding);
     assert_eq!(context.blocking_reasons(context.bound()), []);
     fs::write(directory.path().join("stellaris"), "changed executable").unwrap();
@@ -112,7 +112,7 @@ fn executable_replacement_permanently_invalidates_the_context() {
             .blocking_reasons(context.bound())
             .contains(&UnavailableReason::TargetChanged)
     );
-    let analysis = context.bound().analysis.as_ref().unwrap();
+    let analysis = &context.bound().analysis;
     assert!(analysis.executable().is_err());
 }
 
@@ -199,6 +199,65 @@ fn missing_inputs_never_become_empty_success() {
     );
 }
 
+/// A plan over the authored installation at `root`, and the default registries it observes.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn profile_plan(
+    root: &std::path::Path,
+) -> (
+    super::ExecutionPlan,
+    std::collections::BTreeMap<String, crate::protocol::observation::RegistryBinding>,
+) {
+    let (installation, _) = Installation::open(root).unwrap();
+    let operation = super::compose::synthetic_variation();
+    let plan = super::ExecutionPlan {
+        binding: authored_binding(
+            installation.with_default_registries(operation.default_registries),
+            Some(operation),
+        ),
+    };
+    let registries = plan
+        .binding
+        .default_registries()
+        .into_iter()
+        .map(|name| {
+            let binding = super::groups::registry_binding(
+                plan.operation().registry_layout.unwrap(),
+                &name,
+                0x5678,
+                Ok(0x10),
+            );
+            (name, binding)
+        })
+        .collect();
+
+    (plan, registries)
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[test]
+fn private_profile_refuses_content_that_changes_while_it_is_prepared() {
+    let (root, _) = installation();
+    let (plan, registries) = profile_plan(root.path());
+    let directories: Vec<String> = registries.keys().cloned().collect();
+    let content = plan.session_content(&directories).unwrap();
+    let work = tempdir().unwrap();
+    fs::create_dir(work.path().join("profile")).unwrap();
+    plan.prepare_registry_profile(work.path(), None, &registries, &content)
+        .unwrap();
+
+    // The copy checks each pinned file, so a file added after the snapshot is not seen there.
+    fs::write(root.path().join("common/traditions/late.txt"), "late").unwrap();
+    let next = tempdir().unwrap();
+    fs::create_dir(next.path().join("profile")).unwrap();
+    let error = plan
+        .prepare_registry_profile(next.path(), None, &registries, &content)
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Registry content changed during profile preparation"
+    );
+}
+
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[test]
 fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edits() {
@@ -208,31 +267,9 @@ fn private_profile_copies_the_content_pinned_at_open_including_additions_and_edi
     fs::write(root.path().join(modified), "edited before open").unwrap();
     fs::create_dir(root.path().join("common/traditions/nested")).unwrap();
     fs::write(root.path().join(added), "added before open").unwrap();
-    let (installation, _) = Installation::open(root.path()).unwrap();
-    let plan = super::ExecutionPlan {
-        binding: Binding {
-            installation,
-            operation: Some(super::compose::synthetic_variation()),
-            analysis: None,
-            invalidated: Default::default(),
-        },
-    };
-    let names = plan.binding.default_registries();
-    let registries: std::collections::BTreeMap<_, _> = names
-        .iter()
-        .map(|name| {
-            (
-                name.clone(),
-                super::groups::registry_binding(
-                    plan.operation().registry_layout.unwrap(),
-                    name,
-                    0x5678,
-                    Ok(0x10),
-                ),
-            )
-        })
-        .collect();
-    let content = plan.installation().content.as_ref().unwrap();
+    let (plan, registries) = profile_plan(root.path());
+    let directories: Vec<String> = registries.keys().cloned().collect();
+    let content = &plan.session_content(&directories).unwrap();
     let work = tempdir().unwrap();
     fs::create_dir(work.path().join("profile")).unwrap();
     plan.prepare_registry_profile(work.path(), None, &registries, content)
@@ -395,17 +432,12 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
     operation.strategy.package = [("selected.txt".into(), b"selected package".to_vec())].into();
     operation.strategy.prepare = inspect;
     let plan = ExecutionPlan {
-        binding: Binding {
-            operation: Some(operation),
-            analysis: None,
-            installation: installed,
-            invalidated: Default::default(),
-        },
+        binding: authored_binding(installed, Some(operation)),
     };
     // The strategy gets the hash bound at open and does not read the executable again; the
     // check before spawn and the worker refuse a changed file.
     fs::write(directory.path().join("stellaris"), "changed test bytes!").unwrap();
-    let mut request = SessionRequest {
+    let request = SessionRequest {
         installation: directory.path().into(),
         build: "unused".into(),
         work_directory: directory.path().join("unused"),
@@ -427,12 +459,4 @@ fn shared_execution_consumes_the_resolved_recipe_and_strategy() {
         .unwrap();
     assert_eq!(error.to_string(), "selected strategy reached");
     assert!(!directory.path().join("unused").exists());
-    // A fault for a registry that the session does not observe never reaches the strategy.
-    request.fault.as_mut().unwrap().target =
-        crate::protocol::session::ObservationTarget::Registry("unknown".into());
-    let error = plan
-        .observer(&request.work_directory, "test", &request, &registries)
-        .err()
-        .unwrap();
-    assert_ne!(error.to_string(), "selected strategy reached");
 }

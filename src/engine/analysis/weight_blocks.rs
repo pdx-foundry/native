@@ -1,6 +1,10 @@
 //! Weight blocks: the keys, arithmetic operations and conditions that a shared mean-time member
 //! reader accepts.
 //!
+//! `STRING_SIZE` keeps the engine's string object size here. It is a per-build layout fact that
+//! stays with its reader, not a recipe field. The build is in `docs/native/targets.md` and its
+//! facts are on `docs/native/weight-blocks.md`.
+//!
 //! Weight, `random_weight` and script-value fields share one engine reader. Its member reader
 //! dispatches some keys before a compiled token-to-enum switch selects an arithmetic operation,
 //! and it allocates an entry object for each nested block. The symbolic dispatch walker stops at

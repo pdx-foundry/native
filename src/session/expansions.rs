@@ -26,7 +26,8 @@ impl Native {
         self.answer(Operation::ScriptExpansions, None, || {
             let operation = Operation::ScriptExpansions;
             let input = self
-                .declaration_analysis(operation)?
+                .bound()
+                .analysis
                 .expansion_input()
                 .map_err(|failure| error(operation, failure))?;
             Ok(normalize(expansions::analyze(&input), self.build()))

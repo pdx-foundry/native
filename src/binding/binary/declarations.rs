@@ -1,3 +1,8 @@
+//! Read the declaration registrations and the engine tables that the declaration methods join.
+//!
+//! `Text::scope_names` keeps the scope-bit sentinels here: bit 2 is `country` and bit 40 is
+//! `colony`. They are a per-build layout fact that stays with their reader, not a recipe field. The
+//! build is in `docs/native/targets.md` and its facts are on `docs/native/engine-commands.md`.
 use std::collections::{BTreeMap, BTreeSet};
 
 use object::{Object, ObjectSection, SectionKind};

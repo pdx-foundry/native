@@ -79,7 +79,8 @@ impl Native {
         family: Family,
     ) -> Result<(CallbacksResult, Option<Vec<String>>), Error> {
         let input = self
-            .declaration_analysis(operation)?
+            .bound()
+            .analysis
             .callbacks_input()
             .map_err(|failure| error(operation, failure))?;
         let result =

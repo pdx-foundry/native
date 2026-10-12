@@ -1,4 +1,9 @@
 //! Exact whole-body proofs for the shared scoped numeric reader and its concrete subtypes.
+//!
+//! The location check keeps the engine's string layout here: the flag byte at `0x17` and the long
+//! size at `8` from the location. It is a per-build layout fact that stays with its reader, not a
+//! recipe field. The build is in `docs/native/targets.md` and its facts are on
+//! `docs/native/scoped-numeric.md`.
 use std::collections::BTreeMap;
 
 use super::decode::Instruction;
@@ -496,8 +501,6 @@ mod tests {
         let input = native
             .bound()
             .analysis
-            .as_ref()
-            .unwrap()
             .scoped_numeric_input_for_test()
             .unwrap();
         let facts = native

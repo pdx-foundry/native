@@ -5,10 +5,7 @@ use super::binary::ImageIdentity;
 use crate::OpenError;
 
 pub(super) use recipes::InlineFixtureRecipe;
-pub(super) use recipes::M45_DEFAULT_REGISTRIES;
-pub(super) use recipes::{
-    AnchorSlot, BindingGroupId, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId,
-};
+pub(super) use recipes::{AnchorSlot, DeclarationRecipe, PersistentRecipe, Recipe, StrategyId};
 
 pub(super) struct TargetRecord {
     pub executable: &'static str,
@@ -42,13 +39,14 @@ fn lookup_in(
 #[cfg(test)]
 mod tests;
 
+/// The catalogued recipe, for tests of an authored image.
 #[cfg(test)]
-pub(super) fn test_identity() -> ImageIdentity {
-    let record = &records::CATALOGUE[0];
-    ImageIdentity {
-        executable: record.executable.into(),
-        slice: record.slice.into(),
-        architecture: record.architecture,
-        format: record.format,
-    }
+pub(super) fn test_recipe() -> &'static Recipe {
+    records::CATALOGUE[0].recipe
+}
+
+/// The catalogued declarations, for tests of an authored image.
+#[cfg(test)]
+pub(super) fn test_declarations() -> &'static DeclarationRecipe {
+    test_recipe().declarations
 }

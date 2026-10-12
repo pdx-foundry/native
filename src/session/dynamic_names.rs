@@ -32,7 +32,8 @@ impl Native {
     pub(crate) fn dynamic_name_commands(&self) -> Result<Vec<CommandNames>, Error> {
         let operation = Operation::DynamicNames;
         let input = self
-            .declaration_analysis(operation)?
+            .bound()
+            .analysis
             .dynamic_name_input()
             .map_err(|failure| error(operation, failure))?;
 

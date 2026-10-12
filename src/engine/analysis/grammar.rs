@@ -1865,13 +1865,7 @@ mod tests {
                 ],
             ),
         ] {
-            let (input, inventory) = native
-                .bound()
-                .analysis
-                .as_ref()
-                .unwrap()
-                .grammar_input(kind)
-                .unwrap();
+            let (input, inventory) = native.bound().analysis.grammar_input(kind).unwrap();
             let mut found = BTreeSet::new();
             for (_, site) in &inventory.sites {
                 let declarations::Site::Declared { name, factory, .. } = site else {

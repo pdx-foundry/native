@@ -52,7 +52,8 @@ impl Native {
     ) -> Result<Result<grammar::GrammarResult, Unresolved>, Error> {
         let operation = Operation::CommandGrammar;
         let (input, declarations) = self
-            .declaration_analysis(operation)?
+            .bound()
+            .analysis
             .grammar_input(kind)
             .map_err(|failure| error(operation, failure))?;
         registered_grammar(input, declarations, name).ok_or_else(|| Error::UnknownCommand {

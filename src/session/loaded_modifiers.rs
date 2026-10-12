@@ -54,7 +54,7 @@ impl Native {
         fixture: Option<&crate::FixtureRequest>,
     ) -> Result<ModifierJoin, Error> {
         let operation = Operation::LoadedModifiers;
-        let analysis = self.declaration_analysis(operation)?;
+        let analysis = &self.bound().analysis;
         let modifier_input = analysis
             .modifier_input()
             .map_err(|failure| error(operation, failure))?;

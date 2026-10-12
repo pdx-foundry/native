@@ -20,6 +20,10 @@ release at a time: SDK-674 removed the M45-release record and pins (in Git at `b
 SDK-714 replaced the M451-hotfix record, pins and expected output in place (in Git at `04e80d8`).
 The ignored exact-build tests and the `tests/expected/*m452` directories check M452.
 
+A port is whole. Every exact-build recipe carries a `DeclarationRecipe`, and every `Binding` holds a
+`BoundAnalysis`. A new build cannot be ported in part, for example with its observation parts
+only. A build that lacks either has no record in the catalogue.
+
 ## Port from M45-observe to M45-release
 
 Both slices keep their symbols, so each pinned entry moved by its mangled symbol name. Return

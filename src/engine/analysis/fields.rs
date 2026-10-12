@@ -73,18 +73,9 @@ use super::InputError;
 /// Name and revision of the method, as stamped on its answers.
 pub const METHOD: &str = "registry-fields/v30";
 
-/// Find the root fields of the selected candidate. Completeness is derived, never supplied.
+/// Find the root fields of the selected owner. The binding has established the selection, so the
+/// method does not discover candidates again. Completeness is derived, never supplied.
 pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
-    if !crate::engine::analysis::discovery::candidates(&input.symbols).contains(&input.selection) {
-        return Err(InputError(
-            "selected loader is not an executable-derived candidate".into(),
-        ));
-    }
-    analyze_owner(input)
-}
-
-/// Analyze an owner whose loader is established separately by an exact-build binding.
-pub(crate) fn analyze_owner(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     if input.functions.len() > 128
         || input.functions.iter().map(|f| f.code.len()).sum::<usize>() > 4 * 1024 * 1024
     {

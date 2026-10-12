@@ -1029,12 +1029,12 @@ class ModifierObserver:
     def registry_keys(self, process, target, directory, registry):
         if registry['key_offset'] is None:
             return {'unavailable': registry['key_unavailable'] or 'item key storage was not established'}
+        tag_offset = self.binding['string_tag_offset']
         try:
             database = uint(process, self.load(target, registry['instance']))
             if not database or database % registry['pointer_size']:
                 raise RuntimeError('registry database instance is null')
-            header = memory(process, database + registry['directory_offset'], 24)
-            if self.text(process, header, 0) != directory:
+            if cstring(process, database + registry['directory_offset'], tag_offset) != directory:
                 raise RuntimeError('registry database directory mismatch')
             count = uint(process, database + registry['count_offset'], 4)
             data = uint(process, database + registry['data_offset'])
@@ -1047,7 +1047,7 @@ class ModifierObserver:
                 item = int.from_bytes(pointers[index * size:index * size + size], 'little')
                 if not item or item % registry['pointer_size']:
                     raise RuntimeError('invalid registry object')
-                key = self.text(process, memory(process, item + registry['key_offset'], 24), 0)
+                key = cstring(process, item + registry['key_offset'], tag_offset)
                 if not key or key in keys or any(character.isspace() or ord(character) < 32 for character in key):
                     raise RuntimeError('item key layout not established: empty, duplicate, or invalid item key')
                 keys.append(key)

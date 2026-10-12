@@ -1,20 +1,9 @@
 //! Typed engine bindings: the addresses and layouts that one binding group declares.
-use super::targets::BindingGroupId;
-
-/// SDK-483/517 read-entry and source joins, found on the M45-observe beta slice and ported to each
-/// exact build by symbol name. The retained implementation is in Git at dd33300; these bindings
-/// authorize observation only.
-pub(super) fn fixture(
-    groups: &[BindingGroupId],
-) -> Option<crate::protocol::observation::FixtureBinding> {
-    groups
-        .iter()
-        .any(|group| matches!(group, BindingGroupId::M452CategoryFixture))
-        .then(m452_fixture)
-}
-
-/// Fresh fixture pins for the exact 4.5.2 ARM64 slice.
-fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
+/// Fresh fixture pins for the exact 4.5.2 ARM64 slice. They are the SDK-483/517 read-entry and
+/// source joins, found on the M45-observe beta slice and ported to each exact build by symbol
+/// name. The retained implementation is in Git at dd33300; these bindings authorize observation
+/// only.
+pub(super) fn m452_fixture() -> crate::protocol::observation::FixtureBinding {
     crate::protocol::observation::FixtureBinding {
         reader_lexer_offset: 0x30,
         lexer_file_offset: 8,
@@ -74,13 +63,6 @@ pub(super) const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
     pointer_size: 8,
     string_tag_offset: 23,
 };
-
-pub(super) fn registry_layout(groups: &[BindingGroupId]) -> Option<RegistryLayout> {
-    groups
-        .iter()
-        .any(|group| matches!(group, BindingGroupId::M45TemplateRegistryLayout))
-        .then_some(M45_TEMPLATE_LAYOUT)
-}
 
 /// The engine locations that `modifier_table_binding` joins with the layouts.
 pub(super) struct ModifierTableSymbols {

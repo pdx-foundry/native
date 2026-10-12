@@ -136,14 +136,18 @@ executable and the selected architecture slice.
 Represent support as a **sparse set of exact-target compositions**. There is no default Cartesian
 product of versions, platforms, methods, and operations.
 
-Each target record refers to an explicit recipe. Both are host-neutral Rust data with no `cfg`,
-no concrete platform types and no function pointers.
+Each target record refers to an explicit recipe. Both are host-neutral Rust data with no `cfg`
+and no concrete platform types. A recipe holds a function value only for a binding that owns
+`String` or `Vec` data and so cannot be a constant reference (`Recipe::script_checks` and
+`Recipe::fixture`). Such a function is a plain `fn` with no arguments, captured state or platform
+type, and it only builds data.
 
-`binding::compose` looks up the record and recipe, resolves its binding groups and machine methods,
-and asks the compiled host's strategy resolver to turn a strategy identifier into an
-implementation. A strategy that the host cannot run returns unsupported; it never selects a
-fallback. The composer rejects no match, multiple matches, missing parts, and incompatible parts.
-Catalogue ordering never breaks a tie.
+`binding::compose` looks up the record and recipe once, resolves the machine methods, builds the
+bindings that the recipe holds, binds the static analysis, and asks the compiled host's strategy
+resolver to turn a strategy identifier into an implementation. An unknown build, a build that
+matches more than one record and an architecture without machine methods are errors. A strategy
+that the host cannot run returns unsupported; it never selects a fallback. Catalogue ordering never
+breaks a tie. The composer checks no compatibility between the parts of a recipe.
 
 Share the largest proven unit of knowledge:
 
@@ -162,10 +166,11 @@ changed group.
 ### Target records
 
 [`src/binding/targets/records.rs`](../../src/binding/targets/records.rs) holds the exact target
-records, and `recipes.rs` beside it holds their recipes. A recipe names its binding groups and
-strategy; the live layouts are in `binding/groups.rs`. A recipe also owns its script-check
-bindings directly: `Recipe::script_checks` selects a function in `recipes.rs` that holds the
-exact addresses, object sizes, offsets and writes. A build adaptation updates both places.
+records, and `recipes.rs` beside it holds their recipes. A recipe holds its registry layout and
+fixture binding from `binding/groups.rs`, and names its strategy. A recipe also owns its
+script-check bindings directly: `Recipe::script_checks` selects a function in `recipes.rs` that
+holds the exact addresses, object sizes, offsets and writes. A build adaptation updates both
+places.
 
 The content directory identifies a registry on the caller, supervisor and worker sides; the
 supervisor derives its loader bindings again from the executable and never trusts caller
@@ -175,7 +180,7 @@ addresses.
 
 `Native::open` reads the executable identity, selects the slice, looks up the exact target record
 (an unknown build is an error), and resolves the recipe's machine support, live strategy and
-binding groups. Atlas supplies no build or architecture selector. Later operations dispatch
+bindings. Atlas supplies no build or architecture selector. Later operations dispatch
 through the bound operation set and never take a build enum or inspect a version string;
 `supports(operation)` reads the same set.
 

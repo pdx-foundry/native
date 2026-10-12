@@ -146,9 +146,10 @@ impl Native {
             }
             Backend::Live { binding, recorder } => (binding, recorder),
         };
-        if !(1..=crate::protocol::session::MAX_SESSION_SECONDS).contains(&options.startup_seconds) {
+        let longest_session = crate::protocol::session::MAX_SESSION_SECONDS;
+        if !(1..=longest_session).contains(&options.startup_seconds) {
             return Err(Error::Startup {
-                reason: "Startup budget must be 1 to 180 seconds".into(),
+                reason: format!("Startup budget must be 1 to {longest_session} seconds"),
                 disposal: Disposal::NotApplicable,
             });
         }
@@ -176,22 +177,16 @@ impl Native {
                 AnalysisError::Unavailable { reasons },
             ));
         }
-        if options.loaded_modifiers
-            && binding.has_script_check_method()
-            && let Some(analysis) = &binding.analysis
-        {
+        if options.loaded_modifiers && binding.has_script_check_method() {
             // A failure leaves every check's duration table empty, so its answer is partial.
-            let _ = analysis.prepare_script_durations();
+            let _ = binding.analysis.prepare_script_durations();
         }
         let mut registries = match &options.loader_registry {
             Some(registry) => vec![registry.clone()],
             None => binding.default_registries(),
         };
         if let Some(fixture) = &options.fixture
-            && !binding
-                .analysis
-                .as_ref()
-                .is_some_and(|analysis| analysis.has_inline_fixture(fixture.registry()))
+            && !binding.analysis.has_inline_fixture(fixture.registry())
             && !registries.iter().any(|name| name == fixture.registry())
         {
             registries.push(fixture.registry().into());
