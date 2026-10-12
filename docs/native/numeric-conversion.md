@@ -19,7 +19,9 @@ reader's fact keeps two lists:
   `numeric-float-bound-representation`, an unmatched shape (`numeric-wrapper-shape`,
   `numeric-token-shape`, `numeric-token-destination`), an unproved raw path
   (`numeric-raw-conversion`, `numeric-raw-storage`) or an unjoined raw path
-  (`numeric-raw-value-mode`). A storage property or `accepted_range` that is not `Known` is also
+  (`numeric-raw-value-mode`). A function that the build lacks is its own gap, never a shape
+  gap: `numeric-wrapper-body`, `numeric-token-body`, `numeric-raw-body` (only a fixed-point
+  reader reads the raw token) and `numeric-fixed-point-text-body` (only `GetFloat` calls it). A storage property or `accepted_range` that is not `Known` is also
   typed, so narrow signedness, a mismatched scale and the readers without a live field stay
   partial. The weight keys' [token value methods](#token-value-methods) are such readers. `literal_syntax` and the `Partial` wrapper of `Reader.numeric` do not count.
 

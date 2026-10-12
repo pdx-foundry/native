@@ -2,8 +2,8 @@ use object::read::macho::{FatArch, MachOFatFile32, MachOFatFile64};
 use object::{
     Architecture, BinaryFormat, FileKind, Object, ObjectKind, ObjectSection, SectionKind,
 };
-use sha2::{Digest, Sha256};
 
+use crate::work_directory::sha256;
 use crate::{AnalysisError, OpenError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,31 +14,23 @@ pub(super) struct ImageIdentity {
     pub format: BinaryFormat,
 }
 
-pub(super) fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
-}
-
 pub(super) fn identify(bytes: &[u8], executable_hash: &str) -> Result<ImageIdentity, OpenError> {
     let slice = selected_slice(bytes)?;
     let file = object::File::parse(slice).map_err(|_| OpenError::MalformedExecutable)?;
     check_supported(&file)?;
     Ok(ImageIdentity {
         executable: executable_hash.into(),
-        slice: hash(slice),
+        slice: sha256(slice),
         architecture: file.architecture(),
         format: file.format(),
     })
 }
 
-/// An executable of a declared target shape: ARM64 Mach-O or x86-64 PE.
+/// An executable of the declared target shape: ARM64 Mach-O.
 fn check_supported(file: &object::File<'_>) -> Result<(), OpenError> {
-    if file.kind() != ObjectKind::Executable {
-        return Err(OpenError::UnsupportedTarget);
-    }
-    if !matches!(
-        (file.format(), file.architecture()),
-        (BinaryFormat::MachO, Architecture::Aarch64) | (BinaryFormat::Pe, Architecture::X86_64)
-    ) {
+    if file.kind() != ObjectKind::Executable
+        || (file.format(), file.architecture()) != (BinaryFormat::MachO, Architecture::Aarch64)
+    {
         return Err(OpenError::UnsupportedTarget);
     }
     Ok(())
@@ -55,7 +47,7 @@ pub(super) fn selected_slice(bytes: &[u8]) -> Result<&[u8], OpenError> {
             let file = MachOFatFile64::parse(bytes).map_err(|_| OpenError::MalformedExecutable)?;
             select_arm64(file.arches(), bytes)
         }
-        FileKind::MachO64 | FileKind::Pe64 => Ok(bytes),
+        FileKind::MachO64 => Ok(bytes),
         _ => Err(OpenError::UnsupportedTarget),
     }
 }
@@ -159,14 +151,14 @@ pub(super) mod fields;
 pub(super) mod grammar;
 pub(super) mod instances;
 pub(super) mod language;
-pub(crate) mod modifier_blocks;
+pub(super) mod modifier_blocks;
 pub(super) mod modifier_nodes;
 pub(super) mod modifier_table;
 pub(super) mod names;
-pub(crate) mod numeric;
+pub(super) mod numeric;
 pub(super) mod receivers;
 pub(super) mod references;
-pub(crate) mod scoped_numeric;
-pub(crate) mod triggered_modifiers;
+pub(super) mod scoped_numeric;
+pub(super) mod triggered_modifiers;
 pub(super) mod type_pointers;
-pub(crate) mod weight_blocks;
+pub(super) mod weight_blocks;

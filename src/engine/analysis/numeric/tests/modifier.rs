@@ -333,8 +333,8 @@ fn input() -> ModifierInput {
     let (insert, insertion_names) = insert_rows();
     names.extend(insertion_names);
     ModifierInput {
-        member,
-        insert,
+        member: Some(member),
+        insert: Some(insert),
         names,
         shared_callee: "shared-conversion".into(),
     }
@@ -371,7 +371,7 @@ fn a_wrong_read_receiver_or_destination_breaks_the_modifier_join() {
         ("add", "x3,sp,#0x48", "x3,sp,#0x40"),
     ] {
         let mut input = input();
-        for row in &mut input.member {
+        for row in input.member.as_mut().unwrap() {
             if row.operation == operation && row.operands == operands {
                 row.operands = replacement.into();
             }
@@ -400,6 +400,8 @@ fn unknown_callee_and_changed_append_index_remain_typed_gaps() {
     let mut input = self::input();
     let index = input
         .member
+        .as_mut()
+        .unwrap()
         .iter_mut()
         .find(|row| row.operands == "w1,[x19,#0x44]")
         .unwrap();
@@ -413,11 +415,44 @@ fn unknown_callee_and_changed_append_index_remain_typed_gaps() {
 }
 
 #[test]
+fn a_missing_member_or_insertion_function_is_a_body_gap_and_not_a_shape_gap() {
+    let reason = |input: &ModifierInput| {
+        super::super::modifier::analyze(input, &readers())
+            .unwrap_err()
+            .reason
+    };
+    let no_member = ModifierInput {
+        member: None,
+        ..input()
+    };
+    let no_insert = ModifierInput {
+        insert: None,
+        ..input()
+    };
+    let empty_member = ModifierInput {
+        member: Some(Vec::new()),
+        ..input()
+    };
+
+    assert_eq!(reason(&no_member), "modifier-numeric-member-body");
+    assert_eq!(
+        super::super::modifier::member_tokens(&no_member)
+            .unwrap_err()
+            .reason,
+        "modifier-numeric-member-body"
+    );
+    assert_eq!(reason(&no_insert), "modifier-numeric-insert-body");
+    assert_eq!(reason(&empty_member), "modifier-numeric-member-flow");
+}
+
+#[test]
 fn changing_either_capacity_paths_numeric_store_fails_the_boundary_proof() {
     for operands in ["x9,[x28]", "x10,[x8]"] {
         let mut input = input();
         let store = input
             .insert
+            .as_mut()
+            .unwrap()
             .iter_mut()
             .find(|row| row.operation == "str" && row.operands == operands)
             .unwrap();
@@ -451,6 +486,8 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
     let mut input = input();
     let comparison = input
         .member
+        .as_mut()
+        .unwrap()
         .iter_mut()
         .find(|row| row.operation == "cmp" && row.operands == "w2,#0x1b")
         .unwrap();
@@ -466,6 +503,8 @@ fn inherited_tokens_come_from_the_proven_member_shape() {
     );
     let comparison = input
         .member
+        .as_mut()
+        .unwrap()
         .iter_mut()
         .find(|row| row.operation == "cmp" && row.operands == "w2,#0x1d")
         .unwrap();

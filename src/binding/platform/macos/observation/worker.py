@@ -118,8 +118,9 @@ def atomic(kind, name, value, limit=protocol.MAX_RECORD):
 
 
 def publish_diagnostics(value):
-    # Unlike control messages, this developer checkpoint replaces its predecessor. Closing
-    # before rename is enough for worker-loss retention; each call needs no durability flush.
+    # Unlike a hello or a reply, which are published once, this developer checkpoint and the
+    # pause witness replace their predecessor. Closing before rename is enough for worker-loss
+    # retention; each call needs no durability flush.
     encoded = protocol.encode('worker_diagnostics', value, protocol.MAX_WORKER_DIAGNOSTICS)
     pending = ROOT / 'worker-diagnostics.json.pending'
     pending.write_bytes(encoded)

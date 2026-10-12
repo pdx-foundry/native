@@ -1,10 +1,12 @@
 //! Constructor summaries shared with the nested-object reader method.
+use super::{declarations::Text, families::Names, references::Image};
 use crate::AnalysisError;
 use crate::binding::targets::{AnchorSlot, PersistentRecipe};
 use crate::engine::analysis::{
     declarations::{Function, branch_alias},
     decode::decode_arm64,
     discovery::Symbol,
+    evaluate::ReadOnlyData,
     fields::ModifierContainers,
 };
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,13 +46,11 @@ fn top_level_scope(name: &str) -> Option<usize> {
 /// vtable-group address points. An absent group gives an empty summary.
 /// A class name selects metadata, never grammar behavior.
 pub(super) fn constructors(
-    bytes: &[u8],
+    text: &Text<'_>,
     symbols: &[Symbol],
-    pointers: &BTreeMap<u64, u64>,
-    bound_slots: &BTreeSet<u64>,
+    data: &ReadOnlyData,
     roots: &[&Function],
 ) -> Result<BTreeMap<u64, BTreeMap<u64, u64>>, AnalysisError> {
-    let text = super::declarations::Text::read(bytes, symbols)?;
     let constructor_entries: BTreeSet<_> = symbols
         .iter()
         .filter(|symbol| constructor_class(&symbol.name).is_some())
@@ -110,10 +110,9 @@ pub(super) fn constructors(
             .or_default()
             .insert(symbol.address);
     }
-    let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut summaries = BTreeMap::new();
     for (class, entries) in classes {
-        let points = super::families::vtable_group(symbols, &data, &class)
+        let points = super::families::vtable_group(symbols, data, &class)
             .map(|group| group.address_points)
             .unwrap_or_default();
         for entry in entries {
@@ -128,11 +127,10 @@ pub(super) fn constructors(
 /// Import effects and small engine accessors used by the constructor evaluator.
 /// Accessor names select code to execute; their bodies still determine all reads and writes.
 pub(super) fn constructor_calls(
-    bytes: &[u8],
+    text: &Text<'_>,
     symbols: &[Symbol],
 ) -> Result<crate::engine::analysis::ConstructorCalls, AnalysisError> {
     use crate::engine::analysis::ConstructorCalls;
-    let text = super::declarations::Text::read(bytes, symbols)?;
     let mut calls = ConstructorCalls::default();
     for symbol in symbols {
         match symbol.name.as_str() {
@@ -192,17 +190,23 @@ pub(super) fn concrete_reader(
     })
 }
 
-/// Owner constructors and the virtual methods installed by their called constructors.
+/// Owner constructors and the virtual methods installed by their called constructors. `text` is
+/// the image's text and `data` its constant data, which every call shares.
 pub(super) fn persistent(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    pointers: &BTreeMap<u64, u64>,
-    bound_slots: &BTreeSet<u64>,
+    image: &Image<'_>,
+    text: &Text<'_>,
+    data: &ReadOnlyData,
+    names: &Names<'_>,
     owner: &str,
     recipe: &PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
     use crate::engine::analysis::fields::PersistentInput;
-    let text = super::declarations::Text::read(bytes, symbols)?;
+    let Image {
+        bytes,
+        symbols,
+        pointers,
+        ..
+    } = *image;
     let entries: BTreeSet<_> = symbols
         .iter()
         .filter(|symbol| {
@@ -234,19 +238,13 @@ pub(super) fn persistent(
         })
         .map(|body| body.address)
         .collect();
-    let names_at = |address: u64| {
-        symbols
-            .iter()
-            .filter(move |symbol| symbol.address == address)
-            .map(|symbol| symbol.name.as_str())
-    };
     let full_names: BTreeSet<_> = full_entries
         .iter()
-        .flat_map(|&entry| names_at(entry))
+        .flat_map(|&entry| names.of(entry))
         .collect();
     // A branch-island stub outside the text section carries the name of the body it reaches.
     let full_stub = |target: u64| {
-        !text.starts.contains(&target) && names_at(target).any(|name| full_names.contains(name))
+        !text.starts.contains(&target) && names.of(target).any(|name| full_names.contains(name))
     };
     bodies.retain(|body| {
         let Ok(rows) = decode_arm64(&body.code, body.address) else {
@@ -257,7 +255,7 @@ pub(super) fn persistent(
             .is_some_and(|target| full_entries.contains(&target) || full_stub(target))
     });
     let roots: Vec<_> = bodies.iter().collect();
-    let summaries = constructors(bytes, symbols, pointers, bound_slots, &roots)?;
+    let summaries = constructors(text, symbols, data, &roots)?;
     let mut constructor_bodies = BTreeMap::new();
     // A branch-island stub has no body to enter; its summary still installs its vtables.
     for &entry in summaries.keys().filter(|entry| text.starts.contains(entry)) {
@@ -273,14 +271,7 @@ pub(super) fn persistent(
             );
         }
     }
-    let name = |address| {
-        let names: BTreeSet<_> = symbols
-            .iter()
-            .filter(|symbol| symbol.address == address)
-            .map(|symbol| symbol.name.as_str())
-            .collect();
-        (names.len() == 1).then(|| names.first().unwrap().to_string())
-    };
+    let name = |address| names.unique(address).map(str::to_owned);
     let mut pages = BTreeSet::new();
     for body in &bodies {
         for row in
@@ -294,7 +285,6 @@ pub(super) fn persistent(
             }
         }
     }
-    let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut points: BTreeSet<_> = summaries
         .values()
         .flat_map(|points| points.values().copied())
@@ -304,7 +294,7 @@ pub(super) fn persistent(
         .filter(|symbol| pages.contains(&(symbol.address & !0xfff)))
     {
         if let Some(class) = symbol.name.strip_prefix("vtable for ")
-            && let Some(group) = super::families::vtable_group(symbols, &data, class)
+            && let Some(group) = super::families::vtable_group(symbols, data, class)
         {
             points.extend(group.address_points.into_values());
         }
@@ -322,7 +312,7 @@ pub(super) fn persistent(
         })
         .collect();
     Ok(PersistentInput {
-        constructor_calls: constructor_calls(bytes, symbols)?,
+        constructor_calls: constructor_calls(text, symbols)?,
         constructors,
         summaries,
         constructor_bodies,
@@ -373,6 +363,29 @@ mod tests {
     use super::*;
     use crate::engine::analysis::{analysis_support::macho_with_text, assembler::arm64};
 
+    /// The persistent input of `owner` in an image that has no pointers, strings or imports.
+    fn bind_constructors(
+        bytes: &[u8],
+        symbols: &[Symbol],
+        owner: &str,
+        recipe: &PersistentRecipe,
+    ) -> crate::engine::analysis::fields::PersistentInput {
+        let (strings, pointers, imports, bound_slots) = Default::default();
+        let image = Image {
+            bytes,
+            symbols,
+            strings: &strings,
+            pointers: &pointers,
+            imports: &imports,
+            bound_slots: &bound_slots,
+        };
+        let text = Text::read(bytes, symbols).unwrap();
+        let data = ReadOnlyData::default();
+        let names = Names::new(symbols);
+
+        persistent(&image, &text, &data, &names, owner, recipe).unwrap()
+    }
+
     #[test]
     fn a_constructor_names_its_class_with_template_arguments() {
         assert_eq!(constructor_class("A::A(int)"), Some("A"));
@@ -415,17 +428,7 @@ mod tests {
             container_mask_offset: 0xac,
             families: &[],
         };
-        let bind = |symbols: &[Symbol]| {
-            persistent(
-                &bytes,
-                symbols,
-                &BTreeMap::new(),
-                &BTreeSet::new(),
-                "CExample<A>",
-                &recipe,
-            )
-            .unwrap()
-        };
+        let bind = |symbols: &[Symbol]| bind_constructors(&bytes, symbols, "CExample<A>", &recipe);
 
         assert_eq!(bind(&symbols).constructors.len(), 1);
 
@@ -465,17 +468,7 @@ mod tests {
             container_mask_offset: 0xac,
             families: &[],
         };
-        let bind = |symbols: &[Symbol]| {
-            persistent(
-                &bytes,
-                symbols,
-                &BTreeMap::new(),
-                &BTreeSet::new(),
-                "CExample",
-                &recipe,
-            )
-            .unwrap()
-        };
+        let bind = |symbols: &[Symbol]| bind_constructors(&bytes, symbols, "CExample", &recipe);
         let input = bind(&symbols);
         assert_eq!(input.constructors.len(), 1);
         assert_eq!(input.constructors[0].address, 0x1000);

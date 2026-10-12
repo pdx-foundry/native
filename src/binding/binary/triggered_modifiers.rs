@@ -1,16 +1,15 @@
 //! Collect triggered modifier clause readers from executable pointer slots, with their member and
 //! delegate bodies and the constructors of each reader's class.
-use super::{declarations::Text, references::Image};
+use super::{declarations::Text, families::Names, references::Image};
 use crate::binding::targets::DeclarationRecipe;
 use crate::engine::analysis::{
     declarations::Function, modifier_blocks::triggered::TriggeredInput, stop::Unresolved,
 };
 use crate::{AnalysisError, BlockFamily};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     recipe: &DeclarationRecipe,
 ) -> Result<TriggeredInput, AnalysisError> {
     let text = Text::read(image.bytes, image.symbols)?;
@@ -41,7 +40,8 @@ pub(in crate::binding) fn read(
         );
     }
 
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)?;
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
+    let symbol_names = Names::new(image.symbols);
     let classes = points
         .keys()
         .map(|&point| {
@@ -49,10 +49,10 @@ pub(in crate::binding) fn read(
                 .ok_or_else(|| Unresolved::new("triggered-class"))
                 .and_then(|class| {
                     super::receivers::persistent(
-                        image.bytes,
-                        image.symbols,
-                        image.pointers,
-                        bound_slots,
+                        image,
+                        &text,
+                        &data,
+                        &symbol_names,
                         &class,
                         &recipe.persistent,
                     )
@@ -70,7 +70,7 @@ pub(in crate::binding) fn read(
         functions,
         symbols: image.symbols.to_vec(),
         pointers: image.pointers.clone(),
-        data: super::fields::read_only_data(image.bytes)?,
+        data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
         reader_token_offset: recipe.reader_token_offset,

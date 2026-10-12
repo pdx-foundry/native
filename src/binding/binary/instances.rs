@@ -30,7 +30,6 @@ pub(super) struct Instances {
 pub(super) fn instances(
     text: &Text,
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     functions: &BTreeMap<u64, Vec<Instruction>>,
 ) -> Result<Instances, AnalysisError> {
     let slots: BTreeSet<u64> = functions
@@ -51,7 +50,7 @@ pub(super) fn instances(
             slots,
         })
         .collect();
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)?;
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let vtables: BTreeMap<u64, u64> = instance_vtables(&loaders, image.pointers, &data)
         .into_iter()
         .filter(|(_, point)| point_class(image.symbols, &data, *point).is_some())

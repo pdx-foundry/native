@@ -14,7 +14,8 @@ shared entry's ID. Neither a command nor a key selects the subtype; a destinatio
 constructor agreement reports `UnresolvedStorage`.
 
 The method matches complete `Read`, `Assign`, prefix, variable, `AssignSimple`, `GetValue` and
-`GetValueInternal` bodies, and joins the `AssignSimple` vtable slot to the constructor-selected
+`GetValueInternal` bodies (a function that the build lacks gives `scoped-body`, a body that does
+not match gives `scoped-body-shape`), and joins the `AssignSimple` vtable slot to the constructor-selected
 address point; captured offsets must agree across the shared and concrete bodies. A subtype whose
 literal offset is not the shared layout's is refused once, in the shared analysis, so no consumer
 reads its literal. `forms` lists the literal, `trigger:`, `modifier:`, `value:` and unprefixed

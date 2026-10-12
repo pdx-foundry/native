@@ -63,13 +63,16 @@ pub(in crate::binding) fn names(
     names
 }
 
-/// The parts of the verified executable that the reference method reads.
+/// The verified executable and the facts that the catalog derived from it, as every static reader
+/// reads them.
 pub(in crate::binding) struct Image<'a> {
     pub bytes: &'a [u8],
     pub symbols: &'a [Symbol],
     pub strings: &'a BTreeMap<u64, String>,
     pub pointers: &'a BTreeMap<u64, u64>,
     pub imports: &'a BTreeMap<u64, String>,
+    /// Every pointer slot that the loader binds to another image.
+    pub bound_slots: &'a BTreeSet<u64>,
 }
 
 pub(in crate::binding) fn read(

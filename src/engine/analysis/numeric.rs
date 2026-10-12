@@ -66,20 +66,23 @@ pub(crate) struct NumericInput {
     /// Token methods that return the converted value of their text, such as `CToken::GetInt`.
     pub token_values: BTreeMap<String, TokenInput>,
     /// The engine's own fixed-point conversion of a text, which a token value method may call.
-    pub fixed_point_text: Vec<Instruction>,
+    /// A body is `None` when the build has no single function of that name.
+    pub fixed_point_text: Option<Vec<Instruction>>,
     pub lexer: LexerInput,
 }
 
 pub(crate) struct TokenInput {
-    pub body: Vec<Instruction>,
+    pub body: Option<Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub token_text_offset: u64,
 }
 
+/// The bodies of one reader's functions; a body is `None` when the build has no single function
+/// of that name. The raw token body matters only to a fixed-point reader.
 pub(crate) struct ReaderInput {
-    pub wrapper: Vec<Instruction>,
-    pub token: Vec<Instruction>,
-    pub raw_token: Vec<Instruction>,
+    pub wrapper: Option<Vec<Instruction>>,
+    pub token: Option<Vec<Instruction>>,
+    pub raw_token: Option<Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub reader_token_offset: u64,
     pub token_text_offset: u64,
@@ -94,7 +97,7 @@ pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
         .map(|(name, input)| (name.clone(), analyze_reader(input, &lexer, &selector)))
         .collect();
     readers.extend(input.token_values.iter().map(|(name, value)| {
-        let conversion = value_conversion(value, &input.fixed_point_text);
+        let conversion = value_conversion(value, input.fixed_point_text.as_deref());
         (name.clone(), reader_from_conversion(conversion, &lexer))
     }));
     NumericFacts {
@@ -119,17 +122,24 @@ impl Default for NumericFacts {
 }
 
 fn analyze_token(input: &TokenInput, lexer: &Result<(), Unresolved>) -> NumericReader {
-    let conversion = token_conversion(&input.body, &input.names, input.token_text_offset);
+    let conversion = proved(
+        input.body.as_deref(),
+        &input.names,
+        input.token_text_offset,
+        TOKEN,
+    );
     reader_from_conversion(conversion, lexer)
 }
 
-/// The fact of a token conversion that has no reader wrapper and no raw path.
+/// The fact of a token conversion that has no reader wrapper and no raw path. A conversion that
+/// is not proved gives the reason.
 fn reader_from_conversion(
-    conversion: Option<NumericConversion>,
+    conversion: Result<NumericConversion, &'static str>,
     lexer: &Result<(), Unresolved>,
 ) -> NumericReader {
-    let Some(conversion) = conversion else {
-        return unresolved("numeric-token-shape");
+    let conversion = match conversion {
+        Ok(conversion) => conversion,
+        Err(reason) => return unresolved(reason),
     };
 
     NumericReader {
@@ -146,7 +156,10 @@ fn analyze_reader(
     lexer: &Result<(), Unresolved>,
     selector: &Result<(), Unresolved>,
 ) -> NumericReader {
-    let wrapper = canonical(&input.wrapper, &input.names);
+    let Some(wrapper) = &input.wrapper else {
+        return unresolved("numeric-wrapper-body");
+    };
+    let wrapper = canonical(wrapper, &input.names);
     let scalar = Shape::parse(include_str!("numeric/shapes/scalar.txt")).matches(&wrapper);
     let fixed = Shape::parse(include_str!("numeric/shapes/fixed_wrapper.txt")).matches(&wrapper);
     let Some(binding) = scalar.as_ref().or(fixed.as_ref()) else {
@@ -155,15 +168,26 @@ fn analyze_reader(
     if number(binding, "reader_token") != Some(input.reader_token_offset) {
         return unresolved("numeric-token-destination");
     }
-    let ordinary = token_conversion(&input.token, &input.names, input.token_text_offset);
-    let (conversion, missing_path) = if fixed.is_some() {
-        let raw = token_conversion(&input.raw_token, &input.names, input.token_text_offset);
+    let ordinary = proved(
+        input.token.as_deref(),
+        &input.names,
+        input.token_text_offset,
+        TOKEN,
+    );
+    let paths = if fixed.is_some() {
+        let raw = proved(
+            input.raw_token.as_deref(),
+            &input.names,
+            input.token_text_offset,
+            RAW,
+        );
         fixed_paths(ordinary, raw)
     } else {
-        (ordinary, None)
+        ordinary.map(|conversion| (conversion, None))
     };
-    let Some(conversion) = conversion else {
-        return unresolved("numeric-token-shape");
+    let (conversion, missing_path) = match paths {
+        Ok(paths) => paths,
+        Err(reason) => return unresolved(reason),
     };
     let mut gaps = conversion_gaps(&conversion, lexer);
     let mut boundary = scanner_boundary();
@@ -204,27 +228,29 @@ fn conversion_gaps(
 /// Raw mode transfers an already-scaled integer. Its scanner syntax contributes forms, but its
 /// unit scale must never replace the ordinary fixed-point path's storage scale.
 fn fixed_paths(
-    ordinary: Option<NumericConversion>,
-    raw: Option<NumericConversion>,
-) -> (Option<NumericConversion>, Option<&'static str>) {
-    let Some(mut ordinary) = ordinary else {
-        let raw = raw.map(|mut raw| {
-            raw.scale = GrammarProperty::Unresolved;
-            incomplete_path(raw)
-        });
-        return (raw, Some("numeric-token-shape"));
+    ordinary: Result<NumericConversion, &'static str>,
+    raw: Result<NumericConversion, &'static str>,
+) -> Result<(NumericConversion, Option<&'static str>), &'static str> {
+    let mut ordinary = match ordinary {
+        Ok(ordinary) => ordinary,
+        Err(reason) => {
+            return raw
+                .map(|mut raw| {
+                    raw.scale = GrammarProperty::Unresolved;
+                    (incomplete_path(raw), Some(reason))
+                })
+                .map_err(|_| reason);
+        }
     };
-    let Some(raw) = raw else {
-        return (
-            Some(incomplete_path(ordinary)),
-            Some("numeric-raw-conversion"),
-        );
+    let raw = match raw {
+        Ok(raw) => raw,
+        Err(reason) => return Ok((incomplete_path(ordinary), Some(reason))),
     };
     if raw.representation != GrammarProperty::Known(NumericRepresentation::Integer)
         || raw.width_bits != GrammarProperty::Known(64)
         || raw.signedness != GrammarProperty::Known(NumericSignedness::Signed)
     {
-        return (Some(incomplete_path(ordinary)), Some("numeric-raw-storage"));
+        return Ok((incomplete_path(ordinary), Some("numeric-raw-storage")));
     }
     if let (GrammarProperty::Partial(forms), GrammarProperty::Partial(raw_forms)) =
         (&mut ordinary.literal_syntax, &raw.literal_syntax)
@@ -235,7 +261,7 @@ fn fixed_paths(
             }
         }
     }
-    (Some(ordinary), None)
+    Ok((ordinary, None))
 }
 
 /// Keep facts about the proved path without claiming that every conversion path agrees.
@@ -260,6 +286,37 @@ fn unresolved(reason: &'static str) -> NumericReader {
         gaps: vec![Unresolved::new(reason)],
         boundary: Vec::new(),
     }
+}
+
+/// The reasons that a token method proves no conversion: the build has no single function of its
+/// name, or the body matches no shape.
+struct Reasons {
+    body: &'static str,
+    shape: &'static str,
+}
+
+/// The ordinary conversion path of a reader.
+const TOKEN: Reasons = Reasons {
+    body: "numeric-token-body",
+    shape: "numeric-token-shape",
+};
+
+/// The raw conversion path of a fixed-point reader.
+const RAW: Reasons = Reasons {
+    body: "numeric-raw-body",
+    shape: "numeric-raw-conversion",
+};
+
+/// The conversion that the body of a token method proves, or why it proves none.
+fn proved(
+    body: Option<&[Instruction]>,
+    names: &BTreeMap<u64, String>,
+    text_offset: u64,
+    reasons: Reasons,
+) -> Result<NumericConversion, &'static str> {
+    let body = body.ok_or(reasons.body)?;
+
+    token_conversion(body, names, text_offset).ok_or(reasons.shape)
 }
 
 fn token_conversion(
@@ -296,22 +353,27 @@ fn token_conversion(
 /// or the engine's fixed-point conversion, whose whole body must match its own shape.
 fn value_conversion(
     input: &TokenInput,
-    fixed_point_text: &[Instruction],
-) -> Option<NumericConversion> {
-    let lines = canonical(&input.body, &input.names);
-    let binding = Shape::parse(include_str!("numeric/shapes/token_value.txt")).matches(&lines)?;
+    fixed_point_text: Option<&[Instruction]>,
+) -> Result<NumericConversion, &'static str> {
+    let body = input.body.as_deref().ok_or(TOKEN.body)?;
+    let lines = canonical(body, &input.names);
+    let binding = Shape::parse(include_str!("numeric/shapes/token_value.txt"))
+        .matches(&lines)
+        .ok_or(TOKEN.shape)?;
     if number(&binding, "token_text") != Some(input.token_text_offset) {
-        return None;
+        return Err(TOKEN.shape);
     }
-    match binding.get("conversion")?.as_str() {
-        "decimal_int" => Form::Int.conversion(&binding),
-        "fixed_point_text" => {
-            let lines = canonical(fixed_point_text, &input.names);
+    match binding.get("conversion").map(String::as_str) {
+        Some("decimal_int") => Form::Int.conversion(&binding).ok_or(TOKEN.shape),
+        Some("fixed_point_text") => {
+            let body = fixed_point_text.ok_or("numeric-fixed-point-text-body")?;
+            let lines = canonical(body, &input.names);
             let binding = Shape::parse(include_str!("numeric/shapes/fixed_point_text.txt"))
-                .matches(&lines)?;
-            Form::FixedPointText.conversion(&binding)
+                .matches(&lines)
+                .ok_or(TOKEN.shape)?;
+            Form::FixedPointText.conversion(&binding).ok_or(TOKEN.shape)
         }
-        _ => None,
+        _ => Err(TOKEN.shape),
     }
 }
 

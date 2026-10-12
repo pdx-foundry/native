@@ -46,7 +46,7 @@ Limits of the inspector output:
   unresolved, and a jump table shows only the addresses that the code forms.
 - Callers are direct `bl` and `b` only. A string reference is `adr`, or `adrp` then `add` in one
   function with no branch or write between them.
-- The inspector reads ARM64 images only. Its entry, `pdx_native::internals::inspect`, is not a
+- The inspector reads ARM64 Mach-O images only. Its entry, `pdx_native::internals::inspect`, is not a
   consumer API.
 
 On a catalogued build, inspect a field method's stopped token paths with:

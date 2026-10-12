@@ -9,7 +9,7 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     families::StringLayout,
-    fields::{Token, recover_decoded},
+    fields::{DataSection, Token, recover_decoded},
 };
 use crate::{AnalysisError, DeclarationKind};
 
@@ -295,6 +295,17 @@ impl<'a> Text<'a> {
         Ok((start, self.bytes(start, self.function_length(start))?))
     }
 
+    /// The code from `start` to the next function start, or to the end of the text. Unlike
+    /// [`Self::function`], `start` need not be a symbol: a static initializer can start where no
+    /// symbol does. `None` when `start` is outside the text.
+    pub fn code_from(&self, start: u64) -> Option<&'a [u8]> {
+        if !(self.address..self.end()).contains(&start) {
+            return None;
+        }
+
+        self.bytes(start, self.function_length(start)).ok()
+    }
+
     /// The whole function that starts at `start`, or `None` when `start` is not a function start
     /// or the function is longer than `limit` bytes.
     pub fn function_within(&self, start: u64, limit: u64) -> Option<&'a [u8]> {
@@ -317,6 +328,24 @@ impl<'a> Text<'a> {
         self.code
             .get(offset..end)
             .ok_or(AnalysisError::InvalidRange)
+    }
+
+    /// The decoded function named `name`, or `None` when the build has no single function of
+    /// that name: the name has no address or several.
+    pub fn unique_body(
+        &self,
+        symbols: &[Symbol],
+        name: &str,
+    ) -> Result<Option<Vec<Instruction>>, AnalysisError> {
+        let addresses = addresses(symbols, name);
+        let Some(&start) = addresses.first().filter(|_| addresses.len() == 1) else {
+            return Ok(None);
+        };
+        let (address, code) = self.function(start)?;
+
+        decode_arm64(code, address)
+            .map(Some)
+            .map_err(|_| AnalysisError::InvalidRange)
     }
 
     /// The address of every direct `bl` to `target`, in address order. This includes calls in
@@ -516,20 +545,30 @@ fn tested_name<'a>(rows: &[Instruction], strings: &'a BTreeMap<u64, String>) -> 
     strings.get(&(page + offset))
 }
 
-/// Read-only data that switch code loads: jump tables and string literals.
-pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError> {
+/// The read-only sections and string literals that code loads, as the file holds them: jump
+/// tables and text. Every static reader takes its constants from these sections.
+pub(super) fn read_only_sections(bytes: &[u8]) -> Result<Vec<DataSection>, AnalysisError> {
     let slice = super::selected_slice(bytes).map_err(|_| AnalysisError::InvalidRange)?;
     let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
-    let mut sections = Vec::new();
-    for section in file.sections().filter(|section| {
-        matches!(
-            section.kind(),
-            SectionKind::ReadOnlyData | SectionKind::ReadOnlyString
-        )
-    }) {
-        let data = section.data().map_err(|_| AnalysisError::InvalidRange)?;
-        sections.push((section.address(), data.to_vec()));
-    }
+    file.sections()
+        .filter(|section| super::language::is_read_only(section.kind()))
+        .map(|section| {
+            let data = section.data().map_err(|_| AnalysisError::InvalidRange)?;
+            Ok(DataSection {
+                address: section.address(),
+                bytes: data.to_vec(),
+            })
+        })
+        .collect()
+}
+
+/// [`read_only_sections`] as the memory that the evaluator loads from.
+pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError> {
+    let sections = read_only_sections(bytes)?
+        .into_iter()
+        .map(|section| (section.address, section.bytes))
+        .collect();
+
     Ok(ReadOnlyData::new(sections))
 }
 
@@ -547,6 +586,23 @@ mod tests {
         assert!(text.function(0x2000).is_err());
         assert!(text.function(0xff0).is_err());
         assert_eq!(text.function(0x1000).unwrap().1.len(), 16);
+    }
+
+    #[test]
+    fn code_runs_from_an_address_that_no_symbol_names_to_the_next_function() {
+        let text = Text {
+            address: 0x1000,
+            code: &[0; 32],
+            starts: BTreeSet::from([0x1000, 0x1010]),
+        };
+        let length = |start| text.code_from(start).map(<[u8]>::len);
+
+        assert_eq!(length(0x1000), Some(16));
+        assert_eq!(length(0x1004), Some(12));
+        assert_eq!(length(0x1010), Some(16));
+        assert!(text.function(0x1004).is_err());
+        assert_eq!(length(0x1020), None);
+        assert_eq!(length(0xff0), None);
     }
 
     #[test]
@@ -600,6 +656,32 @@ mod tests {
             unique(&symbols, "Two()"),
             Err(InputError("2 addresses for Two()".into()).into())
         );
+    }
+
+    #[test]
+    fn a_function_with_no_single_address_has_no_body() {
+        let text = Text {
+            address: 0x1000,
+            code: &[0xc0, 0x03, 0x5f, 0xd6, 0xc0, 0x03, 0x5f, 0xd6],
+            starts: BTreeSet::from([0x1000, 0x1004]),
+        };
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = [
+            symbol("One()", 0x1000),
+            symbol("Alias()", 0x1004),
+            symbol("Alias()", 0x1004),
+            symbol("Two()", 0x1000),
+            symbol("Two()", 0x1004),
+        ];
+        let body = |name| text.unique_body(&symbols, name).unwrap();
+
+        assert_eq!(body("One()").map(|rows| rows.len()), Some(1));
+        assert_eq!(body("Alias()").map(|rows| rows[0].address), Some(0x1004));
+        assert!(body("Missing()").is_none());
+        assert!(body("Two()").is_none());
     }
 
     #[test]

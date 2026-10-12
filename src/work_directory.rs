@@ -1,11 +1,23 @@
 //! File rules for a session's work directory.
 //!
-//! The supervisor and the debugger worker exchange small files in one private directory. Three
-//! rules keep a reader from taking a half-written or foreign file as a message:
+//! The supervisor and the debugger worker exchange small files in one private directory. Each
+//! file follows one of these rules, so a reader never takes a half-written or foreign file as a
+//! message:
 //!
-//! - A file is created once and never replaced ([`write_new`]).
-//! - A control message appears under its final name only when it is complete ([`publish_json`]).
-//! - A reader accepts only a regular file of bounded size ([`read_bounded`]).
+//! - A record is created once ([`write_new`], [`write_json`]) and an existing file is an error:
+//!   the session request, the tool and owner records, the report and the run summary, the
+//!   worker's source package and the copied profile content.
+//! - A control message appears under its final name only when it is complete. The supervisor
+//!   links it ([`publish_json`]), so it never replaces an earlier message: the resume grant and
+//!   each script-check request. The worker renames a complete file into place; the hello, the
+//!   modifier table and each script-check reply are published once.
+//! - A checkpoint is replaced by each newer one, by renaming a complete file over the old one:
+//!   the worker's pause witness and diagnostics, and the supervisor's pause check.
+//! - A request or reply that has been answered is consumed. The worker removes a script-check
+//!   request when it starts the check, and the supervisor removes the reply when it accepts it,
+//!   so the next message can use the same name.
+//! - A reader of a file that the other side wrote accepts only a regular file of bounded size
+//!   ([`read_bounded`]).
 use crate::supervisor::SupervisorError;
 use serde::Serialize;
 use std::{
@@ -14,7 +26,8 @@ use std::{
     path::Path,
 };
 
-/// Lowercase SHA-256 of the bytes.
+/// Lowercase SHA-256 of the bytes. Every hash that Native compares or records is this one: the
+/// executable and its slice, installed content, and the files that the session copies.
 pub(crate) fn sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     format!("{:x}", Sha256::digest(bytes))

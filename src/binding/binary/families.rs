@@ -846,7 +846,8 @@ pub(super) fn decoded<'a>(text: &Text, functions: impl IntoIterator<Item = &'a u
     Code::from_rows(rows)
 }
 
-/// Every demangled name of each address.
+/// Every demangled name of each address. A function has one decision for several names: it
+/// answers to each of them.
 pub(super) struct Names<'a> {
     by_address: BTreeMap<u64, Vec<&'a str>>,
 }
@@ -865,6 +866,14 @@ impl<'a> Names<'a> {
 
     pub(super) fn of(&self, address: u64) -> impl Iterator<Item = &'a str> + '_ {
         self.by_address.get(&address).into_iter().flatten().copied()
+    }
+
+    /// The name of `address` when every symbol there has the same name.
+    pub(super) fn unique(&self, address: u64) -> Option<&'a str> {
+        let mut names = self.of(address);
+        let first = names.next()?;
+
+        names.all(|name| name == first).then_some(first)
     }
 }
 
@@ -950,6 +959,24 @@ mod tests {
             address,
             name: name.into(),
         }
+    }
+
+    #[test]
+    fn an_address_has_one_name_only_when_its_symbols_agree() {
+        let symbols = [
+            symbol(0x10, "One()"),
+            symbol(0x20, "Alias()"),
+            symbol(0x20, "Alias()"),
+            symbol(0x30, "Two()"),
+            symbol(0x30, "Other()"),
+        ];
+        let names = Names::new(&symbols);
+
+        assert_eq!(names.unique(0x10), Some("One()"));
+        assert_eq!(names.unique(0x20), Some("Alias()"));
+        assert_eq!(names.unique(0x30), None);
+        assert_eq!(names.unique(0x40), None);
+        assert_eq!(names.of(0x30).collect::<Vec<_>>(), ["Two()", "Other()"]);
     }
 
     #[test]

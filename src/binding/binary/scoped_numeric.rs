@@ -1,16 +1,12 @@
 //! Exact executable binding for shared scoped numeric bodies and vtable address points.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::{declarations::Text, numeric::READ_INT_VALUE, references::Image};
 use crate::AnalysisError;
-use crate::engine::analysis::{
-    decode::decode_arm64,
-    scoped_numeric::{Input, SubtypeInput, SubtypeKind},
-};
+use crate::engine::analysis::scoped_numeric::{Input, SubtypeInput, SubtypeKind};
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     value_token_offset: u64,
 ) -> Result<Input, AnalysisError> {
     let text = Text::read(image.bytes, image.symbols)?;
@@ -32,24 +28,12 @@ pub(in crate::binding) fn read(
         "CFixedPointVariableValue::GetValue(CEventScope&) const",
         "CFixedPointVariableValue::GetValueInternal(CEventScope&) const",
     ] {
-        let addresses: Vec<_> = image
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == name)
-            .map(|symbol| symbol.address)
-            .collect();
-        if addresses.len() != 1 {
-            bodies.insert(name.into(), Vec::new());
-            continue;
+        if let Some(body) = text.unique_body(image.symbols, name)? {
+            bodies.insert(name.into(), body);
         }
-        let (address, bytes) = text.function(addresses[0])?;
-        bodies.insert(
-            name.into(),
-            decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)?,
-        );
     }
 
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)?;
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let mut points = BTreeMap::new();
     for (class, simple, kind, token_reader) in [
         (
@@ -108,4 +92,30 @@ pub(in crate::binding) fn read(
             "CFixedPointVariableValue::GetValueInternal(CEventScope&) const".into(),
         ),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::analysis::analysis_support::macho_with_fixups;
+
+    #[test]
+    fn an_image_without_the_scoped_readers_gives_a_body_gap_and_not_a_shape_gap() {
+        let bytes = macho_with_fixups(6);
+        let facts = super::super::discovery::read(&bytes).unwrap();
+        let image = Image {
+            bytes: &bytes,
+            symbols: &facts.symbols,
+            strings: &facts.strings,
+            pointers: &facts.pointers,
+            imports: &facts.imports,
+            bound_slots: &facts.bound_slots,
+        };
+
+        let input = read(&image, 0x278).unwrap();
+        let analysis = crate::engine::analysis::scoped_numeric::analyze(&input);
+
+        assert!(input.bodies.is_empty());
+        assert_eq!(analysis.shared.selection.unwrap_err().reason, "scoped-body");
+    }
 }

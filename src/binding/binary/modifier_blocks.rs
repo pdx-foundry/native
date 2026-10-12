@@ -59,7 +59,6 @@ pub(super) fn family_points(
 
 pub(in crate::binding) fn read(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     candidates: &[NamedCandidate],
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierBlockInput, AnalysisError> {
@@ -117,7 +116,7 @@ pub(in crate::binding) fn read(
     }
     let tokens = text.token_table(image.symbols, image.strings)?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
-    let name_reads = name_read_functions(image, bound_slots, &text, &base, recipe);
+    let name_reads = name_read_functions(image, &text, &base, recipe);
     let directories = super::references::database_directories(
         &text,
         image,
@@ -152,22 +151,9 @@ pub(in crate::binding) fn read(
             )
         })
         .collect();
-    let body = |name: &str| -> Result<Vec<_>, AnalysisError> {
-        let starts: BTreeSet<_> = image
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.name == name)
-            .map(|symbol| symbol.address)
-            .collect();
-        if starts.len() != 1 {
-            return Ok(vec![]);
-        }
-        let (address, bytes) = text.function(*starts.first().unwrap())?;
-        decode_arm64(bytes, address).map_err(|_| AnalysisError::InvalidRange)
-    };
     let reference_input = reference::Input {
-        member: body(recipe.modifier_reference_member)?,
-        conversion: body("CToken::GetFloat() const")?,
+        member: text.unique_body(image.symbols, recipe.modifier_reference_member)?,
+        conversion: text.unique_body(image.symbols, "CToken::GetFloat() const")?,
         names: semantic_names,
         key_text_offset: recipe.reader_token_offset + recipe.token_text_offset,
         value_token_offset: recipe.reader_value_token_offset,
@@ -189,7 +175,7 @@ pub(in crate::binding) fn read(
         functions,
         symbols: image.symbols.to_vec(),
         pointers: image.pointers.clone(),
-        data: super::fields::read_only_data(image.bytes)?,
+        data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
         serializer_constructors,
         key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
@@ -204,13 +190,12 @@ pub(in crate::binding) fn read(
 /// The bodies of the name object's read functions, for the base member's read slot.
 fn name_read_functions(
     image: &Image<'_>,
-    bound_slots: &BTreeSet<u64>,
     text: &Text<'_>,
     base: &crate::engine::analysis::numeric::ModifierInput,
     recipe: &DeclarationRecipe,
 ) -> Result<Vec<Function>, Unresolved> {
     let tokens = crate::engine::analysis::numeric::modifier::member_tokens(base)?;
-    let data = super::language::constant_data(image.bytes, image.pointers, bound_slots)
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)
         .map_err(|_| name_implementations_stop())?;
     let reads = name_reads(
         image.symbols,

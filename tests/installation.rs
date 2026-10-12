@@ -37,11 +37,11 @@ fn a_directory_in_place_of_an_executable_is_unreadable() {
 }
 
 #[test]
-fn a_windows_image_is_identified_without_loading_windows_code() {
+fn a_windows_image_is_an_unsupported_target() {
     let directory = tempdir().unwrap();
     let executable = directory.path().join("stellaris.exe");
     fs::write(&executable, support::pe()).unwrap();
-    assert_eq!(opening_error(&executable), OpenError::UnknownTarget);
+    assert_eq!(opening_error(&executable), OpenError::UnsupportedTarget);
 }
 
 #[test]
@@ -94,10 +94,21 @@ fn universal_images_require_one_valid_arm64_slice() {
 }
 
 #[test]
-fn the_inspector_reads_arm64_images_only() {
-    let error = pdx_native::internals::inspect::Image::read(&support::pe())
-        .err()
-        .expect("an x86-64 image is refused");
+fn the_inspector_reads_arm64_mach_o_images_only() {
+    let refusal = |bytes: Vec<u8>| {
+        pdx_native::internals::inspect::Image::read(&bytes)
+            .err()
+            .expect("the image is refused")
+            .to_string()
+    };
+    let arm64_only = "the inspector reads ARM64 Mach-O images only";
 
-    assert!(error.to_string().contains("ARM64"), "{error}");
+    assert_eq!(refusal(support::pe()), arm64_only);
+    assert_eq!(refusal(support::macho(0x01000007)), arm64_only);
+    assert!(!refusal(b"not an image".to_vec()).contains("ARM64"));
+    // An ARM64 Mach-O passes the gate; this authored header has no text section.
+    assert_eq!(
+        refusal(support::macho(0x0100000c)),
+        "the image does not have exactly one text section"
+    );
 }

@@ -22,6 +22,7 @@ pub(crate) enum SubtypeKind {
 
 #[derive(Clone)]
 pub(crate) struct Input {
+    /// The decoded body of each function, by name. A function that the build lacks has none.
     pub bodies: BTreeMap<String, Vec<Instruction>>,
     pub names: BTreeMap<u64, String>,
     pub points: BTreeMap<u64, SubtypeInput>,

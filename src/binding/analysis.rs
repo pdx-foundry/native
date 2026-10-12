@@ -49,6 +49,14 @@ pub(crate) struct BoundAnalysis {
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
 }
 
+/// The place of a command family's input in the bound analysis's `grammar` array.
+fn grammar_slot(kind: crate::DeclarationKind) -> usize {
+    match kind {
+        crate::DeclarationKind::Effect => 0,
+        crate::DeclarationKind::Trigger => 1,
+    }
+}
+
 struct Catalog {
     candidates: Vec<NamedCandidate>,
     symbols: Vec<Symbol>,
@@ -99,22 +107,23 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
-    fn scoped_numeric_input(
-        &self,
-        recipe: &super::targets::DeclarationRecipe,
-    ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
-        let image = binary::references::Image {
+    /// The verified executable with the facts that the catalog derived from it.
+    fn image(&self) -> binary::references::Image<'_> {
+        binary::references::Image {
             bytes: &self.executable,
             symbols: &self.catalog.symbols,
             strings: &self.catalog.strings,
             pointers: &self.catalog.pointers,
             imports: &self.catalog.imports,
-        };
-        binary::scoped_numeric::read(
-            &image,
-            &self.catalog.bound_slots,
-            recipe.reader_value_token_offset,
-        )
+            bound_slots: &self.catalog.bound_slots,
+        }
+    }
+
+    fn scoped_numeric_input(
+        &self,
+        recipe: &super::targets::DeclarationRecipe,
+    ) -> Result<crate::engine::analysis::scoped_numeric::Input, AnalysisError> {
+        binary::scoped_numeric::read(&self.image(), recipe.reader_value_token_offset)
     }
 
     /// The address of the one symbol with this demangled name.
@@ -252,16 +261,8 @@ impl VerifiedAnalysis<'_> {
                 &self.catalog.strings,
             ),
         )?;
-        let reference_input = binary::references::read(
-            &binary::references::Image {
-                bytes: &self.executable,
-                symbols: &self.catalog.symbols,
-                strings: &self.catalog.strings,
-                pointers: &self.catalog.pointers,
-                imports: &self.catalog.imports,
-            },
-            &self.catalog.candidates,
-        )?;
+        let image = self.image();
+        let reference_input = binary::references::read(&image, &self.catalog.candidates)?;
         input.forms.initializers = binary::grammar::initializers(
             &reference_input,
             &self.catalog.symbols,
@@ -269,13 +270,6 @@ impl VerifiedAnalysis<'_> {
         )?;
         let scoped_input = self.scoped_numeric_input(recipe)?;
         let scoped = crate::engine::analysis::scoped_numeric::analyze(&scoped_input);
-        let image = binary::references::Image {
-            bytes: &self.executable,
-            symbols: &self.catalog.symbols,
-            strings: &self.catalog.strings,
-            pointers: &self.catalog.pointers,
-            imports: &self.catalog.imports,
-        };
         let numeric_input = binary::numeric::read(&image, recipe)?;
         let numeric = crate::engine::analysis::numeric::analyze(&numeric_input);
         input.durations.scoped_storage =
@@ -288,29 +282,6 @@ impl VerifiedAnalysis<'_> {
         recipe: &super::targets::DeclarationRecipe,
     ) -> Result<crate::engine::analysis::modifiers::ModifierInput, AnalysisError> {
         binary::language::modifiers(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            recipe,
-        )
-    }
-
-    fn expansion_input(
-        &self,
-    ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
-        binary::expansions::read(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.candidates,
-        )
-    }
-
-    fn category_key_input(
-        &self,
-        recipe: &super::targets::DeclarationRecipe,
-    ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
-        binary::language::category_keys(
             &self.executable,
             &self.catalog.symbols,
             &self.catalog.strings,
@@ -368,46 +339,6 @@ impl VerifiedAnalysis<'_> {
         )
     }
 
-    fn scope_input(
-        &self,
-        recipe: &super::targets::DeclarationRecipe,
-    ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
-        binary::language::scopes(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            recipe,
-        )
-    }
-
-    fn localization_input(
-        &self,
-        recipe: &super::targets::DeclarationRecipe,
-    ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
-        binary::language::localization(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.pointers,
-            &self.catalog.bound_slots,
-            recipe,
-        )
-    }
-
-    fn callbacks_input(
-        &self,
-        recipe: &super::targets::DeclarationRecipe,
-    ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
-        let image = binary::references::Image {
-            bytes: &self.executable,
-            symbols: &self.catalog.symbols,
-            strings: &self.catalog.strings,
-            pointers: &self.catalog.pointers,
-            imports: &self.catalog.imports,
-        };
-        binary::callbacks::callbacks(&image, &self.catalog.bound_slots, recipe)
-    }
-
     fn block_input(
         &self,
         recipe: &super::targets::DeclarationRecipe,
@@ -418,25 +349,11 @@ impl VerifiedAnalysis<'_> {
             .iter()
             .map(|candidate| candidate.record.owner_candidate.as_str())
             .collect();
-        let image = binary::references::Image {
-            bytes: &self.executable,
-            symbols: &self.catalog.symbols,
-            strings: &self.catalog.strings,
-            pointers: &self.catalog.pointers,
-            imports: &self.catalog.imports,
-        };
-        binary::callbacks::block_evaluations(&image, &self.catalog.bound_slots, &owners, recipe)
+        binary::callbacks::block_evaluations(&self.image(), &owners, recipe)
     }
 
     fn reference_facts(&self) -> Result<ReferenceFacts, AnalysisError> {
-        let image = binary::references::Image {
-            bytes: &self.executable,
-            symbols: &self.catalog.symbols,
-            strings: &self.catalog.strings,
-            pointers: &self.catalog.pointers,
-            imports: &self.catalog.imports,
-        };
-        let input = binary::references::read(&image, &self.catalog.candidates)?;
+        let input = binary::references::read(&self.image(), &self.catalog.candidates)?;
 
         Ok(references::analyze(&input))
     }
@@ -458,15 +375,7 @@ impl VerifiedAnalysis<'_> {
         {
             return Err(AnalysisError::InvalidRange);
         }
-        binary::fields::read(
-            &self.executable,
-            &self.catalog.symbols,
-            &self.catalog.strings,
-            &self.catalog.pointers,
-            &self.catalog.bound_slots,
-            selection,
-            self.persistent,
-        )
+        binary::fields::read(&self.image(), selection, self.persistent)
     }
 }
 
@@ -956,14 +865,7 @@ impl BoundAnalysis {
         self.numeric
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let image = binary::references::Image {
-                    bytes: &verified.executable,
-                    symbols: &verified.catalog.symbols,
-                    strings: &verified.catalog.strings,
-                    pointers: &verified.catalog.pointers,
-                    imports: &verified.catalog.imports,
-                };
-                let input = binary::numeric::read(&image, recipe)?;
+                let input = binary::numeric::read(&verified.image(), recipe)?;
                 Ok(crate::engine::analysis::numeric::analyze(&input))
             })
             .as_ref()
@@ -978,16 +880,8 @@ impl BoundAnalysis {
         self.modifier_blocks
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let image = binary::references::Image {
-                    bytes: &verified.executable,
-                    symbols: &verified.catalog.symbols,
-                    strings: &verified.catalog.strings,
-                    pointers: &verified.catalog.pointers,
-                    imports: &verified.catalog.imports,
-                };
                 let input = binary::modifier_blocks::read(
-                    &image,
-                    &verified.catalog.bound_slots,
+                    &verified.image(),
                     &verified.catalog.candidates,
                     recipe,
                 )?;
@@ -1008,19 +902,11 @@ impl BoundAnalysis {
         self.weight_blocks
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let image = binary::references::Image {
-                    bytes: &verified.executable,
-                    symbols: &verified.catalog.symbols,
-                    strings: &verified.catalog.strings,
-                    pointers: &verified.catalog.pointers,
-                    imports: &verified.catalog.imports,
-                };
-                let input =
-                    binary::weight_blocks::read(&image, &verified.catalog.bound_slots, recipe)?;
                 let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
                 )?;
+                let input = binary::weight_blocks::read(&verified.image(), &text, recipe)?;
                 let bodies = |address| binary::weight_blocks::body(&text, address);
                 Ok(crate::engine::analysis::weight_blocks::analyze(
                     &input, &bodies,
@@ -1039,18 +925,7 @@ impl BoundAnalysis {
         self.triggered_modifiers
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let image = binary::references::Image {
-                    bytes: &verified.executable,
-                    symbols: &verified.catalog.symbols,
-                    strings: &verified.catalog.strings,
-                    pointers: &verified.catalog.pointers,
-                    imports: &verified.catalog.imports,
-                };
-                let input = binary::triggered_modifiers::read(
-                    &image,
-                    &verified.catalog.bound_slots,
-                    recipe,
-                )?;
+                let input = binary::triggered_modifiers::read(&verified.image(), recipe)?;
                 Ok(crate::engine::analysis::modifier_blocks::triggered::analyze(&input))
             })
             .as_ref()
@@ -1142,11 +1017,7 @@ impl BoundAnalysis {
         verified: &VerifiedAnalysis<'_>,
     ) -> Result<&(GrammarInput, DeclarationResult), AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        let index = match kind {
-            crate::DeclarationKind::Effect => 0,
-            crate::DeclarationKind::Trigger => 1,
-        };
-        self.grammar[index]
+        self.grammar[grammar_slot(kind)]
             .get_or_init(|| verified.grammar_input(kind, recipe))
             .as_ref()
             .map_err(Clone::clone)
@@ -1177,11 +1048,7 @@ impl BoundAnalysis {
         &self,
         kind: crate::DeclarationKind,
     ) -> Option<PreparedDurations<'_>> {
-        let index = match kind {
-            crate::DeclarationKind::Effect => 0,
-            crate::DeclarationKind::Trigger => 1,
-        };
-        let (input, declarations) = self.grammar[index].get()?.as_ref().ok()?;
+        let (input, declarations) = self.grammar[grammar_slot(kind)].get()?.as_ref().ok()?;
 
         Some(PreparedDurations {
             input,
@@ -1242,7 +1109,13 @@ impl BoundAnalysis {
         &self,
     ) -> Result<crate::engine::analysis::category_keys::CategoryKeyInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.category_key_input(recipe)
+        let verified = self.verified()?;
+        binary::language::category_keys(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+            recipe,
+        )
     }
 
     /// The engine functions, classified callers and message sites of each script expansion
@@ -1251,7 +1124,13 @@ impl BoundAnalysis {
         &self,
     ) -> Result<crate::engine::analysis::expansions::ExpansionInput, AnalysisError> {
         self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.expansion_input()
+        let verified = self.verified()?;
+        binary::expansions::read(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+            &verified.catalog.candidates,
+        )
     }
 
     /// The modifier node graph, read once from the node type symbols, node constructor calls and
@@ -1263,14 +1142,15 @@ impl BoundAnalysis {
         self.modifier_nodes
             .get_or_init(|| {
                 let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-                let input = binary::modifier_nodes::read(
+                let text = binary::declarations::Text::read(
                     &verified.executable,
                     &verified.catalog.symbols,
-                    &verified.catalog.pointers,
-                    &verified.catalog.bound_slots,
-                    recipe,
                 )?;
-                Ok(crate::engine::analysis::modifier_nodes::analyze(&input))
+                let input = binary::modifier_nodes::read(&verified.image(), &text, recipe)?;
+                let bodies = |start| text.code_from(start);
+                Ok(crate::engine::analysis::modifier_nodes::analyze(
+                    &input, &bodies,
+                ))
             })
             .as_ref()
             .map_err(Clone::clone)
@@ -1309,7 +1189,13 @@ impl BoundAnalysis {
         &self,
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.scope_input(recipe)
+        let verified = self.verified()?;
+        binary::language::scopes(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+            recipe,
+        )
     }
 
     /// The lookup, check and diagnostic functions of the derived-name method.
@@ -1354,13 +1240,21 @@ impl BoundAnalysis {
         &self,
     ) -> Result<crate::engine::analysis::localization::LocalizationInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.localization_input(recipe)
+        let verified = self.verified()?;
+        binary::language::localization(
+            &verified.executable,
+            &verified.catalog.symbols,
+            &verified.catalog.strings,
+            &verified.catalog.pointers,
+            &verified.catalog.bound_slots,
+            recipe,
+        )
     }
 
     pub(crate) fn callbacks_input(
         &self,
     ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
         let recipe = self.declarations.ok_or(AnalysisError::InvalidRange)?;
-        self.verified()?.callbacks_input(recipe)
+        binary::callbacks::callbacks(&self.verified()?.image(), recipe)
     }
 }

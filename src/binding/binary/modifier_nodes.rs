@@ -1,16 +1,16 @@
 //! Read the modifier node graph, the node constructor calls and the static initializers.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use object::{Object, ObjectSection, ObjectSegment};
 
 use crate::AnalysisError;
-use crate::engine::analysis::discovery::Symbol;
-use crate::engine::analysis::modifier_nodes::{self, Construction, ModifierNodeInput};
+use crate::engine::analysis::modifier_nodes::{Construction, ModifierNodeInput};
 use crate::engine::analysis::stop::Unresolved;
 
 use super::super::targets::DeclarationRecipe;
 use super::declarations::Text;
 use super::language::{categories, constant_data};
+use super::references::Image;
 
 /// A node type, up to its node number.
 const NODE_TYPE: &str =
@@ -26,13 +26,17 @@ const OWNER: &str = "::CModifierNode<";
 /// Read every node type symbol, every direct call to a node base constructor, and the static
 /// initializers.
 pub(in crate::binding) fn read(
-    bytes: &[u8],
-    symbols: &[Symbol],
-    pointers: &BTreeMap<u64, u64>,
-    bound_slots: &BTreeSet<u64>,
+    image: &Image<'_>,
+    text: &Text<'_>,
     recipe: &DeclarationRecipe,
 ) -> Result<ModifierNodeInput, AnalysisError> {
-    let text = Text::read(bytes, symbols)?;
+    let Image {
+        bytes,
+        symbols,
+        pointers,
+        bound_slots,
+        ..
+    } = *image;
     let mut sources = BTreeMap::new();
 
     for symbol in symbols {
@@ -69,14 +73,9 @@ pub(in crate::binding) fn read(
         sources,
         constructions,
         initializers: initializers(bytes)?,
-        text: modifier_nodes::Text {
-            address: text.address,
-            bytes: text.code.to_vec(),
-            starts: text.starts.clone(),
-        },
         data: constant_data(bytes, pointers, bound_slots)?,
         layout: recipe.modifier_nodes,
-        categories: categories(bytes, symbols, &text, recipe)?,
+        categories: categories(bytes, symbols, text, recipe)?,
     })
 }
 
@@ -157,7 +156,83 @@ fn initializers(bytes: &[u8]) -> Result<Vec<u64>, AnalysisError> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
+    use crate::engine::analysis::assembler::{Arm64, arm64};
+    use crate::engine::analysis::evaluate::{Code, ReadOnlyData};
+    use crate::engine::analysis::modifier_nodes::{self, Masks, ModifierNodeLayout};
+    use crate::engine::analysis::modifiers::CategoryInput;
+
+    #[test]
+    fn a_static_initializer_that_no_symbol_names_still_leaves_its_mask() {
+        const CALLER: u64 = 0x1000;
+        const CALCULATION: u64 = 0x1100;
+        const INITIALIZER: u64 = 0x1200;
+        const BASE_CONSTRUCTOR: u64 = 0x2000;
+        const ZERO_FILL_MASK: u64 = 0x9054;
+
+        let mut caller = Arm64::at(CALLER);
+        arm64!(caller; sub sp, sp, #0x40);
+        caller.address(5, ZERO_FILL_MASK);
+        caller.address(9, CALCULATION);
+        arm64!(caller; stp x0, x9, [sp, #0x18]; add x3, sp, #0x18);
+        let site = caller.here();
+        caller.call(BASE_CONSTRUCTOR);
+        arm64!(caller; add sp, sp, #0x40; ret);
+        let caller = caller.bytes();
+        let initializer = arm64!(at INITIALIZER;
+            mov w8, #0x7e;
+            adrp x9, extern 0x9000;
+            str w8, [x9, #0x54]; // the zero-fill mask
+            ret
+        );
+        let mut code = vec![0; (INITIALIZER - CALLER) as usize];
+        code[..caller.len()].copy_from_slice(&caller);
+        code.extend(initializer);
+        // The caller and the calculation have symbols; the initializer does not.
+        let text = Text {
+            address: CALLER,
+            code: &code,
+            starts: BTreeSet::from([CALLER, CALCULATION]),
+        };
+        let input = ModifierNodeInput {
+            sources: BTreeMap::from([(1, Ok(vec![]))]),
+            constructions: vec![Construction {
+                node: 1,
+                owner: "COwner".into(),
+                caller: CALLER,
+                site,
+            }],
+            initializers: vec![INITIALIZER],
+            data: ReadOnlyData::default(),
+            layout: ModifierNodeLayout {
+                category_offset: 0xdc,
+                category_argument: 5,
+                calculation_argument: 3,
+                calculation_function_offset: 8,
+            },
+            categories: CategoryInput {
+                category_name: 0,
+                string_object_size: 24,
+                short_length_offset: 0x17,
+                assign_literal: BTreeSet::new(),
+                code: Code::default(),
+                data: ReadOnlyData::default(),
+            },
+        };
+
+        let result = modifier_nodes::analyze(&input, &|start| text.code_from(start));
+
+        assert!(text.function(INITIALIZER).is_err());
+        assert_eq!(
+            result.nodes[&1].owners[0]
+                .masks
+                .clone()
+                .map_err(|stop| stop.reason),
+            Ok(Masks::Constant(0x7e))
+        );
+    }
 
     fn node(number: u32, sources: &[String]) -> String {
         let sources: String = sources.iter().map(|source| format!("{source}, ")).collect();

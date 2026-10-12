@@ -162,12 +162,14 @@ fn input() -> Input {
         ret
     );
     Input {
-        member: decode_arm64(&bytes, 0x1000).unwrap(),
-        conversion: decode_arm64(
-            &arm64!(at 0x9100; ldr x0, [x0, #0x10]; b extern 0x9400),
-            0x9100,
-        )
-        .unwrap(),
+        member: Some(decode_arm64(&bytes, 0x1000).unwrap()),
+        conversion: Some(
+            decode_arm64(
+                &arm64!(at 0x9100; ldr x0, [x0, #0x10]; b extern 0x9400),
+                0x9100,
+            )
+            .unwrap(),
+        ),
         names: BTreeMap::from([
             (0x8100, "database".into()),
             (0x8200, "null_item".into()),
@@ -198,6 +200,29 @@ fn reference_requires_database_key_lookup_value_conversion_and_fallback() {
 }
 
 #[test]
+fn a_missing_member_or_conversion_function_is_a_body_gap_and_not_a_flow_gap() {
+    let mut no_member = input();
+    no_member.member = None;
+    let mut no_conversion = input();
+    no_conversion.conversion = None;
+    let mut empty_member = input();
+    empty_member.member = Some(Vec::new());
+
+    assert_eq!(
+        analyze(&no_member).unwrap_err().reason,
+        "modifier-reference-member-body"
+    );
+    assert_eq!(
+        analyze(&no_conversion).unwrap_err().reason,
+        "modifier-reference-conversion-body"
+    );
+    assert_eq!(
+        analyze(&empty_member).unwrap_err().reason,
+        "modifier-reference-flow"
+    );
+}
+
+#[test]
 fn lookup_of_a_different_string_and_changed_hit_miss_routes_fail() {
     for (index, operands) in [
         (14, "x1,[x19,#0x48]"), // Owner text is not the reader key.
@@ -207,7 +232,7 @@ fn lookup_of_a_different_string_and_changed_hit_miss_routes_fail() {
         (103, "x2,x19"),        // Fallback must retain the input token.
     ] {
         let mut input = input();
-        input.member[index].operands = operands.into();
+        input.member.as_mut().unwrap()[index].operands = operands.into();
         assert!(analyze(&input).is_err(), "{index}");
     }
 }
@@ -216,13 +241,14 @@ fn lookup_of_a_different_string_and_changed_hit_miss_routes_fail() {
 fn every_required_lookup_instruction_is_checked_but_later_cleanup_is_not() {
     for index in 0..105 {
         let mut input = input();
-        input.member[index].operation = "nop".into();
-        input.member[index].operands.clear();
+        let member = input.member.as_mut().unwrap();
+        member[index].operation = "nop".into();
+        member[index].operands.clear();
         assert!(analyze(&input).is_err(), "instruction {index}");
     }
     let mut input = input();
-    input.member[120].operation = "ret".into();
+    input.member.as_mut().unwrap()[120].operation = "ret".into();
     assert!(analyze(&input).is_ok());
-    input.conversion[0].operands = "x0,[x1,#0x10]".into();
+    input.conversion.as_mut().unwrap()[0].operands = "x0,[x1,#0x10]".into();
     assert!(analyze(&input).is_err());
 }

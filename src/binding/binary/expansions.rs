@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::declarations::{Text, addresses};
+use super::families::Names;
 use super::grammar::{EFFECT_MEMBER_READER, TRIGGER_MEMBER_READER};
 use crate::AnalysisError;
 use crate::binding::analysis::NamedCandidate;
@@ -395,7 +396,7 @@ struct Image<'a> {
     text: Text<'a>,
     symbols: &'a [Symbol],
     strings: &'a BTreeMap<u64, String>,
-    names: BTreeMap<u64, Vec<&'a str>>,
+    names: Names<'a>,
     /// The content directory of each named registry, by its `LoadFromReader` symbol.
     registry_readers: BTreeMap<String, String>,
     /// The content directory of each named registry, by its database class.
@@ -409,11 +410,6 @@ impl<'a> Image<'a> {
         strings: &'a BTreeMap<u64, String>,
         candidates: &'a [NamedCandidate],
     ) -> Result<Self, AnalysisError> {
-        let mut names: BTreeMap<u64, Vec<&str>> = BTreeMap::new();
-        for symbol in symbols {
-            names.entry(symbol.address).or_default().push(&symbol.name);
-        }
-
         let registry_readers = candidates
             .iter()
             .filter_map(|candidate| {
@@ -438,7 +434,7 @@ impl<'a> Image<'a> {
             text: Text::read(bytes, symbols)?,
             symbols,
             strings,
-            names,
+            names: Names::new(symbols),
             registry_readers,
             registry_databases,
         })
@@ -446,9 +442,7 @@ impl<'a> Image<'a> {
 
     /// Whether the function at `function` has one of `names`.
     fn named(&self, function: u64, names: &[&str]) -> bool {
-        self.names
-            .get(&function)
-            .is_some_and(|aliases| aliases.iter().any(|alias| names.contains(alias)))
+        self.names.of(function).any(|alias| names.contains(&alias))
     }
 
     /// Every direct call or tail call of a function named `name`.
@@ -508,9 +502,9 @@ impl<'a> Image<'a> {
     /// The role of the reader at `function`; a helper gives the roles of its callers.
     fn roles(&self, function: u64, depth: usize) -> Vec<UseRole> {
         if self.named(function, &HELPERS) && depth < HELPER_DEPTH {
-            let names = self.names.get(&function).cloned().unwrap_or_default();
-            return names
-                .iter()
+            return self
+                .names
+                .of(function)
                 .flat_map(|name| self.calls(name))
                 .flat_map(|caller| self.roles(caller.function, depth + 1))
                 .collect();
@@ -520,8 +514,7 @@ impl<'a> Image<'a> {
     }
 
     fn role(&self, function: u64) -> UseRole {
-        let aliases = self.names.get(&function).cloned().unwrap_or_default();
-        for alias in aliases {
+        for alias in self.names.of(function) {
             if let Some((_, host)) = HOST_READERS.iter().find(|(name, _)| *name == alias) {
                 return UseRole::Host(host.clone());
             }
@@ -557,8 +550,8 @@ impl<'a> Image<'a> {
     /// Whether the function at `function` belongs to the shared reader class.
     fn in_shared_reader(&self, function: u64) -> bool {
         self.names
-            .get(&function)
-            .is_some_and(|aliases| aliases.iter().any(|alias| alias.contains(SHARED_READER)))
+            .of(function)
+            .any(|alias| alias.contains(SHARED_READER))
     }
 
     /// The direct callers of a function named `name` in a lexing chain: the statement reader is

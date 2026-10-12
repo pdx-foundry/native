@@ -295,7 +295,8 @@ fn matching(symbols: &[Symbol], select: impl Fn(&str) -> bool) -> BTreeSet<u64> 
         .collect()
 }
 
-fn is_read_only(kind: SectionKind) -> bool {
+/// Whether a section holds constants that code reads: tables and string literals.
+pub(super) fn is_read_only(kind: SectionKind) -> bool {
     matches!(
         kind,
         SectionKind::ReadOnlyData | SectionKind::ReadOnlyString

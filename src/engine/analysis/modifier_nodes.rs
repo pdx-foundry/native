@@ -63,36 +63,13 @@ pub struct Construction {
     pub site: u64,
 }
 
-/// The executable text and the function starts that symbols give it.
-#[derive(Debug, Clone, Default)]
-pub struct Text {
-    pub address: u64,
-    pub bytes: Vec<u8>,
-    pub starts: BTreeSet<u64>,
-}
+/// The code of the function that starts at an address, which the binding supplies.
+type Bodies<'a> = &'a dyn Fn(u64) -> Option<&'a [u8]>;
 
-impl Text {
-    /// The bytes from `start` to the next function start, or to the end of the text.
-    fn function(&self, start: u64) -> Option<&[u8]> {
-        let end = self.address + self.bytes.len() as u64;
-        if !(self.address..end).contains(&start) {
-            return None;
-        }
-
-        let next = self
-            .starts
-            .range(start + 1..)
-            .next()
-            .copied()
-            .unwrap_or(end);
-        let offset = (start - self.address) as usize;
-        self.bytes.get(offset..offset + (next - start) as usize)
-    }
-
-    fn rows(&self, start: u64) -> Result<Vec<Instruction>, Unresolved> {
-        let bytes = self.function(start).ok_or(Unresolved::new("function"))?;
-        decode_arm64(bytes, start).map_err(|_| Unresolved::new("decode"))
-    }
+/// The decoded function that starts at `start`.
+fn function_rows(bodies: Bodies<'_>, start: u64) -> Result<Vec<Instruction>, Unresolved> {
+    let bytes = bodies(start).ok_or(Unresolved::new("function"))?;
+    decode_arm64(bytes, start).map_err(|_| Unresolved::new("decode"))
 }
 
 /// Executable-derived input of the modifier node method.
@@ -104,7 +81,6 @@ pub struct ModifierNodeInput {
     pub constructions: Vec<Construction>,
     /// Entry of each static initializer.
     pub initializers: Vec<u64>,
-    pub text: Text,
     pub data: ReadOnlyData,
     pub layout: ModifierNodeLayout,
     pub categories: CategoryInput,
@@ -144,8 +120,10 @@ pub struct ModifierNodeResult {
     pub initialized_words: BTreeMap<u64, u64>,
 }
 
-/// Read every node's sources, owners and masks.
-pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
+/// Read every node's sources, owners and masks. `bodies` gives the code from a function's start to
+/// the next function start. A static initializer can start where no symbol does, and it still has
+/// a body.
+pub fn analyze<'a>(input: &ModifierNodeInput, bodies: Bodies<'a>) -> ModifierNodeResult {
     let mut nodes: BTreeMap<u32, NodeRead> = input
         .sources
         .iter()
@@ -162,7 +140,7 @@ pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
     for construction in &input.constructions {
         let owner = OwnerRead {
             owner: construction.owner.clone(),
-            masks: construction_masks(input, construction, &mut initialized_words),
+            masks: construction_masks(input, bodies, construction, &mut initialized_words),
         };
         nodes
             .entry(construction.node)
@@ -195,19 +173,20 @@ pub fn analyze(input: &ModifierNodeInput) -> ModifierNodeResult {
 /// read from zero-fill memory joins `initialized_words`.
 fn construction_masks(
     input: &ModifierNodeInput,
+    bodies: Bodies<'_>,
     construction: &Construction,
     initialized_words: &mut BTreeMap<u64, u64>,
 ) -> Result<Masks, Unresolved> {
-    let (mask, calculation) = construction_arguments(input, construction)?;
+    let (mask, calculation) = construction_arguments(input, bodies, construction)?;
     let mask = match mask {
         Mask::Known(mask) => mask,
         Mask::Initialized(address) => {
-            let mask = initialized_word(input, address)?;
+            let mask = initialized_word(input, bodies, address)?;
             initialized_words.insert(address, mask);
             mask
         }
     };
-    let mut masks = calculation_masks(input, calculation)?;
+    let mut masks = calculation_masks(input, bodies, calculation)?;
     masks.insert(mask);
 
     if masks.len() == 1 {
@@ -219,10 +198,11 @@ fn construction_masks(
 /// Where the category mask is, and the calculation function, that one constructor call passes.
 fn construction_arguments(
     input: &ModifierNodeInput,
+    bodies: Bodies<'_>,
     construction: &Construction,
 ) -> Result<(Mask, u64), Unresolved> {
     let layout = input.layout;
-    let code = Code::from_rows(input.text.rows(construction.caller)?);
+    let code = Code::from_rows(function_rows(bodies, construction.caller)?);
     let mut machine = Machine::new(&code, &input.data);
     let owner = machine.reserve(OBJECT_SPAN);
     machine.set_register(0, owner);
@@ -273,11 +253,15 @@ enum Mask {
 }
 
 /// The 32-bit value that the one static initializer which stores to `address` leaves there.
-fn initialized_word(input: &ModifierNodeInput, address: u64) -> Result<u64, Unresolved> {
+fn initialized_word(
+    input: &ModifierNodeInput,
+    bodies: Bodies<'_>,
+    address: u64,
+) -> Result<u64, Unresolved> {
     let mut values = Vec::new();
 
     for &initializer in &input.initializers {
-        let Some(bytes) = input.text.function(initializer) else {
+        let Some(bytes) = bodies(initializer) else {
             continue;
         };
         let page_registers = page_registers(bytes, initializer, address & !0xfff);
@@ -285,7 +269,7 @@ fn initialized_word(input: &ModifierNodeInput, address: u64) -> Result<u64, Unre
             continue;
         }
 
-        let rows = input.text.rows(initializer)?;
+        let rows = function_rows(bodies, initializer)?;
         let stores_word = rows.iter().filter_map(store).any(|(_, base, offset)| {
             offset == address & 0xfff
                 && register_number(base).is_some_and(|base| page_registers.contains(&base))
@@ -347,9 +331,13 @@ fn register_number(name: &str) -> Option<usize> {
 }
 
 /// Each mask that the calculation function at `entry` stores to its node's mask.
-fn calculation_masks(input: &ModifierNodeInput, entry: u64) -> Result<BTreeSet<u64>, Unresolved> {
+fn calculation_masks(
+    input: &ModifierNodeInput,
+    bodies: Bodies<'_>,
+    entry: u64,
+) -> Result<BTreeSet<u64>, Unresolved> {
     let layout = input.layout;
-    let rows = input.text.rows(entry)?;
+    let rows = function_rows(bodies, entry)?;
     let candidates: Vec<_> = rows
         .iter()
         .filter_map(|row| mask_store(row, layout.category_offset))

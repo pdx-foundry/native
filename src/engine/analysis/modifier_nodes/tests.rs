@@ -109,25 +109,22 @@ fn initializer_that_can_skip() -> Vec<u8> {
     )
 }
 
-fn input(caller: (Vec<u8>, u64), calculation: Vec<u8>, initializer: Vec<u8>) -> ModifierNodeInput {
+/// The code of each function of a test image, by its start.
+type Functions = BTreeMap<u64, Vec<u8>>;
+
+fn input(
+    caller: (Vec<u8>, u64),
+    calculation: Vec<u8>,
+    initializer: Vec<u8>,
+) -> (ModifierNodeInput, Functions) {
     let (caller, site) = caller;
-    let functions = [
+    let functions = Functions::from([
         (CALLER, caller),
         (CALCULATION, calculation),
         (INITIALIZER, initializer),
-    ];
-    let end = functions
-        .iter()
-        .map(|(start, bytes)| start + bytes.len() as u64)
-        .max()
-        .unwrap();
-    let mut bytes = vec![0; (end - CALLER) as usize];
-    for (start, code) in &functions {
-        let offset = (start - CALLER) as usize;
-        bytes[offset..offset + code.len()].copy_from_slice(code);
-    }
+    ]);
 
-    ModifierNodeInput {
+    let input = ModifierNodeInput {
         sources: BTreeMap::from([(1, Ok(vec![]))]),
         constructions: vec![Construction {
             node: 1,
@@ -136,11 +133,6 @@ fn input(caller: (Vec<u8>, u64), calculation: Vec<u8>, initializer: Vec<u8>) -> 
             site,
         }],
         initializers: vec![INITIALIZER],
-        text: Text {
-            address: CALLER,
-            bytes,
-            starts: functions.iter().map(|(start, _)| *start).collect(),
-        },
         data: ReadOnlyData::new(vec![
             (CONSTANT_MASK, 0x0040_407cu32.to_le_bytes().to_vec()),
             (REPLICATED, 7u64.to_le_bytes().to_vec()),
@@ -159,11 +151,14 @@ fn input(caller: (Vec<u8>, u64), calculation: Vec<u8>, initializer: Vec<u8>) -> 
             code: Code::default(),
             data: ReadOnlyData::default(),
         },
-    }
+    };
+
+    (input, functions)
 }
 
-fn masks(input: &ModifierNodeInput) -> Result<Masks, &'static str> {
-    let result = analyze(input);
+fn masks((input, functions): &(ModifierNodeInput, Functions)) -> Result<Masks, &'static str> {
+    let bodies = |start| functions.get(&start).map(Vec::as_slice);
+    let result = analyze(input, &bodies);
     let owner = &result.nodes[&1].owners[0];
     assert_eq!(owner.owner, "COwner");
     owner.masks.clone().map_err(|unresolved| unresolved.reason)
@@ -268,14 +263,14 @@ fn a_store_at_the_mask_offset_from_another_object_is_not_a_mask() {
 
 #[test]
 fn a_constructed_node_that_no_node_type_names_has_unresolved_sources() {
-    let mut input = input(
+    let (mut input, functions) = input(
         caller(Prefix::None, MaskArgument::Stack(0x400)),
         calculation_without_store(),
         initializer(),
     );
     input.sources.clear();
 
-    let result = analyze(&input);
+    let result = analyze(&input, &|start| functions.get(&start).map(Vec::as_slice));
 
     assert_eq!(
         result.nodes[&1].sources.as_ref().unwrap_err().reason,

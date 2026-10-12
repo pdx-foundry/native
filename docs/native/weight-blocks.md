@@ -275,6 +275,26 @@ army `spawn_chance` runs on a pop group (`CalcArmyTypeToSpawn`: `SetPopGroup`), 
 a species from; building `ai_weight` also runs on a country with a country from
 (`CAIInteriorMinister::HandleHoldings`) beside the colony that the config states.
 
+## Loaded-bytes view
+
+The member readers run concretely over `WeightBlockInput.data`: the read-only sections and
+string literals with the target of every rebased pointer laid over them (`pointer_view` in
+`src/binding/binary/weight_blocks.rs`). A rebased slot in writable `__DATA` therefore reads as the
+target that the loader gave it, and a rebased slot outside every section is a run of bytes of its
+own. The vtable and constructor readers use `constant_data` in `src/binding/binary/language.rs`
+instead: the read-only sections and `__DATA_CONST` as the loader leaves them, with every writable
+slot unknown. The weight method also takes its constructor summaries from `constant_data`.
+
+**Writable-slot rule.** A writable slot holds its initial target. Code can replace such a slot
+before a weight reader loads it, and the method does not model that write. **Reason.** The method
+was written and checked with this view. A path that loads a writable slot resolves in it, where
+`constant_data` would stop the path at an unknown slot. **Evidence.** No M452 answer depends on
+the rule: the weight parity file and every other `static_questions` case are unchanged when the
+method reads `constant_data`. **Condition for a change.** Read `constant_data`, and delete
+`pointer_view`, when a weight reader of some build loads a writable slot that engine code rewrites
+before the reader runs. The test
+`the_weight_view_reads_a_writable_slot_that_the_constant_view_leaves_out` pins the rule.
+
 ## Gaps
 
 - `factor` keeps both of its readers with an unresolved condition. Both read a fixed-point value,
