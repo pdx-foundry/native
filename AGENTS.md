@@ -25,6 +25,15 @@ Before you work on game launch, cleanup, injection, engine calls, memory layouts
 `STELLARIS_PATH` is set in the development environment and names the installed game. Use it in
 commands for `cargo parity`, the ignored exact-build tests and `examples/inspect`; do not write the path.
 
+Live tests (`cargo live`) launch the game and take about an hour. They are a calibration step,
+not a check for each change: `cargo parity` and `cargo test` check static answers. Run live cases
+only when the change touches live code (`src/game`, `src/execution`, `src/supervisor.rs`,
+`src/protocol`, `src/fixture.rs`, `src/script.rs`, `src/binding/platform`, `tests/live*`), adds or
+changes a live case or a method's live check, or adopts a new game build. Select the affected
+cases by name (`cargo live <name>`); run the whole suite only for a new build or a change to the
+supervisor, worker or lifecycle. Never run two games, or a live run beside `cargo test`, at the same
+time.
+
 Native owns the platform and build methods. Atlas owns extraction fixtures, rule conclusions and coverage.
 
 Authored ARM64 in tests (`arm64!` in `src/engine/analysis/assembler.rs`) may carry inline
