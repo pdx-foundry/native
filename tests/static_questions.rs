@@ -1516,6 +1516,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         "common/global_ship_designs",
         "common/on_actions",
         "common/opinion_modifiers",
+        "common/planet_classes",
         "common/ship_behaviors",
         "common/special_projects",
         "common/species_names",
@@ -1525,6 +1526,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         "common/terraform",
         "common/traits",
         "events",
+        "flags",
         "gfx/worldgfx",
         "prescripted_countries",
     ]
