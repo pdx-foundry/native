@@ -1408,6 +1408,23 @@ fn an_embedded_object_without_a_block_family_lists_its_keys() {
     let mut unnamed = embedded_fixture();
     replace(&mut unnamed, 0xd000, arm64!(at 0xd000; cmp w2, #8)); // a token with no name
     assert!(derive(unnamed).embedded.is_empty());
+
+    let mut wider = embedded_fixture();
+    wider.functions[0].code = arm64!(at 0x1000;
+        cbz x3, extern 0x1024; // a state branch before the token test
+        cmp w2, #7; // token 7
+        b.eq extern 0x1014;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x40; // the embedded object
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read(CPersistent&)
+        b extern 0x7100 // an unknown call that every token reaches
+    );
+    let result = derive(wider);
+    assert_eq!(result.fields[0].name, "new_engine_field");
+    assert!(result.embedded.is_empty());
 }
 
 #[test]

@@ -3328,7 +3328,18 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "37c52c03d3012e74",
+          "name": "planet"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
       "id": "e044b50825a1841d",
       "kind": "Block",
@@ -5222,7 +5233,9 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -5298,7 +5311,9 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",
@@ -5399,7 +5414,9 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "325efaa17499c32d",
       "kind": "String",
@@ -5475,7 +5492,9 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
       "id": "b894933b2b2853a5",
       "kind": "Boolean",

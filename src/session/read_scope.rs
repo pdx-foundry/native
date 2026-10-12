@@ -27,14 +27,11 @@ pub(super) fn registry_fields(
     for value in values {
         if let crate::FieldMembers::Fields(children) = &mut value.members
             && let Some(root) = result.fields.iter().find(|root| root.name == value.name)
-            && let Some(collection) = result
-                .collections
-                .iter()
-                .find(|collection| collection.token == root.token)
+            && let Some(nested) = result.nested(root.token)
         {
             let mut path = parent.to_vec();
             path.push(value.name.clone());
-            registry_fields(children, &collection.fields, names, &path, gaps);
+            registry_fields(children, nested, names, &path, gaps);
         }
     }
 }

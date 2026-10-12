@@ -121,8 +121,14 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     }
     let persistent = persistent::discover(input, &fields);
     gaps.extend(persistent.gaps);
-    let embedded =
-        persistent::embedded(input, &symbol_index, &fields, &persistent.readers, &tokens);
+    let embedded = persistent::embedded(
+        input,
+        &symbol_index,
+        &fields,
+        &paths,
+        &persistent.readers,
+        &tokens,
+    );
     Ok(RegistryFieldResult {
         persistent: persistent.readers,
         persistent_points: persistent.points,

@@ -57,12 +57,9 @@ fn fields_at_path(
             gaps,
         );
         if let FieldMembers::Fields(children) = &mut value.members
-            && let Some(collection) = result
-                .collections
-                .iter()
-                .find(|collection| collection.token == root.token)
+            && let Some(nested) = result.nested(root.token)
         {
-            fields_at_path(children, &collection.fields, facts, numeric, &path, gaps);
+            fields_at_path(children, nested, facts, numeric, &path, gaps);
         }
     }
 }

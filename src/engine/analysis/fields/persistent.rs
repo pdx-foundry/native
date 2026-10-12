@@ -1,8 +1,8 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
 use super::containers::{self, PathMasks};
 use super::{
-    ConcreteReader, EmbeddedField, FieldGap, FieldGapKind, FieldInput, RegistryFieldResult,
-    RootField, dispatch, inventory, tokens,
+    ConcreteReader, EmbeddedField, FieldGap, FieldGapKind, FieldInput, PathOutcome,
+    RegistryFieldResult, RootField, TokenPath, dispatch, inventory, tokens,
 };
 use crate::engine::analysis::{
     discovery::SymbolIndex,
@@ -83,15 +83,26 @@ pub(super) fn embedded(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
     fields: &[RootField],
+    paths: &[TokenPath],
     readers: &BTreeMap<i64, ConcreteReader>,
     names: &BTreeMap<i64, tokens::Token>,
 ) -> Vec<EmbeddedField> {
     let mut embedded = Vec::new();
     for field in fields {
-        if !field.readers.iter().all(readers::reads_embedded_object) {
+        // Every path that holds the token, including a wider one, must read the object.
+        let joins: Option<Vec<_>> = paths
+            .iter()
+            .filter(|path| path.domain[0] <= field.token && field.token <= path.domain[1])
+            .filter(|path| path.outcome != PathOutcome::Rejected)
+            .map(|path| match &path.outcome {
+                PathOutcome::Reader(join) if readers::reads_embedded_object(join) => Some(join),
+                _ => None,
+            })
+            .collect();
+        let Some(joins) = joins else {
             continue;
-        }
-        let offsets: BTreeSet<_> = field.readers.iter().map(readers::destination).collect();
+        };
+        let offsets: BTreeSet<_> = joins.into_iter().map(readers::destination).collect();
         if offsets.len() != 1 {
             continue;
         }

@@ -255,6 +255,27 @@ pub struct RegistryFieldResult {
     pub partition_accounted: bool,
 }
 
+impl RegistryFieldResult {
+    /// The result of the object that the root field with `token` collects or embeds.
+    pub(crate) fn nested(&self, token: i64) -> Option<&RegistryFieldResult> {
+        self.nested_results()
+            .find(|(nested, _)| *nested == token)
+            .map(|(_, result)| result)
+    }
+
+    /// The results of the collected and embedded objects, by the token of their root field.
+    pub(crate) fn nested_results(&self) -> impl Iterator<Item = (i64, &RegistryFieldResult)> {
+        self.collections
+            .iter()
+            .map(|collection| (collection.token, collection.fields.as_ref()))
+            .chain(
+                self.embedded
+                    .iter()
+                    .map(|embedded| (embedded.token, embedded.fields.as_ref())),
+            )
+    }
+}
+
 /// A persistent object's executable-derived constructor and virtual reader bindings.
 #[derive(Debug, Clone, Serialize)]
 pub struct ObjectReader {

@@ -462,11 +462,13 @@ Pitfalls:
 
 ## Embedded object keys
 
-A root field that reads one embedded persistent object on every path, where every owner
+A root field that reads one embedded persistent object on every token path that holds its token,
+including a wider path, where every owner
 constructor installs the same reader there and that reader has no block family, gets the keys of
 the object's own `ReadMember` as `FieldMembers::Fields`, to depth one (`fields/persistent.rs`,
 `embedded`). The binding adds the member reader of each such reader that the owner's constructors
-can install to the field input. A walk that names no key leaves the members `Unresolved`. A gap of
+can install to the field input. A walk that names no key leaves the members `Unresolved`. The keys take the read-scope,
+scoped-operand and duration passes that a collection's fields take. A gap of
 the object's walk as a whole names the parent field; a gap of one key names `parent.key`. The same
 rule renames the whole-reader gaps of a collection's object, which earlier carried the registry
 name after the dot.
@@ -510,8 +512,8 @@ Facts on M452:
 - The blocks' read scope is the [read-scope](#block-entry-contexts) answer (SDK-549); it stays
   unresolved with a `read-scope: scope-argument` gap.
 
-Each of the two fields is listed with all 14 keys; every key keeps an `UnresolvedReader` and an
-`UnresolvedStorage` gap, because the walk does not follow `ReadValue`. So the result is partial
+Each of the two fields is listed with all 14 keys; every key keeps an `UnresolvedReader`, an
+`UnresolvedStorage` and a `read-scope: scope-argument` gap, because the walk does not follow `ReadValue`. So the result is partial
 for both fields, with one failure shape: an unfollowed value helper. None failed. Establish the
 value form when Atlas needs it: the value is one of two literal tokens, and others are ignored,
 which the `Keyword` rule of [weight blocks](weight-blocks.md) does not cover (two different owner

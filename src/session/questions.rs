@@ -714,17 +714,7 @@ fn normalized_gaps(
             });
         }
     }
-    let nested = result
-        .collections
-        .iter()
-        .map(|collection| (collection.token, &collection.fields))
-        .chain(
-            result
-                .embedded
-                .iter()
-                .map(|embedded| (embedded.token, &embedded.fields)),
-        );
-    for (token, nested) in nested {
+    for (token, nested) in result.nested_results() {
         let Some((parent, built)) = result
             .fields
             .iter()
