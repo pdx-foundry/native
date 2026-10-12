@@ -21,8 +21,10 @@ to a base block reader is not an established rejection.
 - **The diagnostic test is essential:** the dispatch and database drivers ignore stage results
   (F1, F7). A diagnostic on any stage makes a path rejecting; without one, every result-bearing stage
   must return true in bit zero. False, unknown, unfinished and bounded paths are unresolved. An
-  alternative is listed only if all its paths accept; mixed paths, unknown reader kinds and more than
-  64 paths keep `forms` partial with a `value-acceptance` gap.
+  alternative is listed only if all its paths accept; mixed paths, unknown reader kinds, receiver
+  state and more than 64 paths (`evaluate::PATH_LIMIT`, even when every path rejects) keep `forms`
+  partial with a `value-acceptance` gap. `forms.rs` decides this once, as the alternative's
+  `Verdict`; the session only maps it.
 - A read watch records loads from command bytes that the chain has not written; script writes do
   not become construction state. The factory walk keeps only bytes agreed by every returning path
   and never enters constructor bodies for more state. An unknown receiver branch whose outcomes
@@ -54,7 +56,9 @@ leave coverage unresolved.
   bytes at a member destination supply its vtable.
 - A member slot whose function is one `b` to another function is an alias, read through its target
   (`declarations::alias_target`, at most four aliases). `TFleetSettings::ReadMember` `0x101034738` is
-  an alias of `ReadBackwardsCompatible` `0x10103473c`, which reads the fleet `settings` keys.
+  an alias of `ReadBackwardsCompatible` `0x10103473c`, which reads the fleet `settings` keys. Both
+  routes to a child's persistent slots follow it: an embedded child, and a child that a fixed key
+  allocates (`persistent_reader`).
 - `create_species.flags` and `variables` are read with `CReader::ReadUniform<CString>`, a list of
   strings with no named fields, so they publish `Fields: []` with a `reader-routing` gap.
 - One internal coverage function governs fixed keys, child families and ordering; the normalizer does
@@ -300,7 +304,9 @@ the token at command `+0x20` and the file location at `+0x28`, checks the comman
   rules describe these reader selections, not a syntax restriction.
 - `random_list` joins integer-key decoding to an allocated entry's concrete virtual reader; the
   numeric token's origin must be the original reader's bound token storage, and weight arithmetic
-  is not interpreted. The same method transfers to `locked_random_list`.
+  is not interpreted. The same method transfers to `locked_random_list`. The child walk reads
+  pointer slots from the declarations' read-only pointer data, so a slot stays known after a store
+  to an unknown address.
 - The member walk reuses field token dispatch, follows inherited delegates to depth eight, and keeps
   missing routing and cycles unresolved.
 - `CTriggerDatabase::AddTrigger` can enter a Robin Hood hash insertion, and effect insertion

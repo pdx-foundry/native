@@ -137,6 +137,19 @@ fn sites(input: &DeclarationInput) -> Vec<Site> {
 }
 
 #[test]
+fn the_scope_bits_to_probe_are_the_named_types_up_to_the_width_of_a_mask() {
+    let mut input = input(vec![], vec![], composition(vec![], BTreeMap::new()));
+    let named = |count: usize| Some((0..count).map(|bit| bit.to_string()).collect());
+
+    input.scope_names = None;
+    assert_eq!(input.scope_bits(), 64);
+    input.scope_names = named(3);
+    assert_eq!(input.scope_bits(), 3);
+    input.scope_names = named(100);
+    assert_eq!(input.scope_bits(), 64);
+}
+
+#[test]
 fn a_tail_call_to_the_register_function_is_a_registration() {
     let mut registrar = Arm64::at(0x1000);
     arm64!(registrar; mov w0, #16);

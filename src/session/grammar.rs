@@ -6,7 +6,7 @@ use crate::engine::analysis::references::{
 };
 use crate::engine::analysis::{
     declarations::{self, Site},
-    grammar,
+    grammar::{self, forms::Verdict},
     stop::Unresolved,
 };
 use crate::{
@@ -210,46 +210,29 @@ pub(crate) fn normalize(
                     accepted.push(crate::CommandForm::Block);
                 }
                 for alternative in &forms.alternatives {
-                    if alternative.accepted {
-                        accepted.push(crate::CommandForm::Value(form_value(
-                            &alternative.value,
-                            references,
-                        )));
-                        if let Some(detail) = value_reference_gap(&alternative.value, references) {
-                            gap(
-                                GapKind::ReaderSemantics,
-                                format!("value reference: {detail}"),
-                            );
+                    match &alternative.verdict {
+                        Verdict::Accepted => {
+                            accepted.push(crate::CommandForm::Value(form_value(
+                                &alternative.value,
+                                references,
+                            )));
+                            if let Some(detail) =
+                                value_reference_gap(&alternative.value, references)
+                            {
+                                gap(
+                                    GapKind::ReaderSemantics,
+                                    format!("value reference: {detail}"),
+                                );
+                            }
                         }
-                    }
-                    if !alternative.accepted
-                        && alternative
-                            .paths
-                            .iter()
-                            .any(|path| path.class != grammar::forms::PathClass::Rejecting)
-                    {
-                        let mut causes: BTreeSet<_> = alternative
-                            .paths
-                            .iter()
-                            .flat_map(|path| &path.stages)
-                            .filter_map(|stage| stage.cause.map(|cause| (stage.stage, cause)))
-                            .collect();
-                        if alternative.paths.len() > 64 {
-                            causes.extend(alternative.paths.iter().filter_map(|path| {
-                                path.stages.last().map(|stage| (stage.stage, "path limit"))
-                            }));
-                        }
-                        if causes.is_empty() {
-                            gap(
-                                GapKind::UnresolvedPath,
-                                "value-acceptance: Read: mixed paths or unknown reader kind".into(),
-                            );
-                        }
-                        for (stage, cause) in causes {
-                            gap(
-                                GapKind::UnresolvedPath,
-                                format!("value-acceptance: {stage:?}: {cause}"),
-                            );
+                        Verdict::Rejected => {}
+                        Verdict::Unresolved(causes) => {
+                            for (stage, cause) in causes {
+                                gap(
+                                    GapKind::UnresolvedPath,
+                                    format!("value-acceptance: {stage:?}: {cause}"),
+                                );
+                            }
                         }
                     }
                 }
@@ -849,9 +832,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn false_validation_is_partial_with_its_acceptance_gap() {
-        use grammar::forms::{Alternative, ChainPath, PathClass, Stage, StageResult, ValueForm};
+    /// The answer for a command whose only value alternative has `verdict` and no paths, so that
+    /// only the verdict can decide what the answer says about it.
+    fn verdict_answer(verdict: Verdict) -> Answer<CommandGrammar> {
+        use grammar::forms::{Alternative, ValueForm};
+
         let mut result = with_forms(false);
         std::sync::Arc::make_mut(result.forms.as_mut().unwrap())
             .alternatives
@@ -863,27 +848,69 @@ mod tests {
                     initialization: None,
                     deferred_null: None,
                 },
-                paths: vec![ChainPath {
-                    class: PathClass::Unresolved,
-                    stops: vec![],
-                    stages: vec![StageResult {
-                        stage: Stage::PostValidate,
-                        returned: Some(false),
-                        diagnostic: false,
-                        cause: Some("false without diagnostic"),
-                    }],
-                }],
+                paths: vec![],
                 missing: vec![],
-                accepted: false,
+                verdict,
             });
-        let answer = normalize(
+
+        normalize(
             Ok(&result),
             "example",
             crate::BuildId("authored".into()),
             &ReferenceFacts::default(),
-        );
+        )
+    }
+
+    fn acceptance_gaps(answer: &Answer<CommandGrammar>) -> Vec<&str> {
+        answer
+            .gaps
+            .iter()
+            .map(|gap| gap.detail.as_str())
+            .filter(|detail| detail.starts_with("value-acceptance"))
+            .collect()
+    }
+
+    #[test]
+    fn an_accepted_alternative_is_a_form_without_an_acceptance_gap() {
+        let answer = verdict_answer(Verdict::Accepted);
+
+        assert!(matches!(
+            &answer.value.forms,
+            GrammarProperty::Partial(forms) if forms.len() == 1
+        ));
+        assert!(acceptance_gaps(&answer).is_empty());
+    }
+
+    #[test]
+    fn a_rejected_alternative_is_neither_a_form_nor_a_gap() {
+        let answer = verdict_answer(Verdict::Rejected);
+
         assert_eq!(answer.value.forms, GrammarProperty::Partial(vec![]));
-        assert!(answer.gaps.iter().any(|gap| gap.detail == "value-acceptance: PostValidate: false without diagnostic"));
+        assert!(acceptance_gaps(&answer).is_empty());
+    }
+
+    #[test]
+    fn an_unresolved_alternative_gives_each_of_its_causes_as_an_acceptance_gap() {
+        use grammar::forms::Stage;
+
+        let answer = verdict_answer(Verdict::Unresolved(
+            [
+                (Stage::PostValidate, "false without diagnostic"),
+                (Stage::PostValidate, "path limit"),
+                (Stage::Read, "receiver-state"),
+            ]
+            .into(),
+        ));
+
+        assert_eq!(answer.value.forms, GrammarProperty::Partial(vec![]));
+        assert_eq!(
+            acceptance_gaps(&answer),
+            [
+                "value-acceptance: Read: receiver-state",
+                "value-acceptance: PostValidate: false without diagnostic",
+                "value-acceptance: PostValidate: path limit",
+            ]
+        );
     }
 
     #[test]
@@ -1660,6 +1687,79 @@ mod tests {
             &scoped,
             &literal_numeric(32)
         ));
+    }
+
+    #[test]
+    fn a_refused_scoped_subtype_leaves_no_known_duration_count() {
+        use crate::engine::analysis::scoped_numeric::{Facts, Shared, Subtype};
+        use crate::engine::analysis::stop::Unresolved;
+
+        let accepted = Ok(Subtype::Numeric {
+            literal: 0x28,
+            token_reader: "CReader::Read(int&)".into(),
+        });
+        let refused = Err(Unresolved::new("scoped-literal-disagreement"));
+        let scoped = |subtype| Facts {
+            shared: Shared {
+                forms: Err(Unresolved::new("scoped-body")),
+
+                selection: Err(Unresolved::new("scoped-body")),
+            },
+            subtypes: [(0x9000, subtype)].into(),
+        };
+        let result = |combination| {
+            let mut result = keyed(Ok(INITIALIZER.into()));
+            let mut group = group(combination);
+            group.initial = (0xa8..0xd4).map(|at| (at, 0)).collect();
+            result.scoped_destinations.insert(0xa8, 0x9000);
+            result.durations.groups.push(group);
+
+            result
+        };
+        let omitted_count = |result: &grammar::GrammarResult, subtype| {
+            let mut answer = normalize(
+                Ok(result),
+                "timed",
+                crate::BuildId("test".into()),
+                &facts(scan_at(0xa8)),
+            );
+
+            super::super::durations::grammar(
+                &mut answer.value,
+                result,
+                &scoped(subtype),
+                &literal_numeric(32),
+                "timed",
+                &mut Vec::new(),
+            );
+
+            let (GrammarProperty::Known(groups) | GrammarProperty::Partial(groups)) =
+                answer.value.durations
+            else {
+                panic!("no duration groups");
+            };
+
+            groups[0].omitted_count.clone()
+        };
+
+        let scaled = result(Combination::ScaledAtRead);
+        let overlap = |subtype| {
+            super::super::durations::scoped_literal_overlap(
+                &scaled.durations.groups[0],
+                &scaled,
+                &scoped(subtype),
+                &literal_numeric(32),
+            )
+        };
+        assert!(!overlap(accepted.clone()));
+        assert!(overlap(refused.clone()));
+
+        let shared = result(Combination::SharedFactor {
+            factor_slot: 0xb0,
+            initial_factor: 1,
+        });
+        assert_eq!(omitted_count(&shared, accepted), GrammarProperty::Known(0));
+        assert_eq!(omitted_count(&shared, refused), GrammarProperty::Unresolved);
     }
 
     #[test]

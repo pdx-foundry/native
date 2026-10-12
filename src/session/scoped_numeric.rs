@@ -1,7 +1,7 @@
 //! Attach one shared proof and a constructor-selected subtype to each public reader occurrence.
 use crate::engine::analysis::{
     fields::{PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath},
-    grammar::GrammarResult,
+    grammar::{GrammarResult, forms::Verdict},
     numeric::NumericFacts,
     readers,
     scoped_numeric::{Facts, Subtype},
@@ -146,7 +146,7 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
         let offsets = forms
             .alternatives
             .iter()
-            .filter(|alternative| alternative.accepted)
+            .filter(|alternative| alternative.verdict == Verdict::Accepted)
             .filter(|alternative| alternative.value.reader.as_ref().is_some_and(is_scoped))
             .filter_map(|alternative| alternative.value.destination)
             .map(|offset| offset as i64);
@@ -233,7 +233,7 @@ pub(super) fn grammar(
                 internal
                     .alternatives
                     .iter()
-                    .filter(|alternative| alternative.accepted),
+                    .filter(|alternative| alternative.verdict == Verdict::Accepted),
             )
         {
             let point = alternative
@@ -315,10 +315,7 @@ pub(super) fn attach(
     };
     let literal = match subtype {
         Subtype::Base => false,
-        Subtype::Numeric {
-            token_reader,
-            literal,
-        } => {
+        Subtype::Numeric { token_reader, .. } => {
             let Some(conversion) = numeric.token_readers.get(token_reader) else {
                 gap(
                     gaps,
@@ -330,20 +327,6 @@ pub(super) fn attach(
             };
             reader.numeric = conversion.conversion.clone();
             super::numeric::push_gaps(gaps, subject.clone(), &super::numeric::limits(conversion));
-            if facts
-                .shared
-                .selection
-                .as_ref()
-                .is_ok_and(|layout| *literal != layout.literal)
-            {
-                gap(
-                    gaps,
-                    GapKind::UnresolvedStorage,
-                    subject,
-                    "Scoped literal offset disagrees with GetValue.",
-                );
-                return;
-            }
             true
         }
     };

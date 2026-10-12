@@ -10,7 +10,7 @@ mov xr8,x2
 mov xr7,x1
 mov xr9,x0
 adrp x1,PAGE
-add x1,x1,G = ":"
+add x1,x1,G = {separator}
 add x0,sp,#0x20
 bl CALL = CString::CString(char const*)
 add x1,sp,#0x20
@@ -64,17 +64,17 @@ mov wr9,#0x0
 b @+471
 ldur xr7,[x29,#-0x80]
 adrp x1,PAGE
-add x1,x1,G = "trigger"
+add x1,x1,G = {trigger_prefix}
 mov x0,xr7
 bl CALL = _strcmp
 cbz w0,@+29
 adrp x1,PAGE
-add x1,x1,G = "modifier"
+add x1,x1,G = {modifier_prefix}
 mov x0,xr7
 bl CALL = _strcmp
 cbz w0,@+117
 adrp x1,PAGE
-add x1,x1,G = "value"
+add x1,x1,G = {script_value_prefix}
 mov x0,xr7
 bl CALL = _strcmp
 cbz w0,@+147

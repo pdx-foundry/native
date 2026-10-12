@@ -1373,11 +1373,6 @@ fn scoped_byte_bounds_require_the_subtype_selection_and_literal_width() {
         Err(Unresolved::new("duration-byte-storage"))
     );
     numeric.token_readers = proof;
-    facts.shared.selection.as_mut().unwrap().literal = 0x30;
-    assert_eq!(
-        scoped_storage(&facts, &numeric)[&0x9000],
-        Err(Unresolved::new("duration-byte-storage"))
-    );
     facts.shared.selection = Err(Unresolved::new("missing-selection"));
     assert_eq!(
         scoped_storage(&facts, &numeric)[&0x9000],

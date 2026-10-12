@@ -9,6 +9,7 @@ use crate::engine::analysis::{
 };
 
 const SPAN: u64 = 0x10000;
+// The tags are the label keys up to CHILD. Every larger key is an allocation address.
 const DECODED: u64 = 0;
 const VTABLE: u64 = 1;
 const CHILD: u64 = 2;
@@ -69,10 +70,7 @@ fn child_reader(
         return Ok(None);
     }
     let code = Code::from_rows(rows);
-    let mut machine = Machine::new(&code, &input.declarations.composition.data);
-    for (&slot, &pointer) in &input.declarations.pointers {
-        machine.write(slot, 8, pointer);
-    }
+    let mut machine = Machine::new(&code, input.declarations.pointer_data());
     let owner = machine.reserve(SPAN);
     let reader = machine.reserve(SPAN);
     let stack = machine.stack_pointer();
@@ -109,7 +107,7 @@ fn child_reader(
                 .labels()
                 .iter()
                 .find_map(|(&at, &size)| {
-                    (at > VTABLE && (at..at + size).contains(&receiver)).then_some(at + size)
+                    (at > CHILD && (at..at + size).contains(&receiver)).then_some(at + size)
                 })
                 .ok_or(Unresolved::new("numeric-constructor-allocation"))?;
             crate::engine::analysis::receivers::install_vtables(
@@ -184,18 +182,5 @@ fn joined_reader(
     if numeric {
         return declarations::reader_at_vtable(&input.declarations, vtable);
     }
-    let [read, member] = input.persistent_slots;
-    let slot = |offset| {
-        input
-            .declarations
-            .pointers
-            .get(&(vtable + offset))
-            .copied()
-            .ok_or(Unresolved::new("constructed-child-slot"))
-    };
-    Ok(CommandReader {
-        vtable,
-        read: slot(read)?,
-        member: slot(member)?,
-    })
+    super::persistent_reader(input, vtable, "constructed-child-slot")
 }

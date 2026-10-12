@@ -96,7 +96,7 @@ fn property_gap(found: &ExpansionGap) -> Gap {
         (Property::Stage, _) => {
             "the call chain that places the expansion at its stage is not established, or has an unclassified caller"
         }
-        (Property::Forms, _) | (Property::MissingParameter, "stated-form-functions") => {
+        (Property::Forms, _) => {
             "the engine functions that hold the stated forms are not bound on this build"
         }
         (Property::MissingParameter, _) => {

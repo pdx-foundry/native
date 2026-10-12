@@ -118,6 +118,17 @@ pub struct DeclarationInput {
 }
 
 impl DeclarationInput {
+    /// The scope-type bits to probe: one per named scope type, at most the bits of a scope mask.
+    /// Without the name table, every bit.
+    pub fn scope_bits(&self) -> usize {
+        let mask_bits = u64::BITS as usize;
+
+        self.scope_names
+            .as_ref()
+            .map_or(mask_bits, Vec::len)
+            .min(mask_bits)
+    }
+
     /// The read-only data with the target of every pointer slot, for walks that load through
     /// vtables and the global offset table. A slot's target stays known after a store to an
     /// unknown address.

@@ -69,6 +69,7 @@ pub(crate) enum Subtype {
 #[derive(Debug, Clone)]
 pub(crate) struct Facts {
     pub shared: Shared,
+    /// A numeric subtype is present only when its literal offset is the selection layout's.
     pub subtypes: BTreeMap<u64, Result<Subtype, Unresolved>>,
 }
 
@@ -103,13 +104,9 @@ pub(crate) fn analyze(input: &Input) -> Facts {
     .and_then(|bindings| offset(&bindings, "variable"));
 
     let read_joined = read == Ok(input.value_token_offset);
-    let forms = if read_joined && assign.is_ok() && prefixes.is_ok() && variable.is_ok() {
-        Ok(Forms {
-            separator: ":".into(),
-            prefixes: ["trigger".into(), "modifier".into(), "value".into()],
-        })
-    } else {
-        Err(Unresolved::new("scoped-operand-forms"))
+    let forms = match &prefixes {
+        Ok(bindings) if read_joined && assign.is_ok() && variable.is_ok() => forms(bindings),
+        _ => Err(Unresolved::new("scoped-operand-forms")),
     };
     let selection = selection(
         input,
@@ -121,10 +118,10 @@ pub(crate) fn analyze(input: &Input) -> Facts {
         .points
         .iter()
         .map(|(&point, config)| {
-            (
-                point,
-                subtype(input, point, config, assign.as_ref().map(|(slot, _)| *slot)),
-            )
+            let subtype = subtype(input, point, config, assign.as_ref().map(|(slot, _)| *slot))
+                .and_then(|subtype| agree_with_layout(subtype, &selection));
+
+            (point, subtype)
         })
         .collect();
     Facts {
@@ -149,6 +146,28 @@ fn matched(input: &Input, name: &str, shape: &str) -> Result<Bindings, Unresolve
         return Err(Unresolved::new("scoped-diagnostic-source"));
     }
     Ok(bindings)
+}
+
+/// The operand forms that the prefix body compares: the separator and the three prefixes, as
+/// the quoted strings the body names.
+fn forms(bindings: &Bindings) -> Result<Forms, Unresolved> {
+    let string = |name| {
+        bindings
+            .get(name)
+            .and_then(|value| value.strip_prefix('"')?.strip_suffix('"'))
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+            .ok_or(Unresolved::new("scoped-operand-forms"))
+    };
+
+    Ok(Forms {
+        separator: string("separator")?,
+        prefixes: [
+            string("trigger_prefix")?,
+            string("modifier_prefix")?,
+            string("script_value_prefix")?,
+        ],
+    })
 }
 
 fn offset(bindings: &Bindings, name: &str) -> Result<u64, Unresolved> {
@@ -185,6 +204,19 @@ fn subtype(
             token_reader: token_reader.clone(),
             literal: offset(&bindings, "literal")?,
         }),
+    }
+}
+
+/// A numeric subtype's literal offset must be the offset that both GetValue bodies read.
+fn agree_with_layout(
+    subtype: Subtype,
+    selection: &Result<Layout, Unresolved>,
+) -> Result<Subtype, Unresolved> {
+    match (&subtype, selection) {
+        (Subtype::Numeric { literal, .. }, Ok(layout)) if *literal != layout.literal => {
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        }
+        _ => Ok(subtype),
     }
 }
 
@@ -409,6 +441,39 @@ mod tests {
         input.bodies.get_mut(name).unwrap()[1].operation = "sub".into();
         assert!(subtype(&input, 0x8000, &config, Ok(0x10)).is_err());
     }
+
+    #[test]
+    fn a_numeric_subtype_must_read_the_literal_offset_of_the_selection_layout() {
+        let numeric = |literal| Subtype::Numeric {
+            token_reader: "CToken::ReadValue(int&) const".into(),
+            literal,
+        };
+        let layout = Ok(Layout {
+            literal: 0x200,
+            location: 0x1d8,
+            trigger: 0x1a0,
+            script_value: 0x1a8,
+            modifier: 0x198,
+            modifier_unset: 0x7fffffff,
+            variable: 0x1b0,
+        });
+
+        assert_eq!(
+            agree_with_layout(numeric(0x200), &layout),
+            Ok(numeric(0x200))
+        );
+        assert_eq!(
+            agree_with_layout(numeric(0x208), &layout),
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        );
+        assert_eq!(agree_with_layout(Subtype::Base, &layout), Ok(Subtype::Base));
+        assert_eq!(
+            agree_with_layout(numeric(0x208), &Err(Unresolved::new("scoped-selection"))),
+            Ok(numeric(0x208)),
+            "without a layout nothing disagrees"
+        );
+    }
+
     #[test]
     fn reader_recordings_require_scoped_operand_facts() {
         assert!(
@@ -444,6 +509,9 @@ mod tests {
             "{:?}",
             facts.subtypes
         );
+        let forms = facts.shared.forms.as_ref().unwrap();
+        assert_eq!(forms.separator, ":");
+        assert_eq!(forms.prefixes, ["trigger", "modifier", "value"]);
 
         let mut missing_read = input.clone();
         missing_read.bodies.remove(&input.reader_name);
@@ -477,6 +545,17 @@ mod tests {
             .retain(|_, value| value != "\"trigger\"");
         assert!(analyze(&missing_prefix).shared.forms.is_err());
 
+        let mut renamed_prefix = input.clone();
+        for name in renamed_prefix.names.values_mut() {
+            if name == "\"trigger\"" {
+                *name = "\"cause\"".into();
+            }
+        }
+        assert_eq!(
+            analyze(&renamed_prefix).shared.forms.unwrap().prefixes[0],
+            "cause"
+        );
+
         let mut missing_dispatch = input.clone();
         missing_dispatch.bodies.remove(&input.prefix_name);
         assert!(analyze(&missing_dispatch).shared.forms.is_err());
@@ -508,6 +587,29 @@ mod tests {
         let point = *missing_slot.points.keys().next().unwrap();
         missing_slot.pointers.remove(&(point + 0x10));
         assert!(analyze(&missing_slot).subtypes[&point].is_err());
+
+        let layout_literal = format!("#{:#x}", facts.shared.selection.as_ref().unwrap().literal);
+        let mut moved_literal = input.clone();
+        let (point, config) = moved_literal
+            .points
+            .iter()
+            .find(|(_, config)| config.token_reader.is_some())
+            .map(|(&point, config)| (point, config.clone()))
+            .unwrap();
+        let row = moved_literal
+            .bodies
+            .get_mut(&config.assign_simple)
+            .unwrap()
+            .iter_mut()
+            .find(|row| row.operation == "add" && row.operands.ends_with(&layout_literal))
+            .unwrap();
+        row.operands = row.operands.replace(&layout_literal, "#0x208");
+        let moved = analyze(&moved_literal);
+        assert!(moved.shared.selection.is_ok());
+        assert_eq!(
+            moved.subtypes[&point],
+            Err(Unresolved::new("scoped-literal-disagreement"))
+        );
     }
 
     #[test]

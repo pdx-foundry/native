@@ -9,7 +9,7 @@ use crate::ReaderKind;
 use crate::engine::analysis::{
     commands::{OBJECT_SPAN, forget_if_passed, stand_in_command},
     declarations::CommandReader,
-    evaluate::{Call, Code, Decision, Exit, Machine, Path},
+    evaluate::{Call, Code, Decision, Exit, Machine, PATH_LIMIT, Path},
     fields::{ReaderJoin, Value},
     readers,
     references::{Missing, initialization::InitializationLookup},
@@ -23,6 +23,16 @@ const ALTERNATIVE: u64 = 4;
 const TOKEN_COPY: u64 = 5;
 const TARGET_TEMP: u64 = 6;
 const STRING_TEMP: u64 = 7;
+/// A target probe's path asked the scope type in `Read`.
+const READ_TARGET_TYPE: u64 = 50;
+/// A target probe's path asked the scope type in a stage after `Read`.
+const STAGE_TARGET_TYPE: u64 = 51;
+/// A target probe's path ended in a trap.
+const PROBE_TRAPPED: u64 = 52;
+/// The cause of a stage that more paths than [`PATH_LIMIT`] leave unfinished.
+const PATH_LIMIT_CAUSE: &str = "path limit";
+/// The cause of a result-bearing stage that returned false and logged nothing.
+const FALSE_WITHOUT_DIAGNOSTIC: &str = "false without diagnostic";
 const TOKEN_TEXT: u64 = FOUND + 0x30000;
 const FOUND: u64 = 0x7000_0000_0000;
 const MISSING: u64 = FOUND + 0x10000;
@@ -72,10 +82,20 @@ pub enum LookupExecution {
     },
 }
 
+/// The position of the read function in `CacheKey::slots`. The member, assign, initializer,
+/// validation and role functions follow at the positions of the constants below.
+pub const READ_FUNCTION: usize = 0;
+const MEMBER_FUNCTION: usize = 1;
+const ASSIGN_FUNCTION: usize = 2;
+const INITIALIZER_FUNCTION: usize = 3;
+const VALIDATION_FUNCTION: usize = 4;
+const ROLE_FUNCTION: usize = 5;
+
 /// Selected slots, reached callees and initial receiver bytes watched by every probe.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CacheKey {
-    /// Read, member, assign, initializer, validation and role slots, in that order.
+    /// The read, member, assign, initializer, validation and role functions, at the positions
+    /// named `*_FUNCTION`.
     pub slots: [Option<u64>; 6],
     /// Every entered or classified target, including virtual helpers and tail calls.
     pub functions: BTreeSet<u64>,
@@ -131,12 +151,24 @@ pub struct ValueForm {
     pub deferred_null: Option<u64>,
 }
 
+/// Whether the whole chain accepts the value of an alternative.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// Every path accepts, within the path limit and without receiver state.
+    Accepted,
+    /// Every path emits a diagnostic, within the path limit.
+    Rejected,
+    /// Neither is proved. Each cause is the stage that reports it; a cause that no stage reports
+    /// is at `Read`.
+    Unresolved(BTreeSet<(Stage, &'static str)>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Alternative {
     pub value: ValueForm,
     pub paths: Vec<ChainPath>,
     pub missing: Vec<ChainPath>,
-    pub accepted: bool,
+    pub verdict: Verdict,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,23 +188,7 @@ pub(super) fn analyze(
     reader: CommandReader,
     state: &BTreeMap<u64, u8>,
 ) -> (Arc<Result>, CacheKey) {
-    let slots = input.declarations.parser_slots;
-    let binding = &input.command_bindings;
-    let at = |slot| {
-        input
-            .declarations
-            .pointers
-            .get(&(reader.vtable + slot))
-            .copied()
-    };
-    let functions = [
-        Some(reader.read),
-        Some(reader.member),
-        at(binding.assign_slot),
-        at(slots.initializer),
-        at(binding.validation_slot),
-        at(input.forms.role_slot),
-    ];
+    let functions = stage_functions(input, reader, reader.member);
     let mut result = examine(input, reader, state, functions);
     let independent_key = result.key.clone();
     let mut cache = input.forms.cache.lock().unwrap();
@@ -187,6 +203,32 @@ pub(super) fn analyze(
     let result = Arc::new(result);
     cache.insert(result.key.clone(), result.clone());
     (result, independent_key)
+}
+
+/// The read, member, assign, initializer, validation and role functions of `reader`, with
+/// `member_entry` as the member function.
+fn stage_functions(
+    input: &GrammarInput,
+    reader: CommandReader,
+    member_entry: u64,
+) -> [Option<u64>; 6] {
+    let at = |slot| {
+        input
+            .declarations
+            .pointers
+            .get(&(reader.vtable + slot))
+            .copied()
+    };
+    let mut functions = [None; 6];
+
+    functions[READ_FUNCTION] = Some(reader.read);
+    functions[MEMBER_FUNCTION] = Some(member_entry);
+    functions[ASSIGN_FUNCTION] = at(input.command_bindings.assign_slot);
+    functions[INITIALIZER_FUNCTION] = at(input.declarations.parser_slots.initializer);
+    functions[VALIDATION_FUNCTION] = at(input.command_bindings.validation_slot);
+    functions[ROLE_FUNCTION] = at(input.forms.role_slot);
+
+    functions
 }
 
 fn examine(
@@ -285,7 +327,7 @@ fn examine(
                         value,
                         paths: vec![],
                         missing: vec![],
-                        accepted: false,
+                        verdict: Verdict::Unresolved(BTreeSet::new()),
                     });
                     result.alternatives.len() - 1
                 });
@@ -332,28 +374,73 @@ fn examine(
             .filter(|path| path.value.as_ref() == Some(&alternative.value))
             .map(|path| path.chain.clone())
             .collect();
-        alternative.accepted = !dependent_values.contains(&alternative.value)
-            && alternative.paths.len() <= 64
-            && alternative.value.kind != ReaderKind::Unknown
-            && !alternative.paths.is_empty()
-            && alternative
-                .paths
-                .iter()
-                .all(|path| path.class == PathClass::Accepting);
-        let rejected = alternative
-            .paths
-            .iter()
-            .all(|path| path.class == PathClass::Rejecting);
+        alternative.verdict = verdict(
+            &alternative.value,
+            &alternative.paths,
+            dependent_values.contains(&alternative.value),
+        );
         let unknown_reader = alternative.value.kind == ReaderKind::Unknown
             && alternative.value.destination.is_some();
         if unknown_reader {
             result.stops.push(Unresolved::new("form-reader-kind"));
         }
         result.complete &=
-            !unknown_reader && (alternative.accepted || rejected) && alternative.paths.len() <= 64;
+            !unknown_reader && !matches!(alternative.verdict, Verdict::Unresolved(_));
     }
     crate::engine::analysis::stop::sort_and_dedup(&mut result.stops);
     result
+}
+
+/// Acceptance requires every path to accept, within the path limit, for a known reader kind and
+/// without receiver state; rejection requires every path to emit a diagnostic, within the limit.
+fn verdict(value: &ValueForm, paths: &[ChainPath], receiver_dependent: bool) -> Verdict {
+    let within_limit = paths.len() <= PATH_LIMIT;
+    let every = |class| paths.iter().all(|path| path.class == class);
+
+    if within_limit && every(PathClass::Rejecting) {
+        return Verdict::Rejected;
+    }
+
+    if within_limit
+        && !receiver_dependent
+        && value.kind != ReaderKind::Unknown
+        && !paths.is_empty()
+        && every(PathClass::Accepting)
+    {
+        return Verdict::Accepted;
+    }
+
+    Verdict::Unresolved(open_causes(paths, receiver_dependent))
+}
+
+/// The causes that keep the acceptance of `paths` open: the causes of their stages, and the path
+/// limit when it is exceeded. Without one, receiver state, else mixed paths or an unknown reader
+/// kind.
+fn open_causes(paths: &[ChainPath], receiver_dependent: bool) -> BTreeSet<(Stage, &'static str)> {
+    let mut causes: BTreeSet<_> = paths
+        .iter()
+        .flat_map(|path| &path.stages)
+        .filter_map(|stage| stage.cause.map(|cause| (stage.stage, cause)))
+        .collect();
+
+    if paths.len() > PATH_LIMIT {
+        causes.extend(
+            paths
+                .iter()
+                .filter_map(|path| path.stages.last())
+                .map(|stage| (stage.stage, PATH_LIMIT_CAUSE)),
+        );
+    }
+
+    if causes.is_empty() {
+        causes.insert(if receiver_dependent {
+            (Stage::Read, "receiver-state")
+        } else {
+            (Stage::Read, "mixed paths or unknown reader kind")
+        });
+    }
+
+    causes
 }
 
 fn extend_key(key: &mut CacheKey, run: &Run, state: &BTreeMap<u64, u8>) {
@@ -583,14 +670,14 @@ fn run(
         let stage = if assigned { Stage::Assign } else { Stage::Read };
         let mut first = stage_result(&path, stage, assigned);
         if assigned {
-            first.returned = functions[2]
+            first.returned = functions[ASSIGN_FUNCTION]
                 .and_then(|at| path.machine.returned_value(at))
                 .flatten()
                 .map(|value| value & 1 == 1);
             if path.end == Ok(Exit::Returned) && !first.diagnostic {
                 first.cause = match first.returned {
                     Some(true) => None,
-                    Some(false) => Some("false without diagnostic"),
+                    Some(false) => Some(FALSE_WITHOUT_DIAGNOSTIC),
                     None => Some("unknown result"),
                 };
             }
@@ -650,7 +737,7 @@ fn run(
         for (path, chain) in chained {
             result.reads.extend(path.receiver_reads());
             result.paths.push(ReadPath {
-                trapped: path.labelled(52).is_some(),
+                trapped: path.labelled(PROBE_TRAPPED).is_some(),
                 target_touches: target_touches(&path),
                 target_load: probe
                     .is_some_and(|probe| path.accessed(probe.offset, input.forms.target_size)),
@@ -664,7 +751,7 @@ fn run(
         }
     }
     result.functions = calls.reached;
-    if result.paths.len() > 64 {
+    if result.paths.len() > PATH_LIMIT {
         result.stops.push(Unresolved::new("form-path-limit"));
     }
     result
@@ -681,7 +768,7 @@ fn stage_result(path: &Path<'_>, stage: Stage, has_result: bool) -> StageResult 
             if has_result && !diagnostic {
                 match returned {
                     Some(true) => None,
-                    Some(false) => Some("false without diagnostic"),
+                    Some(false) => Some(FALSE_WITHOUT_DIAGNOSTIC),
                     None => Some("unknown result"),
                 }
             } else {
@@ -729,58 +816,38 @@ fn stages<'a>(
         if let Some(null) = value.deferred_null {
             machine.write(null, 8, MISSING);
         } else if missing {
-            stages.push(StageResult {
-                stage: Stage::PostInit,
-                returned: None,
-                diagnostic: false,
-                cause: Some("missing-key null object not bound"),
-            });
+            stages.push(unfinished(
+                Stage::PostInit,
+                "missing-key null object not bound",
+            ));
         }
         if let Some(offset) = value.destination {
             machine.write(calls.command + offset, 8, selected);
         }
     }
-    let mut pending = vec![(machine, stages, stops)];
+    let mut pending = vec![(machine, stages, stops, false)];
     for (stage, function) in [
-        (Stage::PostInit, functions[3]),
-        (Stage::PostValidate, functions[4]),
+        (Stage::PostInit, functions[INITIALIZER_FUNCTION]),
+        (Stage::PostValidate, functions[VALIDATION_FUNCTION]),
     ] {
         let mut next = Vec::new();
-        for (mut machine, mut stages, stops) in pending {
-            if calls.probe.is_some() && machine.labelled(52).is_some() {
-                next.push((machine, stages, stops));
+        for (mut machine, mut stages, stops, halted) in pending {
+            let trapped = calls.probe.is_some() && machine.labelled(PROBE_TRAPPED).is_some();
+
+            if trapped || halted || !stops.is_empty() {
+                next.push((machine, stages, stops, halted));
                 continue;
             }
-            if !stops.is_empty()
-                || stages.iter().any(|stage| {
-                    matches!(
-                        stage.cause,
-                        Some("initializer not summarized" | "missing stage" | "form-cut-body")
-                    )
-                })
-            {
-                next.push((machine, stages, stops));
-                continue;
-            }
+
             machine.unlabel(DIAGNOSED);
             let Some(function) = function else {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some("missing stage"),
-                });
-                next.push((machine, stages, stops));
+                stages.push(unfinished(stage, "missing stage"));
+                next.push((machine, stages, stops, true));
                 continue;
             };
             if calls.input.forms.cut_bodies.contains(&function) {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some("form-cut-body"),
-                });
-                next.push((machine, stages, stops));
+                stages.push(unfinished(stage, "form-cut-body"));
+                next.push((machine, stages, stops, true));
                 continue;
             }
             if stage == Stage::PostInit {
@@ -805,7 +872,7 @@ fn stages<'a>(
                             diagnostic: false,
                             cause: None,
                         });
-                        next.push((machine, stages, stops));
+                        next.push((machine, stages, stops, false));
                         continue;
                     }
                     Some(
@@ -816,13 +883,8 @@ fn stages<'a>(
                         },
                     ) => {}
                     _ => {
-                        stages.push(StageResult {
-                            stage,
-                            returned: None,
-                            diagnostic: false,
-                            cause: Some("initializer not summarized"),
-                        });
-                        next.push((machine, stages, stops));
+                        stages.push(unfinished(stage, "initializer not summarized"));
+                        next.push((machine, stages, stops, true));
                         continue;
                     }
                 }
@@ -841,7 +903,7 @@ fn stages<'a>(
             });
             for mut path in paths {
                 if calls.probe.is_some() && path.end == Ok(Exit::Trapped) {
-                    path.machine.label(52, 1);
+                    path.machine.label(PROBE_TRAPPED, 1);
                 }
                 let mut stages = stages.clone();
                 stages.push(stage_result(&path, stage, stage == Stage::PostValidate));
@@ -849,17 +911,12 @@ fn stages<'a>(
                 if let Err(stop) = path.end {
                     stops.push(stop);
                 }
-                next.push((path.machine, stages, stops));
+                next.push((path.machine, stages, stops, false));
             }
         }
-        if next.len() > 64 {
-            for (_, stages, _) in &mut next {
-                stages.push(StageResult {
-                    stage,
-                    returned: None,
-                    diagnostic: false,
-                    cause: Some("path limit"),
-                });
+        if next.len() > PATH_LIMIT {
+            for (_, stages, _, _) in &mut next {
+                stages.push(unfinished(stage, PATH_LIMIT_CAUSE));
             }
             pending = next;
             break;
@@ -868,8 +925,18 @@ fn stages<'a>(
     }
     pending
         .into_iter()
-        .map(|(machine, stages, stops)| (machine, chain(stages, stops)))
+        .map(|(machine, stages, stops, _)| (machine, chain(stages, stops)))
         .collect()
+}
+
+/// A stage that did not finish, for `cause`.
+fn unfinished(stage: Stage, cause: &'static str) -> StageResult {
+    StageResult {
+        stage,
+        returned: None,
+        diagnostic: false,
+        cause: Some(cause),
+    }
 }
 
 struct Calls<'a> {
@@ -921,7 +988,7 @@ impl Calls<'_> {
         machine: &mut Machine<'_>,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
-        if let Some(call) = self.target_type(target, machine, 50) {
+        if let Some(call) = self.target_type(target, machine, READ_TARGET_TYPE) {
             return call;
         }
         let binding = &self.input.command_bindings;
@@ -939,7 +1006,9 @@ impl Calls<'_> {
             machine.label(BLOCK, 1);
             return Ok(Call::Return(None));
         }
-        if target == self.functions[2] && argument == Some(token) && receiver == Some(self.command)
+        if target == self.functions[ASSIGN_FUNCTION]
+            && argument == Some(token)
+            && receiver == Some(self.command)
         {
             if target.is_some_and(|at| self.input.forms.cut_bodies.contains(&at)) {
                 return Err(Unresolved::new("form-cut-body"));
@@ -1053,8 +1122,8 @@ impl Calls<'_> {
         if target.is_some_and(|at| self.input.forms.string_copies.contains(&at))
             && argument == Some(token + self.input.forms.token_text_offset)
             && machine.is_tail_call()
-            && let Some(Initializer::Lookup { lookup, .. }) =
-                self.functions[3].and_then(|at| self.input.forms.initializers.get(&at))
+            && let Some(Initializer::Lookup { lookup, .. }) = self.functions[INITIALIZER_FUNCTION]
+                .and_then(|at| self.input.forms.initializers.get(&at))
             && self.owner_offset(receiver) == u64::try_from(lookup.key_offset).ok()
         {
             self.value(
@@ -1125,7 +1194,7 @@ impl Calls<'_> {
                 if let Some(destination) =
                     readers::destination(&join).and_then(|offset| u64::try_from(offset).ok())
                 {
-                    let initialization = self.functions[3]
+                    let initialization = self.functions[INITIALIZER_FUNCTION]
                         .and_then(|at| self.input.forms.initializers.get(&at))
                         .and_then(|initializer| match initializer {
                             Initializer::Lookup { lookup, .. }
@@ -1196,7 +1265,7 @@ impl Calls<'_> {
         selected: u64,
     ) -> std::result::Result<Call, Unresolved> {
         self.reached.extend(target);
-        if let Some(call) = self.target_type(target, machine, 51) {
+        if let Some(call) = self.target_type(target, machine, STAGE_TARGET_TYPE) {
             return call;
         }
         if target.is_some_and(|at| self.input.command_bindings.error_logs.contains(&at)) {
@@ -1229,8 +1298,8 @@ mod tests;
 
 fn target_touches(machine: &Machine<'_>) -> [bool; 2] {
     [
-        machine.labelled(50).is_some(),
-        machine.labelled(51).is_some(),
+        machine.labelled(READ_TARGET_TYPE).is_some(),
+        machine.labelled(STAGE_TARGET_TYPE).is_some(),
     ]
 }
 
@@ -1250,33 +1319,18 @@ pub(super) fn target_checks(
     member: Option<super::targets::Member>,
 ) -> [super::targets::Check; 2] {
     use super::targets::Check;
-    let at = |slot| {
-        input
-            .declarations
-            .pointers
-            .get(&(reader.vtable + slot))
-            .copied()
-    };
-    let functions = [
-        Some(reader.read),
-        Some(member.map_or(reader.member, |member| member.entry)),
-        at(input.command_bindings.assign_slot),
-        at(input.declarations.parser_slots.initializer),
-        at(input.command_bindings.validation_slot),
-        at(input.forms.role_slot),
-    ];
+    let functions = stage_functions(
+        input,
+        reader,
+        member.map_or(reader.member, |member| member.entry),
+    );
     let Ok(code) = code(input, &functions) else {
         return [
             Check::Unresolved("target chain code"),
             Check::Unresolved("target chain code"),
         ];
     };
-    let count = input
-        .declarations
-        .scope_names
-        .as_ref()
-        .map_or(64, Vec::len)
-        .min(64);
+    let count = input.declarations.scope_bits();
     let probe = |bit| {
         run(
             input,
@@ -1327,7 +1381,7 @@ pub(super) fn target_checks(
             }) {
                 return Check::Unresolved("receiver-state");
             }
-            if !run.stops.is_empty() || run.paths.is_empty() || run.paths.len() > 64 {
+            if !run.stops.is_empty() || run.paths.is_empty() || run.paths.len() > PATH_LIMIT {
                 return Check::Unresolved("target chain unfinished");
             }
             let classes: Vec<_> = run
@@ -1364,10 +1418,10 @@ pub(super) fn target_checks(
                     path.chain
                         .stages
                         .iter()
-                        .any(|stage| stage.cause == Some("false without diagnostic"))
+                        .any(|stage| stage.cause == Some(FALSE_WITHOUT_DIAGNOSTIC))
                 });
                 return Check::Unresolved(if false_without_log {
-                    "false without diagnostic"
+                    FALSE_WITHOUT_DIAGNOSTIC
                 } else {
                     "target chain unresolved or mixed"
                 });

@@ -544,7 +544,8 @@ On M452, `Native::defines()` finds 2,386 compiled `NDefines` and `NUncheckedDefi
 `ReadDefine` helpers and follows 2,306 of them to a literal namespace, a literal name and a typed
 engine reader; `tests/expected/m452/defines.json` holds the counts by type. The other 80 named
 helpers use a table-search loop that exceeds the path search; they are `UnresolvedReader` gaps,
-including `NGraphics.ORBIT_HSV` (SDK-610). No helper fails or is unnamed.
+including `NGraphics.ORBIT_HSV` (SDK-610). A reader path that stops at any search bound (steps,
+loop arrivals, paths or joins) gets that gap. No helper fails or is unnamed.
 
 The method classifies the target of each direct `GetValue`, `GetArrayValue` or
 `ReadDefinesValue` call. `GetValue` takes namespace and name arguments; `GetArrayValue` reads a
