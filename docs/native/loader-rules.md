@@ -138,7 +138,7 @@ The checks are the disassembly above for both template shapes, the fixture obser
 template definition is found by its root key), and parity.
 
 The method states no file-name form and no skipped wrapper key: no stated rule shows one. That
-does not prove that the 18 unstated custom loaders have none.
+does not prove that the 20 unstated custom loaders have none.
 
 Pitfall: a constructor that takes `(int, CString const&)` is not proof of the root key; some
 template loaders reach the item through `ReadNewEntry`, and the signature does not show where the
@@ -165,21 +165,21 @@ All 185 listed registries have every file-selection property `Known`; none is un
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
 | Every file, every level | 1 (`flags`) |
 
-Definition names: 165 `Known`, 18 `Unresolved`, none `Partial`.
+Definition names: 165 `Known`, 20 `Unresolved`, none `Partial`.
 
 | Forms | Registries |
 | --- | ---: |
 | Root key | 162 |
 | Root key, and `tradition_swap` by `name` | 2 (`common/traditions`, `common/ascension_perks`) |
 | `namespace` by value, and other root keys by `id` | 1 (`events`) |
-| Unresolved: a custom loader with no stated rule | 18 |
+| Unresolved: a custom loader with no stated rule | 20 |
 
-The 18 unresolved registries are the custom loaders other than `events`: `common/ambient_objects`,
+The 20 unresolved registries are the custom loaders other than `events`: `common/ambient_objects`,
 `common/colors`, `common/component_tags`, `common/diplo_phrases`, `common/fallen_empires`,
 `common/global_ship_designs`, `common/on_actions`, `common/opinion_modifiers`,
-`common/ship_behaviors`, `common/special_projects`, `common/species_names`,
+`common/planet_classes`, `common/ship_behaviors`, `common/special_projects`, `common/species_names`,
 `common/start_screen_messages`, `common/static_modifiers`, `common/strategic_resources`,
-`common/terraform`, `common/traits`, `gfx/worldgfx` and `prescripted_countries`.
+`common/terraform`, `common/traits`, `flags`, `gfx/worldgfx` and `prescripted_countries`.
 
 `tests/expected/m452/loader-rules.json` holds each registry's answer; `cargo parity` checks it,
 `loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every

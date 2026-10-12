@@ -412,8 +412,8 @@
     "unresolved": []
   },
   "common/planet_classes": {
-    "rules": {"extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
-    "unresolved": []
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
+    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
   },
   "common/planet_modifiers": {
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
@@ -708,8 +708,8 @@
     "unresolved": []
   },
   "flags": {
-    "rules": {"extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
-    "unresolved": []
+    "rules": {"definition_names": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
+    "unresolved": [["definition_names", "the registry's loader has no stated definition-name rule"]]
   },
   "gfx/portraits/sprite_configurations": {
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
