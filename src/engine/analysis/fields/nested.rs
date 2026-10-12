@@ -230,6 +230,7 @@ pub(super) fn discover(
                 partition_accounted,
                 collections: Vec::new(),
                 embedded: Vec::new(),
+                loader: None,
             }),
             container_mask,
         });

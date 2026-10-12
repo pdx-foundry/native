@@ -3146,6 +3146,35 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
     }
 }
 
+/// Each root key that the events loader accepts is a root field read in the scope that the key
+/// selects, with the shared `CEvent` fields as its members. Independent expectation: the kind
+/// table in `docs/native/registry-fields.md` ("The events loader on M452"), read by hand from
+/// `CEventManager::ReadEventsFile` and `NEventScope::GetScopeName`.
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn each_event_kind_is_a_root_field_read_in_the_scope_that_the_kind_selects() {
+    use pdx_native::FieldMembers;
+
+    let native = native();
+    let kinds = parity::event_kinds(native).unwrap();
+
+    assert_eq!(kinds, expected::<Value>("event-kinds.json"));
+    assert!(kinds.get("namespace").is_none() && kinds.get("inline_script").is_none());
+
+    let answer = native.registry_fields("events").unwrap();
+    // The vertical case for Atlas: `type[event]/subtype[country_event]/$annotation:push_scope`
+    // is the read scope of `country_event`, and `country_event.trigger` is a `CEvent` field.
+    let country_event = answer
+        .value
+        .iter()
+        .find(|field| field.name == "country_event")
+        .unwrap();
+    let FieldMembers::Fields(members) = &country_event.members else {
+        panic!("{:?}", country_event.members);
+    };
+    assert!(members.iter().any(|member| member.name == "trigger"));
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn read_scopes_match_the_engine_and_link_output_ids() {

@@ -2,7 +2,9 @@ use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
-    fields::{FieldInput, Function, KeyReaders, ObjectReader, PointReader, has_owner_receiver},
+    fields::{
+        FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PointReader, has_owner_receiver,
+    },
 };
 use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
@@ -43,12 +45,24 @@ impl SharedFieldInput {
     }
 }
 
+/// The function that reads each root statement of a custom loader's files.
+const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
+
+/// The custom loader whose root switch the field input may read: its database class and the
+/// reader offset of a statement's token word.
+pub(in crate::binding) struct LoaderSearch<'a> {
+    pub database: &'a str,
+    pub reader_token_offset: u64,
+}
+
 /// Read the root of `owner`, the shared engine token constructor and the read-only data that holds
 /// jump tables from the same verified buffer. `shared` is the shared part read from `image`.
+/// `loader` names the custom loader that builds `owner`, if any.
 pub(in crate::binding) fn read(
     image: &Image<'_>,
     shared: &SharedFieldInput,
     owner: &str,
+    loader: Option<LoaderSearch<'_>>,
     persistent_recipe: &PersistentRecipe,
 ) -> Result<FieldInput, AnalysisError> {
     let Image {
@@ -97,6 +111,20 @@ pub(in crate::binding) fn read(
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
+    let loader_root = match loader {
+        Some(search) => loader_root(
+            &text,
+            indexed,
+            &data,
+            pointers,
+            owner,
+            &search,
+            persistent_recipe,
+            &mut functions,
+            &mut gaps,
+        )?,
+        None => None,
+    };
     let persistent = super::receivers::persistent(
         image,
         &text,
@@ -118,6 +146,7 @@ pub(in crate::binding) fn read(
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
+        loader_root,
         objects,
         owner: owner.into(),
         symbols: symbols.to_vec(),
@@ -126,6 +155,122 @@ pub(in crate::binding) fn read(
         read_only_data: read_only_sections(bytes)?,
         gaps,
     })
+}
+
+/// The one function of the loader's database that reads root statements and calls an
+/// `(EScopeType)` constructor of `owner`, and the reader register at its statement read. Adds its
+/// body to `functions`. None when no function of the database does both, as for a loader that
+/// passes no scope to its items; several, or a statement read that the method cannot follow, is a
+/// gap.
+#[allow(clippy::too_many_arguments)] // The input parts that `read` holds, and its two outputs.
+fn loader_root(
+    text: &Text,
+    symbols: IndexedSymbols<'_>,
+    data: &ReadOnlyData,
+    pointers: &BTreeMap<u64, u64>,
+    owner: &str,
+    search: &LoaderSearch<'_>,
+    recipe: &PersistentRecipe,
+    functions: &mut Vec<Function>,
+    gaps: &mut Vec<String>,
+) -> Result<Option<LoaderRoot>, AnalysisError> {
+    let scoped_constructor = |symbol: &&Symbol| symbol.name.ends_with("(EScopeType)");
+    let constructors: BTreeSet<u64> = symbols
+        .constructors_of(owner)
+        .into_iter()
+        .filter(scoped_constructor)
+        .map(|symbol| symbol.address)
+        .collect();
+    let statement_reads: BTreeSet<u64> = addresses(symbols, STATEMENT_READER).into_iter().collect();
+
+    if constructors.is_empty() || statement_reads.is_empty() {
+        return Ok(None);
+    }
+
+    let prefix = format!("{}::", search.database);
+    let mut roots = Vec::new();
+
+    for symbol in symbols
+        .symbols
+        .iter()
+        .filter(|s| s.name.starts_with(&prefix))
+    {
+        let Some(code) = text.function_within(symbol.address, FUNCTION_LIMIT) else {
+            continue;
+        };
+        let rows = crate::engine::analysis::decode::decode_arm64(code, symbol.address)
+            .map_err(|_| AnalysisError::InvalidRange)?;
+        let calls = |targets: &BTreeSet<u64>| -> Vec<usize> {
+            rows.iter()
+                .enumerate()
+                .filter(|(_, row)| row.operation == "bl")
+                .filter(|(_, row)| {
+                    u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16)
+                        .is_ok_and(|target| targets.contains(&target))
+                })
+                .map(|(index, _)| index)
+                .collect()
+        };
+
+        if calls(&constructors).is_empty() {
+            continue;
+        }
+
+        let reads = calls(&statement_reads);
+        if !reads.is_empty() {
+            roots.push((symbol, statement_reader(&rows, &reads)));
+        }
+    }
+
+    let [(symbol, read)] = roots.as_slice() else {
+        if roots.len() > 1 {
+            gaps.push(format!("several loader roots of {}", search.database));
+        }
+
+        return Ok(None);
+    };
+    let Some((start, reader)) = read.clone() else {
+        gaps.push(format!("unsupported statement read in {}", symbol.name));
+        return Ok(None);
+    };
+
+    push_function(text, functions, symbol);
+
+    let names = Names::new(symbols.symbols);
+    let unique_name = |address: u64| names.unique(address).map(str::to_owned);
+    let item_reader = symbols
+        .vtable_group(data, owner)
+        .and_then(|vtable| vtable.address_points.get(&0).copied())
+        .and_then(|point| super::receivers::concrete_reader(recipe, pointers, point, &unique_name));
+
+    Ok(Some(LoaderRoot {
+        function: symbol.name.clone(),
+        start,
+        reader,
+        token_offset: search.reader_token_offset,
+        constructors,
+        item_reader,
+    }))
+}
+
+/// The address after the one statement read at `reads` and the callee-saved register that the
+/// instruction before it copies into the reader argument.
+fn statement_reader(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    reads: &[usize],
+) -> Option<(u64, String)> {
+    let [read] = reads else {
+        return None;
+    };
+    let copy = rows.get(read.checked_sub(1)?)?;
+    let (destination, source) = copy.operands.split_once(',')?;
+    let callee_saved = source
+        .strip_prefix('x')
+        .and_then(|number| number.parse::<u8>().ok())
+        .is_some_and(|number| (19..=28).contains(&number));
+
+    (copy.operation == "mov" && destination == "x0" && callee_saved)
+        .then(|| (rows[*read].address + 4, source.to_owned()))
 }
 
 /// Follow direct constructor and factory calls only; a symbol alone does not attach a nested
@@ -844,6 +989,43 @@ mod tests {
 
         assert!(push_function(&text, &mut functions, &root));
         assert_eq!(functions.len(), 1);
+    }
+
+    #[test]
+    fn a_statement_read_names_the_callee_saved_register_that_holds_the_reader() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let reader = |code: Vec<u8>| {
+            let rows = decode_arm64(&code, 0x1000).unwrap();
+            let reads: Vec<usize> = rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row.operation == "bl")
+                .map(|(index, _)| index)
+                .collect();
+            statement_reader(&rows, &reads)
+        };
+        let saved = arm64!(at 0x1000;
+            mov x0, x23;
+            bl extern 0x2000; // CReader::ReadSimpleStatement
+            ret
+        );
+        let argument = arm64!(at 0x1000;
+            mov x0, x1;
+            bl extern 0x2000;
+            ret
+        );
+        let twice = arm64!(at 0x1000;
+            mov x0, x23;
+            bl extern 0x2000;
+            mov x0, x23;
+            bl extern 0x2000;
+            ret
+        );
+
+        assert_eq!(reader(saved), Some((0x1008, "x23".into())));
+        assert_eq!(reader(argument), None, "x1 does not survive the call");
+        assert_eq!(reader(twice), None);
     }
 
     #[test]

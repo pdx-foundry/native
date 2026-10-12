@@ -434,6 +434,15 @@ impl Native {
             &mut entry_gaps,
         );
         gaps.extend(entry_gaps.iter().cloned());
+        if let Some(loader) = &result.loader {
+            (value, gaps) = super::loader_kinds::root_fields(
+                value,
+                gaps,
+                loader,
+                registry,
+                facts.blocks.scope_names.as_deref(),
+            );
+        }
         storage_gaps(&value, None, &mut gaps);
         let answer = Answer {
             value,
@@ -949,6 +958,7 @@ mod field_gap_tests {
             tail: true,
         };
         RegistryFieldResult {
+            loader: None,
             persistent: Default::default(),
             persistent_points: Default::default(),
             scoped_destinations: Default::default(),

@@ -934,6 +934,7 @@ fn field_result(
     uses: Vec<StorageSelection>,
 ) -> RegistryFieldResult {
     RegistryFieldResult {
+        loader: None,
         uses,
         persistent: BTreeMap::new(),
         persistent_points: BTreeMap::new(),

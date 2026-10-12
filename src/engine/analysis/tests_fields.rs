@@ -16,6 +16,7 @@ fn fixture() -> FieldInput {
         Symbol{name:"CPersistent::ReadMember(CReader&, int)".into(),address:0x5000},Symbol{name:"CReader::ReportUnexpected()".into(),address:0x6000},
     ];
     FieldInput {
+        loader_root: None,
         key_readers: Default::default(),
         persistent: None,
         objects: vec![],
@@ -2644,4 +2645,146 @@ fn a_mask_behind_a_writable_pointer_slot_is_unresolved() {
     binding.writable_slots = BTreeSet::from([MASK_SLOT]);
 
     assert_eq!(clause_mask(writable), Some(Err("category-argument")));
+}
+
+/// The example owner with a loader that reads each root statement and builds the owner in the
+/// scope that its key selects: key 7 in scope 4 and key 8 in scope 0. The loader passes the
+/// scope in `w21` unless `scope_register` names another.
+fn loader_fixture(scope_register: &str) -> FieldInput {
+    let mut input = fixture();
+    let loader = "CExampleDatabase::ReadFile(CReader&)";
+    input.symbols.extend([
+        Symbol {
+            name: loader.into(),
+            address: 0x9000,
+        },
+        Symbol {
+            name: "CReader::ReadSimpleStatement()".into(),
+            address: 0xa000,
+        },
+        Symbol {
+            name: "CExample::CExample(EScopeType)".into(),
+            address: 0xc000,
+        },
+    ]);
+    input.strings.insert(0x8020, "example_kind".into());
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7; // token 7
+        adrp x2, extern 0x8000; // "new_engine_field"
+        add x2, x2, #0;
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #8; // token 8
+        adrp x2, extern 0x8000;
+        add x2, x2, #0x20; // "example_kind"
+        bl extern 0x3000;
+        ret
+    );
+    let mut code = Arm64::at(0x9000);
+    arm64!(code;
+        mov x23, x1;
+        mov x0, x23; // 0x9004: the statement loop
+        bl extern 0xa000; // CReader::ReadSimpleStatement
+        ldr w28, [x23, #0x38]; // 0x900c: the statement's token
+        cmp w28, #7;
+        b.eq extern 0x9024;
+        cmp w28, #8;
+        b.eq extern 0x902c;
+        b extern 0x9004 // any other key: the next statement
+    );
+    match scope_register {
+        "w21" => arm64!(code; mov w21, #4; b extern 0x9030),
+        _ => arm64!(code; mov w9, #4; b extern 0x9030), // a caller-saved register
+    }
+    arm64!(code;
+        mov w21, #0; // 0x902c
+        mov x0, x23; // 0x9030
+        bl extern 0xb000; // an unrelated call
+        mov w0, #0x630;
+        bl extern 0xb100; // the allocation
+        mov x1, x21;
+        bl extern 0xc000; // CExample::CExample(EScopeType)
+        ret
+    );
+    input.functions.push(Function {
+        name: loader.into(),
+        address: 0x9000,
+        code: code.bytes(),
+    });
+    input.loader_root = Some(fields::LoaderRoot {
+        function: loader.into(),
+        start: 0x900c,
+        reader: "x23".into(),
+        token_offset: 0x38,
+        constructors: BTreeSet::from([0xc000]),
+        item_reader: None,
+    });
+    input
+}
+
+/// The scope argument of each root key's constructor calls.
+fn loader_scopes(
+    result: &fields::RegistryFieldResult,
+) -> BTreeMap<String, Vec<Option<fields::Value>>> {
+    result
+        .loader
+        .as_ref()
+        .unwrap()
+        .keys
+        .iter()
+        .map(|key| {
+            let scopes = key
+                .readers
+                .iter()
+                .map(|join| match join {
+                    ReaderJoin::Joined { arguments, .. } => arguments.get("x1").cloned(),
+                    _ => panic!("{join:?}"),
+                })
+                .collect();
+            (key.name.clone(), scopes)
+        })
+        .collect()
+}
+
+#[test]
+fn a_loader_root_key_joins_the_owner_constructor_with_the_scope_it_selects() {
+    use fields::Value;
+    let result = derive(loader_fixture("w21"));
+    let loader = result.loader.as_ref().unwrap();
+
+    assert_eq!(
+        loader_scopes(&result),
+        BTreeMap::from([
+            ("example_kind".into(), vec![Some(Value::Constant(0))]),
+            ("new_engine_field".into(), vec![Some(Value::Constant(4))]),
+        ])
+    );
+    let others: Vec<_> = loader
+        .paths
+        .iter()
+        .filter(|path| path.domain[0] != path.domain[1])
+        .collect();
+    assert_eq!(others.len(), 2, "{:?}", loader.paths);
+    assert!(
+        others
+            .iter()
+            .all(|path| matches!(path.outcome, PathOutcome::Rejected))
+    );
+    assert!(loader.gaps.is_empty(), "{:?}", loader.gaps);
+    assert_eq!(
+        result.fields.len(),
+        1,
+        "the owner's own fields are unchanged"
+    );
+}
+
+#[test]
+fn a_scope_in_a_caller_saved_register_does_not_survive_a_call() {
+    let result = derive(loader_fixture("w9"));
+
+    assert_eq!(loader_scopes(&result)["new_engine_field"], vec![None]);
+}
+
+#[test]
+fn an_owner_without_a_loader_root_has_no_loader_keys() {
+    assert!(derive(fixture()).loader.is_none());
 }

@@ -182,6 +182,7 @@ mod tests {
 
     fn result(fields: Vec<RootField>) -> RegistryFieldResult {
         RegistryFieldResult {
+            loader: None,
             uses: vec![],
             persistent: BTreeMap::new(),
             persistent_points: BTreeMap::new(),

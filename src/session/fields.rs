@@ -643,6 +643,10 @@ pub(super) fn prefix_conditions(field: &mut Field, parent: &str) {
         }
     }
 
+    for selection in &mut field.uses {
+        prefix_condition(&mut selection.condition, parent);
+    }
+
     let members = match &mut field.members {
         FieldMembers::Fields(members) => members,
         FieldMembers::ModifierBlock(crate::ModifierBlock {
@@ -1411,6 +1415,7 @@ mod tests {
             readers: vec![target_join],
         };
         let result = |fields, paths, collections| RegistryFieldResult {
+            loader: None,
             persistent: BTreeMap::new(),
             persistent_points: BTreeMap::new(),
             scoped_destinations: BTreeMap::new(),

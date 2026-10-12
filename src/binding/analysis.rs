@@ -191,6 +191,8 @@ pub(crate) struct VerifiedAnalysis<'a> {
     executable: Arc<[u8]>,
     catalog: &'a Catalog,
     persistent: &'static super::targets::PersistentRecipe,
+    /// The reader offset of the current statement's token word.
+    reader_token_offset: u64,
 }
 
 impl VerifiedAnalysis<'_> {
@@ -632,7 +634,8 @@ impl VerifiedAnalysis<'_> {
         self.read_field_input(owner)
     }
 
-    /// Read the fields input of `owner`, with the part that every owner shares.
+    /// Read the fields input of `owner`, with the part that every owner shares and the custom
+    /// loader that builds it.
     fn read_field_input(&self, owner: &str) -> Result<FieldInput, AnalysisError> {
         let image = self.image();
         let shared = self
@@ -641,8 +644,24 @@ impl VerifiedAnalysis<'_> {
             .get_or_init(|| binary::fields::SharedFieldInput::read(&image, self.persistent))
             .as_ref()
             .map_err(Clone::clone)?;
+        let loader = self
+            .loader_database(owner)
+            .map(|database| binary::fields::LoaderSearch {
+                database,
+                reader_token_offset: self.reader_token_offset,
+            });
 
-        binary::fields::read(&image, shared, owner, self.persistent)
+        binary::fields::read(&image, shared, owner, loader, self.persistent)
+    }
+
+    /// The unjoined database whose own loader builds `owner`.
+    fn loader_database(&self, owner: &str) -> Option<&str> {
+        let owners = self.database_schedule().ok()?.loader_owners.as_ref().ok()?;
+
+        owners
+            .iter()
+            .find(|(_, built)| matches!(built, LoaderOwner::Owner(built) if built == owner))
+            .map(|(database, _)| database.as_str())
     }
 }
 
@@ -849,6 +868,7 @@ impl BoundAnalysis {
             .map_err(Clone::clone)?;
         Ok(VerifiedAnalysis {
             persistent: &self.declarations.persistent,
+            reader_token_offset: self.declarations.reader_token_offset,
             executable,
             catalog,
         })

@@ -300,6 +300,7 @@ mod tests {
 
     fn input(code: Vec<u8>) -> FieldInput {
         FieldInput {
+            loader_root: None,
             owner: "Owner".into(),
             symbols: vec![
                 Symbol { address: 0x2000, name: "CCompareOperator::Read(CReader&)".into() },
