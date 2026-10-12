@@ -6,7 +6,7 @@
 mod population_filter;
 
 use pdx_native::internals::duration_groups;
-use pdx_native::{Duration, Gap, GrammarProperty, Native};
+use pdx_native::{Duration, Error, Gap, GrammarProperty, Native};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -105,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let native = Native::open(std::env::var_os("STELLARIS_PATH").ok_or("set STELLARIS_PATH")?)?;
     let mut population = Population::default();
     let mut failed_questions = Vec::new();
+    let mut unsupported_questions = Vec::new();
     let mut commands = 0;
 
     for state in ["complete", "partial", "failed"] {
@@ -198,6 +199,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }));
                 }
             }
+            Err(Error::Unsupported { reason, .. }) => {
+                unsupported_questions.push(json!({"registry": registry, "reason": reason}));
+            }
             Err(error) => {
                 failed_questions.push(json!({"registry": registry, "error": error}));
             }
@@ -219,6 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "registry_groups": registry_groups,
             "registry_unresolved_candidates": registry_unresolved,
             "failed_questions": failed_questions,
+            "unsupported_questions": unsupported_questions,
         }))?
     );
 

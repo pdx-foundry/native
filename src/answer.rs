@@ -537,7 +537,7 @@ pub enum Error {
         /// Why the check was refused before calling the engine.
         reason: String,
     },
-    /// No registry with this name was found. `registries` lists the known names.
+    /// `registries` does not list this name.
     UnknownRegistry {
         /// The name asked for.
         name: String,

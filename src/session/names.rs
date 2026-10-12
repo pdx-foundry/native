@@ -25,8 +25,8 @@ impl Native {
     /// key or field is not a derived name. Names that interface code composes are outside this
     /// method; an [`GapKind::OutsideMethod`] gap says so.
     ///
-    /// The name is a content directory from [`Native::registries`]; another name is
-    /// [`Error::UnknownRegistry`].
+    /// The name is a content directory from [`Native::registries`]. A listed registry with no
+    /// template loader is [`Error::Unsupported`]; another name is [`Error::UnknownRegistry`].
     pub fn derived_names(&self, registry: &str) -> Result<Answer<Vec<DerivedName>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::DerivedNames, Some(registry), || {
@@ -35,9 +35,7 @@ impl Native {
             let code = analysis
                 .registry_names(registry)
                 .map_err(|failure| error(operation, failure))?
-                .ok_or_else(|| Error::UnknownRegistry {
-                    name: registry.into(),
-                })?;
+                .ok_or_else(|| self.unanswered_registry(operation, registry))?;
             let (_, fields) = self.registry_field_result(registry)?;
             let shared = &analysis
                 .family_index()

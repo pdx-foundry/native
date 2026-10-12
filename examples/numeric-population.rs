@@ -1,6 +1,6 @@
 //! Report every numeric registry field and its shared conversion, including unresolved joins.
 use pdx_native::internals::{numeric_readers, registry_field_stops};
-use pdx_native::{GapKind, GapSubject, GrammarProperty, Native, ReaderKind};
+use pdx_native::{Error, GapKind, GapSubject, GrammarProperty, Native, ReaderKind};
 use serde_json::json;
 use std::collections::BTreeMap;
 
@@ -9,11 +9,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let facts = numeric_readers::run(&native)?;
     let mut fields = Vec::new();
     let mut failures = Vec::new();
+    let mut unsupported = Vec::new();
     let mut counts = BTreeMap::<&str, usize>::new();
     let registries = native.registries()?;
     for registry in &registries.value {
         let run = match registry_field_stops::run(&native, &registry.name) {
             Ok(run) => run,
+            Err(Error::Unsupported { reason, .. }) => {
+                unsupported.push(json!({"registry": registry.name, "reason": reason}));
+                continue;
+            }
             Err(error) => {
                 failures.push(json!({"registry": registry.name, "error": error}));
                 continue;
@@ -82,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{}",
         serde_json::to_string_pretty(&json!({"build": native.build(),
         "registries": registries.value.len(), "registry_completeness": registries.completeness,
-        "counts": counts, "failures": failures, "facts": facts, "fields": fields}))?
+        "counts": counts, "failures": failures, "unsupported": unsupported, "facts": facts, "fields": fields}))?
     );
     Ok(())
 }
