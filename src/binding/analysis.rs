@@ -463,7 +463,8 @@ impl VerifiedAnalysis<'_> {
     }
 
     /// What the loaders of `registry` show: the arguments of every file enumeration that they
-    /// make, and the definition forms that their stated rules give. The loaders are the template
+    /// make, the duplicate rule of each template database's existing-entry handler, and the
+    /// definition forms that their stated rules give. The loaders are the template
     /// loader and database class of each candidate named `registry`, and each scheduled database
     /// whose own loader enumerates it. `None` when no loader names it.
     pub(crate) fn loader_evidence(
@@ -508,10 +509,20 @@ impl VerifiedAnalysis<'_> {
                 item: &record.owner_candidate,
             })
             .collect();
+        let template_databases = candidates
+            .iter()
+            .map(|record| record.database.clone())
+            .collect();
         let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
+        let image = self.image();
 
         Ok(Some(LoaderEvidence {
-            enumerations: binary::references::loader_enumerations(&text, &self.image(), &classes),
+            enumerations: binary::references::loader_enumerations(&text, &image, &classes),
+            existing_entries: binary::references::existing_entry_rules(
+                &text,
+                &image,
+                &template_databases,
+            ),
             stated: binary::definition_names::stated_forms(
                 &self.catalog.symbols,
                 &templates,

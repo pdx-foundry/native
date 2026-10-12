@@ -1594,12 +1594,13 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
 }
 
 /// Every listed registry has loader rules in the tracked parity file. A template registry reads
-/// every file of its folder; `common/global_ship_designs`, a custom loader, reads `.txt` files at
-/// every depth (`docs/native/loader-rules.md`).
+/// every file of its folder and keeps the last definition of a key, or merges it in an extendable
+/// database; `common/global_ship_designs`, a custom loader, reads `.txt` files at every depth and
+/// has no followed duplicate rule (`docs/native/loader-rules.md`).
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn loader_rules_state_the_file_selection_of_every_listed_registry() {
-    use pdx_native::{GrammarProperty, Recursion};
+    use pdx_native::{DuplicateRule, GrammarProperty, Recursion};
     let native = native();
     let tracked: BTreeMap<String, Value> = expected("loader-rules.json");
     let listed: Vec<String> = native
@@ -1624,7 +1625,20 @@ fn loader_rules_state_the_file_selection_of_every_listed_registry() {
             GrammarProperty::Known(Recursion::None),
             "{registry}"
         );
+        assert_eq!(
+            rules.duplicate_rule,
+            GrammarProperty::Known(DuplicateRule::LastWins),
+            "{registry}"
+        );
     }
+    assert_eq!(
+        native
+            .loader_rules("common/species_classes")
+            .unwrap()
+            .value
+            .duplicate_rule,
+        GrammarProperty::Known(DuplicateRule::Merges)
+    );
     let designs = native.loader_rules("common/global_ship_designs").unwrap();
     assert_eq!(designs.value.definition_names, GrammarProperty::Unresolved);
     assert!(
@@ -1641,6 +1655,7 @@ fn loader_rules_state_the_file_selection_of_every_listed_registry() {
         designs.value.recursion,
         GrammarProperty::Known(Recursion::Unlimited)
     );
+    assert_eq!(designs.value.duplicate_rule, GrammarProperty::Unresolved);
     assert_eq!(designs.completeness, Completeness::Partial);
     assert!(matches!(
         native.loader_rules("common/no_such_registry"),

@@ -1,26 +1,39 @@
-//! The static question of how one registry's loader selects its files.
+//! The static question of how one registry's loader selects its files, treats a repeated key and
+//! names its definitions.
 use super::Native;
 use super::questions::error;
 use super::{gap_for_subject, registry_gap};
-use crate::engine::analysis::loader_rules::{self, METHOD, Naming, Obstacle, Selection};
+use crate::engine::analysis::loader_rules::{
+    self, DuplicateObstacle, METHOD, Naming, Obstacle, Selection,
+};
 use crate::{
-    Answer, Basis, BuildId, Completeness, DefinitionForm, Error, Gap, GapKind, GapSubject,
-    GrammarProperty, LoaderRules, Operation, Source,
+    Answer, Basis, BuildId, Completeness, DefinitionForm, DuplicateRule, Error, Gap, GapKind,
+    GapSubject, GrammarProperty, LoaderRules, Operation, Source,
 };
 
 /// What the method does not search.
-const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls and the stated definition-name rules of its loaders. Files that the loader opens by a literal name, a check of the file name after the enumeration, the mounted directories that the enumeration searches, and definitions nested in a definition's block other than tradition swaps are outside it.";
+const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls and the stated definition-name rules of its loaders. Files that the loader opens by a literal name, a check of the file name after the enumeration, and definitions nested in a definition's block other than tradition swaps are outside it.";
 
-/// The loader rules that this method revision does not state, by the name of each gap's subject.
-const NOT_STATED: [&str; 2] = ["duplicate_rule", "file_order"];
+/// The build-wide rules that the answer does not carry, by the name of each gap's subject. The
+/// knowledge page states them once for the build.
+const BUILD_WIDE: [(&str, &str); 2] = [
+    (
+        "file_order",
+        "The order in which the loader reads its files is a rule of the build's file system, stated once from its code and not for each registry. No fixture verifies it.",
+    ),
+    (
+        "mod_over_vanilla",
+        "Whether a mod's file replaces or joins a game file in the same folder is a rule of the build's file system, stated once from its code and not for each registry. No fixture verifies it.",
+    ),
+];
 
 impl Native {
-    /// Read how one registry's loader enumerates its files: the file-name filters and the
-    /// subdirectories that the enumeration lists. The folder is the registry name.
+    /// Read how one registry's loader enumerates its files (the file-name filters and the
+    /// subdirectories that the enumeration lists), what it does with a later definition of a key
+    /// that it holds, and how it names its definitions. The folder is the registry name.
     ///
-    /// A file that the loader opens by a literal name, a check of a name after the enumeration,
-    /// and the mounted directories that the enumeration searches are outside this method; an
-    /// [`GapKind::OutsideMethod`] gap says so.
+    /// A file that the loader opens by a literal name and a check of a name after the enumeration
+    /// are outside this method; an [`GapKind::OutsideMethod`] gap says so.
     ///
     /// A filter that the loader passes as a value other than a literal, several loader calls that
     /// disagree, or a loader with no file enumeration leaves the property
@@ -28,8 +41,10 @@ impl Native {
     /// [`GapSubject::AnswerItem`] name, such as `extension`. The definition-name forms are
     /// stated rules of the loader's code: a loader with no stated rule, or a build that lacks the
     /// code of a stated rule, leaves `definition_names` unresolved or partial with a gap whose
-    /// subject is `definition_names`. The duplicate-definition and file-order rules are not
-    /// established yet: each has a gap whose subject is `duplicate_rule` or `file_order`.
+    /// subject is `definition_names`. The duplicate rule is established for a template registry;
+    /// a custom loader's is `Unresolved` with a gap whose subject is `duplicate_rule`. The file
+    /// order and whether a mod's file replaces a game file are build-wide rules outside the
+    /// answer, with gaps whose subjects are `file_order` and `mod_over_vanilla`.
     ///
     /// The name is a content directory from [`Native::registries`]; another name is
     /// [`Error::UnknownRegistry`].
@@ -49,6 +64,7 @@ impl Native {
             Ok(normalized_rules(
                 registry,
                 &loader_rules::selection(&evidence.enumerations),
+                &loader_rules::duplicate_rule(&evidence.existing_entries),
                 &loader_rules::naming(&evidence.stated),
                 self.build(),
             ))
@@ -61,6 +77,7 @@ impl Native {
 fn normalized_rules(
     registry: &str,
     selection: &Selection,
+    duplicate: &Result<DuplicateRule, DuplicateObstacle>,
     naming: &Naming,
     build: BuildId,
 ) -> Answer<LoaderRules> {
@@ -69,13 +86,14 @@ fn normalized_rules(
         extension: property("extension", &selection.extension, &mut gaps),
         name_contains: property("name_contains", &selection.name_contains, &mut gaps),
         recursion: property("recursion", &selection.recursion, &mut gaps),
+        duplicate_rule: duplicate_rule(duplicate, &mut gaps),
         definition_names: definition_names(naming, &mut gaps),
     };
-    gaps.extend(NOT_STATED.map(|rule| {
+    gaps.extend(BUILD_WIDE.map(|(rule, detail)| {
         gap_for_subject(
-            GapKind::ReaderSemantics,
+            GapKind::OutsideMethod,
             Some(GapSubject::AnswerItem { name: rule.into() }),
-            "the loader's rule is not established",
+            detail,
         )
     }));
     gaps.push(registry_gap(
@@ -90,6 +108,40 @@ fn normalized_rules(
         gaps,
         source: Source::new(build, METHOD, Basis::StaticAnalysis),
     }
+}
+
+/// The duplicate rule, or `Unresolved` with a gap whose subject is `duplicate_rule` and whose
+/// detail is the obstacle.
+fn duplicate_rule(
+    duplicate: &Result<DuplicateRule, DuplicateObstacle>,
+    gaps: &mut Vec<Gap>,
+) -> GrammarProperty<DuplicateRule> {
+    let obstacle = match duplicate {
+        Ok(rule) => return GrammarProperty::Known(*rule),
+        Err(obstacle) => obstacle,
+    };
+    let reason = match obstacle {
+        DuplicateObstacle::NotFollowed => {
+            "the method does not follow what this loader does with a key that it already holds"
+                .to_owned()
+        }
+        DuplicateObstacle::UnreadBody => {
+            "the loader's code for a key that it already holds has a shape that the method does not read"
+                .to_owned()
+        }
+        DuplicateObstacle::Several(count) => {
+            format!("the registry's loaders give {count} different duplicate rules")
+        }
+    };
+    gaps.push(gap_for_subject(
+        GapKind::UnresolvedPath,
+        Some(GapSubject::AnswerItem {
+            name: "duplicate_rule".into(),
+        }),
+        reason,
+    ));
+
+    GrammarProperty::Unresolved
 }
 
 /// One property, or `Unresolved` with a gap whose subject is `property` and whose detail is the
@@ -184,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn established_properties_are_known_and_the_other_rules_keep_the_answer_partial() {
+    fn established_rules_are_known_and_the_build_wide_rules_are_outside_the_method() {
         let selection = Selection {
             extension: Ok(Some(".txt".into())),
             name_contains: Ok(None),
@@ -194,6 +246,7 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection,
+            &Ok(DuplicateRule::LastWins),
             &Naming {
                 forms: vec![root_key()],
                 missing: 0,
@@ -207,10 +260,11 @@ mod tests {
                 extension: GrammarProperty::Known(Some(".txt".into())),
                 name_contains: GrammarProperty::Known(None),
                 recursion: GrammarProperty::Known(Recursion::None),
+                duplicate_rule: GrammarProperty::Known(DuplicateRule::LastWins),
                 definition_names: GrammarProperty::Known(vec![root_key()]),
             }
         );
-        assert_eq!(answer.completeness, Completeness::Partial);
+        assert_eq!(answer.completeness, Completeness::Complete);
         let gaps: Vec<_> = answer
             .gaps
             .iter()
@@ -219,10 +273,44 @@ mod tests {
         assert_eq!(
             gaps,
             [
-                (GapKind::ReaderSemantics, Some("duplicate_rule")),
-                (GapKind::ReaderSemantics, Some("file_order")),
+                (GapKind::OutsideMethod, Some("file_order")),
+                (GapKind::OutsideMethod, Some("mod_over_vanilla")),
                 (GapKind::OutsideMethod, Some("common/examples")),
             ]
+        );
+        assert!(
+            answer.gaps[..2]
+                .iter()
+                .all(|gap| gap.detail.ends_with("No fixture verifies it."))
+        );
+    }
+
+    #[test]
+    fn a_loader_whose_duplicate_path_is_not_followed_has_an_unresolved_rule() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Err(DuplicateObstacle::NotFollowed),
+            &Naming {
+                forms: vec![root_key()],
+                missing: 0,
+            },
+            build(),
+        );
+
+        assert_eq!(answer.value.duplicate_rule, GrammarProperty::Unresolved);
+        let duplicate_gaps: Vec<_> = answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.subject.as_ref().map(GapSubject::name) == Some("duplicate_rule"))
+            .map(|gap| (gap.kind, gap.detail.as_str()))
+            .collect();
+        assert_eq!(
+            duplicate_gaps,
+            [(
+                GapKind::UnresolvedPath,
+                "the method does not follow what this loader does with a key that it already holds"
+            )]
         );
     }
 
@@ -237,6 +325,7 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection,
+            &Ok(DuplicateRule::LastWins),
             &Naming {
                 forms: vec![root_key()],
                 missing: 0,
@@ -275,6 +364,7 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection(),
+            &Ok(DuplicateRule::LastWins),
             &Naming {
                 forms: vec![],
                 missing: 0,
@@ -297,6 +387,7 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection(),
+            &Ok(DuplicateRule::LastWins),
             &Naming {
                 forms: vec![root_key()],
                 missing: 1,
@@ -322,6 +413,7 @@ mod tests {
         let answer = normalized_rules(
             "common/examples",
             &selection(),
+            &Ok(DuplicateRule::LastWins),
             &Naming {
                 forms: vec![],
                 missing: 2,
