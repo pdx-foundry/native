@@ -122,7 +122,8 @@ build, nothing else running. `cargo parity` runs two test binaries one after the
 ## Live costs
 
 A live case spends 16–21 s loading the game to the registry pause, 2–5 s in supervisor setup and
-about 0.5 s in cleanup. A diagnostic window through validation waits about 74 s for all content.
+about 0.5 s in cleanup. A diagnostic window through validation reaches its pause about 65 s
+later; nearly all of that is the log hooks (below).
 Batch independent validation samples into one session; a batched session is no slower than a
 single one (the batching rule is in [command grammar](command-grammar.md)).
 
@@ -135,6 +136,11 @@ on the host above, each run alone:
 | `fixture_control_triggers` | 108 s | 1 | 1.8 s | 88.2 s (through validation) | 0.1 s | 0.5 s |
 | `script_numeric` | 121 s | 1 | 1.2 s | 26.9 s | 82.0 s (163 checks, 0.5 s each) | 0.5 s |
 
+- **Most of a launch is engine startup.** In `fixture_normal` the game reached the first
+  `Initializing Database` line in `setup.log` 16.2 s after the spawn, then loaded all 180
+  databases in 4.3 s: `common/traditions` (234 items) in 25 ms, and the categories and the
+  fixture file in 93 ms. The session paused 20.7 s after the spawn. 10.4 s of the startup has no
+  log output and is not identified.
 - **A fixture case's time is game launches.** Reading the answers takes about 0.1 s. A slow
   fixture case is slow because it launches the game many times. The conversion matrix gives
   each of its 10 table rows its own fixture. The scoped matrix launches 7 times: a request takes
@@ -143,9 +149,15 @@ on the host above, each run alone:
   the definitions after it.
   `script_attribution` launches 5 times, and each `fixture_argument_*` case twice, the first
   through validation.
-- **A window through validation costs about 65 s more than a file-load window.** 12 cases use one
-  (the `fixture_control_*` cases, the first launch of each `fixture_argument_*` case and
-  `script_expansion_templates`): about 1,080 of the suite's 3,500 s.
+- **A window through validation costs about 60 s more, because of its log hooks.** The fixture's
+  private mod replaces `common/traditions` and `common/tradition_categories` (`replace_path`),
+  so vanilla content fails about 4,500 deferred references to the missing traditions, and the
+  engine logs 4,895 lines. With diagnostics requested, the worker stops the game at each log
+  call. In `fixture_control_triggers` the session took 85.5 s and 86.3 s to its pause with the
+  four log hooks armed, and 24.9 s and 25.1 s without them. Both reached the same
+  validation-complete pause and wrote the same 4,895 lines: about 12.5 ms per message. 12 cases
+  use such a window (the `fixture_control_*` cases, the first launch of each `fixture_argument_*`
+  case and `script_expansion_templates`): about 1,080 of the suite's 3,500 s.
 - **The rest of a case runs outside the session.** It is the harness's static analysis (about 15 s
   on the first full-facts query of a `Native`) and admission. The `fixture_outcome_*` cases open
   their own `Native` to record answers, so each pays the 15 s again (41–50 s against 27 s for
