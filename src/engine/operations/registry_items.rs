@@ -7,15 +7,14 @@
 //! - **Activation.** The debugger held the game at its first instruction, the registry's hook
 //!   was in place before the game ran, and the game process is the one that the supervisor owns.
 //!   Without this, items could have loaded before anyone looked.
-//! - **Sequence.** Record numbers have no hole. A hole that lies wholly inside the records of
-//!   another registry does not count against this one.
+//! - **Sequence.** Record numbers have no hole before this registry's terminal. A hole after the
+//!   terminal, or wholly inside the records of another registry or of the fixture window, does
+//!   not count against this one.
 //! - **Loader, owner and thread.** The loader entry, its return, the snapshot, every entry and
 //!   the terminal name the same receiver object and the same game thread, in that order.
 //! - **Slots.** Entry indices rise without a hole, and each key and each object occurs once.
 //! - **Terminal totals.** The terminal's count equals the snapshot's count and the number of
 //!   accepted entries, and its own sequence number equals the one that the worker gave it.
-//! - **Worker loss.** The worker did not exit with a failure before the supervisor asked it to
-//!   stop.
 //!
 //! No diagnostic gives a complete answer. Any diagnostic gives a partial answer that keeps the
 //! accepted items, or no answer when the registry was not observed at all. An empty complete
@@ -48,7 +47,7 @@ pub(crate) enum Observed {
     NotLoaded,
     /// The loader ran, but the binding cannot read this registry's item layout.
     Unsupported,
-    /// The registry was not observed: no activation, no access, or the worker was lost.
+    /// The registry was not observed: no activation or no access.
     Unavailable,
 }
 
@@ -81,7 +80,8 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
     let mut unsupported = false;
     let mut saw_registry = false;
     for (position, record) in records.iter().enumerate() {
-        // A hole wholly inside the records of another registry does not count against this one.
+        // A hole after this registry's terminal, or wholly inside the records of another registry
+        // or of the fixture window, does not count against this one.
         let hole_elsewhere = position > 0
             && registry_name(&records[position - 1].event)
                 .zip(registry_name(&record.event))
@@ -89,7 +89,7 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         let hole_in_fixture = position > 0
             && matches!(records[position - 1].event, WorkerEvent::Fixture { .. })
             && matches!(record.event, WorkerEvent::Fixture { .. });
-        if record.seq != expected && !hole_elsewhere && !hole_in_fixture {
+        if !ended && record.seq != expected && !hole_elsewhere && !hole_in_fixture {
             diagnostics.push(format!(
                 "Sequence gap: expected {expected}, found {}",
                 record.seq
@@ -239,14 +239,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
         WorkerEvent::SessionPaused { cause, .. } => Some(cause),
         _ => None,
     });
-    let session_failed = owner
-        .iter()
-        .any(|event| matches!(event, OwnerEvent::ObservationUnavailable { .. }));
     if let Some(cause) = pause_cause
         && activated
         && !saw_registry
         && diagnostics.is_empty()
-        && !session_failed
     {
         return RegistryItems {
             items: Vec::new(),
@@ -256,26 +252,10 @@ pub(crate) fn reduce(name: &str, records: &[WorkerRecord], owner: &[OwnerEvent])
     }
     if !ended {
         diagnostics.push("Registry terminal missing".into());
-        for event in owner {
-            if let OwnerEvent::ObservationUnavailable { reason } = event {
-                unavailable = true;
-                diagnostics.push(reason.clone());
-            }
-        }
-    }
-    let stop_requested = owner
-        .iter()
-        .any(|event| matches!(event, OwnerEvent::WorkerStopRequested));
-    let worker_lost = !stop_requested
-        && owner.iter().any(
-            |event| matches!(event, OwnerEvent::WorkerExited { returncode } if *returncode != 0),
-        );
-    if worker_lost && !diagnostics.is_empty() {
-        diagnostics.push("The observation worker was lost".into());
     }
     let observed = if diagnostics.is_empty() {
         Observed::Complete
-    } else if worker_lost || unavailable || !activated {
+    } else if unavailable || !activated {
         Observed::Unavailable
     } else if unsupported {
         Observed::Unsupported
@@ -859,6 +839,20 @@ mod tests {
     }
 
     #[test]
+    fn a_hole_after_a_finished_registry_does_not_demote_it() {
+        let (mut records, owner, _) = session(&["first"]);
+        // Remove the categories terminal: the hole follows the traditions terminal.
+        records.remove(13);
+        assert_eq!(
+            reduce(TRADITIONS, &records, &owner).observed,
+            Observed::Complete
+        );
+        let categories = reduce(CATEGORIES, &records, &owner);
+        assert_eq!(categories.observed, Observed::Partial);
+        assert_eq!(categories.items, ["category"]);
+    }
+
+    #[test]
     fn a_missing_terminal_is_partial() {
         let (mut records, owner, _) = session(&["first"]);
         records.retain(
@@ -966,28 +960,5 @@ mod tests {
             readiness(&records, &owner, &names, false),
             Some(GameReadiness::DuringRegistryInitialization)
         );
-    }
-
-    #[test]
-    fn a_later_failure_keeps_a_completed_answer_and_a_lost_worker_gives_none() {
-        let (records, mut owner, _) = session(&["first"]);
-        owner.push(OwnerEvent::ObservationUnavailable {
-            reason: "later session failure".into(),
-        });
-        owner.push(OwnerEvent::WorkerExited { returncode: -9 });
-        assert_eq!(
-            reduce(TRADITIONS, &records, &owner).observed,
-            Observed::Complete
-        );
-        // The worker was lost before the terminal of the categories.
-        let mut cut = records.clone();
-        cut.truncate(records.len() - 2);
-        let categories = reduce(CATEGORIES, &cut, &owner);
-        assert_eq!(categories.observed, Observed::Unavailable);
-        assert_eq!(categories.items, ["category"]);
-        // An exit after the supervisor asked the worker to stop is not a loss.
-        owner.remove(2);
-        owner.insert(2, OwnerEvent::WorkerStopRequested);
-        assert_eq!(reduce(CATEGORIES, &cut, &owner).observed, Observed::Partial);
     }
 }

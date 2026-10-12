@@ -332,7 +332,7 @@ fn finish_session(
 struct Session<'a> {
     work_directory: &'a Path,
     attempt: &'a str,
-    /// Internal names of the registries that the session observes.
+    /// Content directories of the registries that the session observes.
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
     /// The field tokens that the bound category fixture window reads.

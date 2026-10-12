@@ -4,7 +4,7 @@
 //! the game. The supervisor sends the answers once, when the game is paused; every
 //! fixture and modifier query returns from them.
 use crate::{
-    Disposal, Error, GameReadiness,
+    Disposal, Error,
     engine::operations::registry_items::{Observed, RegistryItems},
     protocol::session::{
         Fault, ObservationControl, ObservationTarget, SessionOutcome, SessionRequest,
@@ -85,7 +85,7 @@ impl GameOptions {
 
 /// What `start` needs besides the request: the caller's names and where answers go.
 pub(crate) struct Session {
-    /// Content directory of each observed registry, with its internal name.
+    /// The content directory of each observed registry.
     pub observed: std::collections::BTreeSet<String>,
     pub build: crate::BuildId,
     /// Write every answer to this directory as it is returned.
@@ -104,8 +104,7 @@ pub(crate) struct Session {
 /// What the supervisor established when the game paused.
 #[derive(Debug, Clone)]
 struct Paused {
-    readiness: GameReadiness,
-    /// By internal registry name.
+    /// By content directory.
     registries: BTreeMap<String, RegistryItems>,
     fixture: Option<Result<crate::Answer<crate::FixtureObservation>, Error>>,
     modifiers:
@@ -145,11 +144,16 @@ enum DriverCommand {
     },
 }
 
+/// The stop flag is 0 until the caller asks to stop. `Game::close` then stores `CLOSE`, and
+/// `Game::cancel` and a dropped check store `CANCEL`; each only replaces 0.
+const CLOSE: u8 = 1;
+const CANCEL: u8 = 2;
+
 struct CheckCancellation(Option<Arc<AtomicU8>>);
 impl Drop for CheckCancellation {
     fn drop(&mut self) {
         if let Some(stop) = &self.0 {
-            let _ = stop.compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+            let _ = stop.compare_exchange(0, CANCEL, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
 }
@@ -175,7 +179,7 @@ pub struct Game {
     state: watch::Receiver<State>,
     paused: Paused,
     closing: bool,
-    /// Content directory of each observed registry, with its internal name.
+    /// The content directory of each observed registry.
     observed: std::collections::BTreeSet<String>,
     build: crate::BuildId,
     backend: GameBackend,
@@ -225,21 +229,11 @@ impl Game {
         &mut self,
         input: &crate::ScriptCheck,
     ) -> Result<crate::Answer<crate::ScriptObservation>, Error> {
-        if self.closing
-            || self.stop.load(Ordering::SeqCst) != 0
-            || self.state.borrow().finished.is_some()
-        {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         input.validate()?;
         let subject = input.recorded_subject(&self.script_history);
         let result = self
             .answer("check_script", Some(&subject), async |game| {
-                if game.paused.readiness != GameReadiness::AfterContentLoad {
-                    return Err(Error::ScriptRequest {
-                        reason: "script checks require a confirmed content-loaded pause".into(),
-                    });
-                }
                 let durations = game.duration_receivers(input);
                 let (reply, receive) = oneshot::channel();
                 game.commands
@@ -314,9 +308,7 @@ impl Game {
     async fn answer_loaded_modifiers(
         &mut self,
     ) -> Result<crate::Answer<crate::LoadedModifiers>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         let subject = self
             .fixture
             .as_ref()
@@ -351,9 +343,7 @@ impl Game {
     async fn answer_observe_fixture(
         &mut self,
     ) -> Result<crate::Answer<crate::FixtureObservation>, Error> {
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
+        self.ensure_open()?;
         let fixture = self.fixture.as_ref().ok_or_else(|| Error::FixtureRequest {
             reason: "Prepare a fixture with GameOptions::fixture before starting the game".into(),
         })?;
@@ -383,7 +373,6 @@ impl Game {
         fixture: Option<crate::FixtureRequest>,
     ) -> Self {
         let paused = Paused {
-            readiness: GameReadiness::AfterRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -437,9 +426,8 @@ impl Game {
 
     async fn registry_items_from_game(
         &mut self,
-        registry: &str,
+        directory: &str,
     ) -> Result<crate::Answer<Vec<String>>, Error> {
-        let directory = registry.trim_end_matches('/');
         if !self.observed.contains(directory) {
             return Err(Error::Unsupported {
                 operation: crate::Operation::Registries,
@@ -448,23 +436,34 @@ impl Game {
                 ),
             });
         }
+        self.ensure_open()?;
         let name = directory.to_owned();
-        if self.closing || self.state.borrow().finished.is_some() {
-            return Err(Error::Closed);
-        }
         let answer =
             registry_items_answer(directory, self.paused.registries.get(&name), &self.build)?;
         self.restart_idle_time(ReadQuestion::Registry(name)).await?;
         Ok(answer)
     }
 
+    /// `Error::Closed` once the caller asked to stop or the supervisor ended the session.
+    fn ensure_open(&self) -> Result<(), Error> {
+        if self.closing
+            || self.stop.load(Ordering::SeqCst) != 0
+            || self.state.borrow().finished.is_some()
+        {
+            return Err(Error::Closed);
+        }
+
+        Ok(())
+    }
+
     /// Record a read error so that `close` keeps the work directory. The error is returned
     /// unchanged, so a recorded answer replays it exactly; `work_directory` gives the path.
-    /// `Error::Closed` after the caller began to close adds nothing to inspect. `Error::Closed`
-    /// because the supervisor ended the session does.
+    /// `Error::Closed` after the caller asked to stop (a close, a cancel or a dropped check) adds
+    /// nothing to inspect. `Error::Closed` because the supervisor ended the session does.
     fn keep_on_error<T>(&mut self, result: Result<T, Error>) -> Result<T, Error> {
+        let caller_stopped = self.closing || self.stop.load(Ordering::SeqCst) != 0;
         if let Err(error) = &result
-            && !(self.closing && *error == Error::Closed)
+            && !(caller_stopped && *error == Error::Closed)
         {
             self.read_failed = true;
         }
@@ -504,7 +503,7 @@ impl Game {
             self.closing = true;
             let _ = self
                 .stop
-                .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst);
+                .compare_exchange(0, CANCEL, Ordering::SeqCst, Ordering::SeqCst);
         }
     }
     /// Close the session and wait until the supervisor reports whether the game is gone.
@@ -533,7 +532,7 @@ impl Game {
             self.closing = true;
             let _ = self
                 .stop
-                .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst);
+                .compare_exchange(0, CLOSE, Ordering::SeqCst, Ordering::SeqCst);
         }
         let finished = loop {
             if let Some(result) = self.state.borrow().finished.clone() {
@@ -685,10 +684,6 @@ async fn start_until_paused(
     request: SessionRequest,
     session: Session,
 ) -> Result<Game, Error> {
-    let timing = driver::Timing {
-        startup_seconds: request.startup_seconds,
-        idle_seconds: request.idle_seconds,
-    };
     let (commands, receive) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicU8::new(0));
     let owner_stop = stop.clone();
@@ -696,7 +691,7 @@ async fn start_until_paused(
     std::thread::Builder::new()
         .name("native-game-owner".into())
         .spawn(move || {
-            driver::run(supervisor, request, timing, receive, owner_stop, state);
+            driver::run(supervisor, request, receive, owner_stop, state);
         })
         .map_err(|error| Error::Supervisor(error.to_string()))?;
     // The only command sender stays in this future until ownership moves into Game.
@@ -855,7 +850,6 @@ mod tests {
     #[tokio::test]
     async fn cancelling_a_check_future_ends_the_session_before_reuse() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::AfterContentLoad;
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
@@ -873,35 +867,52 @@ mod tests {
             commands.try_recv().unwrap(),
             DriverCommand::CheckScript { .. }
         ));
-        assert_eq!(game.stop.load(Ordering::SeqCst), 2);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CANCEL);
         assert!(matches!(
             game.check_script(&input).await,
             Err(Error::Closed)
         ));
+        // The cancellation closed the session; a later read is no read failure to keep.
+        assert_eq!(
+            game.loader_items("common/traditions").await,
+            Err(Error::Closed)
+        );
+        assert!(!game.read_failed);
         state.send_modify(|state| state.finished = Some(Ok(finished())));
         assert_eq!(game.close().await.unwrap(), Disposal::Confirmed);
     }
 
     #[tokio::test]
-    async fn early_pauses_reject_checks_without_queuing_engine_work() {
-        let (mut game, commands, _) = game();
+    async fn a_stop_request_closes_every_read_before_it_queues_work() {
         let input = crate::ScriptCheck {
             kind: crate::DeclarationKind::Trigger,
             scope: crate::ScopeId("scope".into()),
             text: "always = yes".into(),
         };
-        assert!(matches!(
-            game.check_script(&input).await,
-            Err(Error::ScriptRequest { .. })
-        ));
-        assert!(commands.try_recv().is_err());
-        assert!(game.script_history.is_empty());
+        for stop in [CLOSE, CANCEL] {
+            let (mut game, commands, _state) = game();
+            game.stop.store(stop, Ordering::SeqCst);
+
+            assert_eq!(game.observe_fixture().await, Err(Error::Closed));
+            assert_eq!(game.loaded_modifiers().await, Err(Error::Closed));
+            assert_eq!(
+                game.loader_items("common/traditions").await,
+                Err(Error::Closed)
+            );
+            // An unknown registry is still named as such before the session counts as closed.
+            assert!(matches!(
+                game.loader_items("traditions").await,
+                Err(Error::Unsupported { .. })
+            ));
+            // A check that is not refused would queue its command and wait for a reply.
+            assert_eq!(game.check_script(&input).await, Err(Error::Closed));
+            assert!(commands.try_recv().is_err());
+        }
     }
 
     #[tokio::test]
     async fn recording_failure_preserves_completed_check_history() {
         let (mut game, commands, state) = game();
-        game.paused.readiness = GameReadiness::AfterContentLoad;
         let root = tempfile::tempdir().unwrap();
         let recording = root.path().join("recording");
         std::fs::write(&recording, "block directory creation").unwrap();
@@ -973,7 +984,6 @@ mod tests {
     }
     fn game() -> (Game, mpsc::Receiver<DriverCommand>, watch::Sender<State>) {
         let paused = Paused {
-            readiness: GameReadiness::DuringRegistryInitialization,
             registries: BTreeMap::new(),
             fixture: None,
             modifiers: None,
@@ -1290,7 +1300,7 @@ mod tests {
                 .await
                 .is_err()
         );
-        assert_eq!(game.stop.load(Ordering::SeqCst), 1);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CLOSE);
         assert!(matches!(
             game.loader_items("common/traditions").await,
             Err(Error::Closed)
@@ -1306,7 +1316,7 @@ mod tests {
     async fn cancellation_and_drop_do_not_claim_disposal() {
         let (mut game, commands, state) = game();
         game.cancel();
-        assert_eq!(game.stop.load(Ordering::SeqCst), 2);
+        assert_eq!(game.stop.load(Ordering::SeqCst), CANCEL);
         assert!(state.borrow().finished.is_none());
         drop(game);
         assert!(matches!(

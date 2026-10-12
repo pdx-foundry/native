@@ -71,7 +71,7 @@ pub(crate) struct WorkerRequest {
     /// SHA-256 of each file of the worker package, by file name.
     pub source_hashes: BTreeMap<String, String>,
     pub machine: crate::binding::Machine,
-    /// The registries to observe, by internal name.
+    /// The registries to observe, by content directory.
     pub registries: BTreeMap<String, RegistryBinding>,
     /// A deliberate fault, applied only to its named observation.
     pub fault: Option<crate::protocol::session::Fault>,
