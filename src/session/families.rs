@@ -28,8 +28,9 @@ impl Native {
     /// [`GapKind::UnnamedDeclaration`] gap, so the answer is partial while such code exists. Where
     /// a modifier takes effect is outside this method.
     ///
-    /// The name is a content directory from [`Native::registries`]. A listed registry with no
-    /// template loader is [`Error::Unsupported`]; another name is [`Error::UnknownRegistry`].
+    /// The name is a content directory from [`Native::registries`]. A listed registry whose
+    /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
+    /// [`Error::UnknownRegistry`].
     pub fn modifier_families(&self, registry: &str) -> Result<Answer<Vec<ModifierFamily>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::ModifierFamilies, Some(registry), || {
@@ -95,7 +96,7 @@ pub(super) fn unjoined_summary(unjoined: &BTreeMap<Reason, usize>) -> Option<Str
             let reason = match reason {
                 Reason::RegistrationFunction => "inside the registration function",
                 Reason::UnnamedInput => {
-                    "combine a registry's keys with the keys of content that Native does not name as a registry"
+                    "combine a registry's keys with the keys of other content"
                 }
                 Reason::UnnamedContent => {
                     "reached from the post-read code of content objects that are not items of a named registry"
@@ -180,7 +181,7 @@ fn normalized_families(
         gaps.push(registry_gap(
             GapKind::UnnamedDeclaration,
             subject,
-            "names that combine this registry's keys with the keys of content that Native does not name as a registry are not returned",
+            "names that combine this registry's keys with the keys of other content are not returned",
         ));
     }
     if let Some(summary) = unjoined_summary(unjoined) {

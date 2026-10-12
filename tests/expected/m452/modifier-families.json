@@ -21,7 +21,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -57,7 +57,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -98,7 +98,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -124,7 +124,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -180,7 +180,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -255,12 +255,12 @@
       [
         "UnnamedDeclaration",
         {"kind": "registry", "name": "common/economic_categories"},
-        "names that combine this registry's keys with the keys of content that Native does not name as a registry are not returned"
+        "names that combine this registry's keys with the keys of other content are not returned"
       ],
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -275,7 +275,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -391,7 +391,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -417,7 +417,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -448,7 +448,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -463,7 +463,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -484,7 +484,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -525,7 +525,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -566,7 +566,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -697,7 +697,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -723,7 +723,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -745,7 +745,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -765,7 +765,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -806,7 +806,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -907,7 +907,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -948,7 +948,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   },
@@ -969,7 +969,7 @@
       [
         "UnnamedDeclaration",
         null,
-        "20 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of content that Native does not name as a registry; 5 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
       ]
     ]
   }

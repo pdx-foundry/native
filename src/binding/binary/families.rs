@@ -58,6 +58,7 @@ pub(super) const POST_READ: [&str; 2] = ["::InitPostRead(", "::PostReadInit()"];
 const ALLOCATIONS: [&str; 3] = ["_calloc", "_malloc", "operator new(unsigned long)"];
 
 /// A named registry and the classes of its database and its items.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::binding) struct NamedRegistry<'a> {
     pub name: &'a str,
     pub database: &'a str,
@@ -85,10 +86,13 @@ pub(crate) struct FamilyIndex {
 }
 
 /// Read the generation calls, join them to the named registries, and read each registry's code.
+/// `templates` are the registries of the shared template loader and `loaders` those that a
+/// database's own loader names.
 pub(in crate::binding) fn index(
     bytes: &[u8],
     symbols: &[Symbol],
-    registries: &[NamedRegistry],
+    templates: &[NamedRegistry],
+    loaders: &[NamedRegistry],
     facts: KnownFacts,
     recipe: &DeclarationRecipe,
     database: DatabaseLayout,
@@ -98,12 +102,20 @@ pub(in crate::binding) fn index(
     let registration = unique(symbols, GENERATE_MODIFIER[0])?;
     let strings = string_functions(symbols);
 
-    let graph = graph(&text, symbols, &names, registries, registration, &facts)?;
+    let graph = graph(
+        &text,
+        symbols,
+        &names,
+        templates,
+        loaders,
+        registration,
+        &facts,
+    )?;
     let joins = joins::join(&graph);
     let data = constant_data(bytes, facts.pointers, facts.bound_slots)?;
 
     let mut inputs = BTreeMap::new();
-    for registry in registries {
+    for registry in templates.iter().chain(loaders) {
         let join = joins.registries.get(registry.name);
         let roots: Vec<Root> = join
             .into_iter()
@@ -181,10 +193,12 @@ fn graph(
     text: &Text,
     symbols: &[Symbol],
     names: &Names,
-    registries: &[NamedRegistry],
+    templates: &[NamedRegistry],
+    loaders: &[NamedRegistry],
     registration: u64,
     facts: &KnownFacts,
 ) -> Result<Graph, AnalysisError> {
+    let registries: Vec<NamedRegistry> = templates.iter().chain(loaders).copied().collect();
     let containing = |address: u64| text.starts.range(..=address).next_back().copied();
     let calls = generation_calls(text, symbols)?
         .into_iter()
@@ -201,7 +215,7 @@ fn graph(
     }
     sites.sort_by_key(|site| site.call);
 
-    let roots = roots(symbols, registries);
+    let roots = roots(symbols, &registries);
     let mut callers: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
     let mut level: BTreeSet<u64> = sites
         .iter()
@@ -223,20 +237,27 @@ fn graph(
         level = next;
     }
 
-    let unnamed_classes: BTreeSet<&str> = roots
-        .iter()
-        .filter(|(_, owner)| **owner == RootOf::UnnamedContent)
-        .filter_map(|(function, _)| names.of(*function).find_map(post_read_class))
-        .collect();
-    let graph_functions = callers
+    let classes = second_input_classes(symbols, names, templates, loaders);
+    let graph_functions: BTreeSet<u64> = callers
         .iter()
         .flat_map(|(callee, callers)| callers.iter().chain([callee]))
-        .copied();
-    let unnamed_inputs = graph_functions
-        .filter(|&function| {
-            names
-                .of(function)
-                .any(|name| takes_any(name, &unnamed_classes))
+        .copied()
+        .collect();
+    let second_inputs = graph_functions
+        .into_iter()
+        .filter_map(|function| {
+            let taken: BTreeSet<Option<&str>> = classes
+                .iter()
+                .filter(|(class, _)| names.of(function).any(|name| takes(name, class)))
+                .map(|(_, registry)| *registry)
+                .collect();
+            let own = match Vec::from_iter(taken)[..] {
+                [] => return None,
+                [registry] => registry.map(str::to_owned),
+                _ => None,
+            };
+
+            Some((function, own))
         })
         .collect();
 
@@ -244,8 +265,37 @@ fn graph(
         sites,
         callers,
         roots,
-        unnamed_inputs,
+        second_inputs,
     })
+}
+
+/// The classes of post-read functions that no template registry owns, with the loader registry
+/// that owns each, when one does. A function that takes one of them combines a second content
+/// input with its root registry's keys.
+fn second_input_classes<'a>(
+    symbols: &'a [Symbol],
+    names: &Names<'a>,
+    templates: &[NamedRegistry],
+    loaders: &[NamedRegistry<'a>],
+) -> BTreeMap<&'a str, Option<&'a str>> {
+    roots(symbols, templates)
+        .into_iter()
+        .filter(|(_, owner)| *owner == RootOf::UnnamedContent)
+        .filter_map(|(function, _)| names.of(function).find_map(post_read_class))
+        .map(|class| {
+            let loader = loaders.iter().find(|registry| owns(registry, class));
+
+            (class, loader.map(|registry| registry.name))
+        })
+        .collect()
+}
+
+/// Whether `class` is the database or item class of `registry`, or a class over its database.
+fn owns(registry: &NamedRegistry, class: &str) -> bool {
+    class == registry.owner
+        || class == registry.database
+        || class.contains(&format!("<{},", registry.database))
+        || class.contains(&format!("<{}>", registry.database))
 }
 
 /// Each named registry's database generators, database post-read loops and item post-read
@@ -280,14 +330,7 @@ fn roots(symbols: &[Symbol], registries: &[NamedRegistry]) -> BTreeMap<u64, Root
         }
     }
 
-    let named = |class: &str| {
-        registries.iter().any(|registry| {
-            class == registry.owner
-                || class == registry.database
-                || class.contains(&format!("<{},", registry.database))
-                || class.contains(&format!("<{}>", registry.database))
-        })
-    };
+    let named = |class: &str| registries.iter().any(|registry| owns(registry, class));
     for symbol in symbols {
         let Some(class) = post_read_class(&symbol.name) else {
             continue;
@@ -312,17 +355,15 @@ fn post_read_class(name: &str) -> Option<&str> {
         .find_map(|suffix| name.find(suffix).map(|end| &name[..end]))
 }
 
-/// Whether the parameters of the function `name` take an object of one of `classes`.
-fn takes_any(name: &str, classes: &BTreeSet<&str>) -> bool {
+/// Whether the parameters of the function `name` take an object of `class`.
+fn takes(name: &str, class: &str) -> bool {
     let Some(parameters) = name.find('(').map(|start| &name[start..]) else {
         return false;
     };
-    classes.iter().any(|class| {
-        ["(", ", "].iter().any(|before| {
-            [" const&", "&", " const*", "*"]
-                .iter()
-                .any(|after| parameters.contains(&format!("{before}{class}{after}")))
-        })
+    ["(", ", "].iter().any(|before| {
+        [" const&", "&", " const*", "*"]
+            .iter()
+            .any(|after| parameters.contains(&format!("{before}{class}{after}")))
     })
 }
 
@@ -1201,14 +1242,41 @@ mod tests {
     }
 
     #[test]
+    fn a_loader_registry_keeps_its_items_a_second_input_for_other_registries() {
+        let symbols = [
+            symbol(0x10, "CEconomicCategory::InitPostRead()"),
+            symbol(0x20, "CStrategicResource::InitPostRead()"),
+            symbol(0x30, "CZoneType::CSerializer::PostReadInit()"),
+        ];
+        let templates = [NamedRegistry {
+            name: "common/economic_categories",
+            database: "CEconomicCategoryDatabase",
+            owner: "CEconomicCategory",
+        }];
+        let loaders = [NamedRegistry {
+            name: "common/strategic_resources",
+            database: "CStrategicResourceDatabase",
+            owner: "CStrategicResource",
+        }];
+
+        assert_eq!(
+            second_input_classes(&symbols, &Names::new(&symbols), &templates, &loaders),
+            BTreeMap::from([
+                ("CStrategicResource", Some("common/strategic_resources")),
+                ("CZoneType::CSerializer", None),
+            ])
+        );
+    }
+
+    #[test]
     fn an_unnamed_input_is_a_parameter_of_its_class() {
-        let classes = BTreeSet::from(["CStrategicResource"]);
-        assert!(takes_any(
+        let class = "CStrategicResource";
+        assert!(takes(
             "CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, int&) const",
-            &classes
+            class
         ));
-        assert!(takes_any("f(int, CStrategicResource*)", &classes));
-        assert!(!takes_any("f(CStrategicResourceGroup const&)", &classes));
-        assert!(!takes_any("CStrategicResource::InitPostRead()", &classes));
+        assert!(takes("f(int, CStrategicResource*)", class));
+        assert!(!takes("f(CStrategicResourceGroup const&)", class));
+        assert!(!takes("CStrategicResource::InitPostRead()", class));
     }
 }

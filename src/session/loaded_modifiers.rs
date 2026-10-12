@@ -134,7 +134,7 @@ impl Native {
                 gaps.push(registry_gap(
                     GapKind::UnnamedDeclaration,
                     Some(registry),
-                    "names that combine this registry's keys with the keys of content that Native does not name as a registry are unexplained",
+                    "names that combine this registry's keys with the keys of other content are unexplained",
                 ));
             }
         }
