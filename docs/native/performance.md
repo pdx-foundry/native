@@ -88,12 +88,14 @@ build, nothing else running. `cargo parity` runs two test binaries one after the
   its slowest test. With 6 test threads the walls stay at 84 s and 173 s and the peaks fall only
   to 6.3 GB and 8.5 GB resident: a few heavy tests hold most of the memory.
 - **Each test opens its own `Native`; no test shares one.** About 64 opens run per parity run.
-  Opening costs 0.5 s and about 280 MB (the kept executable and the catalog). What repeats is the
-  analysis after it. One `Native` measured step by step:
+  Opening costs 0.5 s; the first question then builds the catalog in about 0.5 s, and the two
+  together keep about 280 MB (the executable and the catalog). What repeats is the analysis after
+  them. One `Native` measured step by step:
 
   | First call on a `Native` | Time | Footprint after |
   | --- | --- | --- |
   | `open` | 0.5 s | 314 MB |
+  | `registries` (builds the catalog) | 0.5 s | 270 MB |
   | `registry_fields`, first registry (the shared fact sets, block facts included) | 15.3 s | 751 MB (falls to about 280 MB after) |
   | `registry_fields`, any later registry | 0.7 s | about 340 MB |
   | `command_grammar`, first effect | 2.9 s | 661 MB |
@@ -134,8 +136,11 @@ on the host above, each run alone:
 | `script_numeric` | 121 s | 1 | 1.2 s | 26.9 s | 82.0 s (163 checks, 0.5 s each) | 0.5 s |
 
 - **A fixture case's time is game launches.** Reading the answers takes about 0.1 s. A slow
-  fixture case is slow because it launches the game many times: the conversion matrix 10 times
-  and the scoped matrix 7 times, because a request takes one file and at most 32 questions.
+  fixture case is slow because it launches the game many times. The conversion matrix gives
+  each of its 10 table rows its own fixture. The scoped matrix launches 7 times: a request takes
+  one file, so each registry has its own launches; ordinary cases go in batches of 24; and each of
+  3 structural cases has a launch of its own, because a block given to a scalar reader can consume
+  the definitions after it.
   `script_attribution` launches 5 times, and each `fixture_argument_*` case twice, the first
   through validation.
 - **A window through validation costs about 65 s more than a file-load window.** 12 cases use one
@@ -149,7 +154,7 @@ on the host above, each run alone:
   worker is not measured; the worker's `session/worker-diagnostics.json` checkpoints are the
   place to time it.
 
-A suite run at `63946ba` took 3,514 s for 66 cases and about 88 launches: about 1,080 s in 12
+A suite run on the code of `13c94ba` took 3,514 s for 66 cases and about 88 launches: about 1,080 s in 12
 windows through validation, about 1,900 s in the other launches, about 140 s in script checks
 and the rest in static analysis and fault cases that end early.
 
