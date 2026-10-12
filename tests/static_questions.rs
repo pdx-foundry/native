@@ -865,12 +865,13 @@ fn modifier_containers_list_their_categories_or_keep_a_gap() {
         &["tradition_swap", "triggered_modifier"]
     ));
 
+    // `CPopCategory`'s constructor joins once the evaluator runs its `mvni`.
     let pop_categories = fields("common/pop_categories");
-    assert_eq!(
-        accepted(&pop_categories, "pop_group_modifier"),
-        AcceptedCategories::Unresolved
-    );
-    assert!(named(&pop_categories, &["pop_group_modifier"]));
+    let AcceptedCategories::Listed(pop) = accepted(&pop_categories, "pop_group_modifier") else {
+        panic!("the pop group modifier has no categories");
+    };
+    assert!(pop.contains(&"Pops".to_owned()));
+    assert!(!pop.contains(&"Countries".to_owned()));
 
     let starbase_modules = fields("common/starbase_modules");
     assert!(
@@ -1613,6 +1614,40 @@ fn assert_reader_gaps(registry: &str, answer: &Answer<Vec<pdx_native::Field>>) {
         }
     }
     check(registry, &answer.gaps, &answer.value, None);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn pre_trigger_blocks_share_one_key_table() {
+    let native = native();
+    let actual = parity::pre_triggers(native, &expected::<Value>("pre-triggers.json")).unwrap();
+    assert_eq!(actual, expected::<Value>("pre-triggers.json"));
+
+    let jobs = &actual["common/pop_jobs"]["possible_pre_triggers"];
+    let factions = &actual["common/pop_faction_types"]["can_join_pre_triggers"];
+    assert_eq!(jobs, factions);
+    // Independent expectation: every key of the config's colony, pop and country sets
+    // (cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8, pre_triggers.cwt).
+    for key in [
+        "has_owner",
+        "is_homeworld",
+        "original_owner",
+        "is_ai",
+        "has_ground_combat",
+        "is_capital",
+        "is_occupied_flag",
+        "is_enslaved",
+        "is_being_purged",
+        "is_being_assimilated",
+        "has_planet",
+        "is_sapient",
+        "is_robotic",
+    ] {
+        assert!(
+            jobs["keys"].get(key).is_some(),
+            "{key} is a pre-trigger key"
+        );
+    }
 }
 
 /// The developer entry that the sweep uses gives the public answer from its one run.

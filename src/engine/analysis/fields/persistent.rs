@@ -1,7 +1,11 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
 use super::containers::{self, PathMasks};
-use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, RootField};
+use super::{
+    ConcreteReader, EmbeddedField, FieldGap, FieldGapKind, FieldInput, RegistryFieldResult,
+    RootField, dispatch, inventory, tokens,
+};
 use crate::engine::analysis::{
+    discovery::SymbolIndex,
     evaluate::{Call, Code, Exit, ReadOnlyData},
     readers,
     receivers::{ConstructorImage, Constructors, accept_entered_path, install_vtables},
@@ -70,6 +74,60 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
         containers,
         gaps,
     }
+}
+
+/// The keys of each embedded object that a root field reads on every path, when the object's
+/// member reader has no block family. A block family's own method gives the grammar of the
+/// others. The keys are derived to depth one, by the dispatch walk of the owner's reader.
+pub(super) fn embedded(
+    input: &FieldInput,
+    symbol_index: &SymbolIndex,
+    fields: &[RootField],
+    readers: &BTreeMap<i64, ConcreteReader>,
+    names: &BTreeMap<i64, tokens::Token>,
+) -> Vec<EmbeddedField> {
+    let mut embedded = Vec::new();
+    for field in fields {
+        if !field.readers.iter().all(readers::reads_embedded_object) {
+            continue;
+        }
+        let offsets: BTreeSet<_> = field.readers.iter().map(readers::destination).collect();
+        if offsets.len() != 1 {
+            continue;
+        }
+        let Some(Some(offset)) = offsets.first() else {
+            continue;
+        };
+        let Some(reader) = readers.get(offset) else {
+            continue;
+        };
+        if reader.family != crate::BlockFamily::Unknown {
+            continue;
+        }
+        let Some(class) = reader.member.strip_suffix("::ReadMember(CReader&, int)") else {
+            continue;
+        };
+        let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, class);
+        let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
+        // With no named key, the field keeps its unresolved members and their gap.
+        if fields.is_empty() {
+            continue;
+        }
+        gaps.extend(field_gaps);
+        let partition_accounted = inventory::partition_accounted(&paths);
+        embedded.push(EmbeddedField {
+            token: field.token,
+            member: reader.member.clone(),
+            fields: Box::new(RegistryFieldResult {
+                fields,
+                paths,
+                gaps,
+                partition_accounted,
+                ..RegistryFieldResult::default()
+            }),
+        });
+    }
+    embedded
 }
 
 /// The vtable address points that every owner constructor installs at the requested offsets.

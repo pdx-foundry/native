@@ -189,6 +189,7 @@ mod tests {
             stored_words: BTreeMap::new(),
             container_masks: Default::default(),
             collections: vec![],
+            embedded: Vec::new(),
             fields,
             paths: vec![],
             gaps: vec![],

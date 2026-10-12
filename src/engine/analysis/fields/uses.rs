@@ -772,6 +772,7 @@ mod tests {
                 gaps: vec![],
                 partition_accounted: true,
                 collections: vec![],
+                embedded: Vec::new(),
                 uses: vec![],
             }),
         }]

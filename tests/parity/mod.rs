@@ -70,6 +70,55 @@ pub fn read_scopes(native: &Native, expected: &Value) -> Result<Value> {
     Ok(json!({"build": native.build(), "registries": registries, "commands": commands}))
 }
 
+/// The keys of each selected field's embedded block: the field's reader identity, each key's
+/// reader kind, and the kinds of the gaps on each key.
+pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
+    let mut registries = BTreeMap::new();
+    for (registry, selected) in expected
+        .as_object()
+        .ok_or("expected pre-trigger registry selection")?
+    {
+        let answer = current_answer(native, native.registry_fields(registry)?)?;
+        let mut fields = BTreeMap::new();
+        for name in selected
+            .as_object()
+            .ok_or("expected pre-trigger field selection")?
+            .keys()
+        {
+            let field = answer
+                .value
+                .iter()
+                .find(|field| &field.name == name)
+                .ok_or("selected field is in the answer")?;
+            let FieldMembers::Fields(members) = &field.members else {
+                fields.insert(
+                    name,
+                    json!({"reader": field.reader.id, "keys": "Unresolved"}),
+                );
+                continue;
+            };
+            let keys: BTreeMap<_, _> = members
+                .iter()
+                .map(|key| {
+                    let path = format!("{name}.{}", key.name);
+                    let gaps: BTreeSet<_> = answer
+                        .gaps
+                        .iter()
+                        .filter(|gap| {
+                            matches!(&gap.subject, Some(GapSubject::Field { name }) if *name == path)
+                        })
+                        .map(|gap| format!("{:?}", gap.kind))
+                        .collect();
+                    (&key.name, json!({"reader": key.reader.kind, "gaps": gaps}))
+                })
+                .collect();
+            fields.insert(name, json!({"reader": field.reader.id, "keys": keys}));
+        }
+        registries.insert(registry, fields);
+    }
+    Ok(json!(registries))
+}
+
 #[cfg(test)]
 mod comparison_tests;
 
@@ -133,6 +182,7 @@ pub const FILES: &[&str] = &[
     "localization-declarations.json",
     "scope-inventory.json",
     "scope-links.json",
+    "pre-triggers.json",
 ];
 
 pub fn expected_directory() -> PathBuf {
@@ -275,6 +325,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             }
             Ok(json!(registries))
         }
+        "pre-triggers.json" => pre_triggers(native, expected),
         "modifier-blocks.json" => modifier_blocks(native),
         "weight-blocks.json" => weight_blocks(native),
         "triggered-modifiers.json" => triggered_modifiers(native),

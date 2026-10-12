@@ -243,6 +243,8 @@ pub struct RegistryFieldResult {
     pub container_masks: BTreeMap<i64, Result<u64, Unresolved>>,
     /// Established nested object collections.
     pub collections: Vec<CollectionField>,
+    /// Fixed keys of the embedded objects that root fields read and that no block family reads.
+    pub embedded: Vec<EmbeddedField>,
     /// Named root fields, with explicit reader alternatives.
     pub fields: Vec<RootField>,
     /// Full bounded token-path ledger.
@@ -302,6 +304,18 @@ pub struct CollectionField {
     /// The category mask that the inserted object's constructor gives it, when that constructor
     /// builds a modifier container.
     pub container_mask: Option<Result<u64, Unresolved>>,
+}
+
+/// A root field that reads one embedded persistent object whose member reader has no block
+/// family, with the keys that the member reader dispatches.
+#[derive(Debug, Clone, Serialize)]
+pub struct EmbeddedField {
+    /// Root loader token whose every path reads the object.
+    pub token: i64,
+    /// The object's member reader.
+    pub member: String,
+    /// Loader fields and gaps of the member reader. Its keys are derived to depth one.
+    pub fields: Box<RegistryFieldResult>,
 }
 
 /// A conditional selection of a stored field in an owner method.
