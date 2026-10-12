@@ -136,8 +136,8 @@ class ProtocolTests(unittest.TestCase):
                 wire.validate(dict(question, storage=bound, **legacy), schema, root)
 
     def test_fixture_events_carry_no_reader_authority(self):
-        terminal = dict(kind='field-terminal', question=0, owner=None, definition_line=None,
-                        final_value=None, unavailable='no decoder')
+        terminal = dict(kind='field-terminal', question=0, owner=None, final_value=None,
+                        unavailable='no decoder')
         row = dict(run='a', seq=1, thread=7, kind='fixture', event=terminal)
         self.assertEqual(wire.decode('record', wire.encode('record', row)), row)
         for extra in [dict(reader_id=None), dict(reader_kind='String'), dict(reader_family='Unknown')]:

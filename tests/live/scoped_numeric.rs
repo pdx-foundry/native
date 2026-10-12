@@ -102,7 +102,7 @@ fn record_batch(
         else {
             return Err(format!("scoped parser unavailable: {outcome:?}").into());
         };
-        if outcome.owner.is_none()
+        if outcome.definitions.is_empty()
             || occurrences.len() != case.body.matches(&format!("{} =", case.field)).count()
             || parsed.len() != occurrences.len()
             || parsed.iter().zip(occurrences).any(|(parser, stored)| {

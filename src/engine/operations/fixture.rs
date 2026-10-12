@@ -3,6 +3,9 @@
 //!
 //! The producer numbers the occurrences of a field. A record whose number skips ahead of the last
 //! kept one stays, with a gap for the lost occurrence; a repeated or earlier number is refused.
+//!
+//! A repeated definition key keeps each construction. Field events join the owner of the key's
+//! latest construction, and the final value is read once from the one owner of all of them.
 use super::event_stream::{self, OwnerEvent};
 use crate::protocol::{
     hooks,
@@ -13,9 +16,9 @@ use crate::protocol::{
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow,
-    Error, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation, FixtureOwnerId,
-    FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue, Gap, GapKind, GapSubject,
-    Operation, ParsedFieldOccurrence, Source, StoredFieldOccurrence,
+    Error, FixtureDefinition, FixtureDiagnostic, FixtureFieldOutcome, FixtureObservation,
+    FixtureOwnerId, FixtureParsing, FixtureRequest, FixtureStorage, FixtureValue, Gap, GapKind,
+    GapSubject, Operation, ParsedFieldOccurrence, Source, StoredFieldOccurrence,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -123,7 +126,6 @@ pub(crate) fn reduce(
     Ok(window.finish(build))
 }
 
-#[derive(Clone)]
 struct DefinitionState {
     native_owner: String,
     public_owner: FixtureOwnerId,
@@ -177,7 +179,7 @@ struct Window<'a> {
     ended: bool,
     owner_ids: BTreeMap<String, FixtureOwnerId>,
     next_owner_id: u64,
-    definitions: BTreeMap<String, DefinitionState>,
+    definitions: BTreeMap<String, Vec<DefinitionState>>,
     occurrences: BTreeMap<u64, Vec<StoredFieldOccurrence>>,
     parse_occurrences: BTreeMap<u64, Vec<ParsedFieldOccurrence>>,
     parsing_terminals: BTreeMap<u64, Option<String>>,
@@ -381,24 +383,43 @@ impl<'a> Window<'a> {
     }
 
     fn accept_definition(&mut self, file: &str, line: u64, definition: &str, owner: &str) {
+        // One line can hold several definitions, so a repeat may share its line; record loss and
+        // replay are the sequence check's.
+        let in_source_order = self
+            .definitions
+            .get(definition)
+            .and_then(|constructions| constructions.last())
+            .is_none_or(|last| line >= last.line);
+        // The field terminals read the final value, so a later construction would replace it unseen.
+        let before_terminals = self.field_terminals.is_empty();
         let valid = self.loading
             && !self.returned
             && self.is_fixture_line(file, line)
             && super::registry_items::pointer(owner)
-            && !self.definitions.contains_key(definition);
+            && in_source_order
+            && before_terminals;
         if !valid {
-            self.window_gap("A definition lacks a matching file, owner, line or loader");
+            self.window_gap("A definition lacks a matching file, owner, line, order or loader");
             return;
         }
         let public_owner = self.public_owner(owner);
-        self.definitions.insert(
-            definition.into(),
-            DefinitionState {
+        self.definitions
+            .entry(definition.into())
+            .or_default()
+            .push(DefinitionState {
                 native_owner: owner.into(),
                 public_owner,
                 line,
-            },
-        );
+            });
+    }
+
+    /// Whether `owner` constructed the latest occurrence of `definition`, which the field events
+    /// that follow it read.
+    fn latest_owner_is(&self, definition: &str, owner: &str) -> bool {
+        self.definitions
+            .get(definition)
+            .and_then(|constructions| constructions.last())
+            .is_some_and(|latest| latest.native_owner == owner)
     }
 
     fn accept_field_storage(&mut self, event: &FixtureEvent) {
@@ -428,10 +449,7 @@ impl<'a> Window<'a> {
             self.loading && !self.returned && !self.field_terminals.contains_key(question);
         let in_source = self.is_fixture_line(file, *line);
         let asked_field = definition == &asked.definition && field == &asked.field;
-        let owner_joins = self
-            .definitions
-            .get(definition)
-            .is_some_and(|known| &known.native_owner == owner);
+        let owner_joins = self.latest_owner_is(definition, owner);
         let decoder = self.questions[*question as usize].storage.decoder();
         let storage_supported = decoder.is_some();
         let value_matches = decoder.is_some_and(|decoder| decoder.accepts(value));
@@ -482,10 +500,7 @@ impl<'a> Window<'a> {
             self.window_gap("A parser event names an unknown question");
             return;
         };
-        let owner_joins = self
-            .definitions
-            .get(definition)
-            .is_some_and(|known| &known.native_owner == owner);
+        let owner_joins = self.latest_owner_is(definition, owner);
         if !asked.parsing
             || !self.loading
             || self.returned
@@ -620,7 +635,6 @@ impl<'a> Window<'a> {
         let FixtureEvent::FieldTerminal {
             question,
             owner,
-            definition_line,
             final_value,
             unavailable,
         } = event
@@ -638,8 +652,10 @@ impl<'a> Window<'a> {
         let owner_joined = owner.as_ref().is_some_and(|pointer| {
             self.definitions
                 .get(&asked.definition)
-                .is_some_and(|known| {
-                    &known.native_owner == pointer && Some(known.line) == *definition_line
+                .is_some_and(|constructions| {
+                    constructions
+                        .iter()
+                        .all(|construction| &construction.native_owner == pointer)
                 })
         });
         let shape_valid = match self.questions[*question as usize].storage.decoder() {
@@ -903,12 +919,21 @@ impl<'a> Window<'a> {
         for index in 0..self.request.field_questions.len() as u64 {
             let question = self.request.field_questions[index as usize].clone();
             let terminal = self.field_terminals.remove(&index);
-            let definition = self.definitions.get(&question.definition).cloned();
+            let definitions: Vec<_> = self
+                .definitions
+                .get(&question.definition)
+                .into_iter()
+                .flatten()
+                .map(|construction| FixtureDefinition {
+                    line: construction.line,
+                    owner: construction.public_owner.clone(),
+                })
+                .collect();
             let occurrences = self.occurrences.remove(&index).unwrap_or_default();
             let parsing = self.finish_parsing(index, &question);
             let storage = match &questions[index as usize].storage {
                 FixtureQuestionStorage::Bound(_) => {
-                    self.observed_storage(index, terminal, definition.is_some(), occurrences)
+                    self.observed_storage(index, terminal, !definitions.is_empty(), occurrences)
                 }
                 FixtureQuestionStorage::Unbound(reason) => {
                     self.unbound_storage(&question, GapKind::OutsideMethod, reason)
@@ -920,10 +945,7 @@ impl<'a> Window<'a> {
             self.value.field_outcomes.push(FixtureFieldOutcome {
                 question,
                 file: self.request.file().into(),
-                owner: definition
-                    .as_ref()
-                    .map(|definition| definition.public_owner.clone()),
-                definition_line: definition.as_ref().map(|definition| definition.line),
+                definitions,
                 parsing,
                 storage,
                 diagnostics: self.diagnostic_indices.remove(&index).unwrap_or_default(),
@@ -943,12 +965,19 @@ impl<'a> Window<'a> {
         let final_value = terminal
             .as_ref()
             .and_then(|terminal| terminal.final_value.clone());
+        let unavailable = terminal
+            .as_ref()
+            .and_then(|terminal| terminal.unavailable.clone());
         if occurrences.is_empty() && final_value.is_none() {
-            let reason = terminal
-                .and_then(|terminal| terminal.unavailable)
-                .unwrap_or_else(|| "No storage observation was established".into());
+            let reason =
+                unavailable.unwrap_or_else(|| "No storage observation was established".into());
             self.field_gap(index, &reason);
             return FixtureStorage::Unavailable(reason);
+        }
+        if final_value.is_none()
+            && let Some(reason) = &unavailable
+        {
+            self.field_gap(index, reason);
         }
         let complete = self.ended
             && self.returned
@@ -1023,7 +1052,7 @@ impl<'a> Window<'a> {
             completeness: Completeness::from_gaps(&self.gaps),
             value: self.value,
             gaps: self.gaps,
-            source: Source::new(build, "observe-fixture/v7", Basis::LiveObservation),
+            source: Source::new(build, "observe-fixture/v8", Basis::LiveObservation),
         }
     }
 }
@@ -1124,7 +1153,7 @@ mod tests {
                 json!({"kind":"field-parse","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"potential","owner":"0x2000","occurrence":1,"returned":false}),
                 json!({"kind":"diagnostic","text":"Rejected nested child","stage":"reader-unexpected-report","file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"potential","occurrence":1}),
                 json!({"kind":"field-parse","question":0,"file":"common/traditions/sample.txt","line":4,"definition":"sample","field":"potential","owner":"0x2000","occurrence":1,"returned":true}),
-                json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"final_value":null,"unavailable":"No block storage decoder"}),
+                json!({"kind":"field-terminal","question":0,"owner":null,"final_value":null,"unavailable":"No block storage decoder"}),
                 json!({"kind":"parsing-terminal","question":0,"count":1,"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
                 json!({"kind":"load-returned","file":"common/traditions/sample.txt"}),
@@ -1555,7 +1584,7 @@ mod tests {
                 json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":1,"value":{"String":"one"}}),
                 json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":"common/traditions/sample.txt","line":2,"definition":"sample","field":"unlocks_agenda","occurrence":1}),
                 json!({"kind":"field-storage","question":0,"file":"common/traditions/sample.txt","line":3,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":2,"value":{"String":"two"}}),
-                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"final_value":{"String":"two"},"unavailable":null}),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","final_value":{"String":"two"},"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
                 json!({"kind":"load-returned","file":"common/traditions/sample.txt"}),
             ],
@@ -1647,7 +1676,7 @@ mod tests {
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/tradition_categories/sample.txt"}),
-                json!({"kind":"field-terminal","question":0,"owner":null,"definition_line":null,"final_value":null,"unavailable":"No exact-build storage binding for this field"}),
+                json!({"kind":"field-terminal","question":0,"owner":null,"final_value":null,"unavailable":"No exact-build storage binding for this field"}),
                 json!({"kind":"diagnostics-unavailable","reason":"Parser diagnostics are outside this registry binding"}),
                 json!({"kind":"load-returned","file":"common/tradition_categories/sample.txt"}),
             ],
@@ -1668,7 +1697,7 @@ mod tests {
 
     fn two_field_events() -> Vec<Value> {
         let storage = |question: u64, line: u64, field: &str, value: &str| json!({"kind":"field-storage","question":question,"file":"common/traditions/sample.txt","line":line,"definition":"sample","field":field,"owner":"0x2000","occurrence":1,"value":{"String":value}});
-        let terminal = |question: u64, value: &str| json!({"kind":"field-terminal","question":question,"owner":"0x2000","definition_line":1,"final_value":{"String":value},"unavailable":null});
+        let terminal = |question: u64, value: &str| json!({"kind":"field-terminal","question":question,"owner":"0x2000","final_value":{"String":value},"unavailable":null});
         field_outcome_session(
             vec![
                 json!({"kind":"load-start","file":"common/traditions/sample.txt"}),
@@ -1711,7 +1740,6 @@ mod tests {
                 }
                 Some("field-terminal") if event["event"]["question"] == json!(1) => {
                     event["event"]["owner"] = json!("0x3000");
-                    event["event"]["definition_line"] = json!(4);
                 }
                 _ => {}
             }
@@ -1968,7 +1996,7 @@ mod tests {
                 storage(3, 2, "two"),
                 json!({"kind":"diagnostic","text":"malformed value","stage":"reader-malformed-report","file":source,"line":3,"definition":"sample","field":"unlocks_agenda","occurrence":2}),
                 parse(3, 2, true),
-                json!({"kind":"field-terminal","question":0,"owner":"0x2000","definition_line":1,"final_value":{"String":"two"},"unavailable":null}),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","final_value":{"String":"two"},"unavailable":null}),
                 json!({"kind":"parsing-terminal","question":0,"count":2,"unavailable":null}),
                 json!({"kind":"diagnostics-terminal","count":1}),
                 json!({"kind":"load-returned","file":source}),
@@ -2419,8 +2447,8 @@ mod tests {
         .unwrap();
         assert_eq!(expected.completeness, Completeness::Complete);
         assert_eq!(
-            expected.value.field_outcomes[0].owner,
-            expected.value.field_outcomes[1].owner
+            expected.value.field_outcomes[0].definitions,
+            expected.value.field_outcomes[1].definitions
         );
         let mut relocated = two_field_events();
         for event in &mut relocated {
@@ -2446,8 +2474,8 @@ mod tests {
         .unwrap();
         assert_eq!(different.completeness, Completeness::Complete);
         assert_ne!(
-            different.value.field_outcomes[0].owner,
-            different.value.field_outcomes[1].owner
+            different.value.field_outcomes[0].definitions,
+            different.value.field_outcomes[1].definitions
         );
     }
 
@@ -2694,5 +2722,138 @@ mod tests {
             wrong[7]["event"]["value"] = json!({"Integer":9});
             assert_eq!(run(wrong).completeness, Completeness::Partial);
         }
+    }
+
+    /// A key repeated three times, the last two on one line; the last occurrence omits the field.
+    fn repeated_key_request() -> FixtureRequest {
+        let mut question =
+            crate::FixtureFieldQuestion::new("common/traditions", "sample", "unlocks_agenda");
+        question.diagnostics = false;
+        FixtureRequest::field_outcomes(
+            "common/traditions/sample.txt",
+            "sample = {\n unlocks_agenda = \"one\"\n}\nsample = { unlocks_agenda = \"two\" } sample = {}\n",
+            [question],
+        )
+    }
+
+    /// Row numbers, from 0: 3 load start, 4, 6 and 8 the definitions, 5 and 7 storage, 9 the
+    /// terminal, 10 return and 11 end.
+    fn repeated_key_events() -> Vec<Value> {
+        let file = "common/traditions/sample.txt";
+        let definition = |line| json!({"kind":"definition","file":file,"line":line,"definition":"sample","owner":"0x2000"});
+        let storage = |line, occurrence, value| json!({"kind":"field-storage","question":0,"file":file,"line":line,"definition":"sample","field":"unlocks_agenda","owner":"0x2000","occurrence":occurrence,"value":{"String":value}});
+        field_outcome_session(
+            vec![
+                json!({"kind":"load-start","file":file}),
+                definition(1),
+                storage(2, 1, "one"),
+                definition(4),
+                storage(4, 2, "two"),
+                definition(4),
+                json!({"kind":"field-terminal","question":0,"owner":"0x2000","final_value":{"String":""},"unavailable":null}),
+                json!({"kind":"load-returned","file":file}),
+            ],
+            json!({"kind":"end","field_outcomes":1,"diagnostics":0}),
+        )
+    }
+
+    fn repeated_key_answer(events: Vec<Value>) -> Answer<FixtureObservation> {
+        reduce(
+            &repeated_key_request(),
+            &records(events),
+            &owner(),
+            BuildId("b".into()),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_repeated_key_keeps_each_construction_and_reads_the_final_value_once() {
+        let answer = repeated_key_answer(repeated_key_events());
+
+        assert_eq!(answer.completeness, Completeness::Complete);
+        let outcome = &answer.value.field_outcomes[0];
+        let owner = FixtureOwnerId(1);
+        assert_eq!(
+            outcome.definitions,
+            [1, 4, 4].map(|line| FixtureDefinition {
+                line,
+                owner: owner.clone(),
+            })
+        );
+        assert_eq!(
+            outcome.storage,
+            FixtureStorage::Observed {
+                occurrences: vec![
+                    StoredFieldOccurrence {
+                        line: 2,
+                        occurrence: 1,
+                        value: FixtureValue::String("one".into()),
+                    },
+                    StoredFieldOccurrence {
+                        line: 4,
+                        occurrence: 2,
+                        value: FixtureValue::String("two".into()),
+                    },
+                ],
+                final_value: Some(FixtureValue::String(String::new())),
+                completeness: Completeness::Complete,
+            }
+        );
+    }
+
+    #[test]
+    fn a_repeated_key_out_of_order_after_its_terminal_or_with_a_lost_record_is_partial() {
+        let mut earlier_line = repeated_key_events();
+        earlier_line[8]["event"]["line"] = json!(2);
+        let mut after_terminal = repeated_key_events();
+        after_terminal.swap(8, 9);
+        renumber(&mut after_terminal);
+        let mut lost = repeated_key_events();
+        lost.remove(6);
+
+        for (case, events) in [
+            ("earlier line", earlier_line),
+            ("after terminal", after_terminal),
+            ("lost record", lost),
+        ] {
+            let answer = repeated_key_answer(events);
+
+            assert_eq!(answer.completeness, Completeness::Partial, "{case}");
+        }
+    }
+
+    #[test]
+    fn a_repeated_key_with_several_owners_keeps_its_values_and_the_reason_for_no_final_value() {
+        let reason =
+            "The repeated definition key has several owners; the stored one is not established";
+        let mut events = repeated_key_events();
+        for row in [6, 7, 8] {
+            events[row]["event"]["owner"] = json!("0x3000");
+        }
+        events[9]["event"] = json!({"kind":"field-terminal","question":0,"owner":null,"final_value":null,"unavailable":reason});
+
+        let answer = repeated_key_answer(events);
+
+        assert_eq!(answer.completeness, Completeness::Partial);
+        assert!(answer.gaps.iter().any(|gap| gap.detail == reason));
+        let outcome = &answer.value.field_outcomes[0];
+        assert_eq!(
+            outcome
+                .definitions
+                .iter()
+                .map(|definition| definition.owner.clone())
+                .collect::<Vec<_>>(),
+            [FixtureOwnerId(1), FixtureOwnerId(2), FixtureOwnerId(2)]
+        );
+        let FixtureStorage::Observed {
+            occurrences,
+            final_value: None,
+            completeness: Completeness::Partial,
+        } = &outcome.storage
+        else {
+            panic!("storage: {:?}", outcome.storage);
+        };
+        assert_eq!(occurrences.len(), 2);
     }
 }

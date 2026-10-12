@@ -59,10 +59,10 @@ pub use field::{
     WeightOtherKeys,
 };
 pub use fixture::{
-    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,
-    FixtureFieldQuestion, FixtureObservation, FixtureOwnerId, FixtureParsing, FixtureRequest,
-    FixtureStorage, FixtureValue, FixtureWindow, ParsedFieldOccurrence, ScopedNumericLiteral,
-    ScopedNumericStorage, StoredFieldOccurrence,
+    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDefinition, FixtureDiagnostic,
+    FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureOwnerId, FixtureParsing,
+    FixtureRequest, FixtureStorage, FixtureValue, FixtureWindow, ParsedFieldOccurrence,
+    ScopedNumericLiteral, ScopedNumericStorage, StoredFieldOccurrence,
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{

@@ -955,7 +955,6 @@ pub(crate) enum FixtureEvent {
     FieldTerminal {
         question: u64,
         owner: Option<String>,
-        definition_line: Option<u64>,
         final_value: Option<crate::FixtureValue>,
         unavailable: Option<String>,
     },
