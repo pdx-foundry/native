@@ -478,6 +478,7 @@ class ParserObservationTests(unittest.TestCase):
         self.observer.current = None
         self.observer.loaded = []
         self.observer.finish_questions = Mock()
+        worker.breakpoints[protocol.HOOK['fixture_return']] = Mock()
         return second
 
     def test_several_files_emit_the_terminals_once_after_the_last_return(self):
@@ -486,6 +487,7 @@ class ParserObservationTests(unittest.TestCase):
             self.observer.start_file(file, 7)
             self.observer.on_return(Mock(), 7)
         self.observer.finish_questions.assert_called_once()
+        worker.breakpoints[protocol.HOOK['fixture_return']].SetEnabled.assert_called_with(False)
         self.assertEqual([(call.args[0], call.kwargs.get('file')) for call in self.observer.emit.call_args_list
                           if call.args[0] in {'load-start', 'load-returned'}],
                          [('load-start', second), ('load-returned', second),

@@ -676,6 +676,9 @@ class FixtureObserver:
         self.current = None
         self.active_reader = None
         if not self.last_file():
+            # A one-shot hook whose callback continues stays armed, and every file returns at this
+            # address, so the next file's own return hook would fire beside it.
+            breakpoints[protocol.HOOK['fixture_return']].SetEnabled(False)
             self.emit('load-returned', thread, file=file)
             return False
         # The final values are read once, after the last file.
