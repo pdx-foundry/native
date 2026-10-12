@@ -1269,7 +1269,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unnamed_input_is_a_parameter_of_its_class() {
+    fn a_second_input_is_a_parameter_of_its_class() {
         let class = "CStrategicResource";
         assert!(takes(
             "CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, int&) const",

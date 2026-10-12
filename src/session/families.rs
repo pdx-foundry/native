@@ -53,16 +53,16 @@ impl Native {
                 .flat_map(|result| &result.families)
                 .filter_map(|family| family.mask);
             let categories = modifiers::category_names(&modifier_input.categories, masks);
-            let unnamed_input = index
+            let second_input = index
                 .joins
                 .registries
                 .get(registry)
-                .is_some_and(|join| join.unnamed_input);
+                .is_some_and(|join| join.second_input);
 
             Ok(normalized_families(
                 registry,
                 result.as_ref(),
-                unnamed_input,
+                second_input,
                 &unjoined_sites(&index.joins),
                 &categories,
                 self.build(),
@@ -95,7 +95,7 @@ pub(super) fn unjoined_summary(unjoined: &BTreeMap<Reason, usize>) -> Option<Str
         .map(|(reason, count)| {
             let reason = match reason {
                 Reason::RegistrationFunction => "inside the registration function",
-                Reason::UnnamedInput => {
+                Reason::SecondInput => {
                     "combine a registry's keys with the keys of other content"
                 }
                 Reason::UnnamedContent => {
@@ -117,7 +117,7 @@ pub(super) fn unjoined_summary(unjoined: &BTreeMap<Reason, usize>) -> Option<Str
 fn normalized_families(
     registry: &str,
     result: Option<&FamilyResult>,
-    unnamed_input: bool,
+    second_input: bool,
     unjoined: &BTreeMap<Reason, usize>,
     categories: &CategoryNames,
     build: BuildId,
@@ -177,7 +177,7 @@ fn normalized_families(
         }
     }
 
-    if unnamed_input {
+    if second_input {
         gaps.push(registry_gap(
             GapKind::UnnamedDeclaration,
             subject,
@@ -308,13 +308,13 @@ mod tests {
 
     fn answer(
         result: Option<&FamilyResult>,
-        unnamed_input: bool,
+        second_input: bool,
         unjoined: &[(Reason, usize)],
     ) -> Answer<Vec<ModifierFamily>> {
         normalized_families(
             "common/x",
             result,
-            unnamed_input,
+            second_input,
             &unjoined.iter().copied().collect(),
             &categories(),
             build(),

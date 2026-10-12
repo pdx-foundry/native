@@ -130,7 +130,7 @@ impl Native {
             }
         }
         for (registry, join) in &index.joins.registries {
-            if join.unnamed_input {
+            if join.second_input {
                 gaps.push(registry_gap(
                     GapKind::UnnamedDeclaration,
                     Some(registry),

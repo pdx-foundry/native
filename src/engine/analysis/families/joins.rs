@@ -77,7 +77,7 @@ pub struct RegistryJoin {
     /// The functions between a root and a generation call on the joined contexts.
     pub path: BTreeSet<u64>,
     /// A context of this registry takes a second content object.
-    pub unnamed_input: bool,
+    pub second_input: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +92,7 @@ pub enum Reason {
     /// The call is inside the registration function.
     RegistrationFunction,
     /// A context also takes a second content object.
-    UnnamedInput,
+    SecondInput,
     /// A context starts at a content object that is not an item of a named registry.
     UnnamedContent,
     /// No chain of callers reaches a root.
@@ -105,7 +105,7 @@ impl Reason {
     fn precedence(self) -> u8 {
         match self {
             Self::RegistrationFunction => 0,
-            Self::UnnamedInput => 1,
+            Self::SecondInput => 1,
             Self::UnnamedContent => 2,
             Self::NoRoot => 3,
         }
@@ -142,16 +142,16 @@ pub fn join(graph: &Graph) -> Joins {
                 reasons.push(Reason::UnnamedContent);
                 continue;
             };
-            let second_input = context.path.iter().any(|function| {
+            let through_second_input = context.path.iter().any(|function| {
                 graph
                     .second_inputs
                     .get(function)
                     .is_some_and(|own| own.as_ref() != Some(registry))
             });
             let registry = joins.registries.entry(registry.clone()).or_default();
-            if second_input {
-                registry.unnamed_input = true;
-                reasons.push(Reason::UnnamedInput);
+            if through_second_input {
+                registry.second_input = true;
+                reasons.push(Reason::SecondInput);
                 continue;
             }
 
@@ -300,17 +300,14 @@ mod tests {
     }
 
     #[test]
-    fn a_context_through_an_unnamed_input_is_not_followed() {
+    fn a_context_through_a_second_input_is_not_followed() {
         let mut graph = graph();
         graph.second_inputs.insert(0x210, None);
         let joins = join(&graph);
 
-        assert_eq!(
-            joins.sites[&0x204],
-            SiteJoin::Unjoined(Reason::UnnamedInput)
-        );
+        assert_eq!(joins.sites[&0x204], SiteJoin::Unjoined(Reason::SecondInput));
         let a = &joins.registries["common/a"];
-        assert!(a.unnamed_input);
+        assert!(a.second_input);
         assert!(!a.path.contains(&0x210));
         assert_eq!(a.roots[&0x1000].1, BTreeSet::from([0x104]));
     }
@@ -321,13 +318,10 @@ mod tests {
         graph.second_inputs.insert(0x100, Some("common/b".into()));
         let joins = join(&graph);
 
-        assert_eq!(
-            joins.sites[&0x104],
-            SiteJoin::Unjoined(Reason::UnnamedInput)
-        );
-        assert!(joins.registries["common/a"].unnamed_input);
+        assert_eq!(joins.sites[&0x104], SiteJoin::Unjoined(Reason::SecondInput));
+        assert!(joins.registries["common/a"].second_input);
         let b = &joins.registries["common/b"];
-        assert!(!b.unnamed_input);
+        assert!(!b.second_input);
         assert_eq!(b.roots[&0x2000].1, BTreeSet::from([0x104]));
     }
 
