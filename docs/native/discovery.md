@@ -11,7 +11,7 @@ check a method in one task.
 
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
-| `Native::registries` | `registry-directories/v5` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
+| `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v31` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs` | [Field sweep and stops](registry-fields.md#current-sweep) |
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v31`, `command-grammar/v18` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v31`, `command-grammar/v18` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
@@ -36,7 +36,7 @@ check a method in one task.
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
-| `Native::loader_rules` | `loader-rules/v2` | `loader_rules.rs`, `directories.rs`, `src/binding/analysis.rs`, `src/binding/binary/references.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
+| `Native::loader_rules` | `loader-rules/v3` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
 | `Native::derived_names` | `derived-names/v1` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 

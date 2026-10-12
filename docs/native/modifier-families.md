@@ -45,8 +45,9 @@ A root is a function that the engine runs for the items of one content database.
   `Create*` methods directly, not through the vtable.
 - The post-read functions of `CStrategicResource`, `CPlanetClass`, `CZoneType::CSerializer` and
   `CEconomicCategory::CTriggeredModifierTable::CSerializer<N>` are roots with no named registry.
-  `common/strategic_resources` and `common/planet_classes` have custom loaders and are not named
-  registries (SDK-551). Their sites stay gaps; `NamePart` has no part for them.
+  `common/strategic_resources` and `common/planet_classes` are registries that their own custom
+  loaders name ([Custom-loader names](registry-fields.md#custom-loader-names)), but no family join
+  reaches them yet (SDK-789). Their sites stay gaps; `NamePart` has no part for them.
 - `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a content
   object that no named registry owns. Its names combine two registries' keys.
 - The reload path (`ReadExistingEntry`) and the non-virtual thunks hold copies of

@@ -141,10 +141,12 @@ control of an upper-case trigger name would establish the rule; Atlas does not n
 ### Database directories
 
 Template databases name their directory in the `CSingleObjectGameDatabaseBase(CString const&)`
-constructor argument; `registries()` already joins them. Custom loaders do not:
-`CStaticModifierDatabase::Init(bool)` passes `"common/static_modifiers"` to
-`VFSGetEnumeratedFiles(char const*, CPdxArray<CString, int>&, char const*, char const*, int)`, and
-`RunGame` pre-enumerates `"common/planet_classes"`.
+constructor argument; `registries()` already joins them. A custom loader names the directory that
+its own functions pass to
+`VFSGetEnumeratedFiles(char const*, CPdxArray<CString, int>&, char const*, char const*, int)`:
+`CStaticModifierDatabase::Init(bool)` passes the literal `"common/static_modifiers"`, and
+`CPlanetClassDatabase::Init()` loads `"common/planet_classes"` from the global
+`_PLANET_CLASSES_DIR` ([Custom-loader names](registry-fields.md#custom-loader-names)).
 
 ## Result on M45-release
 
@@ -159,15 +161,17 @@ The other 29 keep typed gaps:
 | Immediate reader of another shape | 5 | bypass types, gfx cultures, name lists, planet classes, species classes |
 
 Six readers also lack a content directory: gfx cultures, name lists, planet classes (two readers),
-galaxy templates and leader traits. A custom loader outside a database's own functions, such as
-`RunGame` enumerating `common/planet_classes`, is not joined.
+galaxy templates and leader traits. On M452 the two planet-class readers have
+`common/planet_classes`, which the loader reads from a global `char const*`
+([Custom-loader names](registry-fields.md#custom-loader-names)).
 
 The field sweep over all 164 registries finds 29 root and nested fields with a reference read:
 **21 complete, 7 partial, 1 failed**. Six partial fields read key lists (`pop_jobs#tags`,
 `megastructures#overclock_types`, `species_classes#ethics_to_prefer`,
 `star_classes/randomizers#stars`, and `scripted_action` in megastructures and ship sizes);
 `megastructures#bypass_type` uses an immediate reader of another shape. `ship_sizes#carries_colony` fails: its planet class reader has
-neither a directory nor a shape. `council_agendas#finish_modifier` is complete:
+neither a directory nor a shape. On M452 it has the directory; the reader's shape is still not
+established. `council_agendas#finish_modifier` is complete:
 `common/static_modifiers`, deferred, first equal key, empty key looked up, null object on a miss.
 
 ### Owner initializers
@@ -178,7 +182,7 @@ instance, **61 complete, 2 partial, 91 failed**:
 | Result | Initializers | Shape |
 | --- | ---: | --- |
 | Complete | 61 | the shapes above, with a content directory and a key match |
-| Partial | 2 | `change_pc` and `start_terraform_progress`: the planet class database has no content directory |
+| Partial | 2 | `change_pc` and `start_terraform_progress`: the planet class database has no content directory. On M452 both have `common/planet_classes`. |
 | Failed | 74 | another shape, such as a scan guarded by a flag at `this+0x228` (9), a scan with a validity check that stores null (8), or a getter wrapper that orders its loads differently |
 | Failed | 14 | the initializer holds several lookups (`CCreateCountry`, `CCreateSpecies`, `CFreeJobsOfType` …) |
 | Failed | 3 | a getter of another shape: `GetLeaderTrait`, `GetOnActionList` (no null substitute) and `CEventManager::GetEvent` |

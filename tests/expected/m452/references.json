@@ -87,7 +87,11 @@
     "key_match": "Unresolved",
     "on_missing": "Unresolved",
     "stage": "Unresolved",
-    "target": "Unresolved"
+    "target": {
+     "Registry": {
+      "name": "common/planet_classes"
+     }
+    }
    }
   ]
  },

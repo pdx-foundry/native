@@ -361,7 +361,7 @@ class ParserObservationTests(unittest.TestCase):
             registry=registry, bindings=dict(malformed_entry=50, unexpected_entry=60, validation=None),
             questions=[question]))
         self.observer.loading = True
-        self.observer.definitions['one'] = dict(owner=0x2000, line=1)
+        self.observer.definitions['one'] = [dict(owner=0x2000, line=1)]
         self.observer.emit = Mock()
         self.observer.stored_string = Mock(side_effect=AssertionError('block storage was read'))
         self.observer.return_hook = Mock()
@@ -431,10 +431,45 @@ class ParserObservationTests(unittest.TestCase):
         self.observer.finish_questions(Mock(), 7)
         terminal = next(call for call in self.observer.emit.call_args_list
                         if call.args[0] == 'field-terminal')
-        self.assertEqual(terminal.kwargs, dict(question=0, owner=None, definition_line=None,
-                                               final_value=None, unavailable='No storage decoder'))
+        self.assertEqual(terminal.kwargs, dict(question=0, owner=None, final_value=None,
+                                               unavailable='No storage decoder'))
         event = dict(kind='field-terminal', **terminal.kwargs)
         protocol.encode('record', dict(run='a', seq=1, thread=7, kind='fixture', event=event))
+
+    def construct(self, owner, line):
+        name = protocol.HOOK['fixture_constructor_return'] + str(line)
+        worker.breakpoints[name] = Mock()
+        self.observer.pending_constructors[name] = dict(owner=owner, definition='one', line=line)
+        self.observer.on_constructor_return(7, name)
+
+    def finish_with_bound_storage(self):
+        self.observer.questions[0]['storage'] = dict(bound=dict(offset=8, decoder='String'))
+        self.observer.stored_value = Mock(return_value=dict(String='two'))
+        self.observer.emit.reset_mock()
+        self.observer.finish_questions(Mock(), 7)
+        return next(call.kwargs for call in self.observer.emit.call_args_list
+                    if call.args[0] == 'field-terminal')
+
+    def test_a_repeated_key_keeps_each_construction_and_reads_its_one_owner_once(self):
+        self.observer.definitions.clear()
+        self.construct(0x2000, 1)
+        self.construct(0x2000, 5)
+        self.assertEqual([call.kwargs['line'] for call in self.observer.emit.call_args_list
+                          if call.args[0] == 'definition'], [1, 5])
+        terminal = self.finish_with_bound_storage()
+        self.observer.stored_value.assert_called_once()
+        self.assertEqual(terminal, dict(question=0, owner=hex(0x2000), final_value=dict(String='two'),
+                                        unavailable=None))
+
+    def test_a_repeated_key_with_several_owners_has_no_final_value(self):
+        self.observer.definitions.clear()
+        self.construct(0x2000, 1)
+        self.construct(0x3000, 5)
+        terminal = self.finish_with_bound_storage()
+        self.observer.stored_value.assert_not_called()
+        self.assertIsNone(terminal['owner'])
+        self.assertIsNone(terminal['final_value'])
+        self.assertIn('several owners', terminal['unavailable'])
 
     def test_unbound_parser_does_not_report_a_complete_empty_observation(self):
         self.observer.questions[0]['token'] = None

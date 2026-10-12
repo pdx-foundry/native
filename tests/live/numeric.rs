@@ -308,7 +308,7 @@ fn checked_observations(
             .find(|(name, _)| *name == outcome.question.definition)
             .unwrap()
             .1;
-        if outcome.owner.is_none()
+        if outcome.definitions.is_empty()
             || occurrences.len() != inputs.len()
             || parsed.len() != inputs.len()
             || parsed.iter().zip(occurrences).any(|(parser, stored)| {

@@ -432,24 +432,28 @@ class FixtureObserver:
     def finish_questions(self, process, thread):
         for index, question in self.questions.items():
             unavailable = storage_reason(question)
-            owner = self.definitions.get(question['definition'])
+            owners = {occurrence['owner'] for occurrence in self.definitions.get(question['definition'], [])}
             if unavailable:
-                self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
+                self.emit('field-terminal', thread, question=index, owner=None,
                     final_value=None, unavailable=unavailable)
-            elif owner is None:
-                self.emit('field-terminal', thread, question=index, owner=None, definition_line=None,
+            elif not owners:
+                self.emit('field-terminal', thread, question=index, owner=None,
                     final_value=None, unavailable='Requested definition constructor was not observed')
+            elif len(owners) > 1:
+                self.emit('field-terminal', thread, question=index, owner=None, final_value=None,
+                    unavailable='The repeated definition key has several owners; the stored one is not established')
             else:
-                value = self.stored_value(process, owner['owner'], storage_binding(question))
-                self.emit('field-terminal', thread, question=index, owner=hex(owner['owner']),
-                    definition_line=owner['line'], final_value=value, unavailable=None)
+                [owner] = owners
+                value = self.stored_value(process, owner, storage_binding(question))
+                self.emit('field-terminal', thread, question=index, owner=hex(owner),
+                    final_value=value, unavailable=None)
             if question['parsing']:
                 parsing_unavailable = None
                 if question['token'] is None:
                     parsing_unavailable = 'No proven field token for parser observation'
                 elif question.get('nested') and unavailable:
                     parsing_unavailable = unavailable
-                elif owner is None:
+                elif not owners:
                     parsing_unavailable = 'Requested definition constructor was not observed'
                 self.emit('parsing-terminal', thread, question=index,
                     count=self.occurrences[index], unavailable=parsing_unavailable)
@@ -507,9 +511,7 @@ class FixtureObserver:
         definition = self.pending_constructors.pop(name, None)
         if definition is None:
             return False
-        if definition['definition'] in self.definitions:
-            raise RuntimeError('fixture definition key constructed more than once')
-        self.definitions[definition['definition']] = definition
+        self.definitions.setdefault(definition['definition'], []).append(definition)
         self.emit('definition', thread, file=self.config['file'], line=definition['line'],
             definition=definition['definition'], owner=hex(definition['owner']))
         return False
@@ -518,7 +520,7 @@ class FixtureObserver:
         if not self.loading or self.returned:
             return False
         owner = register(frame, registers['owner'])
-        definition = next((key for key, value in self.definitions.items() if value['owner'] == owner), None)
+        definition = next((key for key, occurrences in self.definitions.items() if occurrences[-1]['owner'] == owner), None)
         token = register(frame, registers['field-token'])
         question = self.question_by_token.get((definition, token))
         if question is None:
@@ -878,7 +880,7 @@ class InlineFixtureObserver(FixtureObserver):
         if requested:
             if key in self.definitions:
                 raise RuntimeError('fixture definition key read more than once')
-            self.definitions[key] = dict(self.root, definition=key)
+            self.definitions[key] = [dict(self.root, definition=key)]
             self.emit('definition', thread, file=self.config['file'], line=self.root['line'],
                 definition=key, owner=hex(self.root['owner']))
         for selector, reason in self.root_unavailable.items():

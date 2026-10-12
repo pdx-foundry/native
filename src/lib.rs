@@ -31,15 +31,16 @@ pub mod supervisor;
 pub use answer::{
     AcceptedCategories, Answer, Basis, BlockFamily, BuildId, Completeness, ContextScopes,
     Declaration, DeclarationKind, DeclaredScopes, DeclaredTags, Define, DefineValueType,
-    DerivedName, Disposal, DuplicateRule, EntryContext, EntryScope, Error, Field, GameRule, Gap,
-    GapKind, GapSubject, GeneratedName, GenerationCondition, KeptCategories, LinkData,
-    LoadedContent, LoadedModifier, LoadedModifiers, LoaderRules, LocalizationCommand,
-    LocalizationContext, LocalizationContextId, LocalizationContextReference,
-    LocalizationDeclarations, LocalizationLink, LocalizationOutput, MissingName, ModifierCategory,
-    ModifierCategoryKey, ModifierDeclaration, ModifierFamily, ModifierNode, ModifierNodeId,
-    ModifierNodeOwner, NameLookup, NamePart, OnAction, Operation, OutputScope, ReadScope, Reader,
-    ReaderId, ReaderKind, Recursion, Registry, RuleKind, ScopeDeclaration, ScopeGroup, ScopeId,
-    ScopeInventory, ScopeLink, ScopeReference, Source, Support,
+    DefinitionForm, DefinitionName, DefinitionStatement, DerivedName, Disposal, DuplicateRule,
+    EntryContext, EntryScope, Error, Field, GameRule, Gap, GapKind, GapSubject, GeneratedName,
+    GenerationCondition, KeptCategories, LinkData, LoadedContent, LoadedModifier, LoadedModifiers,
+    LoaderRules, LocalizationCommand, LocalizationContext, LocalizationContextId,
+    LocalizationContextReference, LocalizationDeclarations, LocalizationLink, LocalizationOutput,
+    MissingName, ModifierCategory, ModifierCategoryKey, ModifierDeclaration, ModifierFamily,
+    ModifierNode, ModifierNodeId, ModifierNodeOwner, NameLookup, NamePart, OnAction, Operation,
+    OutputScope, ReadScope, Reader, ReaderId, ReaderKind, Recursion, Registry, RuleKind,
+    ScopeDeclaration, ScopeGroup, ScopeId, ScopeInventory, ScopeLink, ScopeReference, Source,
+    Support,
 };
 pub use api::OpenError;
 pub use duration::{Duration, DurationCombination, DurationUnit};
@@ -59,10 +60,10 @@ pub use field::{
     WeightOtherKeys,
 };
 pub use fixture::{
-    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDiagnostic, FixtureFieldOutcome,
-    FixtureFieldQuestion, FixtureObservation, FixtureOwnerId, FixtureParsing, FixtureRequest,
-    FixtureStorage, FixtureValue, FixtureWindow, ParsedFieldOccurrence, ScopedNumericLiteral,
-    ScopedNumericStorage, StoredFieldOccurrence,
+    DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FixtureDefinition, FixtureDiagnostic,
+    FixtureFieldOutcome, FixtureFieldQuestion, FixtureObservation, FixtureOwnerId, FixtureParsing,
+    FixtureRequest, FixtureStorage, FixtureValue, FixtureWindow, ParsedFieldOccurrence,
+    ScopedNumericLiteral, ScopedNumericStorage, StoredFieldOccurrence,
 };
 pub use game::{Game, GameOptions};
 pub use grammar::{

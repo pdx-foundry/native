@@ -28,15 +28,19 @@
 //! A database with a custom loader has no base-constructor directory. [`loader_directory`] takes
 //! the text literal that the database's own functions pass to the file enumeration instead, under
 //! the same rule: exactly one distinct literal, or a gap. An enumeration call after the stop is
-//! a literal that the scan did not read.
+//! a literal that the scan did not read. The literal can also arrive through a global
+//! `char const*`: an `ldr` from a known address loads the pointer slot, and the slot's rebase
+//! target is the literal. The method takes the slot's initial value as its value when the loader
+//! runs.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
-    add_immediate, adrp, call_or_jump_target, conditional_branch_target, sub_immediate,
+    add_immediate, adrp, call_or_jump_target, conditional_branch_target, ldr_immediate,
+    sub_immediate,
 };
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "registry-directories/v5";
+pub const METHOD: &str = "registry-directories/v6";
 
 /// Base constructor whose `CString` argument is the content directory.
 pub const BASE_CONSTRUCTOR: &str =
@@ -97,6 +101,8 @@ pub(super) enum Value {
     Unknown,
     Constant(u64),
     Stack(u64),
+    /// The pointer loaded from the slot at this address.
+    Slot(u64),
 }
 
 /// The file-selection argument registers at one file-enumeration call.
@@ -260,8 +266,8 @@ fn block_starts(words: &[[u8; 4]], address: u64) -> BTreeSet<u64> {
 }
 
 /// Follow one word that is neither a call nor an unconditional branch. An `adrp`, an `add` or
-/// `sub` of an immediate, a register move and an immediate move give the value that they write;
-/// any other word makes every register that it may write unknown.
+/// `sub` of an immediate, a register move, an immediate move and a load from a known address give
+/// the value that they write; any other word makes every register that it may write unknown.
 fn step(registers: &mut [Value; 32], word: u32, address: u64) {
     if let Some((destination, page)) = adrp(word, address) {
         registers[destination] = Value::Constant(page);
@@ -292,6 +298,16 @@ fn step(registers: &mut [Value; 32], word: u32, address: u64) {
         };
     } else if let Some((destination, value)) = move_wide_immediate(word) {
         registers[destination] = Value::Constant(value);
+    } else if let Some((destination, base, offset)) =
+        // A load into register 31 discards its value.
+        ldr_immediate(word).filter(|(destination, ..)| *destination != 31)
+    {
+        // Base register 31 is the stack pointer, not the zero register.
+        registers[destination] = match (base, registers[base]) {
+            (31, _) => Value::Unknown,
+            (_, Value::Constant(address)) => Value::Slot(address.wrapping_add(offset)),
+            _ => Value::Unknown,
+        };
     } else {
         // Any other instruction may write its low register field, and a load or store with
         // writeback also writes its base register.
@@ -469,11 +485,13 @@ pub fn globals(
 }
 
 /// The directory that a custom loader enumerates: the literal first argument of every
-/// file-enumeration call in `functions`, the database's own functions.
+/// file-enumeration call in `functions`, the database's own functions. `pointers` holds the
+/// rebase target of each pointer slot.
 pub fn loader_directory(
     functions: &[Constructor],
     anchors: &Anchors,
     strings: &BTreeMap<u64, String>,
+    pointers: &BTreeMap<u64, u64>,
 ) -> Directory {
     let arguments: Vec<Argument> = functions
         .iter()
@@ -483,10 +501,15 @@ pub fn loader_directory(
 
             scan.enumerated
                 .into_iter()
-                .map(|value| match value {
-                    Value::Constant(literal) => directory_path(strings, literal)
-                        .map_or(Argument::Unknown, Argument::Literal),
-                    _ => Argument::Unknown,
+                .map(|value| {
+                    let literal = match value {
+                        Value::Constant(literal) => Some(literal),
+                        Value::Slot(slot) => pointers.get(&slot).copied(),
+                        Value::Unknown | Value::Stack(_) => None,
+                    };
+                    literal
+                        .and_then(|literal| directory_path(strings, literal))
+                        .map_or(Argument::Unknown, Argument::Literal)
                 })
                 .chain(unread)
         })
@@ -544,6 +567,12 @@ mod tests {
             string_constructors: BTreeSet::from([STRING]),
             file_enumerations: BTreeSet::from([ENUMERATE]),
         }
+    }
+    /// A pointer slot that holds `EXAMPLES`, and one that holds an address that is no literal.
+    const SLOT: u64 = 0x2830;
+    const NOT_LITERAL_SLOT: u64 = 0x2838;
+    fn pointers() -> BTreeMap<u64, u64> {
+        BTreeMap::from([(SLOT, EXAMPLES), (NOT_LITERAL_SLOT, HELPER)])
     }
     fn strings() -> BTreeMap<u64, String> {
         BTreeMap::from([
@@ -619,10 +648,16 @@ mod tests {
             &[loader(EXAMPLES), loader(EXAMPLES)],
             &anchors(),
             &strings(),
+            &pointers(),
         );
         assert_eq!(named, Directory::Named("common/examples".into()));
 
-        let several = loader_directory(&[loader(EXAMPLES), loader(OTHER)], &anchors(), &strings());
+        let several = loader_directory(
+            &[loader(EXAMPLES), loader(OTHER)],
+            &anchors(),
+            &strings(),
+            &pointers(),
+        );
         assert_eq!(
             several,
             Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
@@ -630,11 +665,100 @@ mod tests {
 
         let unknown = function(arm64!(at 0x1000; add x0, sp, #8; bl extern ENUMERATE as usize));
         assert_eq!(
-            loader_directory(&[loader(EXAMPLES), unknown], &anchors(), &strings()),
+            loader_directory(
+                &[loader(EXAMPLES), unknown],
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
             Directory::Missing
         );
         assert_eq!(
-            loader_directory(&[temporary(EXAMPLES)], &anchors(), &strings()),
+            loader_directory(&[temporary(EXAMPLES)], &anchors(), &strings(), &pointers()),
+            Directory::Missing
+        );
+    }
+
+    /// A custom loader that enumerates the text that the pointer slot at `slot` holds.
+    fn slot_loader(slot: u64) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        code.load(0, slot).call(ENUMERATE);
+
+        function(code.bytes())
+    }
+
+    #[test]
+    fn a_literal_loaded_from_a_pointer_slot_names_the_loader() {
+        let examples = Directory::Named("common/examples".into());
+        assert_eq!(
+            loader_directory(&[slot_loader(SLOT)], &anchors(), &strings(), &pointers()),
+            examples
+        );
+        assert_eq!(
+            loader_directory(
+                &[slot_loader(SLOT), loader(EXAMPLES)],
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
+            examples
+        );
+        assert_eq!(
+            loader_directory(
+                &[slot_loader(SLOT), loader(OTHER)],
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
+            Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
+        );
+    }
+
+    #[test]
+    fn a_pointer_slot_without_a_literal_leaves_the_loader_unproven() {
+        let unresolved = slot_loader(0x2840);
+        let not_literal = slot_loader(NOT_LITERAL_SLOT);
+        let mut moved = Arm64::at(0x1000);
+        moved.load(0, SLOT);
+        arm64!(moved; add x0, x0, #1);
+        moved.call(ENUMERATE);
+        let mut dereferenced = Arm64::at(0x1000);
+        dereferenced.load(0, SLOT);
+        arm64!(dereferenced; ldr x0, [x0]);
+        dereferenced.call(ENUMERATE);
+        let stack = function(arm64!(at 0x1000; ldr x0, [sp, #8]; bl extern ENUMERATE as usize));
+        let mut discarded = Arm64::at(0x1000);
+        discarded.address(8, SLOT);
+        arm64!(discarded; ldr xzr, [x8]; mov x0, xzr);
+        discarded.call(ENUMERATE);
+        let mut stack_after_zero = Arm64::at(0x1000);
+        stack_after_zero.address(8, SLOT);
+        arm64!(stack_after_zero; mov xzr, x8; ldr x0, [sp]);
+        stack_after_zero.call(ENUMERATE);
+
+        for loader in [
+            unresolved,
+            not_literal,
+            function(moved.bytes()),
+            function(dereferenced.bytes()),
+            stack,
+            function(discarded.bytes()),
+            function(stack_after_zero.bytes()),
+        ] {
+            assert_eq!(
+                loader_directory(&[loader], &anchors(), &strings(), &pointers()),
+                Directory::Missing
+            );
+        }
+    }
+
+    #[test]
+    fn a_pointer_slot_passed_to_the_base_constructor_names_nothing() {
+        let mut code = Arm64::at(0x1000);
+        code.load(1, SLOT).call(BASE);
+
+        assert_eq!(
+            resolve(&[function(code.bytes())], &BTreeMap::new()),
             Directory::Missing
         );
     }
@@ -843,7 +967,12 @@ mod tests {
             stop(&mut skipped_call);
             skipped_call.address(0, OTHER).call(ENUMERATE);
             assert_eq!(
-                loader_directory(&[function(skipped_call.bytes())], &anchors(), &strings()),
+                loader_directory(
+                    &[function(skipped_call.bytes())],
+                    &anchors(),
+                    &strings(),
+                    &pointers()
+                ),
                 Directory::Missing
             );
 
@@ -852,7 +981,12 @@ mod tests {
             stop(&mut nothing_more);
             arm64!(nothing_more; nop);
             assert_eq!(
-                loader_directory(&[function(nothing_more.bytes())], &anchors(), &strings()),
+                loader_directory(
+                    &[function(nothing_more.bytes())],
+                    &anchors(),
+                    &strings(),
+                    &pointers()
+                ),
                 Directory::Named("common/examples".into())
             );
         }
@@ -898,7 +1032,12 @@ mod tests {
             code.call(ENUMERATE);
 
             assert_eq!(
-                loader_directory(&[function(code.bytes())], &anchors(), &strings()),
+                loader_directory(
+                    &[function(code.bytes())],
+                    &anchors(),
+                    &strings(),
+                    &pointers()
+                ),
                 Directory::Missing
             );
         }
@@ -937,7 +1076,12 @@ mod tests {
         loop_in(&mut enumerates);
         enumerates.address(0, EXAMPLES).call(ENUMERATE);
         assert_eq!(
-            loader_directory(&[function(enumerates.bytes())], &anchors(), &strings()),
+            loader_directory(
+                &[function(enumerates.bytes())],
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
             Directory::Named("common/examples".into())
         );
     }

@@ -1,4 +1,4 @@
-//! File selection and duplicate rule of a registry's loader.
+//! File selection, duplicate rule and definition names of a registry's loader.
 //!
 //! A loader lists its files with
 //! `VFSGetEnumeratedFiles(directory, files, suffix, substring, depth)`. A file name must end with
@@ -23,7 +23,11 @@
 //! after the item is built again also gives `LastWins`: a tag registry's item holds only its key,
 //! and its handler reads nothing. Another call through a register, or a branch out of the body
 //! that is not the read, ends the scan with no rule. A direct call clears the caller-saved
-//! registers. `docs/native/loader-rules.md` has the engine facts.
+//! registers.
+//!
+//! A definition's name is a stated rule of the loader's code, not read from it: each stated form
+//! holds when the build has the code that the rule names. `docs/native/loader-rules.md` has the
+//! engine facts and the stated rules.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
@@ -31,10 +35,10 @@ use super::decode::{
     written_registers,
 };
 use super::directories::{self, Anchors, Constructor, Value};
-use crate::{DuplicateRule, Recursion};
+use crate::{DefinitionForm, DuplicateRule, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v2";
+pub const METHOD: &str = "loader-rules/v3";
 
 /// The register of `ReadExistingEntry`'s existing item, its third argument after `this`.
 const EXISTING_ITEM: usize = 3;
@@ -42,6 +46,31 @@ const EXISTING_ITEM: usize = 3;
 const READER: usize = 1;
 /// The register of `ReadExistingEntry`'s last argument, a `bool`.
 const LAST_ARGUMENT: &str = "w4";
+
+/// A definition form that a stated rule of one of the registry's loaders gives, or `None` when
+/// the build lacks the code that the rule names.
+pub type StatedForm = Option<DefinitionForm>;
+
+/// What a registry's loaders show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoaderEvidence {
+    /// The arguments of every file enumeration that the loaders make.
+    pub enumerations: Vec<Enumeration>,
+    /// The rule of each template database's existing-entry handler, `None` for a handler that
+    /// [`existing_entry_rule`] does not read. A custom loader has none.
+    pub existing_entries: Vec<Option<DuplicateRule>>,
+    /// The definition forms that the loaders' stated rules give.
+    pub stated: Vec<StatedForm>,
+}
+
+/// The definition forms of a registry's loaders that the build holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Naming {
+    /// Each distinct form, in the order of the stated rules.
+    pub forms: Vec<DefinitionForm>,
+    /// How many stated rules name code that the build lacks.
+    pub missing: usize,
+}
 
 /// What one text argument of an enumeration call holds.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,16 +103,6 @@ pub enum Obstacle {
     NotLiteral,
     /// The enumeration calls pass this many different values.
     Several(usize),
-}
-
-/// What the binding reads from the code of one registry's loaders.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoaderCode {
-    /// The arguments of every file enumeration call of the loaders.
-    pub enumerations: Vec<Enumeration>,
-    /// The rule of each template database's existing-entry handler, `None` for a handler that
-    /// [`existing_entry_rule`] does not read. A custom loader has none.
-    pub existing_entries: Vec<Option<DuplicateRule>>,
 }
 
 /// Why a registry's duplicate rule is not established.
@@ -403,13 +422,28 @@ fn forget(values: &mut BTreeMap<usize, Held>, row: &Instruction) {
     }
 }
 
+/// The distinct forms of `stated`, and how many rules the build does not hold.
+pub fn naming(stated: &[StatedForm]) -> Naming {
+    let mut forms = Vec::new();
+    for form in stated.iter().flatten() {
+        if !forms.contains(form) {
+            forms.push(form.clone());
+        }
+    }
+
+    Naming {
+        forms,
+        missing: stated.iter().filter(|form| form.is_none()).count(),
+    }
+}
+
 fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
     match value {
         Value::Constant(0) => Text::Absent,
         Value::Constant(address) => strings
             .get(&address)
             .map_or(Text::Unknown, |literal| Text::Literal(literal.clone())),
-        Value::Unknown | Value::Stack(_) => Text::Unknown,
+        Value::Unknown | Value::Stack(_) | Value::Slot(_) => Text::Unknown,
     }
 }
 
@@ -417,7 +451,7 @@ fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
 fn depth(value: Value) -> Option<i32> {
     match value {
         Value::Constant(bits) => Some(bits as u32 as i32),
-        Value::Unknown | Value::Stack(_) => None,
+        Value::Unknown | Value::Stack(_) | Value::Slot(_) => None,
     }
 }
 
@@ -456,6 +490,7 @@ fn agreed<T: Ord>(values: impl Iterator<Item = Option<T>>) -> Result<T, Obstacle
 mod tests {
     use super::*;
     use crate::engine::analysis::assembler::{Arm64, arm64};
+    use crate::{DefinitionName, DefinitionStatement};
 
     const ENUMERATE: u64 = 0x1300;
     const DIRECTORY: u64 = 0x2010;
@@ -801,6 +836,34 @@ mod tests {
         assert_eq!(
             duplicate_rule(&[Some(DuplicateRule::LastWins), Some(DuplicateRule::Merges)]),
             Err(DuplicateObstacle::Several(2))
+        );
+    }
+
+    fn form(name: DefinitionName) -> DefinitionForm {
+        DefinitionForm {
+            statement: DefinitionStatement::Root,
+            name,
+        }
+    }
+
+    #[test]
+    fn naming_keeps_each_distinct_form_in_rule_order_and_counts_the_missing_rules() {
+        let stated = [
+            Some(form(DefinitionName::Key)),
+            None,
+            Some(form(DefinitionName::Field("id".into()))),
+            Some(form(DefinitionName::Key)),
+        ];
+
+        assert_eq!(
+            naming(&stated),
+            Naming {
+                forms: vec![
+                    form(DefinitionName::Key),
+                    form(DefinitionName::Field("id".into()))
+                ],
+                missing: 1,
+            }
         );
     }
 }

@@ -651,6 +651,8 @@ pub struct LoaderRules {
     /// What the loader does with a later definition of a key that it already holds, from the same
     /// file or a later one.
     pub duplicate_rule: crate::GrammarProperty<DuplicateRule>,
+    /// How the loader names each form of definition in the registry's files.
+    pub definition_names: crate::GrammarProperty<Vec<DefinitionForm>>,
 }
 
 /// What a loader does with a later definition of a key that it already holds.
@@ -662,6 +664,42 @@ pub enum DuplicateRule {
     /// The later definition is read into the earlier item with no reset: each field that it
     /// sets is read again by that field's reader, and the other fields keep their values.
     Merges,
+}
+
+/// One form of definition in a registry's files, and what names a definition of that form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefinitionForm {
+    /// The statements that are definitions of this form.
+    pub statement: DefinitionStatement,
+    /// What gives such a definition its name.
+    pub name: DefinitionName,
+}
+
+/// The statements of a registry's files that are definitions of one form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinitionStatement {
+    /// A root statement that the loader accepts as a definition, with a key that no other form of
+    /// the registry selects. Expanded statements such as `inline_script` are not definitions.
+    Root,
+    /// A root statement with this key.
+    RootKey(String),
+    /// A block at this field path inside a root definition. The name identifies the nested
+    /// definition only together with its owner.
+    Nested {
+        /// Field keys from the owner's root block down to the nested block.
+        field_path: Vec<String>,
+    },
+}
+
+/// What gives a definition its name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinitionName {
+    /// The statement's key.
+    Key,
+    /// The statement's value, as in `namespace = x`.
+    Value,
+    /// The value of this field in the definition's block.
+    Field(String),
 }
 
 /// The subdirectories that a loader's file enumeration lists below its folder.

@@ -190,7 +190,7 @@ pub(in crate::binding) fn database_directories(
         .map(|database| {
             let directory = template_directory(candidates, &database).unwrap_or_else(|| {
                 let own = own_functions(text, image.symbols, &database);
-                directories::loader_directory(&own, &anchors, image.strings)
+                directories::loader_directory(&own, &anchors, image.strings, image.pointers)
             });
             (database, directory)
         })

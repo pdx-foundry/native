@@ -12,8 +12,10 @@ weight keyword domains, which the [weight blocks](weight-blocks.md) method estab
 Both static answers are bounded searches. `registries` searches the shared database-template
 candidates and the scheduled databases outside them. It is complete when every candidate and every
 scheduled database has one content directory; nested and late loaders are outside the search.
-`registry_fields` searches the root reader paths of one template registry; a listed registry with
-no template loader is `Unsupported`. It is complete when every path, field name and promised reader
+`registry_fields` searches the root reader paths of one registry's owner: the template argument of a
+template loader, or the one owner that a custom loader builds ([custom-loader
+owners](#custom-loader-owners)). A listed registry with no one owner is `Unsupported` with the
+reason. It is complete when every path, field name and promised reader
 classification is resolved. An `OutsideMethod` gap states the boundary and can accompany
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
@@ -23,8 +25,9 @@ required input make the answer partial.
 This sweep ran on M452.
 
 `tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v31`) holds
-the baseline: **164 registries, 13 complete, 151 partial, 0 failed**, 1,593 root and 177 nested
-fields. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+the baseline: **183 registries, 13 complete, 165 partial, 0 failed, 5 unsupported**, 1,859 root
+fields. The 164 template answers did not change when the 19 custom-loader names joined (SDK-787);
+their counts are in [custom-loader owners](#custom-loader-owners). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -305,7 +308,7 @@ did not run before the startup boundary is not a missing registry.
   registry names (51 literals; 8 of them repeat a directory with a trailing `/`). Find them with
   `inspect -- --strings common/` and remove the 164 names of `registries()`. Examples are
   `common/component_templates`, `common/static_modifiers`, `common/traits` and `common/on_actions`.
-  16 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
+  17 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
   A literal is not a loader: `RunGame` forms the address of 157 of the 158 `common/` template
   directories and of `events`, and for 13 of the 43 (such as `common/agendas`, `common/planet_classes` and `common/subjects`) it is
   the only function that does. The "59" of the M45-observe count had no list.
@@ -384,29 +387,42 @@ and derives the end of the fill from the code; no recipe holds an address.
 
 For each unjoined row, `loader_directory` (`directories.rs`) reads every function qualified by the
 database class (`CTraitDatabase::…`) and takes the literal first argument of each
-`VFSGetEnumeratedFiles` call. Exactly one distinct literal names the registry; several, none, or
-an argument that the scan does not establish leave the row in the `UnnamedRegistries` gap. The
-three registry queries read only template registries, so they give `Unsupported` for these names
-until SDK-787 and SDK-802; `UnknownRegistry` is for names that `registries()` does not list. The
+`VFSGetEnumeratedFiles` call. The literal can also come through a global `char const*`: an `ldr`
+from a known address loads the pointer slot, and the slot's rebase target is the literal. Exactly
+one distinct literal names the registry; several, none, or an argument that the scan does not
+establish leave the row in the `UnnamedRegistries` gap.
+`registry_fields` reads these names through their [owner](#custom-loader-owners);
+`derived_names` and `modifier_families` read only template registries and give `Unsupported` for
+them until SDK-802. `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
-On M452, 20 of the 35 rows are named, with 19 names: `common/ambient_objects`, `common/colors`,
+On M452, 22 of the 35 rows are named, with 21 names: `common/ambient_objects`, `common/colors`,
 `common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
 `common/global_ship_designs` (`CDesignerDatabase`), `common/on_actions`,
-`common/opinion_modifiers`, `common/ship_behaviors`, `common/special_projects`,
+`common/opinion_modifiers`, `common/planet_classes` (through `_PLANET_CLASSES_DIR`),
+`common/ship_behaviors`, `common/special_projects`,
 `common/species_names`, `common/start_screen_messages`, `common/static_modifiers`,
 `common/strategic_resources`, `common/terraform`, `common/traits`, `events` (`CEventManager`),
-`gfx/worldgfx` and `prescripted_countries`. None repeats a template name.
+`flags` (`CEmpireFlagDatabase`, through `_pEMPIRE_FLAG_FOLDER`), `gfx/worldgfx` and
+`prescripted_countries`. None repeats a template name.
 
 - **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
-  both enumerate `prescripted_countries`, so it is one name. An owner join for it (SDK-787) must
-  not select one of the two.
-- **The 15 rows that stay gaps**, by obstacle:
-  - The directory is a global `char const*` that the code loads from a data slot (`ldr x0, [x8,
-    #0x358]` of `_PLANET_CLASSES_DIR`); the scan tracks only `adrp` and `add`:
-    `CPlanetClassDatabase` (`common/planet_classes`) and `CEmpireFlagDatabase`
-    (`_pEMPIRE_FLAG_FOLDER`). Reading a resolved pointer slot would name both; SDK-786 can start
-    there instead of at the `RunGame` caller.
+  both enumerate `prescripted_countries`, so it is one name. The owner join does not select one of
+  the two: `registry_fields` gives `Unsupported` ("2 databases load this directory").
+- **A global `char const*` is read at its initial value.** `CPlanetClassDatabase::Init()` loads
+  `_PLANET_CLASSES_DIR` (`0x1032af358`, rebased to `"common/planet_classes"`) with `adrp x8,
+  #0x1032af000; ldr x0, [x8, #0x358]` and passes it to the enumeration. Both globals are in
+  writable `__DATA,__data`, so the method assumes that nothing changes them before the loader
+  runs. M452 checks: every instruction that uses either address after an `adrp` of its page
+  loads from it (8 loads; one `add` that a load follows), and no fixup targets either slot
+  (`dyld_info -fixups`). If a store or an escaped address is found, or a run reads another
+  directory, a slot is no longer proof. A load into `xzr` is not a slot value.
+- **The `RunGame` caller is not the loader.** `RunGame` passes `"common/planet_classes"` and
+  `_pEMPIRE_FLAG_FOLDER` to `VFSPreEnumerateFiles(char const*, char const*, char const*, int)`, a
+  warm-up of the file list; the database's own `Init()` enumerates the files. The ticket's caller
+  shape was therefore not built. Whether a caller supplies the directory of one of the 13 rows
+  below was not checked; their obstacles are in their own functions.
+- **The 13 rows that stay gaps**, by obstacle:
   - The directory is the text of a `CString` member or a built path (the short-string `csel` on
     the object): `CGfxCultureDatabase`, `CNameListDatabase`, `CGalaxyTemplateDatabase`
     (`ReadFiles`), `CMessageSystem` (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase`
@@ -421,6 +437,80 @@ On M452, 20 of the 35 rows are named, with 19 names: `common/ambient_objects`, `
 - Pitfall: a row with one literal is not proof that the database owns the items there; it is the
   directory the loader reads. `prescripted_countries` shows that a directory can feed two
   databases.
+
+### Custom-loader owners
+
+`registry_fields` needs only an owner class: its root is `<owner>::ReadMember(CReader&, int)`. A
+template loader names its owner as a template argument. For a custom-loader registry,
+`loader_owner` (`discovery/loader_owner.rs`; its module comment gives the rule) reads the
+database's own functions. The loader route is each of them that calls the file enumeration and
+each of them that the route calls directly. The owner is the one class with a member reader that
+the route builds: it calls the class's constructor or forms its primary vtable address point, as
+an inlined constructor does. None or several is `Unsupported` with the reason, never a choice.
+
+- **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
+  `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
+  candidate slice feeds the reference, modifier-block and expansion readers and the
+  `RegistryRoot` hosts of `script_expansions`, and a custom loader has no `LoadFile`, initial
+  loader or template class for them. The field input carries only the owner (`FieldInput::owner`),
+  since every field reader used only `owner_candidate` of the candidate record. The block-entry
+  method takes the joined owners with the template owners, so the blocks of a custom owner get
+  entry contexts (`common/strategic_resources` `potential` enters as a country).
+- **Validated assumption, not a proof.** A built class is taken as the item that the loader
+  reads; the method does not follow the built object to the read call. On M452 each joined route
+  builds the object, then reads it: `CStaticModifierDatabase::Init(bool)` allocates, forms `vtable
+  for CStaticModifier`+0x10 and calls slot `+0x20` of the object (`CPdxModifier<…>::Read(CReader&)`,
+  whose member dispatch at slot `+0x28` is `CStaticModifier::ReadMember`);
+  `CAmbientObjectDatabase::InitInstance` forms the `CAmbientObjectData` point and calls
+  `CPersistent::Read(CReader&)`; `CTerraformDatabase::InitInstance` forms the `CTerraformLink`
+  point and calls slot `+0x20`; `ReadEventsFile` constructs `CEvent` ([the events
+  loader](#the-events-loader-on-m452)). The parity test
+  `m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates` fixes every owner.
+  Follow the object to its read call when a build has a route that builds a persistent object
+  that it does not read as the item.
+- **Static modifiers.** The key-only phase of `CStaticModifierDatabase::Init(bool)` calls
+  `CStaticModifier::ReadOnlyKey(CReader&)` and reads no definition. The full-read phase reads
+  through `CStaticModifier::ReadMember(CReader&, int)`, the root. That reader handles `key`,
+  `apply_modifier_to_other_planets` and `divide_over_pop_groups`, and tail-calls
+  `CGraphicalModifier::ReadMember` for every other token; the method does not follow an inherited
+  reader, so the answer is partial with an `UnresolvedPath` gap on the registry.
+- **Function budget.** `CTrait` has 174 functions in its field input, above the old limit of 128
+  functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
+  0.4 MiB). Raise the count again only with a registry that exceeds it.
+
+On M452, 15 of the 21 names join an owner (sweep at `registry-fields/v31`; fields, then the
+answer):
+
+| Registry | Owner | Fields | Answer |
+| --- | --- | --- | --- |
+| `common/ambient_objects` | `CAmbientObjectData` | 7 | partial |
+| `common/diplo_phrases` | `CDiploPhrase` | 5 | partial |
+| `common/fallen_empires` | `CFallenEmpireType` | 6 | partial |
+| `common/global_ship_designs` | `CShipDesign` | 32 | partial |
+| `common/on_actions` | `COnActionList` | 2 | partial |
+| `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
+| `common/special_projects` | `CSpecialProjectType` | 26 | partial |
+| `common/species_names` | `CSpeciesNames` | 5 | partial |
+| `common/start_screen_messages` | `CStartScreenMessage` | 3 | partial |
+| `common/static_modifiers` | `CStaticModifier` | 3 | partial |
+| `common/strategic_resources` | `CStrategicResource` | 22 | partial |
+| `common/terraform` | `CTerraformLink` | 10 | partial |
+| `common/traits` | `CTrait` | 105 | partial |
+| `events` | `CEvent` | 30 | partial |
+| `flags` | `SFlagColor` | 4 | partial |
+
+None is complete and none failed. Six are `Unsupported`: `common/colors`,
+`common/component_tags`, `common/ship_behaviors` and `gfx/worldgfx` build no class with a member
+reader on the route (`CWorldGfxDatabase` is itself the read object, and its `ReadMember` builds
+`CWorldGraphicalMapData` through a virtual read), `prescripted_countries` has two databases
+(`CEmpireDesign`, `CPrescriptedSpecies`), and the `common/planet_classes` route builds two classes
+with a member reader (`CPlanetClass`, `CPlanetClassRandomList`).
+
+- Pitfall: a constructor anywhere in the database's functions is not an owner.
+  `CDiploPhraseDatabase::GetRandomValidPhrase` and `CTerraformDatabase::HasAvailableLinks` build a
+  `CEventScope` (which has a `ReadMember`) on the stack to test triggers; they are off the route.
+- Pitfall: "any class whose method the loader calls" gives `CGameState`, `CEventScope` and
+  `CScopeObjectReference` for `CEventManager`.
 
 ### Owner vtables on M45-release
 
@@ -442,8 +532,9 @@ checks its typeinfo. The removed image-wide scan is at `git show 8d9a073:src/bin
 
 ### The events loader on M452
 
-`events` is not a template registry: `CEventManager` has no `LoadFile`, and `registries()` does
-not list it. Its route:
+`events` is not a template registry: `CEventManager` has no `LoadFile`. `registries()` lists it
+through its own loader, and `registry_fields` reads it from `CEvent` ([custom-loader
+owners](#custom-loader-owners)). Its route:
 
 - `CEventManager::InitInstance` calls `ReadEvents(CGameGraphics*, bool)` (`0x1004d51fc`), which
   enumerates `events` for `.txt` files (`VFSGetEnumeratedFiles("events", …, ".txt")`) and calls
