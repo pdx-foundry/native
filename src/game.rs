@@ -593,34 +593,37 @@ fn registry_items_answer(
 ) -> Result<crate::Answer<Vec<String>>, Error> {
     use crate::{Answer, Basis, Completeness, Gap, GapKind, GapSubject, Operation, Source};
     let operation = Operation::Registries;
-    let Some(observed) = observation.filter(|items| items.observed != Observed::Unavailable) else {
+    let Some(observed) = observation else {
         return Err(Error::Observation {
             operation,
-            reason: observation.map_or_else(
-                || "The supervisor sent no observation of this registry".into(),
-                |items| items.diagnostics.join("; "),
-            ),
+            reason: "The supervisor sent no observation of this registry".into(),
         });
     };
-    if observed.observed == Observed::NotLoaded {
-        return Err(Error::Unsupported {
-            operation,
-            reason: observed.diagnostics.first().cloned().unwrap_or_else(|| {
-                format!("the initial loader of {directory} did not run before the session paused")
-            }),
-        });
-    }
-    if observed.observed == Observed::Unsupported {
-        return Err(Error::Unsupported {
-            operation,
-            reason: format!(
-                "item observation of {directory} is unavailable: {}",
-                observed
-                    .diagnostics
-                    .first()
-                    .map(String::as_str)
-                    .unwrap_or("unsupported item layout")
-            ),
+    if !observed.observed.has_answer() {
+        return Err(match observed.observed {
+            Observed::NotLoaded => Error::Unsupported {
+                operation,
+                reason: observed.diagnostics.first().cloned().unwrap_or_else(|| {
+                    format!(
+                        "the initial loader of {directory} did not run before the session paused"
+                    )
+                }),
+            },
+            Observed::Unsupported => Error::Unsupported {
+                operation,
+                reason: format!(
+                    "item observation of {directory} is unavailable: {}",
+                    observed
+                        .diagnostics
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or("unsupported item layout")
+                ),
+            },
+            _ => Error::Observation {
+                operation,
+                reason: observed.diagnostics.join("; "),
+            },
         });
     }
     let complete = observed.observed == Observed::Complete;

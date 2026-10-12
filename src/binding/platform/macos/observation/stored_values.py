@@ -1,9 +1,19 @@
 """Decode a proven owner storage slot into the wire shape of its public stored value, and the
-engine's CString layout for every reader of engine text.
+engine's CString layout for every reader of engine text. It also reads an argument register of a
+stopped frame, which the worker and the script checks both do.
 
 The callers own memory access: `read_unsigned(address, size)` reads a little-endian integer and
 `read_string(address)` reads the text of the CString at `address`. Both raise on a failed read.
 """
+
+
+def register(frame, name):
+    """The unsigned value of the register `name` in `frame`. A register that the debugger cannot
+    read raises, with its name, instead of reading as 0."""
+    value = frame.FindRegister(name)
+    if not value.IsValid() or value.GetError().Fail():
+        raise RuntimeError('native argument register unavailable: ' + name)
+    return value.GetValueAsUnsigned()
 
 
 def cstring_prefix(storage, tag_offset, read, limit):

@@ -14,8 +14,7 @@ use crate::{
     binding::{self, ExecutionPlan},
     engine::operations::{
         event_stream::{self, OwnerEvent},
-        loaded_modifiers,
-        registry_items::{self, Observed},
+        loaded_modifiers, registry_items,
     },
     protocol::{
         self, Hello, Reply,
@@ -173,7 +172,7 @@ fn run(
             .map_err(|e| SupervisorError(e.to_string()))?
             .as_nanos()
     );
-    let mut reservation = Reservation::acquire(attempt.clone(), work.clone())?;
+    let mut reservation = Reservation::acquire()?;
     let mut report = SessionReport {
         attempt,
         outcome: SessionOutcome::Completed,
@@ -191,9 +190,6 @@ fn run(
         binding::private_directory(&work)?;
         owns_work_directory = true;
         files::write_json(&work.join("request.json"), &request)?;
-        if binding::conflicting_game(None)? {
-            return Err(SupervisorError("Conflicting ordinary game instance".into()));
-        }
         prepare_profile(&work)?;
         plan.prepare_registry_profile(&work, request.fixture.as_ref(), &registries, &content)?;
         if !plan.session_content_unchanged(&request.registries, &content) {
@@ -203,7 +199,6 @@ fn run(
         }
         let observer =
             observer.insert(plan.observer(&work, &report.attempt, &request, &registries)?);
-        plan.integrity()?;
         match input.try_recv() {
             Ok(event) => return Ok(interruption(event)),
             Err(mpsc::TryRecvError::Disconnected) => return Ok(SessionOutcome::CallerLost),
@@ -260,14 +255,9 @@ fn run(
         SessionOutcome::Failed(error.to_string())
     });
     run.end_session();
-    finish_session(
-        &mut report,
-        &mut reservation,
-        &mut game,
-        &mut observer,
-        &mut events,
-        || plan.integrity().map(|_| ()),
-    );
+    finish_session(&mut report, &mut game, &mut observer, &mut events, || {
+        plan.integrity().map(|_| ())
+    });
     run.end_cleanup();
     if owns_work_directory {
         write_report(&work, &reservation, &mut report, &run);
@@ -278,7 +268,6 @@ fn run(
 /// Stop the worker, reap the game and resolve the reservation.
 fn finish_session(
     report: &mut SessionReport,
-    reservation: &mut Reservation,
     game: &mut Option<binding::OwnedGame>,
     observer: &mut Option<binding::Observer>,
     events: &mut OwnerEvents,
@@ -323,7 +312,6 @@ fn finish_session(
         report.outcome = SessionOutcome::Failed(error.to_string());
     }
     if worker_stopped && !matches!(report.disposal, Disposal::Unconfirmed(_)) {
-        reservation.disposed();
         report.reservation_resolved = true;
     }
 }
@@ -335,7 +323,6 @@ struct Session<'a> {
     /// Content directories of the registries that the session observes.
     registries: Vec<String>,
     fixture: Option<&'a crate::FixtureRequest>,
-    /// The field tokens that the bound category fixture window reads.
     /// The registries whose item keys the modifier observation reads, when it is requested.
     loaded_modifiers: Option<&'a [String]>,
     build: crate::BuildId,
@@ -356,14 +343,14 @@ fn read_modifier_table(work_directory: &Path) -> Result<Option<Vec<u8>>, Supervi
 fn worker_exit_result(
     records: &[event_stream::WorkerRecord],
 ) -> Result<SessionOutcome, SupervisorError> {
-    for record in records {
-        if let event_stream::WorkerEvent::CapabilityUnavailable { reason }
-        | event_stream::WorkerEvent::NativeException { reason } = &record.event
-        {
-            return Err(SupervisorError(reason.clone()));
-        }
+    let cause = records
+        .iter()
+        .find_map(|record| record.event.failure_reason());
+
+    match cause {
+        Some(reason) => Err(SupervisorError(reason.into())),
+        None => Ok(SessionOutcome::WorkerLost),
     }
-    Ok(SessionOutcome::WorkerLost)
 }
 
 /// Wait for the pause, reduce the worker's stream once, send the answers, then serve controls
@@ -550,7 +537,7 @@ fn observe_session(
                 let answered = answers
                     .as_ref()
                     .and_then(|answers| answers.get(&name))
-                    .is_some_and(|items| items.observed != Observed::Unavailable);
+                    .is_some_and(|items| items.observed.has_answer());
                 if !answered {
                     return Err(SupervisorError(
                         "Registry read before the pause or for a registry with no answer".into(),
@@ -627,8 +614,8 @@ fn interruption(event: Input) -> SessionOutcome {
     }
 }
 
-/// A private game profile: a small window, no sound, no mods. The ordinary profile is never
-/// touched.
+/// The private game profile's settings: a small window and no sound. `prepare_registry_profile`
+/// adds the one mod. The ordinary profile is never touched.
 fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
     binding::private_directory(&work_directory.join("profile"))?;
     fs::write(
@@ -636,16 +623,13 @@ fn prepare_profile(work_directory: &Path) -> Result<(), SupervisorError> {
         "graphics={size={x=640 y=360} fullScreen=no borderless=no renderer=2}\nmaster_volume=0\nmusic_volume=0\n",
     )?;
     fs::write(work_directory.join("profile/pdx_settings.txt"), "")?;
-    fs::write(
-        work_directory.join("profile/dlc_load.json"),
-        "{\"enabled_mods\":[],\"disabled_dlcs\":[]}",
-    )?;
     Ok(())
 }
 
 #[cfg(all(test, target_os = "macos", target_arch = "aarch64"))]
 mod tests {
     use super::*;
+    use crate::engine::operations::registry_items::Observed;
     use std::{
         os::unix::fs::PermissionsExt,
         process::{Command, Stdio},
@@ -657,12 +641,8 @@ mod tests {
         root
     }
 
-    fn reserve(root: &Path, attempt: &str, output: &Path) -> Result<Reservation, SupervisorError> {
-        Reservation::reserve(
-            binding::test_reservation(root)?,
-            attempt.into(),
-            output.into(),
-        )
+    fn reserve(root: &Path) -> Result<Reservation, SupervisorError> {
+        Reservation::reserve(binding::test_reservation(root)?)
     }
 
     #[test]
@@ -670,14 +650,18 @@ mod tests {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "owned", output.path()).unwrap();
+        let mut reservation = reserve(root.path()).unwrap();
         let mut child = binding::test_child(output.path()).unwrap();
         reservation.record_game(child.identity().unwrap());
         assert!(child.suspended().unwrap());
         child.dispose(DISPOSAL_BUDGET).unwrap();
         assert!(binding::process_identity(child.pid()).is_err());
-        reservation.disposed();
-        assert_eq!(reservation.snapshot().unwrap()["state"], "disposed");
+
+        let owner = reservation.snapshot().unwrap();
+        let mut recorded: Vec<_> = owner.as_object().unwrap().keys().collect();
+        recorded.sort();
+        assert_eq!(recorded, ["game", "owner"]);
+        assert_eq!(owner["game"]["pid"], child.pid());
     }
 
     /// One session with a suspended stand-in game and a shell worker, from the worker's start to
@@ -709,7 +693,7 @@ mod tests {
             let root = store();
             let output = store();
             let registry = "common/traditions";
-            let mut reservation = reserve(root.path(), "unit", output.path()).unwrap();
+            let mut reservation = reserve(root.path()).unwrap();
             let child = binding::test_child(output.path()).unwrap();
             let game_pid = child.pid();
             reservation.record_game(child.identity().unwrap());
@@ -764,7 +748,6 @@ mod tests {
             };
             finish_session(
                 &mut report,
-                &mut reservation,
                 &mut game,
                 &mut observer,
                 &mut events,
@@ -846,6 +829,29 @@ while [ ! -f resume-granted.json ]; do sleep 0.01; done
             .stdout(Stdio::null())
             .stderr(Stdio::null());
         binding::test_observer(directory, &mut command, game_pid, registry)
+    }
+
+    /// A shell worker that holds the pause for the `returned` registries (a JSON list) and answers
+    /// each fresh pause check.
+    fn pause_worker(returned: &str) -> String {
+        format!(
+            r#"
+publish() {{
+    printf '{{"attempt":"unit","game":%s,"worker":%s,"thread":7,"returned":{returned},"generation":%s,"state":"held"}}' "$GAME_PID" "$$" "$1" > session-paused.json.pending
+    mv session-paused.json.pending session-paused.json
+}}
+generation=0
+publish 0
+while true; do
+    asked=$(sed -n 's/.*"generation": *\([0-9]*\).*/\1/p' pause-check.json 2>/dev/null)
+    if [ -n "$asked" ] && [ "$asked" -gt "$generation" ]; then
+        generation=$asked
+        publish "$generation"
+    fi
+    sleep 0.01
+done
+"#
+        )
     }
 
     /// The caller: close the session when it pauses, and keep every reply until the report.
@@ -1165,12 +1171,117 @@ exec sleep 30
     }
 
     #[test]
+    fn only_a_registry_with_an_answer_restarts_the_idle_time_when_read() {
+        let registry = "common/traditions";
+        let never_loaded = {
+            let mut rows = requested_hook_rows();
+            rows.pop();
+            rows.push(
+                serde_json::json!({"kind":"session-paused","returned":[],"cause":"deadline"}),
+            );
+            rows
+        };
+        let loaded = {
+            let mut rows = requested_hook_rows();
+            rows.extend([
+                serde_json::json!({"kind":"registry-load-returned","name":registry,"owner":"0x1000"}),
+                serde_json::json!({"kind":"registry-snapshot","name":registry,"directory":registry,"owner":"0x1000","count":0}),
+                serde_json::json!({"kind":"registry-end","name":registry,"owner":"0x1000","count":0,"producerLastSequence":8}),
+                serde_json::json!({"kind":"session-paused","returned":[registry],"cause":"loaders-returned"}),
+            ]);
+            rows
+        };
+        for (rows, returned, observed) in [
+            (never_loaded, "[]", Observed::NotLoaded),
+            (loaded, r#"["common/traditions"]"#, Observed::Complete),
+        ] {
+            let session = FakeSession::controlled(
+                &rows,
+                &pause_worker(returned),
+                |mut reader, controls| {
+                    let mut replies = Vec::new();
+                    loop {
+                        let reply: Reply = protocol::read(&mut reader).unwrap();
+                        match &reply {
+                            Reply::Paused { .. } => controls
+                                .send(Input::Control(Control::ReadRegistry {
+                                    name: "common/traditions".into(),
+                                    request: 1,
+                                }))
+                                .unwrap(),
+                            Reply::ObservationRead { .. } => {
+                                controls.send(Input::Control(Control::Close)).unwrap()
+                            }
+                            _ => {}
+                        }
+                        let finished = matches!(reply, Reply::Finished(_));
+                        replies.push(reply);
+                        if finished {
+                            return replies;
+                        }
+                    }
+                },
+                Duration::from_secs(3),
+            );
+            let Some(Reply::Paused { registries, .. }) = session.replies.first() else {
+                panic!(
+                    "expected a pause answer first: {} replies",
+                    session.replies.len()
+                );
+            };
+            let read = session
+                .replies
+                .iter()
+                .any(|reply| matches!(reply, Reply::ObservationRead { .. }));
+
+            assert_eq!(registries[registry].observed, observed);
+            assert_eq!(read, observed.has_answer(), "{observed:?}");
+            assert_eq!(
+                session.report.outcome,
+                if read {
+                    SessionOutcome::Completed
+                } else {
+                    SessionOutcome::Failed(
+                        "Registry read before the pause or for a registry with no answer".into(),
+                    )
+                },
+                "{observed:?}"
+            );
+            assert_eq!(session.report.disposal, Disposal::Confirmed, "{observed:?}");
+        }
+    }
+
+    #[test]
+    fn every_failure_the_worker_names_ends_the_session_as_failed_with_its_cause() {
+        for (row, cause) in [
+            (
+                serde_json::json!({"kind":"early-activation-unavailable","reason":"loader entry not established"}),
+                "loader entry not established",
+            ),
+            (
+                serde_json::json!({"kind":"callback-error","error":"hook callback failed"}),
+                "hook callback failed",
+            ),
+        ] {
+            let session = FakeSession::run(&[row], "exit 1");
+
+            assert_eq!(
+                session.report.outcome,
+                SessionOutcome::Failed(cause.into()),
+                "{cause}"
+            );
+            assert_eq!(session.report.disposal, Disposal::Confirmed, "{cause}");
+            assert!(session.report.reservation_resolved, "{cause}");
+            assert!(binding::process_identity(session.game_pid).is_err());
+        }
+    }
+
+    #[test]
     fn the_summary_follows_a_report_that_could_not_be_written() {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
-        reservation.disposed();
+        let reservation = reserve(root.path()).unwrap();
         fs::write(output.path().join("report.json"), "existing file").unwrap();
         let mut report = SessionReport {
             attempt: "report".into(),
@@ -1200,13 +1311,9 @@ exec sleep 30
     fn earlier_session_files_do_not_block_a_new_reservation() {
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
-        let output = store();
-        let reservation = reserve(root.path(), "prior", output.path()).unwrap();
-        drop(reservation);
+        drop(reserve(root.path()).unwrap());
         fs::write(root.path().join("prior.pending"), "old session").unwrap();
-        let mut next = reserve(root.path(), "next", output.path()).unwrap();
-        next.disposed();
-        assert_eq!(next.snapshot().unwrap()["state"], "disposed");
+        assert!(reserve(root.path()).is_ok());
     }
 
     #[test]
@@ -1214,8 +1321,7 @@ exec sleep 30
         let _guard = binding::LIFECYCLE_TEST_LOCK.lock().unwrap();
         let root = store();
         let output = store();
-        let mut reservation = reserve(root.path(), "report", output.path()).unwrap();
-        reservation.disposed();
+        let reservation = reserve(root.path()).unwrap();
         fs::write(output.path().join("owner.json"), "existing file").unwrap();
         let mut report = SessionReport {
             attempt: "report".into(),
@@ -1261,7 +1367,7 @@ exec sleep 30
         };
         let root = std::path::PathBuf::from(root);
         let output = std::path::PathBuf::from(std::env::var_os("NATIVE_TEST_READY").unwrap());
-        let _reservation = reserve(&root, "deadowner", output.parent().unwrap()).unwrap();
+        let _reservation = reserve(&root).unwrap();
         fs::write(&output, "reserved").unwrap();
         thread::sleep(Duration::from_secs(30));
     }
@@ -1289,12 +1395,12 @@ exec sleep 30
             thread::sleep(Duration::from_millis(10));
         }
         assert!(ready.exists());
-        assert!(reserve(root.path(), "competitor", output.path()).is_err());
+        assert!(reserve(root.path()).is_err());
         owner.kill().unwrap();
         owner.wait().unwrap();
         // The lock is free; the old owner no longer blocks a launch.
         assert!(binding::test_reservation(root.path()).is_ok());
-        assert!(reserve(root.path(), "afterdeath", output.path()).is_ok());
+        assert!(reserve(root.path()).is_ok());
     }
 }
 

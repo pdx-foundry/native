@@ -316,13 +316,10 @@ impl WorkerDiagnosticSummary {
             .and_then(|context| context.failure.as_ref());
         let reason = if let Some(cause) = cause {
             format!("{}: {}", cause.kind, cause.reason)
-        } else if let Some(reason) = records.iter().find_map(|record| match &record.event {
-            WorkerEvent::CapabilityUnavailable { reason }
-            | WorkerEvent::NativeException { reason }
-            | WorkerEvent::EarlyActivationUnavailable { reason } => Some(reason),
-            WorkerEvent::CallbackError { error } => Some(error),
-            _ => None,
-        }) {
+        } else if let Some(reason) = records
+            .iter()
+            .find_map(|record| record.event.failure_reason())
+        {
             cut(reason)
         } else if matches!(
             report.outcome,

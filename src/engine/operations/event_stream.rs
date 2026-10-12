@@ -147,6 +147,20 @@ pub(crate) enum WorkerEvent {
     WorkerFinished,
 }
 
+impl WorkerEvent {
+    /// The cause that the worker named when it failed: an unavailable capability or early
+    /// activation, a callback error or a native exception. Any other event names none.
+    pub(crate) fn failure_reason(&self) -> Option<&str> {
+        match self {
+            Self::CapabilityUnavailable { reason }
+            | Self::EarlyActivationUnavailable { reason }
+            | Self::NativeException { reason } => Some(reason),
+            Self::CallbackError { error } => Some(error),
+            _ => None,
+        }
+    }
+}
+
 /// Why the worker held the game where it did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]

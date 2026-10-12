@@ -143,6 +143,7 @@ impl Observer {
             work_directory,
             attempt,
             executable,
+            executable_hash,
             registries,
             fault,
             fixture,
@@ -175,7 +176,7 @@ impl Observer {
                 .to_str()
                 .ok_or_else(|| SupervisorError("Non-UTF8 executable path".into()))?
                 .into(),
-            target: files::sha256(&fs::read(executable)?),
+            target: executable_hash.into(),
             source_hashes,
             machine: machine.clone(),
             registries: registries.clone(),

@@ -37,10 +37,12 @@ same for `cpp_demangle`) and prebuild before measuring.
   it uses the catalog.
 - A detected change, a missing file or a path retarget invalidates the `BoundAnalysis`
   permanently, even if the original bytes return.
-- The integrity check before a game starts (`start_game` and each supervisor check before
-  spawn) does not use the stamp: it reads and hashes every byte, because a game that starts
-  from a changed executable would use layouts and bindings of another build. It costs about one
-  second against a launch of 16–21 s.
+- The integrity check before a game starts does not use the stamp: it reads and hashes every
+  byte, because a game that starts from a changed executable would use layouts and bindings of
+  another build. It costs about one second against a launch of 16–21 s. `start_game` runs it
+  once. A supervisor session hashes the executable at four points: its `open`, its admission,
+  just before the spawn and after cleanup. The worker setup takes the hash bound at `open`
+  and does not read the file again; the worker compares the file that it finds with that hash.
 - **Accepted limit:** a byte change that leaves the stamp equal is not detected between static
   queries; static answers then come from the bytes verified at `open`. On Unix every write sets the status-change time, but the file system can update it
   late (for example through a writable shared mapping) or at a granularity that hides a second

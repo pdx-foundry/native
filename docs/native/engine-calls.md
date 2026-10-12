@@ -27,8 +27,11 @@ offending key, identical consecutive errors and source-free errors. Assigning a 
 through `CString::operator=(char const*)` at the bound file-name offset of the `CMemoryFile` (which
 starts with an empty name) before constructing the lexer propagates to reader and deferred
 validation messages; later validations keep reporting earlier names, and source-free messages stay
-unjoined. Capture keeps the raw signed logger level. All file-load observation hooks are disabled
-at the admitted pause, including hooks left by a failed fixture callback.
+unjoined. Capture keeps the raw signed logger level. A check reads the text and level registers
+(`x4`, `w1`) in the held frame before its first call, so a register that the debugger cannot read
+ends the session with its name; inside the hook an unreadable register would read as 0. All
+file-load observation hooks are disabled at the admitted pause, including hooks left by a failed
+fixture callback.
 
 **Calls.** Each call writes its PC last, verifies every argument and control register before
 resuming, and waits for a synchronous return breakpoint before restoring registers. Calls use the
