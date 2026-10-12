@@ -151,6 +151,7 @@ pub(super) mod fields;
 pub(super) mod grammar;
 pub(super) mod instances;
 pub(super) mod language;
+pub(super) mod loader_owners;
 pub(super) mod modifier_blocks;
 pub(super) mod modifier_nodes;
 pub(super) mod modifier_table;

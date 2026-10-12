@@ -10,6 +10,7 @@ use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::{
     Symbol,
+    loader_owner::LoaderOwner,
     schedule::{self, ScheduleGap, ScheduleInventory},
 };
 use crate::engine::analysis::families::DatabaseLayout;
@@ -81,22 +82,51 @@ struct Catalog {
 }
 
 /// The database schedule joined to the template candidates, with the directory that each
-/// unjoined database's own loader enumerates.
+/// unjoined database's own loader enumerates and the owner that it builds.
 #[derive(Debug)]
 pub(crate) struct ScheduledDatabases {
     pub inventory: ScheduleInventory,
     /// The directory of each unjoined database, keyed by its type.
     pub loader_directories: BTreeMap<String, crate::engine::analysis::directories::Directory>,
+    /// The owner that the loader of each named unjoined database builds, keyed by its type.
+    pub loader_owners: Result<BTreeMap<String, LoaderOwner>, AnalysisError>,
 }
 
 impl ScheduledDatabases {
-    /// Whether the loader of an unjoined database names `registry`.
-    pub(crate) fn names_registry(&self, registry: &str) -> bool {
+    /// The owner of the items of `registry` through the loader that names it: `None` when no
+    /// unjoined database's loader names it, and the reason when its loaders give no one owner.
+    pub(crate) fn loader_owner(&self, registry: &str) -> Option<Result<&str, String>> {
         use crate::engine::analysis::directories::Directory;
 
-        self.loader_directories
-            .values()
-            .any(|directory| matches!(directory, Directory::Named(name) if name == registry))
+        let databases: Vec<&String> = self
+            .loader_directories
+            .iter()
+            .filter(
+                |(_, directory)| matches!(directory, Directory::Named(name) if name == registry),
+            )
+            .map(|(database, _)| database)
+            .collect();
+        let [database] = databases[..] else {
+            return (!databases.is_empty())
+                .then(|| Err(format!("{} databases load this directory", databases.len())));
+        };
+        let owners = match &self.loader_owners {
+            Ok(owners) => owners,
+            Err(failure) => {
+                return Some(Err(format!("the loader owners were not read: {failure}")));
+            }
+        };
+
+        Some(match owners.get(database) {
+            Some(LoaderOwner::Owner(owner)) => Ok(owner.as_str()),
+            Some(LoaderOwner::Several(classes)) => Err(format!(
+                "the loader builds several classes with a member reader: {}",
+                classes.join(", ")
+            )),
+            Some(LoaderOwner::NoOwner) | None => {
+                Err("the loader builds no class with a member reader".into())
+            }
+        })
     }
 }
 
@@ -417,6 +447,7 @@ impl VerifiedAnalysis<'_> {
             .candidates
             .iter()
             .map(|candidate| candidate.record.owner_candidate.as_str())
+            .chain(self.loader_owners())
             .collect();
         binary::callbacks::block_evaluations(&self.image(), &owners, recipe)
     }
@@ -485,6 +516,8 @@ impl VerifiedAnalysis<'_> {
     }
 
     fn read_database_schedule(&self) -> Result<ScheduledDatabases, ScheduleGap> {
+        use crate::engine::analysis::directories::Directory;
+
         let symbols = &self.catalog.symbols;
         let addresses: std::collections::BTreeSet<u64> = symbols
             .iter()
@@ -513,41 +546,68 @@ impl VerifiedAnalysis<'_> {
                 .collect(),
         };
         let inventory = schedule::inventory(&instructions, &facts)?;
+        let image = self.image();
         let loader_directories = binary::references::database_directories(
             &text,
-            &self.image(),
+            &image,
             &self.catalog.candidates,
             inventory.unjoined.iter().cloned().collect(),
         );
+        let named = loader_directories
+            .iter()
+            .filter(|(_, directory)| matches!(directory, Directory::Named(_)))
+            .map(|(database, _)| database.clone())
+            .collect();
+        let loader_owners = binary::loader_owners::loader_owners(&text, &image, &named);
 
         Ok(ScheduledDatabases {
             inventory,
             loader_directories,
+            loader_owners,
         })
     }
 
-    /// Read fields for a candidate from this analysis; reject records from another source.
-    pub(crate) fn field_input(
-        &self,
-        selection: crate::engine::analysis::discovery::CandidateRecord,
-    ) -> Result<crate::engine::analysis::fields::FieldInput, AnalysisError> {
-        if !self
+    /// The owner of the items of `registry`: its template candidate's owner, or else the owner
+    /// that the registry's own loader builds. `None` when neither names `registry`, and the
+    /// reason when its loader gives no one owner.
+    pub(crate) fn registry_owner(&self, registry: &str) -> Option<Result<&str, String>> {
+        if let Some(candidate) = unique_named_candidate(self.named_candidates(), registry) {
+            return Some(Ok(&candidate.record.owner_candidate));
+        }
+
+        self.database_schedule().ok()?.loader_owner(registry)
+    }
+
+    /// The owners that the loaders of unjoined databases build.
+    fn loader_owners(&self) -> impl Iterator<Item = &str> {
+        self.database_schedule()
+            .ok()
+            .and_then(|schedule| schedule.loader_owners.as_ref().ok())
+            .into_iter()
+            .flat_map(BTreeMap::values)
+            .filter_map(|owner| match owner {
+                LoaderOwner::Owner(owner) => Some(owner.as_str()),
+                LoaderOwner::NoOwner | LoaderOwner::Several(_) => None,
+            })
+    }
+
+    /// Read fields for the items of `owner`; reject a class that owns no registry of this
+    /// analysis.
+    pub(crate) fn field_input(&self, owner: &str) -> Result<FieldInput, AnalysisError> {
+        let template = self
             .catalog
             .candidates
             .iter()
-            .any(|candidate| candidate.record == selection)
-        {
+            .any(|candidate| candidate.record.owner_candidate == owner);
+        if !template && !self.loader_owners().any(|loader| loader == owner) {
             return Err(AnalysisError::InvalidRange);
         }
 
-        self.read_field_input(selection)
+        self.read_field_input(owner)
     }
 
-    /// Read the fields input of `selection`, with the part that every selection shares.
-    fn read_field_input(
-        &self,
-        selection: crate::engine::analysis::discovery::CandidateRecord,
-    ) -> Result<FieldInput, AnalysisError> {
+    /// Read the fields input of `owner`, with the part that every owner shares.
+    fn read_field_input(&self, owner: &str) -> Result<FieldInput, AnalysisError> {
         let image = self.image();
         let shared = self
             .catalog
@@ -556,7 +616,7 @@ impl VerifiedAnalysis<'_> {
             .as_ref()
             .map_err(Clone::clone)?;
 
-        binary::fields::read(&image, shared, selection, self.persistent)
+        binary::fields::read(&image, shared, owner, self.persistent)
     }
 }
 
@@ -622,7 +682,7 @@ impl BoundAnalysis {
         let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
             return Ok(FixtureRegistryFields::default());
         };
-        let input = verified.field_input(candidate.record.clone())?;
+        let input = verified.field_input(&candidate.record.owner_candidate)?;
         let result = crate::engine::analysis::fields::analyze(&input)?;
 
         let references = self.reference_facts()?;
@@ -648,24 +708,24 @@ impl BoundAnalysis {
     }
 
     /// The field method's result for the registry named `registry`, with the owner type of its
-    /// items, or `None` when no one candidate has that name. The method runs once per registry;
+    /// items, or `None` when the registry has no one owner. The method runs once per registry;
     /// later calls check the executable and return the kept result.
     pub(crate) fn registry_field_result(
         &self,
         registry: &str,
     ) -> Result<Option<(String, Arc<RegistryFieldResult>)>, AnalysisError> {
         let verified = self.verified()?;
-        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
+        let Some(Ok(owner)) = verified.registry_owner(registry) else {
             return Ok(None);
         };
-        let owner = candidate.record.owner_candidate.clone();
+        let owner = owner.to_owned();
         let kept = self.kept_registry_fields().get(registry).cloned();
 
         if let Some(result) = kept {
             return Ok(Some((owner, result)));
         }
 
-        let input = self.registry_field_input(&verified, candidate)?;
+        let input = self.registry_field_input(&verified, &owner)?;
         let result = Arc::new(fields::analyze(&input)?);
         let kept = self
             .kept_registry_fields()
@@ -684,14 +744,15 @@ impl BoundAnalysis {
             .expect("registry field result lock")
     }
 
-    /// `candidate`'s field input, with the words that the shared facts supply to its constructors:
-    /// the scopes that weight blocks store and the words that modifier nodes initialize.
+    /// The field input of `owner`'s items, with the words that the shared facts supply to its
+    /// constructors: the scopes that weight blocks store and the words that modifier nodes
+    /// initialize.
     pub(crate) fn registry_field_input(
         &self,
         verified: &VerifiedAnalysis<'_>,
-        candidate: &NamedCandidate,
+        owner: &str,
     ) -> Result<FieldInput, AnalysisError> {
-        let mut input = verified.field_input(candidate.record.clone())?;
+        let mut input = verified.field_input(owner)?;
 
         if let Some(persistent) = &mut input.persistent {
             persistent.requested_words = self.weight_block_facts()?.stored_scopes();
