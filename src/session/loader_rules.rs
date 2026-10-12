@@ -15,8 +15,12 @@ const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's fi
 const NOT_STATED: [&str; 3] = ["duplicate_rule", "file_order", "definition_names"];
 
 impl Native {
-    /// Read how one registry's loader selects its files: the file-name filters and the
-    /// subdirectories that it reads. The folder is the registry name.
+    /// Read how one registry's loader enumerates its files: the file-name filters and the
+    /// subdirectories that the enumeration lists. The folder is the registry name.
+    ///
+    /// A file that the loader opens by a literal name, a check of a name after the enumeration,
+    /// and the mounted directories that the enumeration searches are outside this method; an
+    /// [`GapKind::OutsideMethod`] gap says so.
     ///
     /// A filter that the loader passes as a value other than a literal, several loader calls that
     /// disagree, or a loader with no file enumeration leaves the property

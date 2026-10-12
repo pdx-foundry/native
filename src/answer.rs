@@ -633,23 +633,23 @@ pub struct Registry {
     pub name: String,
 }
 
-/// How one registry's loader selects its files. The folder is the registry name.
+/// The file enumeration of one registry's loader. The folder is the registry name.
 ///
-/// The loader reads each file of the folder whose name passes every filter, at the depths that
-/// [`recursion`](Self::recursion) states. Names that start with `.` are never read. A property
-/// that is not [`GrammarProperty::Known`] has a gap.
+/// The enumeration lists each file of the folder whose name passes every filter, at the depths
+/// that [`recursion`](Self::recursion) states, and never lists a name that starts with `.`. A
+/// property that is not [`GrammarProperty::Known`](crate::GrammarProperty::Known) has a gap.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoaderRules {
     /// The text that a file name must end with, such as `.txt`. `Known(None)` is no filter: the
-    /// loader reads files of every extension.
+    /// enumeration lists files of every extension.
     pub extension: crate::GrammarProperty<Option<String>>,
     /// Text that a file name must contain anywhere. `Known(None)` is no filter.
     pub name_contains: crate::GrammarProperty<Option<String>>,
-    /// The subdirectories that the loader reads below the folder.
+    /// The subdirectories that the enumeration lists below the folder.
     pub recursion: crate::GrammarProperty<Recursion>,
 }
 
-/// The subdirectories that a loader reads below its folder.
+/// The subdirectories that a loader's file enumeration lists below its folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Recursion {
     /// Only the files directly in the folder.
