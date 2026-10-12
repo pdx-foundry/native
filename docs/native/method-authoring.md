@@ -431,6 +431,97 @@ For another inventory, run its operation over all entries, including those that 
 or fail, and keep unresolved entries in the denominator. State whether counts refer to operation
 answers, inventory entries or paths.
 
+## Report the registry sweep
+
+[`registry-sweep.rs`](../../examples/registry-sweep.rs) gives the automatic rate of the SDK-553
+sweep for each of eight relationships, in total, per registry and per reader identity. It reads a
+recorded-answers directory through `Native::from_recorded_answers` and the public API only, so
+Native and Atlas get the same number from one recording without a game. `Basis::Recorded` changes
+no completeness or gap. One `registry_fields` answer carries seven of the relationships, and a
+`Complete` answer can still have `OutsideMethod` gaps, so the report never copies an answer's
+completeness to a relationship. It classifies each unit from the public properties and gaps
+below.
+
+### Classification rules
+
+A unit is one registry for the registry relationships, and one root field (an item of the
+`registry_fields` value) for the field relationships. Nested fields are not units: their facts
+count only through their root field's weight rule. Change this when Atlas needs rates for nested
+claims.
+
+Each applicable unit is **complete**, **partial** or **failed**. A registry relationship can also
+be **unsupported** (`Error::Unsupported`) or **missing** (`Error::NotRecorded`). A missing answer
+is not a method failure. `Error::Method`, `Error::UnknownRegistry` and every other error that a
+query returns are failed with the error text as the reason. The report refuses `Error::Recorded`:
+an unreadable recording is no answer.
+
+A field relationship that depends on the reader is **undetermined** for a field whose
+`reader.kind` is `Unknown`: the method did not establish whether the relationship applies. The
+rate is `complete / denominator`, and the denominator holds every unit except missing ones, so an
+undetermined unit counts against the rate. A registry whose `registry_fields` question has no
+answer has no field units; the report counts such registries by status beside the rates.
+
+| Relationship | Unit and public inputs | Applies to | Complete | Failed |
+| --- | --- | --- | --- | --- |
+| Fields | Registry: the `registry_fields` answer and its gaps | Every listed registry | An answer, and no gap of kind `UnresolvedPath`, `UnnamedField`, `UnresolvedReader` or `UnreadableInput` whose subject is the registry or none: such a gap is a path that can hold a field the answer does not name | No answer |
+| Reader kinds | Field: `reader.id`, `reader.kind` | Every field | An identity, and a kind other than `Unknown` | No identity, and kind `Unknown` |
+| Shapes and conditions | Field: `shape.value`, `shape.repeat`, each `read` alternative | Every field | No `Unknown` shape part, no `Unresolved` term in any condition, and no `Unresolved` outcome | Both shape parts `Unknown`, and every outcome `Unresolved` |
+| References | Field: `reference` | Kind `Reference`, or a `Read` alternative whose reader is `Reference` | At least one lookup; every target a registry or `Triggers`; no `Unresolved` stage, key match, empty key or missing result | `NotEstablished`, or no lookup with a target |
+| Numerics | Field: `reader.numeric` | Kind `Integer`, `FixedPoint`, `Float` or `ScopedNumeric` | Conversion facts (`Known(Some)` or `Partial(Some)`; the `Partial` wrapper does not count, as [numeric conversion](numeric-conversion.md#answer-rule) states) | `Unresolved`, or no conversion |
+| Weights | Field: `members` | `reader.family` `Weight`, or `WeightBlock` members; undetermined also for a `Block` of family `Unknown` | A `WeightBlock` whose `scalar`, `fixed_keys` and `operations` are `Known`, whose operation repeat is known when it has operations, whose other keys are `Rejected` or `Known` triggers, and whose nested weight keys follow the same rule | No `WeightBlock` |
+| Naming rules | Registry: the `derived_names` and `modifier_families` answers | Every listed registry | Both answers complete | Neither question has an answer |
+| Scope context | Field: `read_scope`, `entry_contexts`, `accepted_categories` | Every field | Each part established: `read_scope` is `Known`; for family `Trigger`, `Effect` or `Weight`, at least one entry context and no `Unresolved` scope in any; `accepted_categories` is not `Unresolved` | No part established |
+
+Every other applicable unit is partial. For naming rules, a missing answer makes the registry
+missing, and two `Unsupported` errors make it unsupported. For scope context, `read_scope`
+`Partial` and entry contexts with an `Unresolved` scope are partly established.
+
+The properties do not mark every limit, so a gap that names the field also makes a complete
+relationship partial. It never makes one complete or failed. Gaps of kind `OutsideMethod` never
+count.
+
+| Gap kind, subject the field | Relationship left partial |
+| --- | --- |
+| `UnresolvedReader` | Reader kinds |
+| `UnresolvedStorage`, `UnresolvedCondition` | Shapes and conditions |
+| `ReaderSemantics` | References |
+| `NumericConversion` | Numerics |
+| `UnresolvedPath` | Scope context: entry-context and read-scope searches report a missing call path this way |
+| Any kind, with a key path that starts at the field | Weights: a nested key's deficit |
+
+Two known limits make the rate lower than the method's own result, never higher. The entry-context
+search reports a block that it cannot name as an `UnresolvedPath` gap on the registry, so that
+registry's fields are partial. On M452, `common/colony_automation` and `common/map_modes` are
+partial for this reason only. Six `UnresolvedPath` gaps on M452 fields are about a reader path
+or a triggered modifier, not scope context. Change the rule when a gap kind or subject separates
+them.
+
+### The report
+
+The report lists the rates per relationship, then each registry's statuses, each reader identity's
+counts (fields without an identity under `none`), each field's statuses, and the failure shapes:
+each gap that is not `OutsideMethod`, by kind and detail with its digits replaced by `N`, and each
+error by operation and reason.
+
+Record the inventory and the three registry questions, then report over the recording:
+
+```sh
+cargo run --release --example registry-sweep -- --record .local/population/sweep-answers "$STELLARIS_PATH"
+cargo run --release --example registry-sweep -- .local/population/sweep-answers > .local/population/sweep.json
+cargo run --release --example registry-sweep -- --diff tests/population/m452/registry-sweep.json .local/population/sweep.json
+```
+
+`--record` writes into a new directory; the report needs no installation. `--diff` takes full
+reports or baselines and lists each registry and relationship whose statuses changed. Update the
+tracked baseline in the PR that changes the answers:
+
+```sh
+cargo run --release --example registry-sweep -- --baseline .local/population/sweep-answers > tests/population/m452/registry-sweep.json
+```
+
+The baseline holds one line for each registry: its registry statuses and its field counts by
+relationship and status.
+
 ## Keep the knowledge in its home
 
 Update the subject's page in `docs/native/`; a new subject gets a new page linked from the
