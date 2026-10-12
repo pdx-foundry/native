@@ -4,7 +4,7 @@ use super::*;
 use crate::engine::analysis::assembler::{Arm64, arm64};
 use crate::engine::analysis::declarations::{Composition, Function, ParserSlots, ScopeSlots};
 use crate::engine::analysis::evaluate::ReadOnlyData;
-use crate::engine::analysis::families::{StringFunctions, StringLayout};
+use crate::engine::analysis::strings::{StringFunctions, StringLayout};
 
 const NEW: u64 = 0x9000;
 const NAME_READER: u64 = 0x9100;

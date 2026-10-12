@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use super::{
     decode::Instruction,
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
-    families::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
     stop::Unresolved,
+    strings::{Arena, Effect, Model, Sources, StringFunctions, StringLayout},
 };
 
 /// Code and named anchors for the two readers, independent of any build layout.

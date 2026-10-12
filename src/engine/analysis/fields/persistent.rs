@@ -1,6 +1,6 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
 use super::containers::{self, PathMasks};
-use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, ReaderJoin, RootField};
+use super::{ConcreteReader, FieldGap, FieldGapKind, FieldInput, RootField};
 use crate::engine::analysis::{
     evaluate::{Call, Code, Exit, ReadOnlyData},
     readers,
@@ -26,19 +26,8 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
     let offsets: BTreeSet<_> = fields
         .iter()
         .flat_map(|field| &field.readers)
-        .filter_map(|join| {
-            let ReaderJoin::Joined { callee, .. } = join else {
-                return None;
-            };
-            matches!(
-                callee.as_str(),
-                "CReader::Read(CPersistent&)"
-                    | "CVariableValue::Read(CReader&, EScopeType)"
-                    | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
-            )
-            .then(|| readers::destination(join))
-            .flatten()
-        })
+        .filter(|join| readers::reads_embedded_object(join))
+        .filter_map(readers::destination)
         .filter(|offset| (0..SPAN as i64 - 8).contains(offset))
         .collect();
     if offsets.is_empty() {
@@ -69,11 +58,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
         .into_iter()
         .filter(|(offset, _)| {
             fields.iter().flat_map(|field| &field.readers).any(|join| {
-                matches!(join, ReaderJoin::Joined { callee, .. }
-                    if matches!(callee.as_str(),
-                        "CVariableValue::Read(CReader&, EScopeType)"
-                            | "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
-                    ) && readers::destination(join) == Some(*offset))
+                readers::reads_scoped_numeric(join) && readers::destination(join) == Some(*offset)
             })
         })
         .collect();

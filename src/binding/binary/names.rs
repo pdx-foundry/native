@@ -4,12 +4,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
-    families::{Receiver, Root as FamilyRoot, StringFunctions},
+    families::{Receiver, Root as FamilyRoot},
     fields::has_owner_receiver,
     names::{
         LogArguments, Miss, NameArgument, NameInput, RegistryInput, ResultView, Role, Root, Sink,
         Stage,
     },
+    strings::StringFunctions,
 };
 use crate::{AnalysisError, NameLookup};
 

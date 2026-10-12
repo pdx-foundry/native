@@ -4,6 +4,7 @@ use crate::engine::analysis::{
     discovery::CandidateRecord,
     evaluate::{Call, Code, Exit, Machine, ReadOnlyData},
     fields::{self, FieldInput, ReaderJoin, Value},
+    readers::PERSISTENT_READ,
     stop::Unresolved,
 };
 use crate::protocol::observation::{
@@ -144,7 +145,7 @@ impl VerifiedAnalysis<'_> {
         else {
             return Err("Parent has no single persistent reader".into());
         };
-        if callee != "CReader::Read(CPersistent&)"
+        if callee != PERSISTENT_READ
             || arguments.get("x0") != Some(&Value::Reader(0))
             || parent.paths.is_empty()
             || parent

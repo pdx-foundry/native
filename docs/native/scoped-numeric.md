@@ -63,6 +63,15 @@ gap. Each destination also keeps the outside-method limit for qualified scopes, 
 outcomes and evaluation. A repeated operand `Merges`
 ([repeat behavior](registry-fields.md#repeat-behavior)).
 
+### Command value forms
+
+A value form earns a destination point (`scoped_destinations`) when its reader is a scoped numeric
+reader, `CVariableValue::Read` or `Assign`. On M452 this changes no answer. The forms chain records
+`Assign` of the value token before the shared reader join, as a form of unknown kind with no
+reader, so no form carries an `Assign` reader. The one form with a scoped reader is
+`CHasResourceTrigger`'s `CVariableValue::Read` at `+0xa0`; it stays unresolved at `PostInit`
+(initializer not summarized) and is not an accepted form.
+
 ## Live fixture pitfalls
 
 - **An inline block corrupts the next definitions.** `{ base = 2 add = 3 }` given to this scalar

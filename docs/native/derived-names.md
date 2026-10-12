@@ -10,7 +10,7 @@ The method is `src/engine/analysis/names.rs`; its module comment describes the t
 the enumerated inputs and the miss and condition rules. `src/binding/binary/names.rs` reads the
 sink table, the diagnostic functions and each registry's roots. `src/session/names.rs` gives the
 public answer and its gaps. The string model is shared with
-[modifier families](modifier-families.md) (`engine/analysis/families/strings.rs`). The
+[modifier families](modifier-families.md) (`engine/analysis/strings.rs`). The
 [engine knowledge index](../engine-knowledge.md) lists the other pages.
 
 ## Engine facts (M451-hotfix)

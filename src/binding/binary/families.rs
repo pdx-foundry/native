@@ -11,12 +11,12 @@ use crate::engine::analysis::{
     evaluate::{Code, ReadOnlyData},
     families::{
         DatabaseLayout, Definitions, FamilyInput, KeyStorageInput, Receiver, RegistryInput, Root,
-        StringFunctions, StringLayout,
         joins::{self, DEPTH, GenerationSite, Graph, Joins, RootOf},
         loading::{Function, Loading},
     },
     modifier_table::Layout,
     readers::thunk_target,
+    strings::{StringFunctions, StringLayout},
 };
 
 use super::super::targets::DeclarationRecipe;

@@ -13,8 +13,8 @@
 //! the same branches that it takes for that text. Strings that it builds are in the long form.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::evaluate::{Call, Machine, ReadOnlyData};
-use super::super::stop::Unresolved;
+use super::evaluate::{Call, Machine, ReadOnlyData};
+use super::stop::Unresolved;
 
 /// The longest text that the model reads or writes, in bytes.
 const TEXT_LIMIT: u64 = 4096;

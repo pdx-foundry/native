@@ -63,8 +63,7 @@ pub(super) fn alternative_reader(
     persistent: &BTreeMap<i64, ConcreteReader>,
 ) -> Reader {
     let mut selected = reader(std::slice::from_ref(join));
-    if matches!(join, ReaderJoin::Joined { callee, .. } if callee == "CReader::Read(CPersistent&)" )
-    {
+    if matches!(join, ReaderJoin::Joined { callee, .. } if callee == readers::PERSISTENT_READ) {
         selected.id = None;
         if let Some(concrete) =
             readers::destination(join).and_then(|offset| persistent.get(&offset))
@@ -788,27 +787,32 @@ fn tested_field<'a>(value: &Value, fields: &'a [RootField]) -> Option<&'a RootFi
     };
     let mut matches = fields.iter().filter(|field| {
         !field.readers.is_empty()
-            && field.readers.iter().all(|join| {
-                let ReaderJoin::Joined {
-                    callee, arguments, ..
-                } = join
-                else {
-                    return false;
-                };
-                let scalar_width = match callee.as_str() {
-                    "CReader::Read(bool&)"
-                    | "CReader::Read(signed char&)"
-                    | "CReader::Read(unsigned char&)" => 1,
-                    "CReader::Read(short&)" | "CReader::Read(unsigned short&)" => 2,
-                    "CReader::Read(int&)" | "CReader::Read(unsigned int&)" => 4,
-                    "CReader::Read(long long&)" | "CReader::Read(unsigned long long&)" => 8,
-                    _ => return false,
-                };
-                *width == scalar_width && arguments.get("x1") == Some(&Value::Owner(*offset))
-            })
+            && field
+                .readers
+                .iter()
+                .all(|join| stores_integer_word(join, *offset, *width))
     });
     let found = matches.next()?;
     matches.next().is_none().then_some(found)
+}
+
+/// Whether `join` stores an integer or Boolean of `width` bytes at the owner `offset`.
+///
+/// The loader tests a field with `cbz` or `cbnz` on the integer word that it loads, and
+/// `FieldZero` says that the stored scalar is zero. A zero word is that for an integer or a
+/// Boolean. A float stores IEEE bits, and its `-0.0` is a nonzero word. A fixed-point value stores
+/// a scaled word. No rule here covers a zero test of either, so they stay out although
+/// `readers::scalar_width` gives their widths too.
+fn stores_integer_word(join: &ReaderJoin, offset: i64, width: u8) -> bool {
+    let ReaderJoin::Joined { callee, .. } = join else {
+        return false;
+    };
+
+    matches!(
+        readers::classify_callee(callee),
+        ReaderKind::Boolean | ReaderKind::Integer
+    ) && readers::scalar_width(callee) == Some(u64::from(width))
+        && readers::destination(join) == Some(offset)
 }
 
 #[cfg(test)]
@@ -872,6 +876,70 @@ mod tests {
         different[1].1 = PathOutcome::Rejected;
         collapse_equivalent_branches(&mut different);
         assert_eq!(different.len(), 2);
+    }
+    #[test]
+    fn a_zero_test_names_a_field_only_when_it_stores_an_integer_word_there() {
+        let tested = |callee: &str, stored_at: i64, loaded_width: u8| {
+            let field = RootField {
+                name: "tested".into(),
+                token: 3,
+                constructor: 0,
+                paths: vec![],
+                readers: vec![ReaderJoin::Joined {
+                    callee: callee.into(),
+                    arguments: [
+                        ("x0".into(), Value::Reader(0)),
+                        ("x1".into(), Value::Owner(stored_at)),
+                    ]
+                    .into(),
+                    tail: true,
+                }],
+            };
+            let load = Condition {
+                at: 4,
+                value: Some(Value::Load(Box::new(Value::Owner(8)), loaded_width)),
+                zero: true,
+            };
+
+            condition(&[load], &[field])
+        };
+        let named = FieldCondition::FieldZero {
+            path: vec!["tested".into()],
+            zero: true,
+        };
+
+        for (callee, width) in [
+            ("CReader::Read(bool&)", 1),
+            ("CReader::Read(unsigned char&)", 1),
+            ("CReader::Read(unsigned short&)", 2),
+            ("CReader::Read(int&)", 4),
+            ("CReader::Read(long long&)", 8),
+        ] {
+            assert_eq!(tested(callee, 8, width), named, "{callee}");
+        }
+
+        for (callee, width) in [
+            ("CReader::Read(float&)", 4),
+            (
+                "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)",
+                8,
+            ),
+        ] {
+            assert_eq!(
+                tested(callee, 8, width),
+                FieldCondition::Unresolved,
+                "{callee}"
+            );
+        }
+
+        assert_eq!(
+            tested("CReader::Read(int&)", 8, 8),
+            FieldCondition::Unresolved
+        );
+        assert_eq!(
+            tested("CReader::Read(int&)", 16, 4),
+            FieldCondition::Unresolved
+        );
     }
     #[test]
     fn unknown_tests_never_cancel_to_an_unconditional_read() {

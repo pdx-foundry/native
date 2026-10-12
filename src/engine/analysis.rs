@@ -28,6 +28,7 @@ pub mod references;
 pub(crate) mod scoped_numeric;
 pub mod scopes;
 pub mod stop;
+pub mod strings;
 pub(crate) mod weight_blocks;
 
 #[cfg(test)]

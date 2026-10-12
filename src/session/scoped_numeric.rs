@@ -78,7 +78,7 @@ pub(super) fn attach_field(
         if let ReaderJoin::Joined {
             callee, arguments, ..
         } = join
-            && callee == "CVariableValue::Assign(CToken const&, EScopeType, CString const&)"
+            && callee == readers::SCOPED_ASSIGN
             && !matches!(
                 arguments.get("x3"),
                 Some(crate::engine::analysis::fields::Value::Owner(_))
@@ -131,7 +131,7 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
         let offsets = root
             .readers
             .iter()
-            .filter(|join| is_scoped(join))
+            .filter(|join| readers::reads_scoped_numeric(join))
             .filter_map(readers::destination);
         (root.name.clone(), offsets.collect::<Vec<_>>())
     });
@@ -140,7 +140,13 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
             .alternatives
             .iter()
             .filter(|alternative| alternative.verdict == Verdict::Accepted)
-            .filter(|alternative| alternative.value.reader.as_ref().is_some_and(is_scoped))
+            .filter(|alternative| {
+                alternative
+                    .value
+                    .reader
+                    .as_ref()
+                    .is_some_and(readers::reads_scoped_numeric)
+            })
             .filter_map(|alternative| alternative.value.destination)
             .map(|offset| offset as i64);
         ("(value)".to_string(), offsets.collect())
@@ -172,11 +178,6 @@ pub(super) fn state_stops(result: &GrammarResult) -> Vec<(String, Unresolved)> {
             ))
         })
         .collect()
-}
-
-fn is_scoped(join: &ReaderJoin) -> bool {
-    matches!(join, ReaderJoin::Joined { callee, .. }
-        if readers::classify_callee(callee) == ReaderKind::ScopedNumeric)
 }
 
 fn joined_point(joins: &[ReaderJoin], points: &BTreeMap<i64, u64>) -> Option<u64> {

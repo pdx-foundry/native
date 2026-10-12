@@ -213,6 +213,11 @@ Pitfalls:
   initialize presence and do not restrict which occurrences are read. Equal complete outcomes on
   opposite presence branches collapse to `Always`; unresolved outcomes and unequal destinations
   cannot.
+- A presence test names its field (`FieldZero`) only when the loader tests, with `cbz` or `cbnz`, a
+  word of the field's own width at the offset where an integer or Boolean reader stores it. A
+  float or fixed-point reader at that offset leaves the condition `Unresolved`: a zero word is not
+  shown to be the scalar's zero for them (`-0.0` is a nonzero float word). Remove the limit when
+  a loader tests such a field and the test is read.
 - `CTraditionType::ReadMember` (`0x100cdcf38`) allocates and reads a swap, then inserts its pointer
   into the collection at `+0x5c8`; the method proves construction, virtual read and insertion of the
   same object on all paths. The pointer insertion specialization (`0x100ce42ac`) stores into the
