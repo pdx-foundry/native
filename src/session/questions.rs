@@ -458,25 +458,25 @@ impl Native {
     }
 
     /// The error for a registry that the operation does not read. A registry that
-    /// [`Native::registries`] lists through its own loader is [`Error::Unsupported`]; any other
-    /// name is [`Error::UnknownRegistry`]. A changed executable keeps its own error.
+    /// [`Native::registries`] lists through its own loader is [`Error::Unsupported`], with the
+    /// reason of its owner join for the three registry queries; any other name is
+    /// [`Error::UnknownRegistry`]. A changed executable keeps its own error.
     pub(crate) fn unanswered_registry(&self, operation: Operation, registry: &str) -> Error {
         let registry = registry.trim_end_matches('/');
         let verified = match self.bound().analysis.verified() {
             Ok(verified) => verified,
             Err(failure) => return error(operation, failure),
         };
-        let Some(owner) = verified
-            .database_schedule()
-            .ok()
-            .and_then(|schedule| schedule.loader_owner(registry))
-        else {
+        let Some(owner) = verified.registry_owner(registry) else {
             return Error::UnknownRegistry {
                 name: registry.into(),
             };
         };
         let reason = match (operation, owner) {
-            (Operation::RegistryFields, Err(reason)) => reason,
+            (
+                Operation::RegistryFields | Operation::DerivedNames | Operation::ModifierFamilies,
+                Err(reason),
+            ) => reason,
             _ => "the registry has no template loader, and this operation reads only template \
                   registries"
                 .into(),

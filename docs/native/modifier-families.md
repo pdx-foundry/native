@@ -43,13 +43,25 @@ A root is a function that the engine runs for the items of one content database.
 - Generator classes (`CTechnologyModifierGenerator`, `CSpeciesClassModifierGenerator`, …) are
   stack objects that the root builds. The root stores the item at `+0xb8` and calls the
   `Create*` methods directly, not through the vtable.
-- The post-read functions of `CStrategicResource`, `CPlanetClass`, `CZoneType::CSerializer` and
+- A registry that its own loader names ([custom-loader names](registry-fields.md#custom-loader-names))
+  takes part with the database and the owner that its loader builds, as a template registry
+  does. On M452 the 15 such registries with one owner add one root:
+  `CStrategicResource::InitPostRead`, which joins the `CModifierGeneratorBase::GenerateFrom` and
+  `CDatabaseModifierGenerator<CStrategicResource>::Generate` sites to
+  `common/strategic_resources`. Its answer has no family yet: the item key place is not
+  established, because its key constructor is `CStrategicResource(CString const&, int)`, not the
+  template shape (SDK-789 gives it). The other 14 reach no generation call.
+- The post-read functions of `CPlanetClass`, `CZoneType::CSerializer` and
   `CEconomicCategory::CTriggeredModifierTable::CSerializer<N>` are roots with no named registry.
-  `common/strategic_resources` and `common/planet_classes` are registries that their own custom
-  loaders name ([Custom-loader names](registry-fields.md#custom-loader-names)), but no family join
-  reaches them yet (SDK-789). Their sites stay gaps; `NamePart` has no part for them.
-- `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a content
-  object that no named registry owns. Its names combine two registries' keys.
+  `common/planet_classes` has no one owner (its loader builds two classes), so its sites stay
+  gaps; `NamePart` has no part for them.
+- `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a second
+  content object. Its names combine two registries' keys. A function is a second input when it
+  takes an object of a class whose post-read code no template registry owns, except on the
+  contexts of that class's own loader registry. So naming `common/strategic_resources` keeps the
+  matrix out of `common/economic_categories`. A function that takes an item of another template
+  registry is not a second input; none generates on M452. Make the rule uniform when such a
+  function appears.
 - The reload path (`ReadExistingEntry`) and the non-virtual thunks hold copies of
   `InitPostRead`. A chain of calls that reaches a copy but no root is not a context.
 
@@ -196,7 +208,9 @@ items, and how many of the names that the template gives for them are loaded.
 | `common/zones` | `planet_{key}_build_speed_mult` | database | Always | 146 | 146 |
 
 `common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` return no
-family (see the gaps below). The five build-speed and
+family (see the gaps below). On M452 the 15 custom-loader registries with one owner answer partial
+with no family (see [Roots](#roots)); the six without one owner are `Unsupported` with the reason of
+the owner join. The five build-speed and
 windup templates of buildings, districts and bypass also equal all 680 registrations that the
 SDK-498 prototype hooks observed in two live runs. That control does not cover the district and
 building maximum families. The hooked sites on M45-release are `0x1000df770` (buildings),
@@ -229,13 +243,14 @@ pass a mask from an item field (for economic categories `+0x128`, the content's
 
 ### Gaps
 
-The `UnnamedDeclaration` gap counts the 20 generation sites that are not joined to a registry:
+The `UnnamedDeclaration` gap counts the 18 generation sites (M452) that are not joined to a
+registry:
 
 | Reason | Sites | Code |
 | --- | ---: | --- |
 | Inside the registration function | 1 | The `AddDefinition` in `CModifier::TryAddDynamicModifier` |
-| Unnamed matrix input | 1 | `CEconomicCategory::FillModifierTable<false>` (economic category × strategic resource) |
-| Unnamed content | 5 | `CModifierGeneratorBase::GenerateFrom` (also called by `CStrategicResourceModifierGenerator`), `CDatabaseModifierGenerator<CStrategicResource>::Generate`, `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` (also from the triggered-table serializers) |
+| Second matrix input | 1 | `CEconomicCategory::FillModifierTable<false>` (economic category × strategic resource) |
+| Unnamed content | 3 | `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` (also from the triggered-table serializers) |
 | No root | 13 | Ten `AddDefinition` calls in `CShipClassModifierHelper::Init` (from `CModifier::InitDefinitions`: the engine's ship-class enum, before content), `CWeaponTagModifierHelper::CreateModifierType` (from `CWeaponTagDatabase::InitInstance`), two in `CLeaderClass::CreateStartingAgeModifiers` (no direct caller) |
 
 Gaps in joined registries:

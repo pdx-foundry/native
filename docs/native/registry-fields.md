@@ -391,9 +391,9 @@ database class (`CTraitDatabase::…`) and takes the literal first argument of e
 from a known address loads the pointer slot, and the slot's rebase target is the literal. Exactly
 one distinct literal names the registry; several, none, or an argument that the scan does not
 establish leave the row in the `UnnamedRegistries` gap.
-`registry_fields` reads these names through their [owner](#custom-loader-owners);
-`derived_names` and `modifier_families` read only template registries and give `Unsupported` for
-them until SDK-802. `UnknownRegistry` is for names that `registries()` does not list. The
+`registry_fields`, `derived_names` and `modifier_families` read these names through their
+[owner](#custom-loader-owners) ([derived names](derived-names.md#population),
+[modifier families](modifier-families.md#roots)). `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
 On M452, 22 of the 35 rows are named, with 21 names: `common/ambient_objects`, `common/colors`,

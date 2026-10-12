@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use super::binary::families::FamilyIndex;
+use super::binary::families::{FamilyIndex, NamedRegistry};
 use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::{
@@ -93,20 +93,24 @@ pub(crate) struct ScheduledDatabases {
 }
 
 impl ScheduledDatabases {
-    /// The owner of the items of `registry` through the loader that names it: `None` when no
-    /// unjoined database's loader names it, and the reason when its loaders give no one owner.
-    pub(crate) fn loader_owner(&self, registry: &str) -> Option<Result<&str, String>> {
+    /// The registry that the loader of an unjoined database names, with the classes of that
+    /// database and its items: `None` when no unjoined database's loader names `registry`, and the
+    /// reason when its loaders give no one owner.
+    pub(in crate::binding) fn loader_registry(
+        &self,
+        registry: &str,
+    ) -> Option<Result<NamedRegistry<'_>, String>> {
         use crate::engine::analysis::directories::Directory;
 
-        let databases: Vec<&String> = self
+        let databases: Vec<(&String, &String)> = self
             .loader_directories
             .iter()
-            .filter(
-                |(_, directory)| matches!(directory, Directory::Named(name) if name == registry),
-            )
-            .map(|(database, _)| database)
+            .filter_map(|(database, directory)| match directory {
+                Directory::Named(name) if name == registry => Some((database, name)),
+                _ => None,
+            })
             .collect();
-        let [database] = databases[..] else {
+        let [(database, name)] = databases[..] else {
             return (!databases.is_empty())
                 .then(|| Err(format!("{} databases load this directory", databases.len())));
         };
@@ -118,7 +122,11 @@ impl ScheduledDatabases {
         };
 
         Some(match owners.get(database) {
-            Some(LoaderOwner::Owner(owner)) => Ok(owner.as_str()),
+            Some(LoaderOwner::Owner(owner)) => Ok(NamedRegistry {
+                name,
+                database,
+                owner,
+            }),
             Some(LoaderOwner::Several(classes)) => Err(format!(
                 "the loader builds several classes with a member reader: {}",
                 classes.join(", ")
@@ -127,6 +135,24 @@ impl ScheduledDatabases {
                 Err("the loader builds no class with a member reader".into())
             }
         })
+    }
+
+    /// Every registry that an unjoined database's loader names and whose loaders build one owner.
+    fn loader_registries(&self) -> impl Iterator<Item = NamedRegistry<'_>> {
+        use crate::engine::analysis::directories::Directory;
+
+        let names: std::collections::BTreeSet<&str> = self
+            .loader_directories
+            .values()
+            .filter_map(|directory| match directory {
+                Directory::Named(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        names
+            .into_iter()
+            .filter_map(|name| self.loader_registry(name)?.ok())
     }
 }
 
@@ -393,19 +419,18 @@ impl VerifiedAnalysis<'_> {
         recipe: &super::targets::DeclarationRecipe,
         database: DatabaseLayout,
     ) -> Result<FamilyIndex, AnalysisError> {
-        use crate::engine::analysis::{directories::Directory, modifiers};
+        use crate::engine::analysis::modifiers;
 
-        let registries: Vec<_> = self
+        let templates: Vec<_> = self
             .named_candidates()
             .iter()
-            .filter_map(|candidate| match &candidate.directory {
-                Directory::Named(name) => Some(binary::families::NamedRegistry {
-                    name,
-                    database: &candidate.record.database,
-                    owner: &candidate.record.owner_candidate,
-                }),
-                _ => None,
-            })
+            .filter_map(NamedCandidate::named_registry)
+            .collect();
+        let loaders: Vec<_> = self
+            .database_schedule()
+            .ok()
+            .into_iter()
+            .flat_map(ScheduledDatabases::loader_registries)
             .collect();
 
         let modifier_input = self.modifier_input(recipe)?;
@@ -425,7 +450,8 @@ impl VerifiedAnalysis<'_> {
         binary::families::index(
             &self.executable,
             &self.catalog.symbols,
-            &registries,
+            &templates,
+            &loaders,
             binary::families::KnownFacts {
                 runtime_definitions: &runtime_definitions,
                 type_masks: declarations.type_masks,
@@ -593,15 +619,23 @@ impl VerifiedAnalysis<'_> {
         })
     }
 
-    /// The owner of the items of `registry`: its template candidate's owner, or else the owner
-    /// that the registry's own loader builds. `None` when neither names `registry`, and the
-    /// reason when its loader gives no one owner.
-    pub(crate) fn registry_owner(&self, registry: &str) -> Option<Result<&str, String>> {
-        if let Some(candidate) = unique_named_candidate(self.named_candidates(), registry) {
-            return Some(Ok(&candidate.record.owner_candidate));
+    /// The registry named `registry`, with the classes of its database and its items: its
+    /// template candidate, or else the join of the registry's own loader. `None` when neither
+    /// names `registry`, and the reason when its loader gives no one owner.
+    fn named_registry(&self, registry: &str) -> Option<Result<NamedRegistry<'_>, String>> {
+        let template = unique_named_candidate(self.named_candidates(), registry)
+            .and_then(NamedCandidate::named_registry);
+        if let Some(template) = template {
+            return Some(Ok(template));
         }
 
-        self.database_schedule().ok()?.loader_owner(registry)
+        self.database_schedule().ok()?.loader_registry(registry)
+    }
+
+    /// The owner of the items of `registry`, as [`Self::named_registry`] joins it.
+    pub(crate) fn registry_owner(&self, registry: &str) -> Option<Result<&str, String>> {
+        self.named_registry(registry)
+            .map(|named| named.map(|named| named.owner))
     }
 
     /// The owners that the loaders of unjoined databases build.
@@ -1117,6 +1151,22 @@ pub(crate) struct NamedCandidate {
     pub directory: crate::engine::analysis::directories::Directory,
 }
 
+impl NamedCandidate {
+    /// The registry of this candidate, or `None` when its directory has no one name.
+    fn named_registry(&self) -> Option<NamedRegistry<'_>> {
+        use crate::engine::analysis::directories::Directory;
+
+        match &self.directory {
+            Directory::Named(name) => Some(NamedRegistry {
+                name,
+                database: &self.record.database,
+                owner: &self.record.owner_candidate,
+            }),
+            _ => None,
+        }
+    }
+}
+
 /// The one candidate whose constructors establish the content directory `directory`, or `None`
 /// when no candidate or more than one does.
 pub(crate) fn unique_named_candidate<'a>(
@@ -1518,7 +1568,7 @@ impl BoundAnalysis {
     }
 
     /// The code of one named registry's item class that composes derived names, or `None` when
-    /// the name is not a registry's content directory.
+    /// the registry has no one owner.
     pub(crate) fn registry_names(
         &self,
         registry: &str,
@@ -1526,13 +1576,8 @@ impl BoundAnalysis {
         let index = self.family_index()?;
         let input = self.name_input()?;
         let verified = self.verified()?;
-        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
+        let Some(Ok(named)) = verified.named_registry(registry) else {
             return Ok(None);
-        };
-        let named = binary::families::NamedRegistry {
-            name: registry,
-            database: &candidate.record.database,
-            owner: &candidate.record.owner_candidate,
         };
         binary::names::registry(
             &verified.executable,
