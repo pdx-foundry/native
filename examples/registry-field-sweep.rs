@@ -125,7 +125,7 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
                 let stops = place_gaps(&image, &registry.name, result.gaps);
                 report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
-            Err(error) => report.add_failure(&registry.name, error, elapsed_ms),
+            Err(error) => report.add_error(&registry.name, error, elapsed_ms),
         }
     }
 
@@ -329,9 +329,8 @@ impl SweepReport {
         Ok(())
     }
 
-    /// Add one registry's error. `Error::Unsupported` is a registry that the method does not read,
-    /// not a failure.
-    fn add_failure(&mut self, registry: &str, error: Error, elapsed_ms: u128) {
+    /// Record one registry query error. `Error::Unsupported` counts apart from failures.
+    fn add_error(&mut self, registry: &str, error: Error, elapsed_ms: u128) {
         if let Error::Unsupported { reason, .. } = &error {
             self.unsupported_queries += 1;
             self.cases.push(json!({
@@ -778,12 +777,12 @@ mod tests {
                 1,
             )
             .unwrap();
-        report.add_failure("common/c", Error::Method("stopped".into()), 1);
+        report.add_error("common/c", Error::Method("stopped".into()), 1);
         let unsupported = Error::Unsupported {
             operation: pdx_native::Operation::RegistryFields,
             reason: "not a template registry".into(),
         };
-        report.add_failure("common/d", unsupported, 1);
+        report.add_error("common/d", unsupported, 1);
 
         let registries = answer("registries", "Complete", json!([]), json!([]));
         let json = report
