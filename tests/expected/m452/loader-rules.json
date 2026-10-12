@@ -411,6 +411,10 @@
     "rules": {"extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
     "unresolved": []
   },
+  "common/planet_classes": {
+    "rules": {"extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
+    "unresolved": []
+  },
   "common/planet_modifiers": {
     "rules": {"extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
     "unresolved": []
@@ -701,6 +705,10 @@
   },
   "events": {
     "rules": {"extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}},
+    "unresolved": []
+  },
+  "flags": {
+    "rules": {"extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}},
     "unresolved": []
   },
   "gfx/portraits/sprite_configurations": {

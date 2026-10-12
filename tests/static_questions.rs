@@ -1471,7 +1471,7 @@ fn own_native() -> Native {
 }
 
 /// Independent expectation on M452: the registries that only their database's own loader names.
-const LOADER_NAMED: [&str; 19] = [
+const LOADER_NAMED: [&str; 21] = [
     "common/ambient_objects",
     "common/colors",
     "common/component_tags",
@@ -1480,6 +1480,7 @@ const LOADER_NAMED: [&str; 19] = [
     "common/global_ship_designs",
     "common/on_actions",
     "common/opinion_modifiers",
+    "common/planet_classes",
     "common/ship_behaviors",
     "common/special_projects",
     "common/species_names",
@@ -1489,6 +1490,7 @@ const LOADER_NAMED: [&str; 19] = [
     "common/terraform",
     "common/traits",
     "events",
+    "flags",
     "gfx/worldgfx",
     "prescripted_countries",
 ];
@@ -1562,6 +1564,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
+        "common/planet_classes",
         "common/ship_behaviors",
         "gfx/worldgfx",
         "prescripted_countries",

@@ -91,7 +91,7 @@ fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
         Value::Constant(address) => strings
             .get(&address)
             .map_or(Text::Unknown, |literal| Text::Literal(literal.clone())),
-        Value::Unknown | Value::Stack(_) => Text::Unknown,
+        Value::Unknown | Value::Stack(_) | Value::Slot(_) => Text::Unknown,
     }
 }
 
@@ -99,7 +99,7 @@ fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
 fn depth(value: Value) -> Option<i32> {
     match value {
         Value::Constant(bits) => Some(bits as u32 as i32),
-        Value::Unknown | Value::Stack(_) => None,
+        Value::Unknown | Value::Stack(_) | Value::Slot(_) => None,
     }
 }
 

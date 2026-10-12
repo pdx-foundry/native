@@ -1414,6 +1414,7 @@ impl BoundAnalysis {
             &verified.executable,
             &verified.catalog.symbols,
             &verified.catalog.strings,
+            &verified.catalog.pointers,
             &verified.catalog.candidates,
         )
     }

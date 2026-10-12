@@ -41,11 +41,13 @@ The callers:
   extension, in the folder only. A database class that overrides `Init` (`CArmyTypeDatabase`,
   `CBuildingTypeDatabase`, …) calls the template `Init`; no template database class enumerates on
   its own.
-- **Custom loaders.** The database class's own functions pass the folder as a literal.
+- **Custom loaders.** The database class's own functions pass the folder as a literal, or load
+  it from a global `char const*` (`CPlanetClassDatabase`, `CEmpireFlagDatabase`).
   `CDesignerDatabase::Init` (`common/global_ship_designs`) and `CTerraformDatabase::InitInstance`
   pass `".txt"` and `-1`. `CWeaponTagDatabase`, `CAmbientObjectDatabase`, `CShipBehaviorDatabase`,
   `CStartScreenMessageDatabase`, `CWorldGfxDatabase`, `CPrescriptedSpeciesDatabase`,
-  `CEmpireDesignDatabase` and `CEventManager::ReadEvents` pass `".txt"` and `0`. The others pass
+  `CEmpireDesignDatabase`, `CPlanetClassDatabase` and `CEventManager::ReadEvents` pass `".txt"`
+  and `0`. `CEmpireFlagDatabase` (`flags`) passes `null`, `null` and `-1`. The others pass
   `null`, `null` and `0`.
 
 ## Method
@@ -86,13 +88,14 @@ question only when `registries()` lists it.
 
 ## Result on M452
 
-All 183 listed registries have every file-selection property `Known`; none is unresolved.
+All 185 listed registries have every file-selection property `Known`; none is unresolved.
 
 | Selection | Registries |
 | --- | ---: |
 | Every file, folder only | 174 |
-| `.txt`, folder only | 7 |
+| `.txt`, folder only | 8 |
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
+| Every file, every level | 1 (`flags`) |
 
 `tests/expected/m452/loader-rules.json` holds each registry's answer; `cargo parity` checks it,
 and `loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every

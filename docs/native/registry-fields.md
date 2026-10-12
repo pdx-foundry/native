@@ -307,7 +307,7 @@ did not run before the startup boundary is not a missing registry.
   registry names (51 literals; 8 of them repeat a directory with a trailing `/`). Find them with
   `inspect -- --strings common/` and remove the 164 names of `registries()`. Examples are
   `common/component_templates`, `common/static_modifiers`, `common/traits` and `common/on_actions`.
-  16 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
+  17 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
   A literal is not a loader: `RunGame` forms the address of 157 of the 158 `common/` template
   directories and of `events`, and for 13 of the 43 (such as `common/agendas`, `common/planet_classes` and `common/subjects`) it is
   the only function that does. The "59" of the M45-observe count had no list.
@@ -386,30 +386,42 @@ and derives the end of the fill from the code; no recipe holds an address.
 
 For each unjoined row, `loader_directory` (`directories.rs`) reads every function qualified by the
 database class (`CTraitDatabase::…`) and takes the literal first argument of each
-`VFSGetEnumeratedFiles` call. Exactly one distinct literal names the registry; several, none, or
-an argument that the scan does not establish leave the row in the `UnnamedRegistries` gap.
+`VFSGetEnumeratedFiles` call. The literal can also come through a global `char const*`: an `ldr`
+from a known address loads the pointer slot, and the slot's rebase target is the literal. Exactly
+one distinct literal names the registry; several, none, or an argument that the scan does not
+establish leave the row in the `UnnamedRegistries` gap.
 `registry_fields` reads these names through their [owner](#custom-loader-owners);
 `derived_names` and `modifier_families` read only template registries and give `Unsupported` for
 them until SDK-802. `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
-On M452, 20 of the 35 rows are named, with 19 names: `common/ambient_objects`, `common/colors`,
+On M452, 22 of the 35 rows are named, with 21 names: `common/ambient_objects`, `common/colors`,
 `common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
 `common/global_ship_designs` (`CDesignerDatabase`), `common/on_actions`,
-`common/opinion_modifiers`, `common/ship_behaviors`, `common/special_projects`,
+`common/opinion_modifiers`, `common/planet_classes` (through `_PLANET_CLASSES_DIR`),
+`common/ship_behaviors`, `common/special_projects`,
 `common/species_names`, `common/start_screen_messages`, `common/static_modifiers`,
 `common/strategic_resources`, `common/terraform`, `common/traits`, `events` (`CEventManager`),
-`gfx/worldgfx` and `prescripted_countries`. None repeats a template name.
+`flags` (`CEmpireFlagDatabase`, through `_pEMPIRE_FLAG_FOLDER`), `gfx/worldgfx` and
+`prescripted_countries`. None repeats a template name.
 
 - **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
   both enumerate `prescripted_countries`, so it is one name. The owner join does not select one of
   the two: `registry_fields` gives `Unsupported` ("2 databases load this directory").
-- **The 15 rows that stay gaps**, by obstacle:
-  - The directory is a global `char const*` that the code loads from a data slot (`ldr x0, [x8,
-    #0x358]` of `_PLANET_CLASSES_DIR`); the scan tracks only `adrp` and `add`:
-    `CPlanetClassDatabase` (`common/planet_classes`) and `CEmpireFlagDatabase`
-    (`_pEMPIRE_FLAG_FOLDER`). Reading a resolved pointer slot would name both; SDK-786 can start
-    there instead of at the `RunGame` caller.
+- **A global `char const*` is read at its initial value.** `CPlanetClassDatabase::Init()` loads
+  `_PLANET_CLASSES_DIR` (`0x1032af358`, rebased to `"common/planet_classes"`) with `adrp x8,
+  #0x1032af000; ldr x0, [x8, #0x358]` and passes it to the enumeration. Both globals are in
+  writable `__DATA,__data`, so the method assumes that nothing changes them before the loader
+  runs. M452 checks: every instruction that uses either address after an `adrp` of its page
+  loads from it (8 loads; one `add` that a load follows), and no fixup targets either slot
+  (`dyld_info -fixups`). If a store or an escaped address is found, or a run reads another
+  directory, a slot is no longer proof. A load into `xzr` is not a slot value.
+- **The `RunGame` caller is not the loader.** `RunGame` passes `"common/planet_classes"` and
+  `_pEMPIRE_FLAG_FOLDER` to `VFSPreEnumerateFiles(char const*, char const*, char const*, int)`, a
+  warm-up of the file list; the database's own `Init()` enumerates the files. The ticket's caller
+  shape was therefore not built. Whether a caller supplies the directory of one of the 13 rows
+  below was not checked; their obstacles are in their own functions.
+- **The 13 rows that stay gaps**, by obstacle:
   - The directory is the text of a `CString` member or a built path (the short-string `csel` on
     the object): `CGfxCultureDatabase`, `CNameListDatabase`, `CGalaxyTemplateDatabase`
     (`ReadFiles`), `CMessageSystem` (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase`
@@ -465,7 +477,7 @@ an inlined constructor does. None or several is `Unsupported` with the reason, n
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 14 of the 19 names join an owner (sweep at `registry-fields/v31`; fields, then the
+On M452, 15 of the 21 names join an owner (sweep at `registry-fields/v31`; fields, then the
 answer):
 
 | Registry | Owner | Fields | Answer |
@@ -484,12 +496,14 @@ answer):
 | `common/terraform` | `CTerraformLink` | 10 | partial |
 | `common/traits` | `CTrait` | 105 | partial |
 | `events` | `CEvent` | 30 | partial |
+| `flags` | `SFlagColor` | 4 | partial |
 
-None is complete and none failed. Five are `Unsupported`: `common/colors`,
+None is complete and none failed. Six are `Unsupported`: `common/colors`,
 `common/component_tags`, `common/ship_behaviors` and `gfx/worldgfx` build no class with a member
 reader on the route (`CWorldGfxDatabase` is itself the read object, and its `ReadMember` builds
-`CWorldGraphicalMapData` through a virtual read), and `prescripted_countries` has two databases
-(`CEmpireDesign`, `CPrescriptedSpecies`).
+`CWorldGraphicalMapData` through a virtual read), `prescripted_countries` has two databases
+(`CEmpireDesign`, `CPrescriptedSpecies`), and the `common/planet_classes` route builds two classes
+with a member reader (`CPlanetClass`, `CPlanetClassRandomList`).
 
 - Pitfall: a constructor anywhere in the database's functions is not an owner.
   `CDiploPhraseDatabase::GetRandomValidPhrase` and `CTerraformDatabase::HasAvailableLinks` build a

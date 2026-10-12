@@ -1824,6 +1824,35 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_planet_class_lookups_name_the_directory_that_the_loader_reads() {
+    use crate::engine::analysis::references::initialization::Initialization;
+
+    let binding = crate::session::installed_native().bound();
+    let facts = binding.analysis.reference_facts().unwrap();
+    let planet_classes = Some("common/planet_classes".to_owned());
+    let readers: Vec<_> = facts
+        .readers
+        .values()
+        .filter(|reader| reader.database == "CPlanetClassDatabase")
+        .map(|reader| &reader.directory)
+        .collect();
+    assert_eq!(readers, [&planet_classes, &planet_classes]);
+
+    let initializers: Vec<_> = facts
+        .initializers
+        .values()
+        .filter_map(|initialization| match initialization {
+            Initialization::Lookup(lookup) if lookup.database == "CPlanetClassDatabase" => {
+                Some(&lookup.directory)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(initializers, [&planet_classes, &planet_classes]);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates() {
     use crate::engine::analysis::{directories::Directory, discovery::loader_owner::LoaderOwner};
 
@@ -1842,8 +1871,12 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         named("common/static_modifiers")
     );
     assert_eq!(directory("CEventManager"), named("events"));
-    // The directory is a global `char const*`, which the scan does not read.
-    assert_eq!(directory("CPlanetClassDatabase"), Directory::Missing);
+    // The directory is a global `char const*` that the loader reads from its pointer slot.
+    assert_eq!(
+        directory("CPlanetClassDatabase"),
+        named("common/planet_classes")
+    );
+    assert_eq!(directory("CEmpireFlagDatabase"), named("flags"));
     // Two databases enumerate one directory.
     assert_eq!(
         directory("CEmpireDesignDatabase"),
@@ -1873,6 +1906,7 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         ("CEventManager", "CEvent"),
         ("CEmpireDesignDatabase", "CEmpireDesign"),
         ("CPrescriptedSpeciesDatabase", "CPrescriptedSpecies"),
+        ("CEmpireFlagDatabase", "SFlagColor"),
     ] {
         assert_eq!(owner(database), expected);
     }
@@ -1884,5 +1918,9 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
     ] {
         assert_eq!(owners[database], LoaderOwner::NoOwner, "{database}");
     }
-    assert_eq!(owners.len(), 20);
+    assert_eq!(
+        owners["CPlanetClassDatabase"],
+        LoaderOwner::Several(vec!["CPlanetClass".into(), "CPlanetClassRandomList".into()])
+    );
+    assert_eq!(owners.len(), 22);
 }

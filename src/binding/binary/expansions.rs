@@ -217,9 +217,10 @@ pub(in crate::binding) fn read(
     bytes: &[u8],
     symbols: &[Symbol],
     strings: &BTreeMap<u64, String>,
+    pointers: &BTreeMap<u64, u64>,
     candidates: &[NamedCandidate],
 ) -> Result<ExpansionInput, AnalysisError> {
-    let image = Image::read(bytes, symbols, strings, candidates)?;
+    let image = Image::read(bytes, symbols, strings, pointers, candidates)?;
     let bound = STATED_CONDITIONS
         .iter()
         .all(|name| !addresses(image.symbols, name).is_empty());
@@ -395,6 +396,8 @@ struct Image<'a> {
     text: Text<'a>,
     symbols: &'a [Symbol],
     strings: &'a BTreeMap<u64, String>,
+    /// The rebase target of each pointer slot.
+    pointers: &'a BTreeMap<u64, u64>,
     names: Names<'a>,
     /// The content directory of each named registry, by its `LoadFromReader` symbol.
     registry_readers: BTreeMap<String, String>,
@@ -407,6 +410,7 @@ impl<'a> Image<'a> {
         bytes: &'a [u8],
         symbols: &'a [Symbol],
         strings: &'a BTreeMap<u64, String>,
+        pointers: &'a BTreeMap<u64, u64>,
         candidates: &'a [NamedCandidate],
     ) -> Result<Self, AnalysisError> {
         let registry_readers = candidates
@@ -433,6 +437,7 @@ impl<'a> Image<'a> {
             text: Text::read(bytes, symbols)?,
             symbols,
             strings,
+            pointers,
             names: Names::new(symbols),
             registry_readers,
             registry_databases,
@@ -621,6 +626,7 @@ impl<'a> Image<'a> {
             &self.body(loader)?,
             &anchors,
             self.strings,
+            self.pointers,
         ))
     }
 
