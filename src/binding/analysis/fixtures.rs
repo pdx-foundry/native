@@ -230,7 +230,7 @@ impl VerifiedAnalysis<'_> {
             address: self.symbol(recipe.loader)?,
             initial_loader: None,
         };
-        binary::fields::read(&self.image(), selection, self.persistent)
+        self.read_field_input(selection)
             .map_err(|error| error.to_string())
     }
 }

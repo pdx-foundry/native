@@ -717,6 +717,16 @@ pub(super) fn vtable_group(
         .filter(|&address| address > start)
         .min()?;
 
+    vtable_group_between(data, start, end, typeinfo)
+}
+
+/// The vtable group in `start..end` whose vtables name `typeinfo`, as [`vtable_group`] reads it.
+pub(super) fn vtable_group_between(
+    data: &ReadOnlyData,
+    start: u64,
+    end: u64,
+    typeinfo: u64,
+) -> Option<VtableGroup> {
     let mut group = VtableGroup::default();
     let mut subobject = None;
     let mut at = start;
@@ -849,23 +859,28 @@ pub(super) fn decoded<'a>(text: &Text, functions: impl IntoIterator<Item = &'a u
 /// Every demangled name of each address. A function has one decision for several names: it
 /// answers to each of them.
 pub(super) struct Names<'a> {
-    by_address: BTreeMap<u64, Vec<&'a str>>,
+    /// In address order, as the catalog keeps them.
+    symbols: &'a [Symbol],
 }
 
 impl<'a> Names<'a> {
+    /// The names of `symbols`, which are in address order.
     pub(super) fn new(symbols: &'a [Symbol]) -> Self {
-        let mut by_address: BTreeMap<u64, Vec<&str>> = BTreeMap::new();
-        for symbol in symbols {
-            by_address
-                .entry(symbol.address)
-                .or_default()
-                .push(&symbol.name);
-        }
-        Self { by_address }
+        debug_assert!(symbols.is_sorted_by_key(|symbol| symbol.address));
+
+        Self { symbols }
     }
 
+    /// The names at `address`, in list order.
     pub(super) fn of(&self, address: u64) -> impl Iterator<Item = &'a str> + '_ {
-        self.by_address.get(&address).into_iter().flatten().copied()
+        let start = self
+            .symbols
+            .partition_point(|symbol| symbol.address < address);
+
+        self.symbols[start..]
+            .iter()
+            .take_while(move |symbol| symbol.address == address)
+            .map(|symbol| symbol.name.as_str())
     }
 
     /// The name of `address` when every symbol there has the same name.

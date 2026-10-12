@@ -55,7 +55,7 @@ pub(super) const CHILD_FAMILIES: [(&str, BlockFamily); 2] = [
 #[allow(clippy::too_many_arguments)] // Independent executable inputs and the selected build recipe.
 pub(in crate::binding) fn read(
     bytes: &[u8],
-    symbols: &[Symbol],
+    indexed: super::symbols::IndexedSymbols<'_>,
     strings: &BTreeMap<u64, String>,
     bound_slots: &BTreeSet<u64>,
     mut declarations: DeclarationInput,
@@ -64,6 +64,7 @@ pub(in crate::binding) fn read(
     kind: crate::DeclarationKind,
     names: BTreeMap<u64, String>,
 ) -> Result<GrammarInput, AnalysisError> {
+    let symbols = indexed.symbols;
     let text = super::declarations::Text::read(bytes, symbols)?;
     let mut roots: Vec<_> = inventory
         .sites
@@ -94,7 +95,7 @@ pub(in crate::binding) fn read(
             .filter_map(|symbol| declarations.functions.get(&symbol.address)),
     );
     let constants = super::language::constant_data(bytes, &declarations.pointers, bound_slots)?;
-    declarations.constructors = super::receivers::constructors(&text, symbols, &constants, &roots)?;
+    declarations.constructors = super::receivers::constructors(&text, indexed, &constants, &roots)?;
 
     declarations.constructor_calls = super::receivers::constructor_calls(&text, symbols)?;
 

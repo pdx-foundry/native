@@ -10,13 +10,13 @@ use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
     fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
-    modifier_nodes::ModifierNodeResult,
     modifiers::{self, CategoryInput, CategoryNames},
     references::ReferenceFacts,
     stop::Unresolved,
 };
 use crate::{AnalysisError, UnavailableReason};
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 pub(super) fn error(operation: Operation, error: AnalysisError) -> Error {
     match error {
@@ -225,7 +225,7 @@ impl Native {
 
     /// The public registry field answer, with the method's own result that it is derived from.
     pub(crate) fn registry_field_run(&self, registry: &str) -> Result<RegistryFieldRun, Error> {
-        let (input, result) = self.registry_field_input_and_result(registry)?;
+        let (owner, result) = self.registry_field_result(registry)?;
         let facts = RegistryFieldFacts {
             references: self.reference_facts(Operation::RegistryFields)?,
             numeric: self.numeric_facts(Operation::RegistryFields)?,
@@ -236,7 +236,6 @@ impl Native {
             blocks: self.block_facts()?,
             categories: modifiers::category_names(self.category_input()?, []),
         };
-        let owner = input.selection.owner_candidate;
         let (answer, entry_gaps) = self.registry_field_answer(registry, &owner, &result, &facts);
         Ok(RegistryFieldRun {
             answer,
@@ -275,13 +274,6 @@ impl Native {
         self.bound()
             .analysis
             .category_input()
-            .map_err(|failure| error(Operation::RegistryFields, failure))
-    }
-
-    fn modifier_node_result(&self) -> Result<&ModifierNodeResult, Error> {
-        self.bound()
-            .analysis
-            .modifier_node_result()
             .map_err(|failure| error(Operation::RegistryFields, failure))
     }
 
@@ -396,7 +388,22 @@ impl Native {
         (answer, entry_gaps)
     }
 
-    /// The registry field method's input and its result.
+    /// The owner type of a registry's items and the registry field method's result, which the
+    /// bound analysis keeps after its first run.
+    pub(crate) fn registry_field_result(
+        &self,
+        registry: &str,
+    ) -> Result<(String, Arc<RegistryFieldResult>), Error> {
+        self.bound()
+            .analysis
+            .registry_field_result(registry.trim_end_matches('/'))
+            .map_err(|e| error(Operation::RegistryFields, e))?
+            .ok_or_else(|| Error::UnknownRegistry {
+                name: registry.into(),
+            })
+    }
+
+    /// The registry field method's input and a new run of the method over it.
     pub(crate) fn registry_field_input_and_result(
         &self,
         registry: &str,
@@ -409,13 +416,11 @@ impl Native {
                 name: registry.into(),
             });
         };
-        let mut input = verified
-            .field_input(candidate.record.clone())
+        let input = self
+            .bound()
+            .analysis
+            .registry_field_input(&verified, candidate)
             .map_err(|e| error(operation, e))?;
-        if let Some(persistent) = &mut input.persistent {
-            persistent.requested_words = self.weight_block_facts()?.stored_scopes();
-            persistent.initialized_words = self.modifier_node_result()?.initialized_words.clone();
-        }
         let result = fields::analyze(&input).map_err(|e| error(operation, e.into()))?;
 
         Ok((input, result))
@@ -425,7 +430,7 @@ impl Native {
 /// One run of the registry field method, with the public answer derived from it.
 pub(crate) struct RegistryFieldRun {
     pub answer: Answer<Vec<Field>>,
-    pub result: RegistryFieldResult,
+    pub result: Arc<RegistryFieldResult>,
     /// The owner type of the registry's items.
     pub owner: String,
     /// The gaps of `answer` that block entry contexts add.

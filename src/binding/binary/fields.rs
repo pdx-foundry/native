@@ -3,14 +3,16 @@ use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     discovery::{CandidateRecord, Symbol},
     evaluate::ReadOnlyData,
-    fields::{FieldInput, Function, ObjectReader, PointReader, has_owner_receiver},
+    fields::{FieldInput, Function, KeyReaders, ObjectReader, PointReader, has_owner_receiver},
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::{
     declarations::{Text, read_only_sections},
     families::Names,
+    receivers::SharedPersistent,
     references::Image,
+    symbols::IndexedSymbols,
 };
 
 /// Largest body of a reader function that the field reader collects.
@@ -19,10 +21,33 @@ const FUNCTION_LIMIT: u64 = 1024 * 1024;
 /// Largest body of an array insertion specialization that the field reader inspects.
 const INSERTION_LIMIT: u64 = 65_536;
 
+/// The parts of a registry's field input that every registry shares, read once per executable.
+pub(in crate::binding) struct SharedFieldInput {
+    key_readers: KeyReaders,
+    persistent: SharedPersistent,
+}
+
+impl SharedFieldInput {
+    /// Read them from `image` with the recipe of its build; a field input then reads the rest
+    /// from the same image.
+    pub fn read(
+        image: &Image<'_>,
+        persistent_recipe: &PersistentRecipe,
+    ) -> Result<Self, AnalysisError> {
+        let text = Text::read(image.bytes, image.symbols)?;
+
+        Ok(Self {
+            key_readers: key_readers(image.symbols, persistent_recipe)?,
+            persistent: SharedPersistent::read(image, &text, persistent_recipe)?,
+        })
+    }
+}
+
 /// Read the selected root, the shared engine token constructor and the read-only data that holds
-/// jump tables from the same verified buffer.
+/// jump tables from the same verified buffer. `shared` is the shared part read from `image`.
 pub(in crate::binding) fn read(
     image: &Image<'_>,
+    shared: &SharedFieldInput,
     selection: CandidateRecord,
     persistent_recipe: &PersistentRecipe,
 ) -> Result<FieldInput, AnalysisError> {
@@ -34,6 +59,7 @@ pub(in crate::binding) fn read(
         bound_slots,
         ..
     } = *image;
+    let indexed = image.index.over(symbols);
     let text = Text::read(bytes, symbols)?;
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut functions = Vec::new();
@@ -44,11 +70,7 @@ pub(in crate::binding) fn read(
         "CPersistent::ReadMember(CReader&, int)",
         "GetTokenArray()",
     ] {
-        let starts: std::collections::BTreeSet<_> = symbols
-            .iter()
-            .filter(|s| s.name == name)
-            .map(|s| s.address)
-            .collect();
+        let starts: BTreeSet<_> = indexed.named(name).map(|s| s.address).collect();
         if starts.len() != 1 {
             gaps.push(format!("missing or ambiguous function {name}"));
             continue;
@@ -64,13 +86,11 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
-    let names = Names::new(symbols);
     let objects = collect_objects(
         &text,
-        symbols,
+        indexed,
         pointers,
         &data,
-        &names,
         persistent_recipe,
         &mut functions,
     )?;
@@ -87,12 +107,12 @@ pub(in crate::binding) fn read(
         image,
         &text,
         &data,
-        &names,
+        &shared.persistent,
         &selection.owner_candidate,
         persistent_recipe,
     )?;
     Ok(FieldInput {
-        key_readers: key_readers(symbols, persistent_recipe)?,
+        key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
         objects,
         selection,
@@ -108,10 +128,9 @@ pub(in crate::binding) fn read(
 /// class to a field.
 fn collect_objects(
     text: &Text,
-    symbols: &[Symbol],
+    symbols: IndexedSymbols<'_>,
     pointers: &BTreeMap<u64, u64>,
     data: &ReadOnlyData,
-    names: &Names<'_>,
     recipe: &PersistentRecipe,
     functions: &mut Vec<Function>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
@@ -127,10 +146,7 @@ fn collect_objects(
         .collect();
     let mut classes = BTreeMap::<String, Vec<&Symbol>>::new();
 
-    for symbol in symbols
-        .iter()
-        .filter(|symbol| calls.contains(&symbol.address))
-    {
+    for symbol in symbols.at(&calls) {
         if let Some(class) = super::receivers::constructor_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default();
         } else if let Some(class) = factory_class(&symbol.name) {
@@ -142,19 +158,17 @@ fn collect_objects(
         return Ok(Vec::new());
     }
 
+    let names = Names::new(symbols.symbols);
     let unique_name = |address: u64| names.unique(address).map(str::to_owned);
     let mut objects = Vec::new();
 
     for (class, factories) in classes {
-        let Some(vtable) = super::families::vtable_group(symbols, data, &class) else {
+        let Some(vtable) = symbols.vtable_group(data, &class) else {
             continue;
         };
         let reads: BTreeSet<_> = symbols
-            .iter()
-            .filter(|symbol| {
-                symbol.name == "CPersistent::Read(CReader&)"
-                    && vtable.slots.contains_key(&symbol.address)
-            })
+            .named("CPersistent::Read(CReader&)")
+            .filter(|symbol| vtable.slots.contains_key(&symbol.address))
             .map(|symbol| symbol.address)
             .collect();
 
@@ -169,7 +183,7 @@ fn collect_objects(
             })
         });
         let member_name = format!("{class}::ReadMember(CReader&, int)");
-        let mut bodies_available = match symbols.iter().find(|symbol| symbol.name == member_name) {
+        let mut bodies_available = match symbols.named(&member_name).next() {
             Some(symbol) => push_function(text, functions, symbol),
             None => reader.is_some(),
         };
@@ -184,12 +198,7 @@ fn collect_objects(
 
         let mut slots = BTreeMap::new();
         for point in vtable.address_points.values() {
-            let end = symbols
-                .iter()
-                .map(|symbol| symbol.address)
-                .filter(|address| address > point)
-                .min()
-                .unwrap_or(*point);
+            let end = symbols.next_address(*point).unwrap_or(*point);
             for at in (*point..end).step_by(8) {
                 if let Some(value) = data.read(at, 8) {
                     slots.insert(at, value);
@@ -218,8 +227,8 @@ fn collect_objects(
             data_offset,
             count_offset,
             constructors: symbols
+                .constructors_of(&class)
                 .iter()
-                .filter(|symbol| super::receivers::constructor_class(&symbol.name) == Some(&class))
                 .map(|symbol| symbol.address)
                 .collect(),
             factories: factories.iter().map(|symbol| symbol.address).collect(),
@@ -253,12 +262,8 @@ fn factory_class(name: &str) -> Option<&str> {
     None
 }
 
-fn addresses(symbols: &[Symbol], name: &str) -> Vec<u64> {
-    symbols
-        .iter()
-        .filter(|symbol| symbol.name == name)
-        .map(|symbol| symbol.address)
-        .collect()
+fn addresses(symbols: IndexedSymbols<'_>, name: &str) -> Vec<u64> {
+    symbols.named(name).map(|symbol| symbol.address).collect()
 }
 
 /// Add a symbol's bounded body once; whether the body is available.

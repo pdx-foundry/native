@@ -110,6 +110,7 @@ mod tests {
             pointers: &facts.pointers,
             imports: &facts.imports,
             bound_slots: &facts.bound_slots,
+            index: &super::super::symbols::SymbolIndex::new(&facts.symbols),
         };
 
         let input = read(&image, 0x278).unwrap();

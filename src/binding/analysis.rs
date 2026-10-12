@@ -10,6 +10,7 @@ use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
 use crate::engine::analysis::discovery::Symbol;
 use crate::engine::analysis::families::DatabaseLayout;
+use crate::engine::analysis::fields::{self, FieldInput, RegistryFieldResult};
 use crate::engine::analysis::references::{self, ReferenceFacts};
 use crate::engine::analysis::{declarations::DeclarationResult, grammar::GrammarInput};
 use crate::{AnalysisError, UnavailableReason};
@@ -47,6 +48,9 @@ pub(crate) struct BoundAnalysis {
     names: OnceLock<crate::engine::analysis::names::NameInput>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
+    /// The field method's result of each registry already asked for, by registry name. A failed
+    /// run is not kept.
+    registry_fields: Mutex<BTreeMap<String, Arc<RegistryFieldResult>>>,
 }
 
 /// The place of a command family's input in the bound analysis's `grammar` array.
@@ -64,6 +68,18 @@ struct Catalog {
     pointers: BTreeMap<u64, u64>,
     bound_slots: std::collections::BTreeSet<u64>,
     imports: BTreeMap<u64, String>,
+    /// The index of `symbols`, built on the first read that looks a symbol up.
+    symbol_index: OnceLock<binary::symbols::SymbolIndex>,
+    /// The part of every registry's field input that does not depend on the registry, read on
+    /// the first field input.
+    field_input: OnceLock<Result<binary::fields::SharedFieldInput, AnalysisError>>,
+}
+
+impl Catalog {
+    fn symbol_index(&self) -> &binary::symbols::SymbolIndex {
+        self.symbol_index
+            .get_or_init(|| binary::symbols::SymbolIndex::new(&self.symbols))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +148,7 @@ impl VerifiedAnalysis<'_> {
             pointers: &self.catalog.pointers,
             imports: &self.catalog.imports,
             bound_slots: &self.catalog.bound_slots,
+            index: self.catalog.symbol_index(),
         }
     }
 
@@ -273,7 +290,7 @@ impl VerifiedAnalysis<'_> {
             .map_err(AnalysisError::Input)?;
         let mut input = binary::grammar::read(
             &self.executable,
-            &self.catalog.symbols,
+            self.catalog.symbol_index().over(&self.catalog.symbols),
             &self.catalog.strings,
             &self.catalog.bound_slots,
             declarations,
@@ -402,7 +419,24 @@ impl VerifiedAnalysis<'_> {
         {
             return Err(AnalysisError::InvalidRange);
         }
-        binary::fields::read(&self.image(), selection, self.persistent)
+
+        self.read_field_input(selection)
+    }
+
+    /// Read the fields input of `selection`, with the part that every selection shares.
+    fn read_field_input(
+        &self,
+        selection: crate::engine::analysis::discovery::CandidateRecord,
+    ) -> Result<FieldInput, AnalysisError> {
+        let image = self.image();
+        let shared = self
+            .catalog
+            .field_input
+            .get_or_init(|| binary::fields::SharedFieldInput::read(&image, self.persistent))
+            .as_ref()
+            .map_err(Clone::clone)?;
+
+        binary::fields::read(&image, shared, selection, self.persistent)
     }
 }
 
@@ -493,6 +527,60 @@ impl BoundAnalysis {
         })
     }
 
+    /// The field method's result for the registry named `registry`, with the owner type of its
+    /// items, or `None` when no one candidate has that name. The method runs once per registry;
+    /// later calls check the executable and return the kept result.
+    pub(crate) fn registry_field_result(
+        &self,
+        registry: &str,
+    ) -> Result<Option<(String, Arc<RegistryFieldResult>)>, AnalysisError> {
+        let verified = self.verified()?;
+        let Some(candidate) = unique_named_candidate(verified.named_candidates(), registry) else {
+            return Ok(None);
+        };
+        let owner = candidate.record.owner_candidate.clone();
+        let kept = self.kept_registry_fields().get(registry).cloned();
+
+        if let Some(result) = kept {
+            return Ok(Some((owner, result)));
+        }
+
+        let input = self.registry_field_input(&verified, candidate)?;
+        let result = Arc::new(fields::analyze(&input)?);
+        let kept = self
+            .kept_registry_fields()
+            .entry(registry.to_owned())
+            .or_insert(result)
+            .clone();
+
+        Ok(Some((owner, kept)))
+    }
+
+    fn kept_registry_fields(
+        &self,
+    ) -> std::sync::MutexGuard<'_, BTreeMap<String, Arc<RegistryFieldResult>>> {
+        self.registry_fields
+            .lock()
+            .expect("registry field result lock")
+    }
+
+    /// `candidate`'s field input, with the words that the shared facts supply to its constructors:
+    /// the scopes that weight blocks store and the words that modifier nodes initialize.
+    pub(crate) fn registry_field_input(
+        &self,
+        verified: &VerifiedAnalysis<'_>,
+        candidate: &NamedCandidate,
+    ) -> Result<FieldInput, AnalysisError> {
+        let mut input = verified.field_input(candidate.record.clone())?;
+
+        if let Some(persistent) = &mut input.persistent {
+            persistent.requested_words = self.weight_block_facts()?.stored_scopes();
+            persistent.initialized_words = self.modifier_node_result()?.initialized_words.clone();
+        }
+
+        Ok(input)
+    }
+
     pub(super) fn new(
         declarations: &'static super::targets::DeclarationRecipe,
         database: Option<DatabaseLayout>,
@@ -517,6 +605,7 @@ impl BoundAnalysis {
             category_input: OnceLock::new(),
             names: OnceLock::new(),
             grammar: std::array::from_fn(|_| OnceLock::new()),
+            registry_fields: Mutex::default(),
         }
     }
 
@@ -882,6 +971,8 @@ impl BoundAnalysis {
             pointers: input.pointers,
             bound_slots: input.bound_slots,
             imports: input.imports,
+            symbol_index: OnceLock::new(),
+            field_input: OnceLock::new(),
         })
     }
 

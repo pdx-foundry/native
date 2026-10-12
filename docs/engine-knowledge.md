@@ -34,7 +34,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Start, isolate, close and supervise a game | [Lifecycle](native/lifecycle.md) | Private profiles, launch, disposal on macOS and Windows, debugger shutdown and approval, the worker handshake and fault controls, the run summary |
 | Load a world and observe prepared effects (retired route) | [Ready-world observations](native/ready-world.md) | The retired world route and how to restore it from `d8f9d8a`: world pins, daily updates, flag expiry and variable reads |
 | Builds and adaptation between them | [Targets](native/targets.md) | Exact executable identities, ports between builds and Windows adaptation results |
-| Static analysis and test cost | [Performance](native/performance.md) | Dev-profile settings, hashing cost, the static-query invariant, and where parity and live time and memory go |
+| Static analysis and test cost | [Performance](native/performance.md) | Dev-profile settings, hashing cost, the static-query invariant, the shared registry field input and kept field results, and where parity and live time and memory go |
 | Private prototype bundles | [Preservation](native/preservation.md), [Retrieval](native/retrieval.md), [inventory](native/source-inventory.json) | What each bundle holds, how to verify and restore it, and each bundle's identity |
 
 A finding is **demonstrated** on its original build only. A **candidate** lacks a required join or a

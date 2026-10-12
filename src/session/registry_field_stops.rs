@@ -73,7 +73,7 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
         let entry_contexts = entry_contexts(&run, native.block_facts()?);
         Ok(Run {
             answer: run.answer,
-            result: run.result,
+            result: std::sync::Arc::unwrap_or_clone(run.result),
             entry_contexts,
         })
     })

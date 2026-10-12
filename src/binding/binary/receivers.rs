@@ -1,5 +1,5 @@
 //! Constructor summaries shared with the nested-object reader method.
-use super::{declarations::Text, families::Names, references::Image};
+use super::{declarations::Text, families::Names, references::Image, symbols::IndexedSymbols};
 use crate::AnalysisError;
 use crate::binding::targets::{AnchorSlot, PersistentRecipe};
 use crate::engine::analysis::{
@@ -47,15 +47,11 @@ fn top_level_scope(name: &str) -> Option<usize> {
 /// A class name selects metadata, never grammar behavior.
 pub(super) fn constructors(
     text: &Text<'_>,
-    symbols: &[Symbol],
+    symbols: IndexedSymbols<'_>,
     data: &ReadOnlyData,
     roots: &[&Function],
 ) -> Result<BTreeMap<u64, BTreeMap<u64, u64>>, AnalysisError> {
-    let constructor_entries: BTreeSet<_> = symbols
-        .iter()
-        .filter(|symbol| constructor_class(&symbol.name).is_some())
-        .map(|symbol| symbol.address)
-        .collect();
+    let constructor_entries = symbols.constructors();
     let mut calls = BTreeSet::new();
     let mut pending: Vec<_> = roots.iter().map(|body| (*body).clone()).collect();
     let mut followed = BTreeSet::new();
@@ -98,10 +94,7 @@ pub(super) fn constructors(
         }
     }
     let mut classes = BTreeMap::<String, BTreeSet<u64>>::new();
-    for symbol in symbols
-        .iter()
-        .filter(|symbol| calls.contains(&symbol.address))
-    {
+    for symbol in symbols.at(&calls) {
         let Some(class) = constructor_class(&symbol.name) else {
             continue;
         };
@@ -112,7 +105,8 @@ pub(super) fn constructors(
     }
     let mut summaries = BTreeMap::new();
     for (class, entries) in classes {
-        let points = super::families::vtable_group(symbols, data, &class)
+        let points = symbols
+            .vtable_group(data, &class)
             .map(|group| group.address_points)
             .unwrap_or_default();
         for entry in entries {
@@ -190,28 +184,51 @@ pub(super) fn concrete_reader(
     })
 }
 
+/// The parts of a persistent input that every owner shares.
+pub(super) struct SharedPersistent {
+    constructor_calls: crate::engine::analysis::ConstructorCalls,
+    writable_slots: BTreeSet<u64>,
+    never_return: Vec<u64>,
+    containers: ModifierContainers,
+}
+
+impl SharedPersistent {
+    /// Read them from `image`, whose text is `text`.
+    pub(super) fn read(
+        image: &Image<'_>,
+        text: &Text<'_>,
+        recipe: &PersistentRecipe,
+    ) -> Result<Self, AnalysisError> {
+        Ok(Self {
+            constructor_calls: constructor_calls(text, image.symbols)?,
+            writable_slots: super::language::writable_slots(image.bytes, image.pointers)?,
+            never_return: super::families::never_return(image.symbols)
+                .into_iter()
+                .collect(),
+            containers: modifier_containers(image.symbols, recipe),
+        })
+    }
+}
+
 /// Owner constructors and the virtual methods installed by their called constructors. `text` is
-/// the image's text and `data` its constant data, which every call shares.
+/// the image's text, `data` its constant data and `shared` its shared persistent input, which
+/// every call shares.
 pub(super) fn persistent(
     image: &Image<'_>,
     text: &Text<'_>,
     data: &ReadOnlyData,
-    names: &Names<'_>,
+    shared: &SharedPersistent,
     owner: &str,
     recipe: &PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
     use crate::engine::analysis::fields::PersistentInput;
-    let Image {
-        bytes,
-        symbols,
-        pointers,
-        ..
-    } = *image;
+    let symbols = image.index.over(image.symbols);
+    let names = Names::new(symbols.symbols);
     let entries: BTreeSet<_> = symbols
-        .iter()
+        .constructors_of(owner)
+        .into_iter()
         .filter(|symbol| {
-            constructor_class(&symbol.name) == Some(owner)
-                && !symbol.name.contains("[clone .cold.")
+            !symbol.name.contains("[clone .cold.")
                 // A branch-island stub outside the text section only jumps to a selected body.
                 && text.starts.contains(&symbol.address)
         })
@@ -289,19 +306,24 @@ pub(super) fn persistent(
         .values()
         .flat_map(|points| points.values().copied())
         .collect();
-    for symbol in symbols
+    for symbol in pages
         .iter()
-        .filter(|symbol| pages.contains(&(symbol.address & !0xfff)))
+        .flat_map(|&page| symbols.between(page..page.saturating_add(0x1000)))
     {
         if let Some(class) = symbol.name.strip_prefix("vtable for ")
-            && let Some(group) = super::families::vtable_group(symbols, data, class)
+            && let Some(group) = symbols.vtable_group(data, class)
         {
             points.extend(group.address_points.into_values());
         }
     }
     let readers = points
         .iter()
-        .filter_map(|&point| Some((point, concrete_reader(recipe, pointers, point, &name)?)))
+        .filter_map(|&point| {
+            Some((
+                point,
+                concrete_reader(recipe, image.pointers, point, &name)?,
+            ))
+        })
         .collect();
     let constructors = bodies
         .into_iter()
@@ -312,19 +334,16 @@ pub(super) fn persistent(
         })
         .collect();
     Ok(PersistentInput {
-        constructor_calls: constructor_calls(text, symbols)?,
+        constructor_calls: shared.constructor_calls.clone(),
         constructors,
         summaries,
         constructor_bodies,
-        pointers: pointers.clone(),
-        writable_slots: super::language::writable_slots(bytes, pointers)?,
+        pointers: image.pointers.clone(),
+        writable_slots: shared.writable_slots.clone(),
         readers,
-        never_return: super::families::string_functions(symbols)
-            .never_return
-            .into_iter()
-            .collect(),
+        never_return: shared.never_return.clone(),
         requested_words: Default::default(),
-        containers: modifier_containers(symbols, recipe),
+        containers: shared.containers.clone(),
         initialized_words: Default::default(),
     })
 }
@@ -378,12 +397,13 @@ mod tests {
             pointers: &pointers,
             imports: &imports,
             bound_slots: &bound_slots,
+            index: &super::super::symbols::SymbolIndex::new(symbols),
         };
         let text = Text::read(bytes, symbols).unwrap();
         let data = ReadOnlyData::default();
-        let names = Names::new(symbols);
+        let shared = SharedPersistent::read(&image, &text, recipe).unwrap();
 
-        persistent(&image, &text, &data, &names, owner, recipe).unwrap()
+        persistent(&image, &text, &data, &shared, owner, recipe).unwrap()
     }
 
     #[test]
