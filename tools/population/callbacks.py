@@ -34,7 +34,8 @@ def is_known(entry):
 
 
 def has_typed_prev(entry):
-    return slots(entry)["prev"][0] not in LINK_SLOTS
+    """Whether any slot of the prev chain holds a scope type."""
+    return any(slot not in LINK_SLOTS for slot in slots(entry)["prev"])
 
 
 def count(answer, with_kinds):

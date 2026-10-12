@@ -20,6 +20,8 @@ struct Population {
     failure_shapes: BTreeMap<String, usize>,
     groups: Vec<Value>,
     unidentified: Vec<Value>,
+    /// Groups that are not complete and that no `Duration keys <keys>: ` gap describes.
+    unmatched: Vec<String>,
 }
 
 impl Population {
@@ -57,6 +59,11 @@ impl Population {
 
         *self.counts.entry(status).or_default() += 1;
 
+        if status != "complete" && relevant.is_empty() {
+            self.unmatched
+                .push(format!("{command}: {}", keys.join(", ")));
+        }
+
         for gap in &relevant {
             let shape = format!("{:?}: {}", gap.kind, &gap.detail[prefix.len()..]);
             *self.failure_shapes.entry(shape).or_default() += 1;
@@ -65,6 +72,15 @@ impl Population {
         self.groups.push(json!({
             "command": command, "status": status, "duration": duration, "gaps": relevant,
         }));
+    }
+}
+
+/// A registry group's value in the shape of `GrammarProperty`: `{"Known": value}`, or
+/// `"Unresolved"` when the method stopped.
+fn property<T: serde::Serialize, E>(result: &Result<T, E>) -> Value {
+    match result {
+        Ok(value) => json!({"Known": value}),
+        Err(_) => json!("Unresolved"),
     }
 }
 
@@ -141,6 +157,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     })?;
 
+    if !population.unmatched.is_empty() {
+        return Err(format!(
+            "no gap starts with 'Duration keys <keys>: ' for these partial or failed groups, so the \
+             gap prose in src/session/durations.rs changed: {}",
+            population.unmatched.join("; ")
+        )
+        .into());
+    }
+
     let registries = native.registries()?;
     let mut registry_groups = Vec::new();
     let mut registry_unresolved = Vec::new();
@@ -166,9 +191,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             "registry": registry,
                             "path": owner.path,
                             "units": group.units.iter().map(|unit| json!({
-                                "key": unit.key, "factor": format!("{:?}", unit.factor),
+                                "key": unit.key, "factor": property(&unit.factor),
                             })).collect::<Vec<_>>(),
-                            "combination": format!("{:?}", group.combination),
+                            "combination": property(&group.combination),
                         })
                     }));
                 }
@@ -198,4 +223,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pdx_native::internals::duration_groups::Combination;
+    use pdx_native::{DurationUnit, GapKind};
+
+    fn unresolved_days() -> Duration {
+        Duration {
+            units: vec![DurationUnit {
+                key: "days".into(),
+                factor: GrammarProperty::Unresolved,
+            }],
+            combination: GrammarProperty::Unresolved,
+            omitted_count: GrammarProperty::Unresolved,
+        }
+    }
+
+    fn gap(detail: &str) -> Gap {
+        Gap {
+            kind: GapKind::ReaderSemantics,
+            subject: None,
+            detail: detail.into(),
+        }
+    }
+
+    #[test]
+    fn an_unresolved_group_needs_a_gap_with_the_duration_keys_prefix() {
+        let mut population = Population::default();
+
+        population.group(
+            "Effect/test",
+            &unresolved_days(),
+            &[gap(
+                "Duration keys days: the combination is not established (call).",
+            )],
+        );
+        assert!(population.unmatched.is_empty());
+
+        population.group(
+            "Effect/test",
+            &unresolved_days(),
+            &[gap(
+                "Duration units days: the combination is not established (call).",
+            )],
+        );
+        assert_eq!(population.unmatched, ["Effect/test: days"]);
+    }
+
+    #[test]
+    fn a_complete_group_needs_no_gap() {
+        let complete = Duration {
+            units: vec![DurationUnit {
+                key: "days".into(),
+                factor: GrammarProperty::Known(Some(1)),
+            }],
+            combination: GrammarProperty::Known(pdx_native::DurationCombination::ScaledAtRead),
+            omitted_count: GrammarProperty::Known(0),
+        };
+        let mut population = Population::default();
+
+        population.group("Effect/test", &complete, &[]);
+
+        assert!(population.unmatched.is_empty());
+    }
+
+    #[test]
+    fn registry_group_values_are_properties_not_debug_text() {
+        assert_eq!(property(&Ok::<_, ()>(Some(30))), json!({"Known": 30}));
+        assert_eq!(
+            property(&Ok::<Option<i64>, ()>(None)),
+            json!({"Known": null})
+        );
+        assert_eq!(
+            property(&Ok::<_, ()>(Combination::ScaledAtRead)),
+            json!({"Known": "ScaledAtRead"})
+        );
+        assert_eq!(property(&Err::<Combination, _>(())), json!("Unresolved"));
+    }
 }

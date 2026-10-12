@@ -57,11 +57,6 @@ impl Report {
             .any(|entry| entry.category == Category::Input)
     }
 
-    /// Append another file's report without changing its comparison outcome.
-    pub fn extend(&mut self, report: Report) {
-        self.differences.extend(report.differences);
-    }
-
     fn record_failure(
         &mut self,
         file: &str,
@@ -69,7 +64,8 @@ impl Report {
         reviewed: Option<&Value>,
         candidate: Option<&Value>,
     ) {
-        let category = if path.split('/').any(|part| part == "source") {
+        let is_provenance = path == "/build" || path.split('/').any(|part| part == "source");
+        let category = if is_provenance {
             Category::Provenance
         } else {
             Category::Answer
@@ -115,9 +111,6 @@ pub fn compare_static(build: &BuildId, file: &str, reviewed: &[u8], candidate: &
     match file {
         "command-grammars.json" => {
             validate_commands(&mut report, build, file, &reviewed_value, &candidate_value);
-            // Only the build stamp may differ; other provenance remains strict.
-            remove_command_builds(&mut reviewed_value);
-            remove_command_builds(&mut candidate_value);
             diff_json(
                 &mut report,
                 file,
@@ -163,8 +156,7 @@ pub fn compare_durations(build: &BuildId, file: &str, reviewed: &[u8], candidate
         return report;
     };
     let current = serde_json::json!(build);
-    let candidate_is_current = candidate.get("build") == Some(&current);
-    if !candidate_is_current {
+    if candidate.get("build") != Some(&current) {
         report.notice(
             file,
             "/build",
@@ -185,17 +177,13 @@ pub fn compare_durations(build: &BuildId, file: &str, reviewed: &[u8], candidate
             candidate.get("build"),
             "reviewed duration build must be a string",
         );
-    } else if candidate_is_current && reviewed.get("build") != candidate.get("build") {
-        let note = "fresh behavior compared with retained cases; \
-            historical live observations do not apply to the current exact build";
-        report.notice(
+    } else {
+        diff_json(
+            &mut report,
             file,
             "/build",
-            Category::Provenance,
-            Status::Pass,
             reviewed.get("build"),
             candidate.get("build"),
-            note,
         );
     }
     for (side, value) in [("reviewed", &reviewed), ("candidate", &candidate)] {
@@ -355,8 +343,6 @@ fn validate_commands(
             ) else {
                 continue;
             };
-            let previous_build = previous_source.and_then(|source| source.get("build"));
-            let current_build = current_source.and_then(|source| source.get("build"));
             if &source.build != build {
                 let note = format!(
                     "candidate source does not match the supplied current build {}",
@@ -367,30 +353,10 @@ fn validate_commands(
                     &format!("{path}/build"),
                     Category::Provenance,
                     Status::Fail,
-                    previous_build,
-                    current_build,
+                    previous_source.and_then(|source| source.get("build")),
+                    current_source.and_then(|source| source.get("build")),
                     &note,
                 );
-            } else if previous_build.is_some() && previous_build != current_build {
-                report.notice(
-                    file,
-                    &format!("{path}/build"),
-                    Category::Provenance,
-                    Status::Pass,
-                    previous_build,
-                    current_build,
-                    "reviewed build differs; candidate stamp is checked against the current build",
-                );
-            }
-        }
-    }
-}
-
-fn remove_command_builds(value: &mut Value) {
-    if let Some(answers) = value.as_object_mut() {
-        for answer in answers.values_mut() {
-            if let Some(source) = answer.get_mut("source").and_then(Value::as_object_mut) {
-                source.remove("build");
             }
         }
     }

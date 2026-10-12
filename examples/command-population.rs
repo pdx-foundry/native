@@ -21,15 +21,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         [flag, before, after] if flag == "--diff" => {
             let before = serde_json::from_slice(&std::fs::read(before)?)?;
             let after = serde_json::from_slice(&std::fs::read(after)?)?;
-            diff(&before, &after)
+            diff(&before, &after)?
         }
-        [installation] => population(installation)?,
-        [flag, installation] if flag == "--baseline" => population(installation)?,
-        [flag, installation] if flag == "--trace" => trace_causes(|| population(installation))?,
+        [] => population()?,
+        [flag] if flag == "--baseline" => population()?,
+        [flag] if flag == "--trace" => trace_causes(population)?,
         _ => {
             return Err(
-                "usage: command-population [--baseline | --trace] INSTALLATION \
-                 | --diff BEFORE AFTER"
+                "usage: command-population [--baseline | --trace] | --diff BEFORE AFTER \
+                 (set STELLARIS_PATH)"
                     .into(),
             );
         }
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.first().is_some_and(|flag| flag == "--baseline") {
         println!(
             "{}",
-            population::format_baseline(&output["build"], &normalized(&output))?
+            population::format_baseline(&output["build"], &normalized(&output)?)?
         );
         return Ok(());
     }
@@ -57,8 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn population(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    let native = Native::open(installation)?;
+fn population() -> Result<Value, Box<dyn std::error::Error>> {
+    let installation = std::env::var_os("STELLARIS_PATH").ok_or("set STELLARIS_PATH")?;
+    let native = Native::open(&installation)?;
     let bytes = read_image(installation.as_ref())?;
     let image = Image::read(&bytes)?;
     let started = std::time::Instant::now();
@@ -599,35 +600,38 @@ fn stop_case(image: &Image, stage: &str, reason: &str, stop: Option<Stop>) -> Va
 }
 
 /// Ignore timing and addresses. Include inventory uncertainty as well as answer and status changes.
-fn normalized(report: &Value) -> BTreeMap<String, Value> {
-    if let Some(answers) = population::baseline_answers(report) {
-        return answers;
+fn normalized(report: &Value) -> population::ReportResult<BTreeMap<String, Value>> {
+    if let Some(answers) = population::baseline_answers(report)? {
+        return Ok(answers);
     }
     let mut result = BTreeMap::new();
-    for inventory in report["inventories"].as_array().into_iter().flatten() {
-        let kind = inventory["kind"].as_str().unwrap_or_default();
-        let mut unknown_reasons: Vec<_> = inventory["unknown_registrations"]
-            .as_array()
-            .into_iter()
-            .flatten()
+    for inventory in population::array(report, "inventories")? {
+        let kind = population::text(inventory, "kind")?;
+        let mut unknown_reasons: Vec<_> = population::array(inventory, "unknown_registrations")?
+            .iter()
             .map(|entry| entry["reason"].clone())
             .collect();
         unknown_reasons.sort_by_key(Value::to_string);
-        result.insert(format!("{kind}/inventory"), json!({"gaps": inventory["inventory_gaps"], "unknown_reasons": unknown_reasons, "full_denominator_known": inventory["full_denominator_known"]}));
-        for case in inventory["cases"].as_array().into_iter().flatten() {
-            let name = case["name"].as_str().unwrap_or_default();
-            result.insert(
+        population::insert_unique(
+            &mut result,
+            format!("{kind}/inventory"),
+            json!({"gaps": inventory["inventory_gaps"], "unknown_reasons": unknown_reasons, "full_denominator_known": inventory["full_denominator_known"]}),
+        )?;
+        for case in population::array(inventory, "cases")? {
+            let name = population::text(case, "name")?;
+            population::insert_unique(
+                &mut result,
                 format!("{kind}/command/{name}"),
                 json!({"status": case["status"], "answer": case["answer"], "error": case["error"]}),
-            );
+            )?;
         }
     }
-    result
+    Ok(result)
 }
 
-fn diff(before: &Value, after: &Value) -> Value {
-    let mut before = normalized(before);
-    let mut after = normalized(after);
+fn diff(before: &Value, after: &Value) -> population::ReportResult<Value> {
+    let mut before = normalized(before).map_err(|error| format!("before report: {error}"))?;
+    let mut after = normalized(after).map_err(|error| format!("after report: {error}"))?;
     let dropped = population::normalize_answers::<Answer<CommandGrammar>>(&mut before, &mut after);
     let keys: BTreeSet<_> = before.keys().chain(after.keys()).collect();
     let changes: Vec<_> = keys
@@ -635,7 +639,7 @@ fn diff(before: &Value, after: &Value) -> Value {
         .filter(|key| before.get(*key) != after.get(*key))
         .map(|key| json!({"subject": key, "before": before.get(key), "after": after.get(key)}))
         .collect();
-    json!({"changed": changes.len(), "changes": changes, "defaulted_members": dropped })
+    Ok(json!({"changed": changes.len(), "changes": changes, "defaulted_members": dropped }))
 }
 
 #[cfg(test)]
@@ -705,14 +709,15 @@ mod tests {
         let full = report(vec![
             json!({"name": "sample", "status": "partial", "answer": answer(Completeness::Partial, false)}),
         ]);
-        let text = population::format_baseline(&json!("build"), &normalized(&full)).unwrap();
+        let text =
+            population::format_baseline(&json!("build"), &normalized(&full).unwrap()).unwrap();
         let baseline: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(normalized(&full), normalized(&baseline));
-        assert_eq!(diff(&baseline, &full)["changed"], 0);
+        assert_eq!(normalized(&full).unwrap(), normalized(&baseline).unwrap());
+        assert_eq!(diff(&baseline, &full).unwrap()["changed"], 0);
         let mut changed = baseline.clone();
         let answers = changed["answers"].as_object_mut().unwrap();
         answers.values_mut().next().unwrap()["status"] = json!("changed");
-        assert_eq!(diff(&baseline, &changed)["changed"], 1);
+        assert_eq!(diff(&baseline, &changed).unwrap()["changed"], 1);
     }
 
     #[test]
@@ -823,7 +828,7 @@ mod tests {
         let mut after = before.clone();
         after["elapsed_ms"] = json!(100);
         after["inventories"][0]["cases"][0]["diagnostics"] = json!({"address": 123});
-        assert_eq!(diff(&before, &after)["changed"], 0);
+        assert_eq!(diff(&before, &after).unwrap()["changed"], 0);
         for (field, value) in [
             ("status", json!("failed")),
             ("answer", json!(answer(Completeness::Complete, true))),
@@ -831,17 +836,47 @@ mod tests {
         ] {
             let mut changed = after.clone();
             changed["inventories"][0]["cases"][0][field] = value;
-            assert_eq!(diff(&before, &changed)["changed"], 1);
+            assert_eq!(diff(&before, &changed).unwrap()["changed"], 1);
         }
         after["inventories"][0]["cases"][0]["answer"]["gaps"][0]["detail"] = json!("another stop");
-        assert_eq!(diff(&before, &after)["changed"], 1);
+        assert_eq!(diff(&before, &after).unwrap()["changed"], 1);
         let mut unknown = before.clone();
         unknown["inventories"][0]["unknown_registrations"] =
             json!([{"reason": "runtime token", "instruction": 1}]);
         unknown["inventories"][0]["full_denominator_known"] = json!(false);
-        assert_eq!(diff(&before, &unknown)["changed"], 1);
+        assert_eq!(diff(&before, &unknown).unwrap()["changed"], 1);
         let empty = report(vec![]);
-        assert_eq!(diff(&before, &empty)["changed"], 1);
-        assert_eq!(diff(&empty, &before)["changed"], 1);
+        assert_eq!(diff(&before, &empty).unwrap()["changed"], 1);
+        assert_eq!(diff(&empty, &before).unwrap()["changed"], 1);
+    }
+
+    #[test]
+    fn malformed_reports_are_rejected_and_empty_reports_still_compare() {
+        let valid = report(vec![
+            json!({"name": "sample", "status": "partial", "answer": answer(Completeness::Partial, false)}),
+        ]);
+        let case = json!({"name": "sample", "status": "partial"});
+        let named = |inventory: Value| json!({"inventories": [inventory]});
+        let inventory =
+            |cases: Value| json!({"kind": "Effect", "unknown_registrations": [], "cases": cases});
+        for malformed in [
+            json!({}),
+            json!({"cases": []}),
+            json!({"inventories": {}}),
+            named(json!({"unknown_registrations": [], "cases": []})),
+            named(json!({"kind": "Effect", "cases": []})),
+            named(json!({"kind": "Effect", "unknown_registrations": []})),
+            named(json!({"kind": "Effect", "unknown_registrations": {}, "cases": []})),
+            named(inventory(json!({}))),
+            named(inventory(json!([{"status": "partial"}]))),
+            named(inventory(json!([case, case]))),
+            json!({"inventories": [inventory(json!([])), inventory(json!([]))]}),
+            json!({"answers": {}}),
+        ] {
+            assert!(diff(&valid, &malformed).is_err(), "{malformed}");
+            assert!(diff(&malformed, &valid).is_err(), "{malformed}");
+        }
+        let empty = json!({"inventories": []});
+        assert_eq!(diff(&empty, &empty).unwrap()["changed"], 0);
     }
 }

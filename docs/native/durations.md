@@ -220,3 +220,8 @@ a shared method proves it.
   multiplier only when the execute body multiplies that operand by that slot.
 - Run whole-inventory measurements through `internals::command_grammar_stops::population`, as
   `examples/duration-population.rs` does (SDK-651).
+- `examples/duration-population.rs` selects each group's gaps by the prefix `Duration keys <keys>: `
+  and stops when a partial or failed group has none. Accepted limit: the 21
+  `duration-scoped-literal` gaps belong to complete groups, and the answer has no signal that a
+  group overlaps a scoped literal, so a change of that prefix empties their failure shape without
+  a failure. Change the check when the answer states the overlap.

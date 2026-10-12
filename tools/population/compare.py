@@ -131,19 +131,17 @@ def duration_key(row):
     return tuple(sorted(unit["key"] for unit in row["units"]))
 
 
-def registry_property(value):
-    """Interpret the Result debug strings emitted by duration-population."""
-    if value.startswith("Err(") and value.endswith(")"):
-        return "Unresolved"
-    if value.startswith("Ok(") and value.endswith(")"):
-        return {"Known": value[3:-1]}
-    raise ValueError(f"invalid registry duration Result: {value}")
+def registry_group(row):
+    """A registry duration group whose combination and unit factors are properties.
 
-
-def registry_duration(row):
-    return {**row, "combination": registry_property(row["combination"]),
-            "units": [{**unit, "factor": registry_property(unit["factor"])}
-                      for unit in row["units"]]}
+    duration-population once wrote them as Debug text such as `Ok(Some(1))`, which this tool does
+    not read; capture such a report again.
+    """
+    values = [row["combination"], *(unit["factor"] for unit in row["units"])]
+    for value in values:
+        if property_tag(value) is None:
+            raise ValueError(f"registry duration group value is not a property: {value}")
+    return row
 
 
 def align_duration_groups(before, after):
@@ -192,7 +190,7 @@ def project(report):
         registries = index_rows(report["registry_groups"],
                                 lambda row: encode_key(row["registry"], row["path"], duration_key(row)))
         return "duration", {"durations": {key: row["duration"] for key, row in groups.items()},
-                            "registry_groups": {key: registry_duration(row) for key, row in registries.items()}}, {"durations": report["counts"]}
+                            "registry_groups": {key: registry_group(row) for key, row in registries.items()}}, {"durations": report["counts"]}
     if "inventories" in report:
         commands, inventories = {}, {}
         for inventory in report["inventories"]:

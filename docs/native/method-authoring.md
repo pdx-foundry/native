@@ -110,7 +110,7 @@ marked as partly unrecorded. Limits:
 
 - A trace keeps at most `CAUSE_LIMIT` (4) causes and says when the list is incomplete. A memory
   byte then keeps its first three losses and its latest.
-- `command-population --trace INSTALLATION` traces the whole inventory and groups the
+- `command-population --trace` traces the whole inventory and groups the
   initial-state stops by the functions of their first and latest loss (`state_obstacles`).
 - More than one cause means any of them may apply. Where joined paths lost a value for different
   reasons, the trace lists each.
@@ -217,14 +217,15 @@ reports the files that were not written as missing.
 The output directory must be new and outside `tests/expected/`; the command never overwrites a
 file, and the comparison is offline. Pass the exact candidate build ID from `Native::build()` or
 the [target catalogue](targets.md), without JSON quotes. Exit status is 0 for parity, 1 for parity
-failures, 2 for invalid input. `Answer` and `Provenance` differences fail (a permitted build change
-is checked against the candidate stamp); `Ordering` permits only moves of complete
-dynamic-namespace rows; other files keep byte equality (`Layout`). `on-actions.json` and
-`game-rules.json` compare by name: one difference for each name whose entries changed
-(`/names/<name>`) and for each gap kind and subject whose details changed
-(`/gaps/<kind>/answer_item/<name>`), so one removed gap is one line; the same content in another
-order is one `Ordering` failure. A clipped terminal report ends with the path of the full report
-under `.local/parity/`.
+failures, 2 for invalid input. `Answer` and `Provenance` differences fail, and a build stamp
+that differs from the reviewed one is a `Provenance` failure in every file (`read-scopes.json`,
+`command-grammars.json` and the duration file); after a build change, regenerate those files
+before parity passes. `Ordering` permits only moves of complete dynamic-namespace rows; other files
+keep byte equality (`Layout`). `on-actions.json` and `game-rules.json` compare by name: one
+difference for each name whose entries changed (`/names/<name>`) and for each gap kind and subject
+whose details changed (`/gaps/<kind>/answer_item/<name>`), so one removed gap is one line; the same
+content in another order is one `Ordering` failure. A clipped terminal report ends with the path of
+the full report under `.local/parity/`.
 
 Stored-duration behavior can be compared against an existing fresh live report without repeating
 the session:
@@ -233,8 +234,9 @@ the session:
 cargo run --release --example expected -- --compare-durations tests/expected/duration-m452/live.json .local/durations/live.json --build BUILD_ID
 ```
 
-The duration mode compares `cases`, including diagnostic and stored count order, after checking the
-candidate build.
+The duration mode requires the candidate build to equal `BUILD_ID` and the reviewed build to equal
+the candidate build, then compares `cases`, including diagnostic and stored count order. A new
+build needs a fresh live run to refresh the reviewed duration file.
 
 The generator is not verification. Review each changed answer against the method's tests and
 engine evidence. Copy only reviewed files back, then run `cargo parity`, for example:
@@ -290,11 +292,7 @@ for side in main candidate; do
     for example in scoped-numeric-population duration-population command-population; do
         (
             cd "$capture_root/$side-tree"
-            if [ "$example" = command-population ]; then
-                cargo run --release --example "$example" -- "$STELLARIS_PATH"
-            else
-                cargo run --release --example "$example"
-            fi
+            cargo run --release --example "$example"
         ) > "$capture_root/$side/$example.json.tmp"
         mv "$capture_root/$side/$example.json.tmp" "$capture_root/$side/$example.json"
     done
@@ -325,9 +323,11 @@ downgraded to `Partial`, or a changed established value; `Known(null)` is an est
 Alternatives match one-to-one by preserved facts; semantic sequences keep their order. Unresolved
 markers can gain facts. Command comparisons count gap changes, but only lost or changed facts,
 weaker completeness or increased inventory uncertainty fail; stamps, timings and internal
-diagnostics are ignored. The debug-formatted `Err` values of registry duration groups are
-unresolved facts, so a changed error diagnostic is not a regression. The tool does not synthesize
-serde defaults for older report schemas; use `command-population --diff` for those.
+diagnostics are ignored. Registry duration groups carry `{"Known": value}` or `"Unresolved"`
+like every other property, so a changed error diagnostic is not a regression; a report that
+still has the older Debug text (`Ok(Some(1))`) is invalid input, so capture `main` again. The tool
+does not synthesize serde defaults for older report schemas; use `command-population --diff` for
+those.
 
 ## Run over the whole population
 
@@ -343,12 +343,16 @@ cargo run --release --example registry-field-sweep -- --diff tests/population/m4
 
 The tracked [M452 population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
-build and basis, and reports once which absent members matched their serde defaults.
+build and basis, and reports once which absent members matched their serde defaults. It fails on a
+report that is of another kind, has no `cases` or `inventories` array, has a row without a name or
+repeats a subject, and on a compact baseline without its build; `tools/population/compare.py`
+rejects the same inputs. An empty report still compares.
 
-For command grammars, run and compare the whole population:
+For command grammars, run and compare the whole population. `command-population` reads
+`STELLARIS_PATH`:
 
 ```sh
-cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
+cargo run --release --example command-population > .local/population/commands.json
 cargo run --release --example command-population -- --diff tests/population/m452/command-population.json .local/population/commands.json
 ```
 
@@ -362,8 +366,8 @@ checkout; for a multi-example capture before delivery, use
 ```sh
 git fetch origin main
 git worktree add --detach .local/main origin/main
-(cd .local/main && cargo run --release --example command-population -- "$STELLARIS_PATH") > .local/population/commands-main.json
-cargo run --release --example command-population -- "$STELLARIS_PATH" > .local/population/commands.json
+(cd .local/main && cargo run --release --example command-population) > .local/population/commands-main.json
+cargo run --release --example command-population > .local/population/commands.json
 cargo run --release --example command-population -- --diff .local/population/commands-main.json .local/population/commands.json
 git worktree remove .local/main
 ```
@@ -394,7 +398,7 @@ Review changed answers, then update the affected baseline in the same PR as the 
 
 ```sh
 cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PATH" > tests/population/m452/registry-field-sweep.json
-cargo run --release --example command-population -- --baseline "$STELLARIS_PATH" > tests/population/m452/command-population.json
+cargo run --release --example command-population -- --baseline > tests/population/m452/command-population.json
 ```
 
 `--baseline` stores only comparison inputs (answers, errors, status, inventory uncertainty), one
@@ -485,8 +489,8 @@ the printed normalized answer is the same address-free answer as `Native::comman
 Run both unfiltered inventories with one analysis input per family:
 
 ```sh
-cargo run --release --example command-population -- "$STELLARIS_PATH" > before.json
-cargo run --release --example command-population -- "$STELLARIS_PATH" > after.json
+cargo run --release --example command-population > before.json
+cargo run --release --example command-population > after.json
 cargo run --release --example command-population -- --diff before.json after.json
 ```
 

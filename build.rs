@@ -15,7 +15,10 @@ fn main() {
         .as_nanos();
     println!("cargo:rustc-env=PDX_NATIVE_BUILD_STAMP={stamp}");
 
-    if std::env::var("TARGET").as_deref() == Ok("aarch64-apple-darwin") {
+    // The host that the crate's `cfg(all(target_os = "macos", target_arch = "aarch64"))` selects.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
+        && std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("aarch64")
+    {
         // A small library that the game loads, so that it shows no window and takes no focus.
         let source = "src/binding/platform/macos/observation/guard.m";
         let output =

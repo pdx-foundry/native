@@ -33,6 +33,15 @@ use std::time::Instant;
 
 const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
+/// Whether a gap's subject is `field`, or a key path that starts at it.
+fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
+    match subject {
+        Some(GapSubject::Field { name }) => name == field,
+        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
+        _ => false,
+    }
+}
+
 struct ReaderFields {
     kind: ReaderKind,
     fields: Vec<String>,
@@ -53,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let output = match arguments.as_slice() {
         [flag, before, after] if flag == "--diff" => {
-            diff(&read_report(before)?, &read_report(after)?)
+            diff(&read_report(before)?, &read_report(after)?)?
         }
         [installation] => sweep(installation)?,
         [flag, installation] if flag == "--baseline" => sweep(installation)?,
@@ -62,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if arguments.first().is_some_and(|flag| flag == "--baseline") {
         println!(
             "{}",
-            population::format_baseline(&output["build"], &normalized_cases(&output))?
+            population::format_baseline(&output["build"], &normalized_cases(&output)?)?
         );
         return Ok(());
     }
@@ -611,9 +620,9 @@ fn stop_shapes(cases: &[StopCase]) -> Value {
 
 /// The registries whose normalized answer or error differs between two reports. Elapsed time
 /// and the other report fields are ignored.
-fn diff(before: &Value, after: &Value) -> Value {
-    let mut before = normalized_cases(before);
-    let mut after = normalized_cases(after);
+fn diff(before: &Value, after: &Value) -> population::ReportResult<Value> {
+    let mut before = normalized_cases(before).map_err(|error| format!("before report: {error}"))?;
+    let mut after = normalized_cases(after).map_err(|error| format!("after report: {error}"))?;
     let dropped = population::normalize_answers::<Answer<Vec<Field>>>(&mut before, &mut after);
     let registries: BTreeSet<_> = before.keys().chain(after.keys()).collect();
 
@@ -634,28 +643,27 @@ fn diff(before: &Value, after: &Value) -> Value {
         })
         .collect();
 
-    json!({ "changed_registries": changed.len(), "registries": changed , "defaulted_members": dropped })
+    Ok(
+        json!({ "changed_registries": changed.len(), "registries": changed , "defaulted_members": dropped }),
+    )
 }
 
 /// Each registry's status with its normalized answer or error.
-fn normalized_cases(report: &Value) -> BTreeMap<String, Value> {
-    if let Some(answers) = population::baseline_answers(report) {
-        return answers;
+fn normalized_cases(report: &Value) -> population::ReportResult<BTreeMap<String, Value>> {
+    if let Some(answers) = population::baseline_answers(report)? {
+        return Ok(answers);
     }
-    report["cases"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|case| {
-            let registry = case["registry"].as_str().unwrap_or_default().to_owned();
-            let normalized = json!({
-                "status": case["status"],
-                "answer": case["answer"],
-                "error": case["error"],
-            });
-            (registry, normalized)
-        })
-        .collect()
+    let mut cases = BTreeMap::new();
+    for case in population::array(report, "cases")? {
+        let registry = population::text(case, "registry")?.to_owned();
+        let normalized = json!({
+            "status": case["status"],
+            "answer": case["answer"],
+            "error": case["error"],
+        });
+        population::insert_unique(&mut cases, registry, normalized)?;
+    }
+    Ok(cases)
 }
 
 fn field_names(case: Option<&Value>) -> BTreeSet<String> {
@@ -713,14 +721,18 @@ mod tests {
     #[test]
     fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
         let full = report(json!([case("common/a", &["x"], "r1", "complete")]));
-        let text = population::format_baseline(&json!("build"), &normalized_cases(&full)).unwrap();
+        let text = population::format_baseline(&json!("build"), &normalized_cases(&full).unwrap())
+            .unwrap();
         let baseline: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(normalized_cases(&full), normalized_cases(&baseline));
-        assert_eq!(diff(&baseline, &full)["changed_registries"], 0);
+        assert_eq!(
+            normalized_cases(&full).unwrap(),
+            normalized_cases(&baseline).unwrap()
+        );
+        assert_eq!(diff(&baseline, &full).unwrap()["changed_registries"], 0);
         let mut changed = baseline.clone();
         let answers = changed["answers"].as_object_mut().unwrap();
         answers.values_mut().next().unwrap()["status"] = json!("changed");
-        assert_eq!(diff(&baseline, &changed)["changed_registries"], 1);
+        assert_eq!(diff(&baseline, &changed).unwrap()["changed_registries"], 1);
     }
 
     #[test]
@@ -813,7 +825,7 @@ mod tests {
         after["cases"][0]["elapsed_ms"] = json!(99);
 
         assert_eq!(
-            diff(&before, &after),
+            diff(&before, &after).unwrap(),
             json!({ "changed_registries": 0, "registries": [], "defaulted_members": [] })
         );
     }
@@ -839,7 +851,7 @@ mod tests {
             gaps,
         ]));
 
-        let changed = diff(&before, &after);
+        let changed = diff(&before, &after).unwrap();
         let registries: Vec<_> = changed["registries"]
             .as_array()
             .unwrap()
@@ -979,5 +991,25 @@ mod tests {
                 "unnamed_evaluations": { "common/a": 2 },
             })
         );
+    }
+
+    #[test]
+    fn malformed_reports_are_rejected_and_empty_reports_still_compare() {
+        let valid = report(json!([case("common/a", &["x"], "r1", "complete")]));
+        let named = json!({ "registry": "common/a", "status": "complete" });
+        for malformed in [
+            json!({}),
+            json!({ "cases": {} }),
+            json!({ "inventories": [] }),
+            json!({ "cases": [{ "status": "complete" }] }),
+            json!({ "cases": [{ "registry": 7 }] }),
+            json!({ "cases": [named, named] }),
+            json!({ "answers": {} }),
+        ] {
+            assert!(diff(&valid, &malformed).is_err(), "{malformed}");
+            assert!(diff(&malformed, &valid).is_err(), "{malformed}");
+        }
+        let empty = report(json!([]));
+        assert_eq!(diff(&empty, &empty).unwrap()["changed_registries"], 0);
     }
 }

@@ -1,7 +1,7 @@
 //! Shared comparison of serialized answers across additive serde defaults.
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 
 /// Remove only defaulted members absent in the other answer. Deserialization supplies the
 /// actual type defaults; unknown JSON members stay visible and required omissions stay changes.
@@ -115,16 +115,58 @@ pub fn format_baseline(
     ))
 }
 
-/// Read comparison inputs from a compact baseline; full reports have their own projection.
-pub fn baseline_answers(report: &Value) -> Option<BTreeMap<String, Value>> {
-    Some(
-        report
-            .get("answers")?
-            .as_object()?
+/// The result of reading a population report. An error means that the report is malformed or of
+/// another kind, which is not the same as an empty report.
+pub type ReportResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+/// The array at `key` of a report or row. Absent and empty are different: a report of another
+/// kind has no such array.
+pub fn array<'a>(value: &'a Value, key: &str) -> ReportResult<&'a Vec<Value>> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("expected an array at \"{key}\"").into())
+}
+
+/// The string at `key` of a report or row.
+pub fn text<'a>(value: &'a Value, key: &str) -> ReportResult<&'a str> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("expected a string at \"{key}\"").into())
+}
+
+/// Add a row under a subject that no earlier row has.
+pub fn insert_unique(
+    rows: &mut BTreeMap<String, Value>,
+    subject: String,
+    row: Value,
+) -> ReportResult<()> {
+    match rows.entry(subject) {
+        Entry::Vacant(slot) => {
+            slot.insert(row);
+            Ok(())
+        }
+        Entry::Occupied(slot) => Err(format!("duplicate subject: {}", slot.key()).into()),
+    }
+}
+
+/// Read comparison inputs from a compact baseline, which names its build. `None` for a full
+/// report, which has its own projection.
+pub fn baseline_answers(report: &Value) -> ReportResult<Option<BTreeMap<String, Value>>> {
+    let Some(answers) = report.get("answers") else {
+        return Ok(None);
+    };
+    text(report, "build")?;
+    let answers = answers
+        .as_object()
+        .ok_or("expected an object at \"answers\"")?;
+    Ok(Some(
+        answers
             .iter()
             .map(|(subject, answer)| (subject.clone(), answer.clone()))
             .collect(),
-    )
+    ))
 }
 
 #[cfg(test)]
@@ -256,7 +298,35 @@ mod tests {
         assert_eq!(text.lines().count(), answers.len() + 5);
         let parsed: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["build"], "build");
-        assert_eq!(baseline_answers(&parsed).unwrap(), answers);
-        assert!(baseline_answers(&json!({"cases": []})).is_none());
+        assert_eq!(baseline_answers(&parsed).unwrap().unwrap(), answers);
+        assert_eq!(baseline_answers(&json!({"cases": []})).unwrap(), None);
+    }
+
+    #[test]
+    fn a_baseline_needs_its_build_and_an_answers_object() {
+        assert!(baseline_answers(&json!({"answers": {}})).is_err());
+        assert!(baseline_answers(&json!({"build": 7, "answers": {}})).is_err());
+        assert!(baseline_answers(&json!({"build": "build", "answers": []})).is_err());
+        assert_eq!(
+            baseline_answers(&json!({"build": "build", "answers": {}})).unwrap(),
+            Some(BTreeMap::new())
+        );
+    }
+
+    #[test]
+    fn rows_need_their_array_text_and_a_new_subject() {
+        let row = json!({"list": [], "name": "one", "number": 1});
+        assert!(array(&row, "list").unwrap().is_empty());
+        assert_eq!(text(&row, "name").unwrap(), "one");
+        for key in ["absent", "name", "number"] {
+            assert!(array(&row, key).is_err(), "{key}");
+        }
+        for key in ["absent", "list", "number"] {
+            assert!(text(&row, key).is_err(), "{key}");
+        }
+        let mut rows = BTreeMap::new();
+        insert_unique(&mut rows, "one".into(), json!(1)).unwrap();
+        assert!(insert_unique(&mut rows, "one".into(), json!(2)).is_err());
+        assert_eq!(rows["one"], json!(1));
     }
 }

@@ -102,7 +102,7 @@ reader by its typed gaps, not by the `Partial` wrapper of `Reader.numeric`. All 
 | Population | Total | Complete | Partial | Failed |
 | --- | ---: | ---: | ---: | ---: |
 | `numeric-population`, numeric root fields | 188 | 178 | 10 | 0 |
-| `scoped-numeric-population`, registry destinations | 107 | 97 | 0 | 10 |
+| `scoped-numeric-population`, registry destinations | 1,932 | 1,922 | 0 | 10 |
 | `scoped-numeric-population`, command arguments | 302 | 302 | 0 | 0 |
 | `registry-field-sweep`, registries | 164 | 12 | 152 | 0 |
 | `command-population`, effects | 1,080 | 163 | 915 | 2 |

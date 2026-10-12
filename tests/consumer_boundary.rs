@@ -64,12 +64,7 @@ const SUPERVISOR_EXPORTS: &[&str] = &["serve", "SupervisorError"];
 
 /// The hidden `GameOptions` methods for Native's own tests: observation faults and the kept
 /// work directory.
-const TEST_HOOKS: &[&str] = &[
-    "fault",
-    "fixture_fault",
-    "modifier_fault",
-    "keep_work_directory",
-];
+const TEST_HOOKS: &[&str] = &["fault", "keep_work_directory"];
 
 /// A fault hook or one of its hidden control types.
 fn is_hidden_test_hook(name: &str) -> bool {
@@ -557,7 +552,6 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ("type C = pdx_native::internals::ObservationControl;", false),
         ("use pdx_native::internals::inspect::Image;", false),
         ("fn f() { let _ = pdx_native::GameOptions::fault; }", false),
-        ("fn f() { let _ = GameOptions::fixture_fault; }", false),
         ("fn f() { let _ = 0x1234; }", false),
         ("fn f() { let _ = 0x12; }", true),
         ("fn f() { let _ = \"4.5\"; }", false),
@@ -580,9 +574,6 @@ fn boundary_rules_accept_public_calls_and_reject_hidden_details() {
         ("use std::env::consts;", false),
         ("use std::env::{consts as host};", false),
         ("fn f() { x.fault(); }", false),
-        ("fn f() { x.fixture_fault(); }", false),
-        ("fn f() { x.modifier_fault(y); }", false),
-        ("fn f() { let _ = GameOptions::modifier_fault; }", false),
         ("fn f() { x.keep_work_directory(); }", false),
         ("unsafe trait T {}", false),
         ("unsafe impl Send for T {}", false),

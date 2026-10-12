@@ -173,28 +173,30 @@ fn compare_tree(
     for name in names {
         let in_reviewed = reviewed_names.contains(name);
         let in_candidate = candidate_names.contains(name);
-        if !parity::FILES.contains(&name) {
-            report.extend(file_difference(
+        let file_report = if !parity::FILES.contains(&name) {
+            file_difference(
                 name,
                 in_reviewed,
                 in_candidate,
                 "unexpected file outside the static parity selection",
-            ));
+            )
         } else if !in_reviewed || !in_candidate {
-            report.extend(file_difference(
+            file_difference(
                 name,
                 in_reviewed,
                 in_candidate,
                 "required parity file missing",
-            ));
+            )
         } else {
-            report.extend(compare_static(
+            compare_static(
                 build,
                 name,
                 &std::fs::read(reviewed.join(name))?,
                 &std::fs::read(candidate.join(name))?,
-            ));
-        }
+            )
+        };
+
+        report.differences.extend(file_report.differences);
     }
     Ok(report)
 }
@@ -213,7 +215,10 @@ fn generate(directory: &Path, files: &[&str]) -> parity::Result<()> {
         file.write_all(&bytes)?;
         eprintln!("wrote {name}");
     }
-    eprintln!("Candidates only: review the diff before copying any file into tests/expected/m452.");
+    eprintln!(
+        "Candidates only: review the diff before copying any file into {}.",
+        parity::expected_directory().display()
+    );
     Ok(())
 }
 

@@ -1,10 +1,10 @@
 //! Constructor-bound modifier variants and the uses left outside that join.
+use super::applies;
 use pdx_native::internals::registry_field_stops::{
     ReaderJoin, RegistryFieldResult, Value as Argument,
 };
 use pdx_native::{
-    Answer, BlockFamily, Field, FieldMembers, GapSubject, GrammarProperty, ModifierBlock,
-    ReaderKind,
+    Answer, BlockFamily, Field, FieldMembers, GrammarProperty, ModifierBlock, ReaderKind,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -34,14 +34,6 @@ pub fn children(members: &FieldMembers) -> Option<&[Field]> {
             _ => None,
         },
         _ => None,
-    }
-}
-
-fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
-    match subject {
-        Some(GapSubject::Field { name }) => name == field,
-        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
-        _ => false,
     }
 }
 

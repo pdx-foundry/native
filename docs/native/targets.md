@@ -51,7 +51,7 @@ Pitfalls of this port:
 - The shared scoped-body matcher broke on changed compiler source paths and relocated local `adr`
   bases; see [scoped numeric](scoped-numeric.md#transfer-to-the-451-hotfix).
 - Relocated store IDs change row order: static parity compares dynamic-namespace rows without
-  assuming order, and checks current source stamps apart from the reviewed build's provenance.
+  assuming order.
 - The SDK-533 live storage record (`tests/expected/m45/field-storage-sdk533.json` at `b9dd059`)
   was observed on M45-release only. The live fixture cases for omitted and repeated
   `unlocks_agenda` check the same storage on M451-hotfix.

@@ -74,7 +74,7 @@ class ComparisonTests(unittest.TestCase):
         after["groups"][0]["duration"]["units"][0]["factor"] = {"Known": 30}
         self.assertTrue(compare(before, after)["regressions"])
         before["registry_groups"] = [{"registry": "common/test", "path": [],
-                                      "units": [{"key": "days", "factor": "Ok(Some(1))"}], "combination": "Ok(ScaledAtRead)"}]
+                                      "units": [{"key": "days", "factor": {"Known": 1}}], "combination": {"Known": "ScaledAtRead"}}]
         self.assertTrue(compare(before, after)["regressions"])
 
     def test_command_diagnostics_and_stamps_do_not_hide_value_changes(self):
@@ -175,26 +175,36 @@ class ComparisonTests(unittest.TestCase):
         after["groups"][0]["duration"]["units"][0]["factor"] = {"Known": 1}
         self.assertTrue(compare(before, after)["regressions"], "two groups cannot collapse into one")
 
-    def test_registry_duration_results_normalize_errors_and_preserve_successes(self):
+    def test_registry_duration_properties_compare_like_every_other_property(self):
         before = duration({"units": []})
         before["registry_groups"] = [{"registry": "common/test", "path": ["outer", "inner"],
-            "units": [{"key": "days", "factor": 'Err(Unresolved { reason: "call", stop: None, trace: None })'}],
-            "combination": 'Err(Unresolved { reason: "call", stop: None, trace: None })'}]
+            "units": [{"key": "days", "factor": "Unresolved"}], "combination": "Unresolved"}]
         after = copy.deepcopy(before)
         group = after["registry_groups"][0]
-        group["units"][0]["factor"] = 'Err(Unresolved { reason: "other", stop: None, trace: None })'
-        self.assertEqual(compare(before, after)["changed"]["registry_groups"], 0)
-        group["units"][0]["factor"] = "Ok(Some(1))"
-        group["combination"] = "Ok(ScaledAtRead)"
-        group["units"].append({"key": "months", "factor": "Ok(Some(30))"})
+        group["units"][0]["factor"] = {"Known": 1}
+        group["combination"] = {"Known": "ScaledAtRead"}
+        group["units"].append({"key": "months", "factor": {"Known": 30}})
         self.assertFalse(compare(before, after)["regressions"])
         self.assertEqual(compare(before, after)["changed"]["registry_groups"], 1)
         self.assertTrue(compare(after, before)["regressions"])
         changed = copy.deepcopy(after)
-        changed["registry_groups"][0]["units"][0]["factor"] = "Ok(Some(2))"
+        changed["registry_groups"][0]["units"][0]["factor"] = {"Known": 2}
         self.assertTrue(compare(after, changed)["regressions"])
-        changed["registry_groups"][0]["units"][0]["factor"] = "Ok(None)"
+        changed["registry_groups"][0]["units"][0]["factor"] = {"Known": None}
         self.assertTrue(compare(after, changed)["regressions"])
+
+    def test_registry_duration_debug_text_is_invalid_input(self):
+        valid = duration({"units": []})
+        valid["registry_groups"] = [{"registry": "common/test", "path": [],
+            "units": [{"key": "days", "factor": {"Known": 1}}], "combination": {"Known": "ScaledAtRead"}}]
+        for member, text in (("combination", "Ok(ScaledAtRead)"), ("factor", "Ok(Some(1))"),
+                             ("factor", 'Err(Unresolved { reason: "call", stop: None, trace: None })')):
+            debug = copy.deepcopy(valid)
+            group = debug["registry_groups"][0]
+            (group if member == "combination" else group["units"][0])[member] = text
+            for before, after in ((valid, debug), (debug, valid)):
+                with self.assertRaises(ValueError, msg=text):
+                    compare(before, after)
 
     def test_duration_lists_and_registry_stops_cannot_lose_evidence(self):
         before = duration({"units": []})
