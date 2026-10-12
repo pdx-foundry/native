@@ -1077,7 +1077,10 @@ fn recorded_support_requires_a_file_for_the_operation() {
 
 #[test]
 fn loader_rules_read_their_registry_file() {
-    use pdx_native::{GrammarProperty, LoaderRules, Recursion};
+    use pdx_native::{
+        DefinitionForm, DefinitionName, DefinitionStatement, GrammarProperty, LoaderRules,
+        Recursion,
+    };
     let root = recorded();
     write(
         root.path(),
@@ -1086,7 +1089,10 @@ fn loader_rules_read_their_registry_file() {
             "value": {
                 "extension": { "Known": ".txt" },
                 "name_contains": { "Known": null },
-                "recursion": "Unresolved"
+                "recursion": "Unresolved",
+                "definition_names": { "Known": [
+                    { "statement": "Root", "name": { "Field": "name" } }
+                ] }
             },
             "completeness": "Partial",
             "gaps": [{ "kind": "UnresolvedPath",
@@ -1107,6 +1113,10 @@ fn loader_rules_read_their_registry_file() {
             extension: GrammarProperty::Known(Some(".txt".into())),
             name_contains: GrammarProperty::Known(None),
             recursion: GrammarProperty::<Recursion>::Unresolved,
+            definition_names: GrammarProperty::Known(vec![DefinitionForm {
+                statement: DefinitionStatement::Root,
+                name: DefinitionName::Field("name".into()),
+            }]),
         }
     );
     assert!(matches!(

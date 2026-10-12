@@ -1626,6 +1626,13 @@ fn loader_rules_state_the_file_selection_of_every_listed_registry() {
         );
     }
     let designs = native.loader_rules("common/global_ship_designs").unwrap();
+    assert_eq!(designs.value.definition_names, GrammarProperty::Unresolved);
+    assert!(
+        designs
+            .gaps
+            .iter()
+            .any(|gap| gap.subject.as_ref().map(GapSubject::name) == Some("definition_names"))
+    );
     assert_eq!(
         designs.value.extension,
         GrammarProperty::Known(Some(".txt".into()))
@@ -1639,6 +1646,58 @@ fn loader_rules_state_the_file_selection_of_every_listed_registry() {
         native.loader_rules("common/no_such_registry"),
         Err(Error::UnknownRegistry { .. })
     ));
+}
+
+/// A template loader names a root definition by its key, even where the config states one
+/// definition per file (`common/diplomacy_economy`). Traditions hold swaps named by `name`; the
+/// events loader names a namespace by its value and an event by its `id`
+/// (`docs/native/loader-rules.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn loader_rules_state_the_definition_name_forms_of_template_and_event_loaders() {
+    use pdx_native::{DefinitionForm, DefinitionName, DefinitionStatement, GrammarProperty};
+    let native = native();
+    let root_key = DefinitionForm {
+        statement: DefinitionStatement::Root,
+        name: DefinitionName::Key,
+    };
+    let names = |registry: &str| {
+        native
+            .loader_rules(registry)
+            .unwrap()
+            .value
+            .definition_names
+    };
+
+    assert_eq!(
+        names("common/diplomacy_economy"),
+        GrammarProperty::Known(vec![root_key.clone()])
+    );
+    assert_eq!(
+        names("common/traditions"),
+        GrammarProperty::Known(vec![
+            root_key,
+            DefinitionForm {
+                statement: DefinitionStatement::Nested {
+                    field_path: vec!["tradition_swap".into()],
+                },
+                name: DefinitionName::Field("name".into()),
+            },
+        ])
+    );
+    assert_eq!(
+        names("events"),
+        GrammarProperty::Known(vec![
+            DefinitionForm {
+                statement: DefinitionStatement::RootKey("namespace".into()),
+                name: DefinitionName::Value,
+            },
+            DefinitionForm {
+                statement: DefinitionStatement::Root,
+                name: DefinitionName::Field("id".into()),
+            },
+        ])
+    );
 }
 
 #[test]

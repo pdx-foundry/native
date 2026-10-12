@@ -462,47 +462,62 @@ impl VerifiedAnalysis<'_> {
         &self.catalog.candidates
     }
 
-    /// The arguments of every file enumeration that a loader of `registry` makes. The loaders are
-    /// the template loader and database class of each candidate named `registry`, and each
-    /// scheduled database whose own loader enumerates it. `None` when no loader names it.
-    pub(crate) fn loader_enumerations(
+    /// What the loaders of `registry` show: the arguments of every file enumeration that they
+    /// make, and the definition forms that their stated rules give. The loaders are the template
+    /// loader and database class of each candidate named `registry`, and each scheduled database
+    /// whose own loader enumerates it. `None` when no loader names it.
+    pub(crate) fn loader_evidence(
         &self,
         registry: &str,
-    ) -> Result<Option<Vec<crate::engine::analysis::loader_rules::Enumeration>>, AnalysisError>
-    {
+    ) -> Result<Option<crate::engine::analysis::loader_rules::LoaderEvidence>, AnalysisError> {
         use crate::engine::analysis::directories::Directory;
+        use crate::engine::analysis::loader_rules::LoaderEvidence;
 
         let names_registry =
             |directory: &Directory| matches!(directory, Directory::Named(name) if name == registry);
-        let mut classes = std::collections::BTreeSet::new();
-        for candidate in self
+        let candidates: Vec<_> = self
             .named_candidates()
             .iter()
             .filter(|candidate| names_registry(&candidate.directory))
-        {
-            classes.insert(candidate.record.loader_class.clone());
-            classes.insert(candidate.record.database.clone());
-        }
-        if let Ok(schedule) = self.database_schedule() {
-            classes.extend(
+            .map(|candidate| &candidate.record)
+            .collect();
+        let databases: std::collections::BTreeSet<String> = self
+            .database_schedule()
+            .map(|schedule| {
                 schedule
                     .loader_directories
                     .iter()
                     .filter(|(_, directory)| names_registry(directory))
-                    .map(|(database, _)| database.clone()),
-            );
-        }
-        if classes.is_empty() {
+                    .map(|(database, _)| database.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if candidates.is_empty() && databases.is_empty() {
             return Ok(None);
         }
 
+        let mut classes = databases.clone();
+        for record in &candidates {
+            classes.insert(record.loader_class.clone());
+            classes.insert(record.database.clone());
+        }
+        let templates: Vec<_> = candidates
+            .iter()
+            .map(|record| binary::definition_names::TemplateLoader {
+                loader_class: &record.loader_class,
+                item: &record.owner_candidate,
+            })
+            .collect();
         let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
 
-        Ok(Some(binary::references::loader_enumerations(
-            &text,
-            &self.image(),
-            &classes,
-        )))
+        Ok(Some(LoaderEvidence {
+            enumerations: binary::references::loader_enumerations(&text, &self.image(), &classes),
+            stated: binary::definition_names::stated_forms(
+                &self.catalog.symbols,
+                &templates,
+                &databases,
+            ),
+        }))
     }
 
     /// The database schedule joined to the template candidates, read once per catalog. A
