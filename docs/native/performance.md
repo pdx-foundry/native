@@ -162,6 +162,17 @@ At `13c94ba`, before those three changes, the walls were 79 s and 172 s, the CPU
   thread, of which the per-member symbol map took about 67 s and `derived_names` repeating each
   registry's field method about 69 s. Both are gone; the new snapshot time is not measured.
 
+## Whole-inventory recording
+
+Measured on M452 at `3d76ead` on the host above, release build, nothing else running.
+`registry-sweep --record` asks `registries`, then `registry_fields`, `derived_names` and
+`modifier_families` for each of the 164 registries on one `Native`, and records every answer:
+**118 s wall, 109 s CPU, 1.07 GB peak resident**, 25 MB of answers. The sweep report over that
+recording takes under 0.1 s. `record-command-grammars` records all 2,178 commands in 170 s (see
+[hashing](#hashing-dominates-the-first-static-query)). Both take minutes, so the cost of
+recording a whole inventory blocks no sweep (decision D6 of the Milestone 5 plan; SDK-640,
+SDK-651).
+
 ## Live costs
 
 A live case spends 16–21 s loading the game to the registry pause, 2–5 s in supervisor setup and

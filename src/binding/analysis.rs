@@ -8,7 +8,10 @@ use std::{
 use super::binary::families::FamilyIndex;
 use super::{binary, installation::Installation};
 use crate::engine::analysis::decode::decode_arm64;
-use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::discovery::{
+    Symbol,
+    schedule::{self, ScheduleGap, ScheduleInventory},
+};
 use crate::engine::analysis::families::DatabaseLayout;
 use crate::engine::analysis::fields::{self, FieldInput, RegistryFieldResult};
 use crate::engine::analysis::references::{self, ReferenceFacts};
@@ -404,6 +407,38 @@ impl VerifiedAnalysis<'_> {
 
     pub(crate) fn named_candidates(&self) -> &[NamedCandidate] {
         &self.catalog.candidates
+    }
+
+    /// The database schedule joined to the template candidates. A scheduling function that is
+    /// missing, not unique or undecodable is a gap.
+    pub(crate) fn database_schedule(&self) -> Result<ScheduleInventory, ScheduleGap> {
+        let symbols = &self.catalog.symbols;
+        let addresses: std::collections::BTreeSet<u64> = symbols
+            .iter()
+            .filter(|symbol| symbol.name.starts_with(schedule::SCHEDULE_FUNCTION))
+            .map(|symbol| symbol.address)
+            .collect();
+        let [start] = addresses.into_iter().collect::<Vec<_>>()[..] else {
+            return Err(ScheduleGap::Unreadable);
+        };
+        let instructions = binary::declarations::Text::read(&self.executable, symbols)
+            .and_then(|text| text.function(start))
+            .ok()
+            .and_then(|(address, code)| decode_arm64(code, address).ok())
+            .ok_or(ScheduleGap::Unreadable)?;
+        let facts = schedule::ScheduleFacts {
+            symbols,
+            pointers: &self.catalog.pointers,
+            strings: &self.catalog.strings,
+            templates: self
+                .catalog
+                .candidates
+                .iter()
+                .map(|candidate| candidate.record.database.as_str())
+                .collect(),
+        };
+
+        schedule::inventory(&instructions, &facts)
     }
 
     /// Read fields for a candidate from this analysis; reject records from another source.

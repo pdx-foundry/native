@@ -65,3 +65,8 @@ test = true
 [[example]]
 name = "duration-population"
 test = true
+
+# The sweep's classification rules are checked on hand-written recorded answers.
+[[example]]
+name = "registry-sweep"
+test = true

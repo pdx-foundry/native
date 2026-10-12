@@ -767,7 +767,7 @@ fn script_expansions_give_hosts_stages_and_checks() {
         .iter()
         .filter(|host| matches!(host, ExpansionHost::RegistryRoot { .. }))
         .count();
-    assert_eq!(roots, 164);
+    assert_eq!(roots, expected::<Vec<String>>("registries.json").len());
     assert!(hosts.contains(&ExpansionHost::RegistryRoot {
         registry: "common/traditions".into()
     }));
@@ -1473,18 +1473,16 @@ fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn registries_are_named_by_their_content_directory() {
     let answer = native().registries().unwrap();
-    assert_eq!(answer.value.len(), 164, "M452 registry discovery changed");
     let names: Vec<_> = answer.value.iter().map(|r| r.name.clone()).collect();
-    assert_eq!(answer.completeness, Completeness::Complete);
+    assert_eq!(names, expected::<Vec<String>>("registries.json"));
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     // `common/ship_categories` passes a global CString; its static initializer names it.
     assert!(names.contains(&"common/ship_categories".to_owned()));
-    assert!(
-        answer
-            .gaps
-            .iter()
-            .all(|gap| gap.kind != GapKind::UnnamedRegistries)
-    );
+    // Every template candidate is named; the unnamed registries are scheduled databases outside
+    // the template method.
+    let kinds: Vec<_> = answer.gaps.iter().map(|gap| gap.kind).collect();
+    assert_eq!(kinds, [GapKind::OutsideMethod, GapKind::UnnamedRegistries]);
+    assert_eq!(answer.completeness, Completeness::Partial);
 }
 
 #[test]

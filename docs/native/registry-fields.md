@@ -290,14 +290,43 @@ From the SDK-489 prototype on M45-observe (`atlas-ownership/prototype/registry-o
 passes to the shared base constructor; the module comment of `engine/analysis/directories.rs`
 gives the two compiled shapes. On M45 the method named all 164 template registries in about two
 seconds, and all 162 directories that the retained live run observed are in the result, with no
-conflict.
+conflict. The two candidates that the M45-observe startup run did not observe are
+`CAIEspionageTargetPoliciesDatabase` (`common/ai_espionage/targets`) and `CGameScenarioDatabase`
+(`common/game_scenarios`) (`atlas-ownership` bundle,
+`prototype/registry-ownership/review.md`). Both are template registries on M452: a loader that
+did not run before the startup boundary is not a missing registry.
 
-- Seven template registries load from outside `common/`, such as `map/galaxy`,
+- On M452, six template registries load from outside `common/`, such as `map/galaxy`,
   `sound/advisor_voice_types`, `gfx/portraits/sprite_configurations` and
   `interface/resource_groups`. So a registry name is the full content directory.
-- 59 more `common/` literals belong to loaders outside the template method, such as
-  `common/component_templates`, `common/agendas` and `common/static_modifiers`. They are inputs
-  for SDK-551.
+- On M452, code forms the address of 43 directory literals under `common/` that no template
+  registry names (51 literals; 8 of them repeat a directory with a trailing `/`). Find them with
+  `inspect -- --strings common/` and remove the 164 names of `registries()`. Examples are
+  `common/component_templates`, `common/static_modifiers`, `common/traits` and `common/on_actions`.
+  A literal is not a loader: `RunGame` forms the address of 157 of the 158 `common/` template
+  directories and of `events`, and for 13 of the 43 (such as `common/agendas`, `common/planet_classes` and `common/subjects`) it is
+  the only function that does. The "59" of the M45-observe count had no list.
+- `common/lawsuits` is the template registry of `CLawsuitTypeDatabase`, and the game installs
+  that directory. The config's `lawsuit` type gives `game/common/lawsuit_type`, a directory that
+  the engine does not load and the game does not have: a config path error, not a missing
+  registry.
+- **Nested definitions have no identity of their own (M452).** A swap object is built by its
+  owner's reader and kept in the owner's item. No swap class (`CTraditionSwap`,
+  `CTechnologySwap`, `CAdvancedAuthoritySwap`, `CGovernmentCivicTypeSwap`, and the
+  `CSwappable` data of jobs) has a database, a `LoadFile`, a `TGameDatabase` instance or a key
+  reference reader; each has only a null object. `CTraditionType::ReadMember` inserts each swap
+  pointer into the item's collection (buffer `+0x5d0`, count `+0x5dc`). The one swap-name lookup
+  read, the deferred lambda of `CHasActiveTraditionTrigger::Read` (`0x1021bedb0`), walks
+  `TGameDatabase<CTraditionTypeDatabase>`: it compares the key with each tradition's key (`+0x10`),
+  then with the name (`+0xf8`) of each swap whose `inherit_effects` byte (`+0x4f0`) is zero, and
+  stores the tradition at `+0x68` and the swap at `+0x70`. So a swap name resolves only as the
+  pair (owner item, swap), through its owner, and a swap that inherits effects is not found by
+  name. The config's `swapped_tradition`, `swapped_ascension_perk`, `swapped_technology`,
+  `swapped_authority`, `swapped_civic` and `swapped_job` types are these objects. A registry is
+  named by its content directory, which a swap shares with its owner, so a nested definition
+  stays a field under its owner's path (`FieldMembers::Fields`). The other `skip_root_key` types
+  of the config skip a wrapper key (`collection`, `named_lists`, `alerts`, the graphics and
+  interface families); they are not nested definitions.
 - Pitfall: the first version of the method took any directory-shaped literal in the constructor.
   It missed the global `CString` shape of `common/ship_categories`, and it had no tie to the
   meaning of the literal. The base-constructor call anchor replaced it.
@@ -305,26 +334,47 @@ conflict.
   runs a loop before it passes `common/species_names` to the file enumeration. The scan continues
   past a conditional branch, and the target of one forgets every register and built object.
 
-### Scheduler table on M45-release
+### Database schedule
 
-No supported operation reads the scheduling table; the removed scheduler method and its tests are
-at `git show 8d9a073:src/engine/analysis/discovery/scheduler.rs` (with `discovery.rs` and
-`tests_discovery.rs`).
+`Native::registries` reads the table of `NNullObjAndDatabaseInitUtil::SetupDatabases` to count
+the scheduled databases that no template candidate covers (`discovery/schedule.rs`; its module
+comment gives the scan). Each unjoined row is a custom-loader candidate; the answer reports their
+count in its `UnnamedRegistries` gap, with no class name. The scan finds the function by its name
+and derives the end of the fill from the code; no recipe holds an address.
 
-- `NNullObjAndDatabaseInitUtil::SetupDatabases(CPdxArray<SDatabaseObjectFunctions, int>&, ...)`
-  fills the table with literal values from `0x1005eb938` to `0x1005eedf0` (exclusive); scheduling
-  begins at that end address, found by hand. After `mov x19, sp`, the table is at `x19 + 96`:
+- On M452 the function starts at `0x1005eb000`. After `mov x19, sp`, the table is at `x19 + 96`:
   **198 rows of 48 bytes**, six 8-byte slots each: the name as a C-string address, then
-  `TGameDatabase<T>::CreateInstance()`, `DestroyInstance()`, zero (`stp x8, xzr`), `InitInstance()`
-  and `PostReadInitInstance()`. Function addresses come from `__DATA_CONST,__got` slots, so nothing
-  resolves without chained fixups. Row 0 is `CNamedColorDatabase`.
-- 163 rows join exactly one template candidate by the database type in a slot's symbol;
-  `CGameScenarioDatabase` joins none. 35 rows are outside the template method, including
-  `CStaticModifierDatabase`, `CStrategicResourceDatabase`, `CPlanetClassDatabase`,
-  `CSpecialProjectDatabase`, `COnActionDatabase` and `CTraitDatabase` (SDK-551).
-- Pitfalls: without `mov x19, sp`, every row is a gap, never an empty table; the stack probe
-  `blr x16` (`___chkstk_darwin`) at `0x1005eb960` is an unknown call before it; a new value in `x19`
-  invalidates the table owner; the row count is not a registry count.
+  `CreateInstance()`, `DestroyInstance()`, a fourth slot, `InitInstance()` and
+  `PostReadInitInstance()`. The fourth slot is zero (`stp x8, xzr`) or a `CanInitialize()`
+  function; 126 rows have the function. Row 0 is `CNamedColorDatabase`. Every slot of every row
+  resolves.
+- The fill ends at `0x1005ee4b8` (`ldrsw x8, [x0, #0x14]`), the first instruction that is not a
+  literal step. The code after it copies `0xc6` (198) rows of `0x30` bytes from `x19 + 0x60`.
+  The compiler reorders the stores: a slot can be stored long after its row, such as
+  `str x9, [x19, #0x1f90]` near the end.
+- A template row's functions are `TGameDatabase<T>::…` in `__DATA_CONST,__got` slots, so they
+  resolve only through the chained fixups. A custom-loader row's functions are the database's
+  own (`CStaticModifierDatabase::CreateInstance()`), often through `adrp` and `add`.
+- 163 rows join exactly one template candidate by the database type in their function symbols;
+  `CGameScenarioDatabase` is the one candidate with no row. 35 rows are outside the template
+  method: `CStaticModifierDatabase`, `CWeaponTagDatabase`, `CStrategicResourceDatabase`,
+  `CShipBehaviorDatabase`, `CAmbientObjectDatabase`, `CEmpireFlagDatabase`, `CGfxCultureDatabase`,
+  `CProjectileGfxDatabase`, `CPortraitDatabase`, `COpinionModifierDatabase`, `CPlanetClassDatabase`,
+  `CAdvisorDatabase`, `CPingMapDatabase`, `CFallenEmpiresDatabase`, `CShipDesignTemplatesDatabase`,
+  `CSpeciesNamesDatabase`, `CNameListDatabase`, `CDesignerDatabase`, `CEventManager`,
+  `CSpecialProjectDatabase`, `COnActionDatabase`, `CTraitDatabase`, `CPrescriptedSpeciesDatabase`,
+  `CDiploPhraseDatabase`, `CMessageSystem`, `CAlertSystem`, `CTerraformDatabase`,
+  `CStartScreenMessageDatabase`, `CSystemInitializerDataBase`, `CGalaxyTemplateDatabase`,
+  `CWorldGfxDatabase`, `CColorsDatabase`, `CGameSettingsDatabase`, `CEmpireDesignDatabase` and
+  `CScriptableLocalizationDatabase`. Some are not script registries (`CMessageSystem`,
+  `CAlertSystem`); the row count is not a registry count. M45-release had the same counts.
+- Pitfalls, checked again on M452: the stack probe `blr x16` (`___chkstk_darwin`) at
+  `0x1005eb028` is a call before the table owner, so the scan accepts calls before `mov x19, sp`
+  and stops at the first branch; without that move the answer is a gap, never an empty table. A
+  new value in `x19` during the fill invalidates the owner and is a gap. An `ldr` from a `__got`
+  slot gives nothing without the chained fixups.
+- The M45-release reader decoded a hand-found window (`0x1005eb938` to `0x1005eedf0`) and was
+  removed in `e9261a1`; the current reader derives the end instead.
 
 ### Owner vtables on M45-release
 
@@ -343,6 +393,72 @@ checks its typeinfo. The removed image-wide scan is at `git show 8d9a073:src/bin
   only in the persistent base.
 - The chained fixups bind 29,695 slots to other images, 10,994 of them named; `internals::inspect`
   names imports from the fixups.
+
+### The events loader on M452
+
+`events` is not a template registry: `CEventManager` has no `LoadFile`, and `registries()` does
+not list it. Its route:
+
+- `CEventManager::InitInstance` calls `ReadEvents(CGameGraphics*, bool)` (`0x1004d51fc`), which
+  enumerates `events` for `.txt` files (`VFSGetEnumeratedFiles("events", …, ".txt")`) and calls
+  `ReadEventsFile(CString const&, bool)` for each. `FileWasChanged` calls the same function. Only
+  these two `CEventManager` functions, `RunGame` and the token table form the address of `"events"`.
+- `ReadEventsFile(CReader&, int&, bool)` (`0x1004d5944`) reads each root statement and switches
+  on its token, with direct comparisons and two byte jump tables (`0x102c784ca` for tokens
+  `0x2c80`–`0x2c84`, `0x102c784cf` for `0x3eea`–`0x3eee`). An event kind sets one `EScopeType`
+  constant; then the loader allocates `0x630` bytes, calls `CEvent::CEvent(EScopeType)` with that
+  constant and reads the event through slot `+0x20` of its vtable. Other root keys:
+  `namespace` registers a `CNameSpace` in the manager's hash table; `inline_script` reads the
+  expanded script with a recursive `ReadEventsFile`; any other key logs `Corrupt Event Table Entry`.
+- **One owner reader.** Every kind builds the same class, so `CEvent::ReadMember(CReader&, int)`
+  (`0x1004bbc9c`) is the one member reader for all kinds. The kind is only the scope constant.
+- **The scope.** `CEvent::CEvent` passes the constant to `SEventData(EScopeType)`, which stores
+  it at `CEvent + 0x68`. `ReadMember` loads that word as the scope argument of
+  `CEventOption::CEventOption(EScopeType)` (three sites), of
+  `CTriggeredEventDescription<CDescOption>::ReadEntry(CReader&, int, EScopeType)`, and of two
+  virtual block reads: the trigger at `+0x508` (slot `+0x30`) and the effect at `+0x518` (slot
+  `+0x10`). So the child blocks read in the kind's scope.
+
+The 22 kinds and their scope constants, named by `NEventScope::GetScopeName`:
+
+| Root key | Token | `EScopeType` | Scope |
+| --- | --- | --- | --- |
+| `event` | `0x1b8` | `0` | none ("scope not set") |
+| `country_event` | `0x2c80` | bit 2 | country |
+| `observer_event` | `0x3714` | bit 19 | country (the second country type; scope keyword `observer`) |
+| `planet_event` | `0x2c81` | bit 1 | planet |
+| `colony_event` | `0x2c82` | bit 40 | colony |
+| `carrier_event` | `0x2c83` | bits 1 and 3 | planet or ship |
+| `ship_event` | `0x2d4f` | bit 3 | ship |
+| `pop_event` | `0x2d6b` | bit 4 | pop |
+| `pop_group_event` | `0x2d6c` | bit 5 | pop_group |
+| `fleet_event` | `0x2ef6` | bit 6 | fleet |
+| `system_event` | `0x3eeb` | bit 7 | galactic_object |
+| `leader_event` | `0x3eec` | bit 8 | leader |
+| `bypass_event` | `0x422a` | bit 12 | bypass |
+| `pop_faction_event` | `0x33f2` | bit 14 | pop_faction |
+| `starbase_event` | `0x3eea` | bit 17 | starbase |
+| `first_contact_event` | `0x3e58` | bit 23 | first_contact |
+| `espionage_operation_event` | `0x294e` | bit 25 | espionage_operation |
+| `agreement_event` | `0x3eee` | bit 28 | agreement |
+| `situation_event` | `0x3eed` | bit 29 | situation |
+| `astral_rift_event` | `0x4223` | bit 31 | astral_rift |
+| `cosmic_storm_event` | `0x2991` | bit 33 | cosmic_storm |
+| `cosmic_storm_influence_field_event` | `0x2992` | bit 34 | cosmic_storm_influence_field |
+
+The 20 `*_event` effects on M452 are the typed kinds without `pop_event`. The config at
+`8574760` has 21 kinds: no `pop_event`, and `carrier` as the push scope of `carrier_event`, which
+the engine reads as planet or ship. No vanilla file in `events/` has a `pop_event` key.
+
+Pitfalls:
+
+- The kind switch is in the file loader, not in an owner `ReadMember`: the field method's root
+  (`binding/binary/fields.rs`, the owner `ReadMember`) does not reach the kinds. Each case reads
+  no value; it sets a constant that a later constructor call receives.
+- The `*_event` effect declarations do not establish the loader's kinds: `pop_event` has a kind
+  and no effect, and `event` has neither an effect nor a scope.
+- A token number is per build. Name tokens from `GetTokenArray()` (the constant in `w1` after
+  each name string), and scope bits from `NEventScope::GetScopeName`.
 
 ## Embedded object keys
 
