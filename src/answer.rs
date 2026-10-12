@@ -647,6 +647,44 @@ pub struct LoaderRules {
     pub name_contains: crate::GrammarProperty<Option<String>>,
     /// The subdirectories that the enumeration lists below the folder.
     pub recursion: crate::GrammarProperty<Recursion>,
+    /// How the loader names each form of definition in the registry's files.
+    pub definition_names: crate::GrammarProperty<Vec<DefinitionForm>>,
+}
+
+/// One form of definition in a registry's files, and what names a definition of that form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefinitionForm {
+    /// The statements that are definitions of this form.
+    pub statement: DefinitionStatement,
+    /// What gives such a definition its name.
+    pub name: DefinitionName,
+}
+
+/// The statements of a registry's files that are definitions of one form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinitionStatement {
+    /// A root statement that the loader accepts as a definition, with a key that no other form of
+    /// the registry selects. Expanded statements such as `inline_script` are not definitions.
+    Root,
+    /// A root statement with this key.
+    RootKey(String),
+    /// A block at this field path inside a root definition. The name identifies the nested
+    /// definition only together with its owner.
+    Nested {
+        /// Field keys from the owner's root block down to the nested block.
+        field_path: Vec<String>,
+    },
+}
+
+/// What gives a definition its name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefinitionName {
+    /// The statement's key.
+    Key,
+    /// The statement's value, as in `namespace = x`.
+    Value,
+    /// The value of this field in the definition's block.
+    Field(String),
 }
 
 /// The subdirectories that a loader's file enumeration lists below its folder.

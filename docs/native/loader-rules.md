@@ -1,11 +1,11 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v1`) states how a registry's loader selects its
-files: the file-name filters and the subdirectories that it reads. The folder is the registry
-name. The duplicate-definition rule, the file order and the mod-over-vanilla rule (SDK-790) and the
-definition-name rules (SDK-791) are gaps whose subjects are `duplicate_rule`, `file_order` and
-`definition_names`. The code is `src/engine/analysis/loader_rules.rs`,
-`directories::enumeration_calls`, `src/binding/analysis.rs` (`loader_enumerations`) and
+`Native::loader_rules(registry)` (`loader-rules/v2`) states how a registry's loader selects its
+files (the file-name filters and the subdirectories that it reads) and how it names each form of
+definition in them. The folder is the registry name. The duplicate-definition rule, the file order
+and the mod-over-vanilla rule (SDK-790) are gaps whose subjects are `duplicate_rule` and
+`file_order`. The code is `src/engine/analysis/loader_rules.rs`, `directories::enumeration_calls`,
+`src/binding/binary/definition_names.rs`, `src/binding/analysis.rs` (`loader_evidence`) and
 `src/session/loader_rules.rs`.
 
 ## The file enumeration on M452
@@ -86,6 +86,74 @@ The config reads three types from one named file in `common` (`path_file`, in
 `loader_rules` gives `UnknownRegistry` for these names. A single-file loader becomes a registry
 question only when `registries()` lists it.
 
+## Definition names
+
+Facts from `c621723d…` (M452), read with `examples/inspect`.
+
+- **Template loaders: the root key.** `TSingleObjectGameDatabase<D, I, b>::LoadFile` lexes the
+  file and calls `LoadFromReader(CReader&, bool)`. For each root statement it builds a `CString`
+  from the statement key (`[reader, #0x48]`), or from the token text after an advanced statement
+  (`CLexer::Tok()` `+0x10`), searches the items by that key (`ReadExistingEntry` on a hit), and
+  otherwise builds the item from it: `I::I(int, CString const&)` in
+  `CTraditionTypeDatabase`'s loader (`0x100ce5e0c`), or `ReadNewEntry(CReader&, CString const&)`
+  with inlined construction in `CDiplomacyEconomyDatabase`'s (`0x100403f1c`). A statement that is
+  not `key = {` logs `Expected format is "key={"`. `inline_script` is expanded, not a definition.
+- **Events: two forms.** `CEventManager::ReadEventsFile(CReader&, int&, bool)` (`0x1004d5944`)
+  switches on the root key. `namespace = x` builds a `CString` from the statement's value
+  (`[reader, #0x288]`) and registers a `CNameSpace` through
+  `CHashTable<CString, CNameSpace>::Find` (`0x1004d5b8c`). An event kind builds a `CEvent` and
+  reads it; `CEvent::ReadMember` reads `id` with `CEventManager::IsValidIDTag` and
+  `GetIDInNameSpace` (`0x1004bc9e8`) and stores the handle at `+8`. The loader then logs
+  `Event at %s has no ID.` or `an event with id [%s] already exists!` and adds the event to its
+  lists by that handle. `inline_script` is expanded and any other key logs
+  `Corrupt Event Table Entry`. The accepted event keys are SDK-702's.
+- **Tradition swaps: the `name` field.** `CTraditionSwap::ReadMember` (`0x100cdd144`) reads
+  token `0x1b` (`name`) with `CReader::Read(CString&, bool)` into `+0xf8`. The resolver lambda of
+  `has_active_tradition` (`0x1021bedb0`) compares the key with each tradition's key and then
+  with `+0xf8` of each swap that does not inherit effects. `CTraditionType` is also the item of
+  `common/ascension_perks`, so its swaps have the same name. A swap's name identifies it only
+  together with its owner ([registry fields](registry-fields.md#registry-names)); the other swap
+  classes have no name lookup and are not stated.
+
+### Stated rules (recorded manual exception)
+
+- **Claim.** A template loader names each root definition by its key
+  (`Root` / `Key`). The events loader names a `namespace = x` statement by its value
+  (`RootKey("namespace")` / `Value`) and every other accepted root statement by its `id` field
+  (`Root` / `Field("id")`). A registry whose item is `CTraditionType` names each
+  `tradition_swap` block by its `name` field (`Nested { ["tradition_swap"] }` / `Field("name")`).
+- **Conditions.** Each rule's functions are bound: the candidate's `LoadFromReader`;
+  `ReadEventsFile` and the `CNameSpace` hash `Find`; `ReadEventsFile`, `CEvent::ReadMember` and
+  `GetIDInNameSpace`; `CTraditionType::ReadMember` and `CTraditionSwap::ReadMember`. A rule whose
+  function is missing makes the property `Partial`, or `Unresolved` when no rule holds, with a
+  gap whose subject is `definition_names`.
+- **Obstacle.** The name reaches the item, the namespace table or the swap's member through
+  stack copies, inlined construction and a later lookup or list insertion. No method follows a
+  key or a field value into the member that the loader or a lookup compares, and a constructor's
+  signature does not show where its string comes from.
+- **Removal route.** A reader that follows a root key or a field value into the member that the
+  loader or a lookup compares.
+
+The checks are the disassembly above for both template shapes, the fixture observation (a
+template definition is found by its root key), and parity.
+
+The method states no file-name form and no skipped wrapper key: no stated rule shows one. That
+does not prove that the 20 unstated custom loaders have none.
+
+Pitfall: a constructor that takes `(int, CString const&)` is not proof of the root key; some
+template loaders reach the item through `ReadNewEntry`, and the signature does not show where the
+string comes from.
+
+### Where the config differs
+
+- `common/diplomacy_economy`: the config's `type_per_file` and `name_from_file` make each file one
+  definition named by the file. The template loader names each root key (`once`,
+  `per_relation`) as a definition.
+- `common/country_container`: the config's `skip_root_key = collection` skips the root key; the
+  template loader names the definition `collection`.
+- The `swapped_*` types other than `swapped_tradition` and `swapped_ascension_perk` have no
+  stated form.
+
 ## Result on M452
 
 All 185 listed registries have every file-selection property `Known`; none is unresolved.
@@ -97,6 +165,24 @@ All 185 listed registries have every file-selection property `Known`; none is un
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
 | Every file, every level | 1 (`flags`) |
 
+Definition names: 165 `Known`, 20 `Unresolved`, none `Partial`.
+
+| Forms | Registries |
+| --- | ---: |
+| Root key | 162 |
+| Root key, and `tradition_swap` by `name` | 2 (`common/traditions`, `common/ascension_perks`) |
+| `namespace` by value, and other root keys by `id` | 1 (`events`) |
+| Unresolved: a custom loader with no stated rule | 20 |
+
+The 20 unresolved registries are the custom loaders other than `events`: `common/ambient_objects`,
+`common/colors`, `common/component_tags`, `common/diplo_phrases`, `common/fallen_empires`,
+`common/global_ship_designs`, `common/on_actions`, `common/opinion_modifiers`,
+`common/planet_classes`, `common/ship_behaviors`, `common/special_projects`, `common/species_names`,
+`common/start_screen_messages`, `common/static_modifiers`, `common/strategic_resources`,
+`common/terraform`, `common/traits`, `flags`, `gfx/worldgfx` and `prescripted_countries`.
+
 `tests/expected/m452/loader-rules.json` holds each registry's answer; `cargo parity` checks it,
-and `loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every
-registry in `registries()`.
+`loader_rules_state_the_file_selection_of_every_listed_registry` checks that it lists every
+registry in `registries()`, and
+`loader_rules_state_the_definition_name_forms_of_template_and_event_loaders` checks
+`common/traditions`, `events` and `common/diplomacy_economy`.

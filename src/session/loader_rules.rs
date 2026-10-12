@@ -2,17 +2,17 @@
 use super::Native;
 use super::questions::error;
 use super::{gap_for_subject, registry_gap};
-use crate::engine::analysis::loader_rules::{self, METHOD, Obstacle, Selection};
+use crate::engine::analysis::loader_rules::{self, METHOD, Naming, Obstacle, Selection};
 use crate::{
-    Answer, Basis, BuildId, Completeness, Error, Gap, GapKind, GapSubject, GrammarProperty,
-    LoaderRules, Operation, Source,
+    Answer, Basis, BuildId, Completeness, DefinitionForm, Error, Gap, GapKind, GapSubject,
+    GrammarProperty, LoaderRules, Operation, Source,
 };
 
 /// What the method does not search.
-const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls. Files that the loader opens by a literal name, a check of the file name after the enumeration, and the mounted directories that the enumeration searches are outside it.";
+const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's file enumeration calls and the stated definition-name rules of its loaders. Files that the loader opens by a literal name, a check of the file name after the enumeration, the mounted directories that the enumeration searches, and definitions nested in a definition's block other than tradition swaps are outside it.";
 
 /// The loader rules that this method revision does not state, by the name of each gap's subject.
-const NOT_STATED: [&str; 3] = ["duplicate_rule", "file_order", "definition_names"];
+const NOT_STATED: [&str; 2] = ["duplicate_rule", "file_order"];
 
 impl Native {
     /// Read how one registry's loader enumerates its files: the file-name filters and the
@@ -25,20 +25,22 @@ impl Native {
     /// A filter that the loader passes as a value other than a literal, several loader calls that
     /// disagree, or a loader with no file enumeration leaves the property
     /// [`GrammarProperty::Unresolved`] with a gap whose subject is the property's
-    /// [`GapSubject::AnswerItem`] name, such as `extension`. The duplicate-definition, file-order
-    /// and definition-name rules are not established yet: each has a gap whose subject is
-    /// `duplicate_rule`, `file_order` or `definition_names`.
+    /// [`GapSubject::AnswerItem`] name, such as `extension`. The definition-name forms are
+    /// stated rules of the loader's code: a loader with no stated rule, or a build that lacks the
+    /// code of a stated rule, leaves `definition_names` unresolved or partial with a gap whose
+    /// subject is `definition_names`. The duplicate-definition and file-order rules are not
+    /// established yet: each has a gap whose subject is `duplicate_rule` or `file_order`.
     ///
     /// The name is a content directory from [`Native::registries`]; another name is
     /// [`Error::UnknownRegistry`].
     pub fn loader_rules(&self, registry: &str) -> Result<Answer<LoaderRules>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::LoaderRules, Some(registry), || {
-            let calls = self
+            let evidence = self
                 .bound()
                 .analysis
                 .verified()
-                .and_then(|verified| verified.loader_enumerations(registry))
+                .and_then(|verified| verified.loader_evidence(registry))
                 .map_err(|failure| error(Operation::LoaderRules, failure))?
                 .ok_or_else(|| Error::UnknownRegistry {
                     name: registry.into(),
@@ -46,7 +48,8 @@ impl Native {
 
             Ok(normalized_rules(
                 registry,
-                &loader_rules::selection(&calls),
+                &loader_rules::selection(&evidence.enumerations),
+                &loader_rules::naming(&evidence.stated),
                 self.build(),
             ))
         })
@@ -55,12 +58,18 @@ impl Native {
 
 /// The loader rules of one registry, with a gap for each property and rule that is not
 /// established.
-fn normalized_rules(registry: &str, selection: &Selection, build: BuildId) -> Answer<LoaderRules> {
+fn normalized_rules(
+    registry: &str,
+    selection: &Selection,
+    naming: &Naming,
+    build: BuildId,
+) -> Answer<LoaderRules> {
     let mut gaps = Vec::new();
     let value = LoaderRules {
         extension: property("extension", &selection.extension, &mut gaps),
         name_contains: property("name_contains", &selection.name_contains, &mut gaps),
         recursion: property("recursion", &selection.recursion, &mut gaps),
+        definition_names: definition_names(naming, &mut gaps),
     };
     gaps.extend(NOT_STATED.map(|rule| {
         gap_for_subject(
@@ -116,13 +125,62 @@ fn property<T: Clone>(
     GrammarProperty::Unresolved
 }
 
+/// The definition forms: `Known` when every stated rule holds, `Partial` when some do, and
+/// `Unresolved` when none does or the loader has no stated rule, with a gap for the last two.
+fn definition_names(naming: &Naming, gaps: &mut Vec<Gap>) -> GrammarProperty<Vec<DefinitionForm>> {
+    let reason = match (naming.forms.is_empty(), naming.missing) {
+        (false, 0) => return GrammarProperty::Known(naming.forms.clone()),
+        (true, 0) => "the registry's loader has no stated definition-name rule".to_owned(),
+        (_, missing) => {
+            format!("the build lacks the code of {missing} stated definition-name rules")
+        }
+    };
+    gaps.push(gap_for_subject(
+        GapKind::UnresolvedPath,
+        Some(GapSubject::AnswerItem {
+            name: "definition_names".into(),
+        }),
+        reason,
+    ));
+
+    if naming.forms.is_empty() {
+        GrammarProperty::Unresolved
+    } else {
+        GrammarProperty::Partial(naming.forms.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Recursion;
+    use crate::{DefinitionName, DefinitionStatement, Recursion};
 
     fn build() -> BuildId {
         BuildId("test".into())
+    }
+
+    fn root_key() -> DefinitionForm {
+        DefinitionForm {
+            statement: DefinitionStatement::Root,
+            name: DefinitionName::Key,
+        }
+    }
+
+    fn definition_name_gaps(answer: &Answer<LoaderRules>) -> Vec<(GapKind, &str)> {
+        answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.subject.as_ref().map(GapSubject::name) == Some("definition_names"))
+            .map(|gap| (gap.kind, gap.detail.as_str()))
+            .collect()
+    }
+
+    fn selection() -> Selection {
+        Selection {
+            extension: Ok(None),
+            name_contains: Ok(None),
+            recursion: Ok(Recursion::None),
+        }
     }
 
     #[test]
@@ -133,7 +191,15 @@ mod tests {
             recursion: Ok(Recursion::None),
         };
 
-        let answer = normalized_rules("common/examples", &selection, build());
+        let answer = normalized_rules(
+            "common/examples",
+            &selection,
+            &Naming {
+                forms: vec![root_key()],
+                missing: 0,
+            },
+            build(),
+        );
 
         assert_eq!(
             answer.value,
@@ -141,6 +207,7 @@ mod tests {
                 extension: GrammarProperty::Known(Some(".txt".into())),
                 name_contains: GrammarProperty::Known(None),
                 recursion: GrammarProperty::Known(Recursion::None),
+                definition_names: GrammarProperty::Known(vec![root_key()]),
             }
         );
         assert_eq!(answer.completeness, Completeness::Partial);
@@ -154,7 +221,6 @@ mod tests {
             [
                 (GapKind::ReaderSemantics, Some("duplicate_rule")),
                 (GapKind::ReaderSemantics, Some("file_order")),
-                (GapKind::ReaderSemantics, Some("definition_names")),
                 (GapKind::OutsideMethod, Some("common/examples")),
             ]
         );
@@ -168,7 +234,15 @@ mod tests {
             recursion: Err(Obstacle::NoEnumeration),
         };
 
-        let answer = normalized_rules("common/examples", &selection, build());
+        let answer = normalized_rules(
+            "common/examples",
+            &selection,
+            &Naming {
+                forms: vec![root_key()],
+                missing: 0,
+            },
+            build(),
+        );
 
         assert_eq!(answer.value.extension, GrammarProperty::Unresolved);
         assert_eq!(answer.value.recursion, GrammarProperty::Unresolved);
@@ -194,5 +268,68 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn a_loader_with_no_stated_rule_leaves_definition_names_unresolved() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Naming {
+                forms: vec![],
+                missing: 0,
+            },
+            build(),
+        );
+
+        assert_eq!(answer.value.definition_names, GrammarProperty::Unresolved);
+        assert_eq!(
+            definition_name_gaps(&answer),
+            [(
+                GapKind::UnresolvedPath,
+                "the registry's loader has no stated definition-name rule"
+            )]
+        );
+    }
+
+    #[test]
+    fn a_stated_rule_whose_code_is_missing_keeps_the_other_forms_partial() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Naming {
+                forms: vec![root_key()],
+                missing: 1,
+            },
+            build(),
+        );
+
+        assert_eq!(
+            answer.value.definition_names,
+            GrammarProperty::Partial(vec![root_key()])
+        );
+        assert_eq!(
+            definition_name_gaps(&answer),
+            [(
+                GapKind::UnresolvedPath,
+                "the build lacks the code of 1 stated definition-name rules"
+            )]
+        );
+    }
+
+    #[test]
+    fn no_held_rule_leaves_definition_names_unresolved() {
+        let answer = normalized_rules(
+            "common/examples",
+            &selection(),
+            &Naming {
+                forms: vec![],
+                missing: 2,
+            },
+            build(),
+        );
+
+        assert_eq!(answer.value.definition_names, GrammarProperty::Unresolved);
+        assert_eq!(definition_name_gaps(&answer).len(), 1);
     }
 }

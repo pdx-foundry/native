@@ -142,6 +142,7 @@ pub(in crate::binding) mod inventory;
 pub(super) mod callbacks;
 pub(super) mod declarations;
 pub(super) mod defines;
+pub(super) mod definition_names;
 #[cfg(test)]
 pub(super) mod durations;
 pub(super) mod dynamic_names;

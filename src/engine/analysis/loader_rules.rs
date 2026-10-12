@@ -6,14 +6,40 @@
 //! directory, `n > 0` also reads `n` levels of subdirectories, and a negative depth reads every
 //! level. The method reads each argument that the call's own basic block sets
 //! ([`directories::enumeration_calls`]): a literal text, a null pointer, or a constant depth. Any
-//! other value is not established. `docs/native/loader-rules.md` has the engine facts.
+//! other value is not established.
+//!
+//! A definition's name is a stated rule of the loader's code, not read from it: each stated form
+//! holds when the build has the code that the rule names. `docs/native/loader-rules.md` has the
+//! engine facts and the stated rules.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::directories::{self, Anchors, Constructor, Value};
-use crate::Recursion;
+use crate::{DefinitionForm, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v1";
+pub const METHOD: &str = "loader-rules/v2";
+
+/// A definition form that a stated rule of one of the registry's loaders gives, or `None` when
+/// the build lacks the code that the rule names.
+pub type StatedForm = Option<DefinitionForm>;
+
+/// What a registry's loaders show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoaderEvidence {
+    /// The arguments of every file enumeration that the loaders make.
+    pub enumerations: Vec<Enumeration>,
+    /// The definition forms that the loaders' stated rules give.
+    pub stated: Vec<StatedForm>,
+}
+
+/// The definition forms of a registry's loaders that the build holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Naming {
+    /// Each distinct form, in the order of the stated rules.
+    pub forms: Vec<DefinitionForm>,
+    /// How many stated rules name code that the build lacks.
+    pub missing: usize,
+}
 
 /// What one text argument of an enumeration call holds.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -85,6 +111,21 @@ pub fn selection(calls: &[Enumeration]) -> Selection {
     }
 }
 
+/// The distinct forms of `stated`, and how many rules the build does not hold.
+pub fn naming(stated: &[StatedForm]) -> Naming {
+    let mut forms = Vec::new();
+    for form in stated.iter().flatten() {
+        if !forms.contains(form) {
+            forms.push(form.clone());
+        }
+    }
+
+    Naming {
+        forms,
+        missing: stated.iter().filter(|form| form.is_none()).count(),
+    }
+}
+
 fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
     match value {
         Value::Constant(0) => Text::Absent,
@@ -138,6 +179,7 @@ fn agreed<T: Ord>(values: impl Iterator<Item = Option<T>>) -> Result<T, Obstacle
 mod tests {
     use super::*;
     use crate::engine::analysis::assembler::{Arm64, arm64};
+    use crate::{DefinitionName, DefinitionStatement};
 
     const ENUMERATE: u64 = 0x1300;
     const DIRECTORY: u64 = 0x2010;
@@ -302,6 +344,34 @@ mod tests {
                 extension: Err(Obstacle::Several(2)),
                 name_contains: Ok(None),
                 recursion: Ok(Recursion::None),
+            }
+        );
+    }
+
+    fn form(name: DefinitionName) -> DefinitionForm {
+        DefinitionForm {
+            statement: DefinitionStatement::Root,
+            name,
+        }
+    }
+
+    #[test]
+    fn naming_keeps_each_distinct_form_in_rule_order_and_counts_the_missing_rules() {
+        let stated = [
+            Some(form(DefinitionName::Key)),
+            None,
+            Some(form(DefinitionName::Field("id".into()))),
+            Some(form(DefinitionName::Key)),
+        ];
+
+        assert_eq!(
+            naming(&stated),
+            Naming {
+                forms: vec![
+                    form(DefinitionName::Key),
+                    form(DefinitionName::Field("id".into()))
+                ],
+                missing: 1,
             }
         );
     }
