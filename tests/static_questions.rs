@@ -1576,6 +1576,54 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     ));
 }
 
+/// Every listed registry has loader rules in the tracked parity file. A template registry reads
+/// every file of its folder; `common/global_ship_designs`, a custom loader, reads `.txt` files at
+/// every depth (`docs/native/loader-rules.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn loader_rules_state_the_file_selection_of_every_listed_registry() {
+    use pdx_native::{GrammarProperty, Recursion};
+    let native = native();
+    let tracked: BTreeMap<String, Value> = expected("loader-rules.json");
+    let listed: Vec<String> = native
+        .registries()
+        .unwrap()
+        .value
+        .into_iter()
+        .map(|registry| registry.name)
+        .collect();
+    assert_eq!(tracked.keys().cloned().collect::<Vec<_>>(), listed);
+
+    for registry in ["common/traditions", "common/tradition_categories"] {
+        let rules = native.loader_rules(registry).unwrap().value;
+        assert_eq!(rules.extension, GrammarProperty::Known(None), "{registry}");
+        assert_eq!(
+            rules.name_contains,
+            GrammarProperty::Known(None),
+            "{registry}"
+        );
+        assert_eq!(
+            rules.recursion,
+            GrammarProperty::Known(Recursion::None),
+            "{registry}"
+        );
+    }
+    let designs = native.loader_rules("common/global_ship_designs").unwrap();
+    assert_eq!(
+        designs.value.extension,
+        GrammarProperty::Known(Some(".txt".into()))
+    );
+    assert_eq!(
+        designs.value.recursion,
+        GrammarProperty::Known(Recursion::Unlimited)
+    );
+    assert_eq!(designs.completeness, Completeness::Partial);
+    assert!(matches!(
+        native.loader_rules("common/no_such_registry"),
+        Err(Error::UnknownRegistry { .. })
+    ));
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn a_registry_with_no_template_loader_is_refused_before_a_game_starts() {

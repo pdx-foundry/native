@@ -7,6 +7,7 @@ use crate::binding::analysis::NamedCandidate;
 use crate::engine::analysis::decode::{Instruction, decode_arm64};
 use crate::engine::analysis::directories::{self, Constructor, Directory};
 use crate::engine::analysis::discovery::Symbol;
+use crate::engine::analysis::loader_rules;
 use crate::engine::analysis::readers::TRIGGER_LOOKUP;
 use crate::engine::analysis::references::{
     ReferenceInput, initialization, lambda_operator, reader,
@@ -191,6 +192,22 @@ pub(in crate::binding) fn database_directories(
             (database, directory)
         })
         .collect()
+}
+
+/// The arguments of every file enumeration in the functions of `classes`, the classes that load
+/// one registry.
+pub(in crate::binding) fn loader_enumerations(
+    text: &Text<'_>,
+    image: &Image<'_>,
+    classes: &BTreeSet<String>,
+) -> Vec<loader_rules::Enumeration> {
+    let anchors = super::constructors::anchors(image.symbols);
+    let functions: Vec<Constructor> = classes
+        .iter()
+        .flat_map(|class| own_functions(text, image.symbols, class))
+        .collect();
+
+    loader_rules::enumerations(&functions, &anchors, image.strings)
 }
 
 /// The functions that a canonical body calls, and the call operators of the resolver lambdas

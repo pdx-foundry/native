@@ -14,6 +14,7 @@ before you reuse a finding. A version label or a symbol name is not sufficient.
 | Write a method | [Method authoring](native/method-authoring.md) | The inspector and its limits, stop diagnostics, authored tests, parity, population runs and baselines |
 | Operations and their code | [Discovery methods](native/discovery.md) | Each operation's source stamp, owning modules and knowledge page |
 | Registry fields | [Registry fields](native/registry-fields.md) | What complete means, the field sweep, compiler jump tables and bit fields, reader identities and kinds, read conditions, registry names and nested definitions, the scheduler table and owner joins, the events loader, block entry contexts |
+| Loader file selection | [Loader rules](native/loader-rules.md) | The file enumeration's filters and depth, template and custom callers, single named files and the result over every registry |
 | Nested command grammar | [Command grammar](native/command-grammar.md) | Forms and stage chains, member ledgers, target arguments, parser observations, population results and the consumer boundary |
 | Engine commands and scopes | [Engine commands](native/engine-commands.md) | Declarations, target getters, modifiers, categories, scopes and links, localization tables, on_action and game rule call sites, defines |
 | References and dynamic names | [References](native/references.md) | Reference readers and lookup shapes, owner initializers, identifier grammar, flag stores and namespaces |

@@ -14,6 +14,7 @@ pub mod expansions;
 pub mod families;
 pub mod fields;
 pub mod grammar;
+pub mod loader_rules;
 pub mod localization;
 pub(crate) mod modifier_blocks;
 pub mod modifier_nodes;

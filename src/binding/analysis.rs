@@ -431,6 +431,49 @@ impl VerifiedAnalysis<'_> {
         &self.catalog.candidates
     }
 
+    /// The arguments of every file enumeration that a loader of `registry` makes. The loaders are
+    /// the template loader and database class of each candidate named `registry`, and each
+    /// scheduled database whose own loader enumerates it. `None` when no loader names it.
+    pub(crate) fn loader_enumerations(
+        &self,
+        registry: &str,
+    ) -> Result<Option<Vec<crate::engine::analysis::loader_rules::Enumeration>>, AnalysisError>
+    {
+        use crate::engine::analysis::directories::Directory;
+
+        let names_registry =
+            |directory: &Directory| matches!(directory, Directory::Named(name) if name == registry);
+        let mut classes = std::collections::BTreeSet::new();
+        for candidate in self
+            .named_candidates()
+            .iter()
+            .filter(|candidate| names_registry(&candidate.directory))
+        {
+            classes.insert(candidate.record.loader_class.clone());
+            classes.insert(candidate.record.database.clone());
+        }
+        if let Ok(schedule) = self.database_schedule() {
+            classes.extend(
+                schedule
+                    .loader_directories
+                    .iter()
+                    .filter(|(_, directory)| names_registry(directory))
+                    .map(|(database, _)| database.clone()),
+            );
+        }
+        if classes.is_empty() {
+            return Ok(None);
+        }
+
+        let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
+
+        Ok(Some(binary::references::loader_enumerations(
+            &text,
+            &self.image(),
+            &classes,
+        )))
+    }
+
     /// The database schedule joined to the template candidates, read once per catalog. A
     /// scheduling function that is missing, not unique or undecodable is a gap.
     pub(crate) fn database_schedule(&self) -> Result<&ScheduledDatabases, ScheduleGap> {

@@ -1076,6 +1076,46 @@ fn recorded_support_requires_a_file_for_the_operation() {
 }
 
 #[test]
+fn loader_rules_read_their_registry_file() {
+    use pdx_native::{GrammarProperty, LoaderRules, Recursion};
+    let root = recorded();
+    write(
+        root.path(),
+        "loader_rules/common/global_ship_designs.json",
+        json!({ "Ok": {
+            "value": {
+                "extension": { "Known": ".txt" },
+                "name_contains": { "Known": null },
+                "recursion": "Unresolved"
+            },
+            "completeness": "Partial",
+            "gaps": [{ "kind": "UnresolvedPath",
+                       "subject": { "kind": "answer_item", "name": "recursion" },
+                       "detail": "a file enumeration call passes a value that is not a literal" }],
+            "source": source()
+        }}),
+    );
+    let native = Native::from_recorded_answers(root.path()).unwrap();
+
+    let answer = native.loader_rules("common/global_ship_designs/").unwrap();
+
+    assert_eq!(answer.source.basis, Basis::Recorded);
+    assert_eq!(native.supports(Operation::LoaderRules), Support::Supported);
+    assert_eq!(
+        answer.value,
+        LoaderRules {
+            extension: GrammarProperty::Known(Some(".txt".into())),
+            name_contains: GrammarProperty::Known(None),
+            recursion: GrammarProperty::<Recursion>::Unresolved,
+        }
+    );
+    assert!(matches!(
+        native.loader_rules("common/traditions"),
+        Err(Error::NotRecorded { .. })
+    ));
+}
+
+#[test]
 fn derived_names_read_their_registry_file_and_keep_conditions_and_fallbacks() {
     use pdx_native::{FieldCondition, LookupStage, MissingName, NameLookup, NamePart};
     let root = recorded();
