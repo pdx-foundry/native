@@ -1576,6 +1576,34 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn a_registry_with_no_template_loader_is_refused_before_a_game_starts() {
+    // No such supervisor: if the refusal regressed, the start fails here instead of launching.
+    let options = pdx_native::GameOptions::new(std::process::Command::new(
+        "/nonexistent/pdx-native-supervisor",
+    ));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let result = runtime.block_on(pdx_native::internals::check_registry_load(
+        native(),
+        options,
+        "events",
+    ));
+    assert!(
+        matches!(
+            result,
+            Err(Error::Unsupported {
+                operation: Operation::Registries,
+                ..
+            })
+        ),
+        "{result:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
     let native = native();
     let expected = expected::<BTreeMap<String, Value>>("references.json");

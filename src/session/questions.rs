@@ -456,14 +456,16 @@ impl Native {
 
     /// The error for a registry that no template candidate names. A registry that
     /// [`Native::registries`] lists through its own loader is [`Error::Unsupported`]; any other
-    /// name is [`Error::UnknownRegistry`].
+    /// name is [`Error::UnknownRegistry`]. A changed executable keeps its own error.
     pub(crate) fn unanswered_registry(&self, operation: Operation, registry: &str) -> Error {
         let registry = registry.trim_end_matches('/');
-        let listed = self.bound().analysis.verified().is_ok_and(|verified| {
-            verified
-                .database_schedule()
-                .is_ok_and(|schedule| schedule.names_registry(registry))
-        });
+        let verified = match self.bound().analysis.verified() {
+            Ok(verified) => verified,
+            Err(failure) => return error(operation, failure),
+        };
+        let listed = verified
+            .database_schedule()
+            .is_ok_and(|schedule| schedule.names_registry(registry));
         if !listed {
             return Error::UnknownRegistry {
                 name: registry.into(),
