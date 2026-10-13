@@ -1821,9 +1821,8 @@ mod tests {
             subject: Some(GapSubject::AnswerItem { name: item.into() }),
             detail: detail.into(),
         };
-        let decision = |gap: &Gap| {
-            accepted_limit(gap, "common/traditions", &[]).map(|limit| limit.decision)
-        };
+        let decision =
+            |gap: &Gap| accepted_limit(gap, "common/traditions", &[]).map(|limit| limit.decision);
         let condition = GapKind::UnresolvedCondition;
 
         for detail in [
