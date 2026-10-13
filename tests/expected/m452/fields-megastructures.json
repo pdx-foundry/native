@@ -3638,10 +3638,10 @@
    "Lookups": [
     {
      "condition": "Always",
-     "empty_key": "Unresolved",
-     "key_match": "Unresolved",
-     "on_missing": "Unresolved",
-     "stage": "Unresolved",
+     "empty_key": "LookedUp",
+     "key_match": "FirstEqual",
+     "on_missing": "Omitted",
+     "stage": "WhileReading",
      "target": {
       "Registry": {
        "name": "common/scripted_actions"
@@ -4003,10 +4003,10 @@
    "Lookups": [
     {
      "condition": "Always",
-     "empty_key": "Unresolved",
-     "key_match": "Unresolved",
-     "on_missing": "Unresolved",
-     "stage": "Unresolved",
+     "empty_key": "LookedUp",
+     "key_match": "FirstEqual",
+     "on_missing": "NullObject",
+     "stage": "WhileReading",
      "target": {
       "Registry": {
        "name": "common/bypass"
@@ -5017,10 +5017,10 @@
    "Lookups": [
     {
      "condition": "Always",
-     "empty_key": "Unresolved",
-     "key_match": "Unresolved",
-     "on_missing": "Unresolved",
-     "stage": "Unresolved",
+     "empty_key": "LookedUp",
+     "key_match": "FirstEqual",
+     "on_missing": "Omitted",
+     "stage": "WhileReading",
      "target": {
       "Registry": {
        "name": "common/megastructure_overclock_types"

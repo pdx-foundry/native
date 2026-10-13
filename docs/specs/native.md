@@ -220,6 +220,9 @@ for contexts and scope types.
   lookup does not check that one has the name. The weight `trigger` lookup's key match is the
   lexer's token number, so it stays `Unresolved` with an `OutsideMethod` gap. A fact that the
   method does not establish stays unresolved with a gap.
+- A list reader that looks each key up while reading adds only the items that it found; a key
+  that selects nothing yields `MissingResult::Omitted`, and the list has one item fewer. A deferred
+  list keeps the null object in that key's place (`MissingResult::NullObject`).
 - Repeated modifier names combine all registrations. Unresolved or conflicting category tags
   remain `DeclaredTags::Unresolved` with a gap; an earlier known registration cannot hide them.
 - `ScriptExpansion.stage` says whether a tool checks a use's written text (`Lex` and `Read` expand

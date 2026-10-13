@@ -1,0 +1,274 @@
+# The list scan of list_scan.shape with its log arguments formed in another order. On M452: Ethic.
+sub sp,sp,#0x1e0
+stp xr0,xr1,[sp,#0x180]
+stp xr2,xr3,[sp,#0x190]
+stp xr4,xr5,[sp,#0x1a0]
+stp xr6,xr7,[sp,#0x1b0]
+stp xr8,xr9,[sp,#0x1c0]
+stp x29,x30,[sp,#0x1d0]
+add x29,sp,#0x1d0
+mov xr7,x2
+mov xr6,x1
+mov xr9,x0
+add xr10,sp,#0x48
+add xr11,xr10,#0x8
+add xr12,xr10,#0x20
+stp xr12,xr11,[sp,#0x28]
+add xr10,xr10,#0x18
+str xr10,[sp,#0x40]
+adrp xr12,PAGE
+add xr12,xr12,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+adrp xr10,PAGE
+add xr10,xr10,G = {typeinfo}
+add xr12,xr12,#0x10
+str xr12,[sp,#0x20]
+and xr10,xr10,#0x7fffffffffffffff
+str xr10,[sp,#0x38]
+b @+6
+str xr2,[sp,#0x48]
+ldr w1,[xr7,#0x14]
+add x2,sp,#0x48
+mov x0,xr7
+bl CALL = {insert}
+ldr xr2,[xr9,#0x30]
+ldrb wr10,[xr2,#0x13c]
+cbnz wr10,@+11
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+str w0,[xr2,#0x10]
+cbnz w0,@+3
+mov wr10,#0x13
+str wr10,[xr2,#0x18]
+mov wr10,#0x1
+strb wr10,[xr2,#0x13c]
+ldr wr10,[xr2,#0x18]
+cmp wr10,#0x4
+ccmp wr10,#0x13,#0x4,ne
+b.eq @+154
+ldr x0,[xr9,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+40
+mov xr1,x0
+add xr10,sp,#0x48
+mov x0,xr9
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x48]
+ldrb wr12,[sp,#0x4c]
+strb wr12,[xr1,#0x4]
+str wr10,[xr1]
+mov xr2,xr1
+ldr xr10,[xr2,#0x8]!
+str wzr,[xr1,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+stp xzr,xzr,[x29,#-0x68]
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr2
+blr xr10
+ldr xr10,[sp,#0x50]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+ldr x0,[sp,#0x30]
+blr xr10
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr2
+blr xr10
+ldr xr10,[sp,#0x20]
+str xr10,[sp,#0x50]
+str wzr,[sp,#0x64]
+ldr x0,[sp,#0x58]
+ldr xr10,[sp,#0x28]
+cmp x0,xr10
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr x1,[x0,#0x10]
+add x0,sp,#0x48
+bl CALL = CString::CString(char const*)
+ldr wr5,[xr6,#0x54]
+cmp wr5,#0x0
+b.le @+46
+mov xr8,#0x0
+ldr xr4,[xr6,#0x48]
+ldrb wr10,[sp,#0x5f]
+sxtb wr3,wr10
+cmp wr3,#0x0
+ldp xr11,xr12,[sp,#0x48]
+csel xr1,xr12,xr10,lt
+add xr10,sp,#0x48
+csel xr0,xr11,xr10,lt
+b @+4
+add xr8,xr8,#0x1
+cmp xr8,xr5
+b.eq @+34
+ldr xr2,[xr4,xr8,lsl#3]
+ldrb wr12,[xr2,#0x27]
+sxtb wr10,wr12
+ldr xr11,[xr2,#0x18]
+cmp wr10,#0x0
+csel xr10,xr11,xr12,lt
+cmp xr10,xr1
+b.ne @-10
+add xr10,xr2,#0x10
+sxtb wr11,wr12
+ldr xr13,[xr10]
+cmp wr11,#0x0
+csel x0,xr13,xr10,lt
+tbnz wr12,#7,@+13
+cbz xr1,@+22
+sub xr12,xr12,#0x1
+mov xr11,xr0
+ldrb wr13,[xr10],#0x1
+ldrb wr14,[xr11],#0x1
+cmp wr13,wr14
+ccmp xr12,#0x0,#0x4,eq
+sub xr12,xr12,#0x1
+b.ne @-5
+cmp wr13,wr14
+b.ne @-27
+b @+11
+cbz xr1,@+10
+mov x1,xr0
+mov x2,xr1
+bl CALL = _memcmp
+cbnz w0,@-33
+b @+5
+ldrb wr3,[sp,#0x5f]
+adrp xr10,PAGE
+ldr xr10,[xr10,G] = {null}
+ldr xr2,[xr10]
+tbnz wr3,#7,@+7
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+cbnz w0,@-133
+b @+10
+ldp x0,x1,[sp,#0x40]
+ldr xr10,[sp,#0x58]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+cbnz w0,@-143
+sub x0,x29,#0x68
+adrp x1,PAGE
+add x1,x1,G = {source}
+mov w2,#0x46
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr8,[x0,#0x10]
+add xr10,sp,#0x48
+mov x0,xr9
+bl CALL = CReader::GetFileLocationDescription() const
+ldrsb wr10,[sp,#0x5f]
+ldr xr12,[sp,#0x48]
+cmp wr10,#0x0
+add xr10,sp,#0x48
+csel xr11,xr12,xr10,lt
+sub x0,x29,#0x68
+ldr xr10,[sp,#0x38]
+stp xr10,xr11,[sp,#0x8]
+str xr8,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Failed to read key reference '%s' from database '%s' at '%s'"
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr10,[sp,#0x5f]
+tbz wr10,#0x1f,@-164
+ldp x0,x1,[sp,#0x40]
+ldr xr10,[sp,#0x58]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @-169
+ldr x0,[xr9,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+44
+mov xr8,x0
+add xr7,sp,#0x48
+add xr10,sp,#0x48
+mov x0,xr9
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x48]
+ldrb wr12,[sp,#0x4c]
+strb wr12,[xr8,#0x4]
+str wr10,[xr8]
+mov xr9,xr8
+ldr xr10,[xr9,#0x8]!
+str wzr,[xr8,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr9
+blr xr10
+add xr8,xr7,#0x8
+stp xzr,xzr,[x29,#-0x68]
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr9
+blr xr10
+ldr xr10,[sp,#0x50]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr8
+blr xr10
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr9
+blr xr10
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+add xr10,xr10,#0x10
+str xr10,[sp,#0x50]
+str wzr,[sp,#0x64]
+ldr x0,[sp,#0x58]
+add xr10,xr7,#0x20
+cmp x0,xr10
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldp x29,x30,[sp,#0x1d0]
+ldp xr8,xr9,[sp,#0x1c0]
+ldp xr6,xr7,[sp,#0x1b0]
+ldp xr4,xr5,[sp,#0x1a0]
+ldp xr2,xr3,[sp,#0x190]
+ldp xr0,xr1,[sp,#0x180]
+add sp,sp,#0x1e0
+ret
+bl CALL = ___clang_call_terminate
+mov xr9,x0
+ldrsb wr10,[sp,#0x5f]
+tbz wr10,#0x1f,@+5
+ldp x0,x1,[sp,#0x40]
+ldr xr10,[sp,#0x58]
+and x2,xr10,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr9
+bl CALL = __Unwind_Resume
+bl CALL = ___clang_call_terminate

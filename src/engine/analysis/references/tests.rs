@@ -43,6 +43,17 @@ impl Image {
         address
     }
 
+    /// Name `class`'s vtable and give its validity check (slot `0x10`) the body that returns
+    /// `value`.
+    pub(crate) fn validity(&mut self, class: &str, value: &str) -> &mut Self {
+        let vtable = 0xa0_0000 + self.names.len() as u64 * 0x40;
+        let check = format!("{class}::IsValid() const");
+        self.names.insert(vtable, format!("vtable for {class}"));
+        self.names.insert(vtable + 0x20, check.clone());
+
+        self.add(&check, shape("valid"), &[("value", value)])
+    }
+
     /// The rows of the function that `add` built as `name`.
     pub(crate) fn function(&self, name: &str) -> &[Instruction] {
         &self.functions[name]
@@ -189,6 +200,13 @@ pub(super) fn shape(name: &str) -> &'static str {
         "forwarded_scan" => include_str!("shapes/forwarded_scan.shape"),
         "lambda_getter" => include_str!("shapes/lambda_getter.shape"),
         "getter_scan" => include_str!("shapes/getter_scan.shape"),
+        "immediate_scan_base" => include_str!("shapes/immediate_scan_base.shape"),
+        "immediate_getter" => include_str!("shapes/immediate_getter.shape"),
+        "list_scan" => include_str!("shapes/list_scan.shape"),
+        "list_map" => include_str!("shapes/list_map.shape"),
+        "deferred_list" => include_str!("shapes/deferred_list.shape"),
+        "forwarded_list_scan" => include_str!("shapes/forwarded_list_scan.shape"),
+        "valid" => include_str!("shapes/valid.shape"),
         "map_find" => include_str!("shapes/map_find.shape"),
         "trigger_token" => include_str!("shapes/trigger_token.shape"),
         "trigger_map" => include_str!("shapes/trigger_map.shape"),
@@ -454,6 +472,7 @@ fn a_getter_scan_requires_one_consistent_key_layout() {
                 &[
                     ("database", "CShipDatabase::_pInstance"),
                     ("getter", GETTER),
+                    ("validity", "0x98"),
                 ],
             )
             .add(
@@ -484,12 +503,275 @@ fn a_getter_scan_requires_one_consistent_key_layout() {
 }
 
 #[test]
-fn list_and_index_readers_keep_their_lookup_unresolved() {
-    let list = "void NParserUtil::ReadKeyReferenceDeferredUniform<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CPdxArray<CShipDatabase::ValueType const*, int>&)";
-    let fact = lookup(&Image::default(), list);
+fn an_index_reader_keeps_its_lookup_unresolved() {
+    let index = "void NParserUtil::ReadIndexReferenceDeferred<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CShipDatabase::ValueType const**)";
+    let fact = lookup(&Image::default(), index);
 
     assert_eq!(fact.directory.as_deref(), Some("common/ships"));
-    assert_eq!(fact.lookup.unwrap_err().reason, "reference-list-form");
+    assert_eq!(fact.lookup.unwrap_err().reason, "reference-index-form");
+}
+
+const SHIP_LIST: &str = "void NParserUtil::ReadKeyReferenceUniform<CShipDatabase, CPdxArray<CShip const*, int> >(CReader&, CShipDatabase const&, CPdxArray<CShip const*, int>&)";
+const SHIP_DEFERRED_LIST: &str = "void NParserUtil::ReadKeyReferenceDeferredUniform<CShipDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CPdxArray<CShipDatabase::ValueType const*, int>&)";
+const SHIP_INSERT: &str = "CShip const*& CPdxArray<CShip const*, int>::InsertAtEmplace<CShip const* const&>(int, CShip const* const&)";
+const OTHER_INSERT: &str = "COther const*& CPdxArray<COther const*, int>::InsertAtEmplace<COther const* const&>(int, COther const* const&)";
+const SHIP_NULL: &str = "TPdxNullObject<CShip>::_pInstance";
+
+/// An immediate ship list read by `shape` with `values`, a ship check that returns `item` and a
+/// null-object check that returns `null`.
+fn immediate_list(shape_name: &str, values: &[(&str, &str)], item: &str, null: &str) -> Image {
+    let mut image = Image::default();
+    image
+        .add(SHIP_LIST, shape(shape_name), values)
+        .validity("CShip", item)
+        .validity("TPdxNullObject<CShip>", null);
+
+    image
+}
+
+const LIST_SCAN_VALUES: &[(&str, &str)] = &[
+    ("typeinfo", "typeinfo name for CShipDatabase"),
+    ("insert", SHIP_INSERT),
+    ("null", SHIP_NULL),
+    ("source", "\"parser_util.h\""),
+];
+
+#[test]
+fn an_immediate_list_omits_a_key_whose_null_object_fails_its_validity_check() {
+    let fact = lookup(
+        &immediate_list("list_scan", LIST_SCAN_VALUES, "0x1", "0x0"),
+        SHIP_LIST,
+    );
+
+    assert_eq!(
+        fact.lookup,
+        Ok(Lookup {
+            stage: Stage::WhileReading,
+            key_match: Some(KeyMatch::FirstEqual),
+            empty_key_looked_up: true,
+            on_missing: Missing::Omitted,
+        })
+    );
+    assert_eq!(fact.null_object.as_deref(), Some(SHIP_NULL));
+}
+
+#[test]
+fn an_immediate_list_whose_validity_checks_do_not_split_hit_and_miss_is_unresolved() {
+    for (item, null) in [("0x1", "0x1"), ("0x0", "0x0")] {
+        let image = immediate_list("list_scan", LIST_SCAN_VALUES, item, null);
+
+        assert_eq!(
+            lookup(&image, SHIP_LIST).lookup.unwrap_err().reason,
+            "reference-list-validity",
+            "item {item}, null {null}"
+        );
+    }
+}
+
+#[test]
+fn an_immediate_list_must_append_and_log_its_own_types() {
+    let other_insert = [
+        LIST_SCAN_VALUES[0],
+        ("insert", OTHER_INSERT),
+        LIST_SCAN_VALUES[2],
+        LIST_SCAN_VALUES[3],
+    ];
+    let other_log = [
+        ("typeinfo", "typeinfo name for COtherDatabase"),
+        LIST_SCAN_VALUES[1],
+        LIST_SCAN_VALUES[2],
+        LIST_SCAN_VALUES[3],
+    ];
+    for values in [other_insert, other_log] {
+        let image = immediate_list("list_scan", &values, "0x1", "0x0");
+
+        assert_eq!(
+            lookup(&image, SHIP_LIST).lookup.unwrap_err().reason,
+            "reference-list-shape"
+        );
+    }
+}
+
+#[test]
+fn an_immediate_list_map_is_equal_when_its_find_is_qualified_over_the_list_items() {
+    let find = "NPdxRobinHoodTable::CIterator<CShip> CPdxRobinHoodTable<CPdxUnorderedMap<CString, CShip const*, SPdxHash<CString, void>, std::__1::equal_to<CString>, true>::SMapEntry>::Find<CString>(CString const&) const";
+    let values = [
+        ("typeinfo", "typeinfo for CShipDatabase"),
+        ("insert", SHIP_INSERT),
+        ("null", SHIP_NULL),
+        ("find", find),
+        ("source", "\"parser_util.h\""),
+    ];
+    let mut image = immediate_list("list_map", &values, "0x1", "0x0");
+    image.add(find, shape("map_find"), &[]);
+    assert_eq!(
+        lookup(&image, SHIP_LIST).lookup.unwrap().key_match,
+        Some(KeyMatch::Equal)
+    );
+
+    let other_map = find.replace("CString, CShip const*", "CString, COther const*");
+    let values = [
+        values[0],
+        values[1],
+        values[2],
+        ("find", other_map.as_str()),
+        values[4],
+    ];
+    let image = immediate_list("list_map", &values, "0x1", "0x0");
+    assert_eq!(
+        lookup(&image, SHIP_LIST).lookup.unwrap_err().reason,
+        "reference-list-shape",
+        "a map of another element type is not this list's search"
+    );
+}
+
+/// A deferred ship list whose lambda forwards to an indexed scan, appending with `insert`.
+fn deferred_list(insert: &str) -> Image {
+    let vtable = LAMBDA_VTABLE.replace(
+        "ReadKeyReferenceDeferred<",
+        "ReadKeyReferenceDeferredUniform<",
+    );
+    let forwarded = FORWARDED.replace(
+        "ReadKeyReferenceDeferred<",
+        "ReadKeyReferenceDeferredUniform<",
+    );
+    let mut image = Image::default();
+    image
+        .add(
+            SHIP_DEFERRED_LIST,
+            shape("deferred_list"),
+            &[("lambda", &vtable), ("insert", insert), ("null", SHIP_NULL)],
+        )
+        .add(
+            &lambda_operator(&vtable).unwrap(),
+            shape("lambda_forward"),
+            &[("forwarded", &forwarded)],
+        )
+        .add(
+            &forwarded,
+            shape("forwarded_list_scan"),
+            &[
+                ("database", "TGameDatabase<CShipDatabase>::_pInstance"),
+                ("null", SHIP_NULL),
+            ],
+        );
+
+    image
+}
+
+#[test]
+fn a_deferred_list_replaces_each_appended_null_object_with_the_first_equal_item() {
+    let insert = "CShip const*& CPdxArray<CShip const*, int>::InsertAtEmplace<CShip const*>(int, CShip const*&&)";
+    let fact = lookup(&deferred_list(insert), SHIP_DEFERRED_LIST);
+
+    assert_eq!(
+        fact.lookup,
+        Ok(Lookup {
+            stage: Stage::Deferred,
+            key_match: Some(KeyMatch::FirstEqual),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
+        })
+    );
+    assert_eq!(
+        lookup(&deferred_list(OTHER_INSERT), SHIP_DEFERRED_LIST)
+            .lookup
+            .unwrap_err()
+            .reason,
+        "reference-reader-shape",
+        "an append of another element type gives the resolver no established destination"
+    );
+}
+
+#[test]
+fn an_immediate_reader_may_scan_keys_behind_a_base_or_call_its_own_getter() {
+    let clone = format!("{SHIP_IMMEDIATE} [clone .cold.1]");
+    let mut image = Image::default();
+    image.add(
+        SHIP_IMMEDIATE,
+        shape("immediate_scan_base"),
+        &[
+            ("null", SHIP_NULL),
+            ("source", "\"parser_util.h\""),
+            ("cold", &clone),
+        ],
+    );
+    assert_eq!(
+        lookup(&image, SHIP_IMMEDIATE).lookup.unwrap().key_match,
+        Some(KeyMatch::FirstEqual)
+    );
+
+    let getter = |folder: &str| {
+        let mut image = Image::default();
+        image
+            .add(
+                SHIP_IMMEDIATE,
+                shape("immediate_getter"),
+                &[
+                    ("getter", GETTER),
+                    ("folder", folder),
+                    ("source", "\"parser_util.h\""),
+                    ("cold", &clone),
+                ],
+            )
+            .add(
+                GETTER,
+                shape("getter_scan"),
+                &[
+                    ("items", "0x10"),
+                    ("count", "0x1c"),
+                    ("key", "0x10"),
+                    ("length", "0x18"),
+                    ("flag", "0x27"),
+                    ("null", SHIP_NULL),
+                ],
+            );
+        lookup(&image, SHIP_IMMEDIATE).lookup
+    };
+    assert_eq!(
+        getter("CShipDatabase::GetFolderPath() const")
+            .unwrap()
+            .key_match,
+        Some(KeyMatch::FirstEqual)
+    );
+    assert_eq!(
+        getter("COtherDatabase::GetFolderPath() const")
+            .unwrap_err()
+            .reason,
+        "reference-reader-shape"
+    );
+}
+
+#[test]
+fn a_lambda_getter_may_return_any_validity_slot_and_search_a_hash_table() {
+    let find = "CHashTable<CString, CShip, ClassicHashKeyTraits<CString, CShip> >::Find(CString const&) const";
+    let mut image = Image::default();
+    image
+        .add(SHIP, shape("deferred"), &[("lambda", LAMBDA_VTABLE)])
+        .add(
+            &operator(),
+            shape("lambda_getter"),
+            &[
+                ("database", "CShipDatabase::_pInstance"),
+                ("getter", GETTER),
+                ("validity", "0x40"),
+            ],
+        )
+        .add(
+            GETTER,
+            shape("null_getter"),
+            &[("table", "0x10"), ("find", find), ("null", SHIP_NULL)],
+        )
+        .add(
+            find,
+            shape("hash_find"),
+            &[("key", "0x18"), ("length", "0x20"), ("flag", "0x2f")],
+        );
+
+    assert_eq!(
+        lookup(&image, SHIP).lookup.unwrap().key_match,
+        Some(KeyMatch::Equal)
+    );
 }
 
 #[test]

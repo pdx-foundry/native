@@ -202,7 +202,10 @@ impl Method<'_> {
     /// The key match of a getter body and the null object that its miss yields: a scan of the
     /// getter's own items, or a hash search whose element type is the null object's type. An
     /// unqualified hash search has no key match.
-    fn getter_search(&self, body: &[Line]) -> Result<(Option<KeyMatch>, String), Unresolved> {
+    pub(super) fn getter_search(
+        &self,
+        body: &[Line],
+    ) -> Result<(Option<KeyMatch>, String), Unresolved> {
         if let Some(scan) = super::GETTER_SCAN.matches(body) {
             if !null_object(&scan) {
                 return Err(no_null_object());
@@ -295,14 +298,14 @@ fn no_null_object() -> Unresolved {
 }
 
 /// `C` in the null object `TPdxNullObject<C>::_pInstance`.
-fn null_type(bindings: &Bindings) -> Option<&str> {
+pub(super) fn null_type(bindings: &Bindings) -> Option<&str> {
     bindings["null"]
         .strip_prefix("TPdxNullObject<")?
         .strip_suffix(">::_pInstance")
 }
 
 /// `T` in a map `Find` over `CPdxUnorderedMap<CString, T const*, …>`.
-fn map_element(find: &str) -> Option<&str> {
+pub(super) fn map_element(find: &str) -> Option<&str> {
     let (_, rest) = find.split_once("CPdxUnorderedMap<CString, ")?;
 
     Some(rest.split_once(" const*, ")?.0)

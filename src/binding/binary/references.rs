@@ -1,5 +1,5 @@
 //! Read every reference reader, the trigger lookup and every owner initializer, the functions that
-//! their lookups reach, and each named database's content directory.
+//! their lookups reach, every validity check, and each named database's content directory.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::AnalysisError;
@@ -22,6 +22,9 @@ const DEPTH: usize = 2;
 
 /// The name suffix of an owner's initializer.
 const INITIALIZER: &str = "::PostInit()";
+
+/// The name suffix of an object's validity check, which a list reader calls on each selected item.
+const VALIDITY_CHECK: &str = "::IsValid() const";
 
 /// The name part of a template database's handler for a key that it already holds.
 const EXISTING_ENTRY: &str = "::ReadExistingEntry(CReader&, CString const&, ";
@@ -97,6 +100,7 @@ pub(in crate::binding) fn read(
     };
     let readers = named(|name| reader(name).is_some());
     let initializers = named(|name| name.ends_with(INITIALIZER));
+    let validity_checks = named(|name| name.ends_with(VALIDITY_CHECK));
     let mut lookups = readers.clone();
     lookups.insert(TRIGGER_LOOKUP.to_owned());
     let mut functions = reachable_functions(&text, image.symbols, &names, &lookups, |_| true);
@@ -107,6 +111,13 @@ pub(in crate::binding) fn read(
     let databases = named_databases(&readers, &initializers, &initializer_functions, &names);
     let directories = database_directories(&text, image, candidates, databases);
     functions.extend(initializer_functions);
+    functions.extend(reachable_functions(
+        &text,
+        image.symbols,
+        &names,
+        &validity_checks,
+        |_| false,
+    ));
 
     Ok(ReferenceInput {
         readers,
