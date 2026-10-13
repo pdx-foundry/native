@@ -182,10 +182,16 @@ pub(crate) const PERSISTENT_READ: &str = "CReader::Read(CPersistent&)";
 pub(crate) const SCOPED_ASSIGN: &str =
     "CVariableValue::Assign(CToken const&, EScopeType, CString const&)";
 
+/// Reads one pre_trigger key's value into the `CPreTriggers` object in `x0`; `x2` is the key.
+/// The value token `yes` sets the key's bit in the required-true mask and `no` in the
+/// required-false mask. Any other value is ignored with no diagnostic. A repeat is logged and
+/// still sets its bit.
+pub(crate) const PRE_TRIGGER_VALUE: &str = "CPreTriggers::ReadValue(CReader&, EPreTriggers)";
+
 pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
     match callee {
         "CVariableValue::Read(CReader&, EScopeType)" | SCOPED_ASSIGN => ReaderKind::ScopedNumeric,
-        "CReader::Read(bool&)" => ReaderKind::Boolean,
+        "CReader::Read(bool&)" | PRE_TRIGGER_VALUE => ReaderKind::Boolean,
         "CReader::Read(float&)" => ReaderKind::Float,
         "CReader::Read(signed char&)"
         | "CReader::Read(unsigned char&)"
@@ -281,6 +287,7 @@ pub(crate) fn call_arguments(callee: &str) -> Option<&'static [&'static str]> {
     } else if callee == SCOPED_ASSIGN {
         Some(&["x0", "x1", "x2", "x3"])
     } else if callee == "CVariableValue::Read(CReader&, EScopeType)"
+        || callee == PRE_TRIGGER_VALUE
         || callee == "CReader::Read(CString&, bool)"
         || matches!(
             family_of_callee(callee),
@@ -307,6 +314,11 @@ pub(crate) fn destination(join: &ReaderJoin) -> Option<i64> {
     else {
         return None;
     };
+    // The value goes to one of two masks, so the reader has no one destination.
+    if callee == PRE_TRIGGER_VALUE {
+        return None;
+    }
+
     let destination = if let Some(reference) = references::reader(callee) {
         match reference.form {
             ReaderForm::Deferred
@@ -353,7 +365,7 @@ pub(crate) fn arguments_join(
             && owner(get("x0"))
             && get("x1") == Some(&Value::Reader(0))
             && matches!(get("x2"), Some(Value::Token | Value::TokenWord(0)))
-    } else if name.ends_with("::Read(CReader&, EScopeType)") {
+    } else if name.ends_with("::Read(CReader&, EScopeType)") || name == PRE_TRIGGER_VALUE {
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name == SKIP {
         get("x0") == Some(&Value::Reader(0))
@@ -499,6 +511,38 @@ mod tests {
 
         arguments.insert("x0".into(), Value::Owner(0));
         assert!(!arguments_join(SKIP, &arguments, false, None));
+    }
+
+    #[test]
+    fn a_pre_trigger_value_is_a_boolean_that_joins_the_owner_and_the_reader() {
+        use crate::engine::analysis::fields::Value;
+
+        let mut arguments = BTreeMap::from([
+            ("x0".into(), Value::Owner(0)),
+            ("x1".into(), Value::Reader(0)),
+            ("x2".into(), Value::Constant(3)),
+        ]);
+        assert!(arguments_join(PRE_TRIGGER_VALUE, &arguments, false, None));
+        assert_eq!(classify_callee(PRE_TRIGGER_VALUE), ReaderKind::Boolean);
+        assert_eq!(
+            call_arguments(PRE_TRIGGER_VALUE),
+            Some(["x0", "x1", "x2"].as_slice())
+        );
+        assert_eq!(
+            destination(&ReaderJoin::Joined {
+                callee: PRE_TRIGGER_VALUE.into(),
+                arguments: arguments.clone(),
+                tail: true,
+            }),
+            None
+        );
+
+        arguments.insert("x1".into(), Value::Reader(0x278));
+        assert!(!arguments_join(PRE_TRIGGER_VALUE, &arguments, false, None));
+
+        arguments.insert("x1".into(), Value::Reader(0));
+        arguments.insert("x0".into(), Value::Stack(8));
+        assert!(!arguments_join(PRE_TRIGGER_VALUE, &arguments, false, None));
     }
 
     fn joined(callee: &str) -> ReaderJoin {
