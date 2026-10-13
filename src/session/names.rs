@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// What the method does not search.
-const OUTSIDE_METHOD: &str = "The search covers the registry's own const methods and its post-read initialization. Names that other code composes or looks up, such as interface code, and the run-time choice behind a selection condition, such as which swap the engine selects and whether it is valid, are outside it. The answer is no catalogue of the names that content defines.";
+const OUTSIDE_METHOD: &str = "The search covers the registry's own const methods, its post-read initialization, and the direct callers of a const method that returns the key or a string field: their lookups and sprite changes of GUI elements after the call. Names that other code composes or looks up, such as interface code that reads a field without such a method or passes the name on to another function, and the run-time choice behind a selection condition, such as which swap the engine selects and whether it is valid, are outside it. The answer is no catalogue of the names that content defines.";
 
 impl Native {
     /// Read the names that one registry's own code composes from an item key or a string field,
@@ -22,8 +22,10 @@ impl Native {
     ///
     /// Each name has its parts, what the engine looks it up in, when, what a missing name gives,
     /// and the stored field values under which the engine uses it. A fixed key that holds no item
-    /// key or field is not a derived name. Names that interface code composes are outside this
-    /// method; an [`GapKind::OutsideMethod`] gap says so.
+    /// key or field is not a derived name. The names that a direct caller of a `const` method
+    /// composes from the key or field that the method returns, and looks up or gives a GUI element
+    /// as its sprite, are included; other interface names are outside this method, and an
+    /// [`GapKind::OutsideMethod`] gap says so.
     ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
     /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
@@ -132,6 +134,18 @@ fn failure(reason: &str, count: usize) -> String {
         ),
         "flag-bound" => format!(
             "{count} of the registry's methods test more flags than the method enumerates; their names are not returned"
+        ),
+        "caller-name" => format!(
+            "{count} lookup or sprite calls after a call of a name-returning method receive a name with a part that the method could not follow"
+        ),
+        "caller-path" => format!(
+            "{count} lookup or sprite calls after a call of a name-returning method have caller paths that could not be followed"
+        ),
+        "getter-path" => format!(
+            "{count} methods that other code calls before a lookup have no path that the method could follow to their return, so whether they return a name is not established"
+        ),
+        "getter-result" => format!(
+            "{count} calls of a method that returns a name by value give it a result object that the method does not follow"
         ),
         other => format!(
             "{count} of the registry's methods have paths that could not be followed at {other}"
