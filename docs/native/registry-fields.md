@@ -264,9 +264,17 @@ receiver; a shared loop load address does not establish object identity, and a c
 must get its flags from the adjacent comparison on every incoming path. SDK-546 depends on these relationships for
 conditional name and icon templates. Locate the inheritance tokens with `inspect -- --strings inherit_`.
 
-**Accepted limit: the unresolved loader conditions (SDK-811).** On M452 the sweep keeps 207
-"loader condition remains unresolved" gaps: 132 on the six `CEvent` members of each of the 22
-event kinds, and 75 root fields in 33 other registries. By the test that stops:
+Prototype findings, in the `atlas-discovery`, `atlas-command-grammar` and `atlas-numeric-grammar`
+bundles (see [retrieval](retrieval.md)): token dispatch is discovered without field or config seeds
+and transferred to AI attitudes; factories bind to inherited readers (six `create_starbase` and
+three `add_district` fields); one shared numeric operand grammar serves agenda cost and the
+timed-flag units, while `agenda_cooldown` is a plain integer.
+
+### Unresolved loader conditions on M452 (SDK-811)
+
+An accepted limit. On M452 the sweep keeps 207 "loader condition remains unresolved" gaps: 132 on
+the six `CEvent` members of each of the 22 event kinds, and 75 root fields in 33 other registries.
+By the test that stops:
 
 | Tested value | Outcomes | Gaps | Registries | Examples |
 | --- | --- | ---: | ---: | --- |
@@ -278,20 +286,19 @@ event kinds, and 75 root fields in 33 other registries. By the test that stops:
 | Global load and reader input | Every one unresolved | 1 | 1 | `common/traits` `leader_class` |
 
 No tested owner offset matches an established float or fixed-point destination, so the presence
-word limit above has no member. A reader-input test chooses a value form; `FieldCondition` states
+word limit of [read conditions](#read-conditions-and-use-time-inheritance) has no member here. A reader-input test chooses a value form; `FieldCondition` states
 stored values only. Atlas credits a field's value form and repeat only when `read` is exactly
 `[Always]`, and reads no `FieldCondition` term, so naming a condition credits no claim. A branch
 collapses to `Always` only when complementary tests reach equal complete outcomes; no gapped field
-has them. The 205 unresolved outcomes are reader paths that SDK-710 owns. The 45 use-time gaps
-also stay: Atlas publishes `uses` and credits no claim from them. Revisit when SDK-710 gives
-complementary paths equal complete outcomes (rerun the sweep: the existing collapse removes those
-gaps), or when Atlas consumes condition terms, for example to select a config subtype (SDK-716).
+has them. The other 205 gaps have at least one unresolved outcome: reader paths that SDK-710 owns.
+The 45 use-time gaps also stay: Native's `Field::uses` publishes the selections, and Atlas credits
+no claim from them.
 
-Prototype findings, in the `atlas-discovery`, `atlas-command-grammar` and `atlas-numeric-grammar`
-bundles (see [retrieval](retrieval.md)): token dispatch is discovered without field or config seeds
-and transferred to AI attitudes; factories bind to inherited readers (six `create_starbase` and
-three `add_district` fields); one shared numeric operand grammar serves agenda cost and the
-timed-flag units, while `agenda_cooldown` is a plain integer.
+Revisit the 205 when SDK-710 gives complementary paths equal complete outcomes (rerun the sweep:
+the existing collapse removes those gaps), or when Atlas consumes condition terms, for example to
+select a config subtype (SDK-716). The two block-or-scalar fields already have complete, unequal
+outcomes, so neither trigger changes them: revisit them when Atlas needs a value form that depends
+on the input token, and decide then how an answer states a reader-input condition.
 
 ## Registry scheduling and owner joins
 
