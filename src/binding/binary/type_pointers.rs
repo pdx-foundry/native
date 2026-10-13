@@ -123,12 +123,22 @@ impl<'a> TypeOwners<'a> {
                 pointers.method_of = Some(class.to_owned());
             }
         }
-        for (register, parameter) in parameter_registers(parameters, member) {
+        let registers = parameter_registers(parameters, member);
+        for &(register, parameter) in &registers {
             if let Some(class) = pointee(parameter) {
                 self.lead(&mut pointers, register, class);
             }
         }
-        (pointers != TypePointers::default()).then_some(pointers)
+        if pointers == TypePointers::default() {
+            return None;
+        }
+
+        pointers.scope_parameters = registers
+            .iter()
+            .filter(|(_, parameter)| pointee(parameter) == Some("CEventScope"))
+            .map(|&(register, _)| register)
+            .collect();
+        Some(pointers)
     }
 
     /// Record the owners that a register holding an object of `class` leads to.
@@ -373,6 +383,7 @@ mod tests {
                 method_of: Some("CAnomalyType".into()),
                 registers: BTreeMap::from([(0, "CAnomalyType".into())]),
                 members: BTreeMap::new(),
+                scope_parameters: BTreeSet::from([2]),
             })
         );
         assert_eq!(
@@ -381,15 +392,18 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::from([(1, "CEdict".into())]),
                 members: BTreeMap::new(),
+                scope_parameters: BTreeSet::new(),
             })
         );
         assert_eq!(reader.function("NUnknown::Run(CEdict const*)"), None);
+        assert_eq!(reader.function("CCountry::Fire(CEventScope&)"), None);
         assert_eq!(
             reader.function("Run(CEdict const*)"),
             Some(TypePointers {
                 method_of: None,
                 registers: BTreeMap::from([(0, "CEdict".into())]),
                 members: BTreeMap::new(),
+                scope_parameters: BTreeSet::new(),
             })
         );
     }
@@ -409,6 +423,7 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::new(),
                 members: BTreeMap::from([((0, 0x18), "CMissionType".into())]),
+                scope_parameters: BTreeSet::new(),
             })
         );
         assert_eq!(

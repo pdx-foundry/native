@@ -1346,6 +1346,20 @@ fn registry_field_blocks_supply_the_scopes_that_hand_checked_call_sites_build() 
         field("common/council_agendas", "init_effect"),
         (vec![country.to_string()], vec![])
     );
+    // CMegaStructureType::IsPotential(CCountry const&, CEventScope&) builds a country scope and
+    // links its scope parameter as from. IsPotentiallyBuildable passes a fleet scope
+    // (Set(0x40, ...)); IsPotentiallyUpgradableFrom passes a megastructure.
+    assert_eq!(
+        field("common/megastructures", "potential"),
+        (
+            vec![
+                "this=country root=SelfLink from=[megastructure,SelfLink] prev=[SelfLink]"
+                    .to_string(),
+                "this=country root=SelfLink from=[fleet,SelfLink] prev=[SelfLink]".to_string(),
+            ],
+            vec![]
+        )
+    );
     // CArmyType::IsPotentialTrigger links a species scope as from of a colony scope and passes
     // this + 0x4f8 to CAndTrigger::ActualEvaluate directly.
     assert_eq!(

@@ -1926,6 +1926,7 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         method_of: None,
         registers: Default::default(),
         members: [((register, offset), owner.into())].into(),
+        scope_parameters: Default::default(),
     };
     // CMission::Start: its mission type is the word at this + 0x18.
     assert_eq!(pointers(0x1009531d4), Some(member(0, 0x18, "CMissionType")));

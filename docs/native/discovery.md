@@ -64,10 +64,11 @@ gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
 | Numerics | 216 | 517 | 41.78% |
 | Weights | 96 | 471 | 20.38% |
 | Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,247 | 1,855 | 67.22% |
-| **All units** | **4,549** | **7,259** | **62.67%** |
+| Scope context | 1,261 | 1,855 | 67.98% |
+| **All units** | **4,563** | **7,259** | **62.86%** |
 
-The rates are those of the tracked baseline after SDK-676. Against the baseline before it (4,483
+The rates are those of the tracked baseline after SDK-676 and SDK-812 (scope context 1,247 and
+all units 4,549 before SDK-812). Against the baseline before SDK-676 (4,483
 of 7,268 units, 61.68%; 4,283 open gaps), SDK-676 joined 19 root fields: nine weights complete
 their weight unit, and nine modifier fields, which an unknown family had left undetermined for
 weights, leave the weight denominator. It removed 43 of the 45 container gaps: 4,243 open gaps,
@@ -78,7 +79,7 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
 ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
-[accepted limits](#accepted-limits-sdk-819), not open work.
+[accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
 | --- | ---: | ---: | --- |
@@ -91,7 +92,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
-| SDK-812 | 242 | 66 | Block entry-context stops |
+| SDK-812 | 242 | 66 | Block entry-context stops: of the 248 on `main` `a093883`, 17 repaired, 138 accepted, 93 open on blocks with a claim ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
 | SDK-741 | 42 | 4 | `description_parameters` |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
@@ -120,6 +121,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
+| SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 
 Before and after SDK-819, over the same recording:
 
@@ -188,6 +190,12 @@ To split the numeric gaps safely, the gap detail names the obstacle: the range, 
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
 so a loader-condition gap of another field stays open.
+
+SDK-812 (over a new recording at `a093883` plus its repairs) repairs 17 of the 248 entry-context
+gaps, accepts 138 and leaves 93 open; open gaps go from 4,243 to 4,086 (two `derived_names` path
+gaps of districts and specimens also close with the new `csetm` and switch-table rules), scope
+context from 1,247 to 1,261 and all units from 4,549 to 4,563. `--diff` against the baseline names
+50 registries: 8 change from the repairs and 46 move gaps to the limit.
 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key
