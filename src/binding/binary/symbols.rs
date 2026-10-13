@@ -68,8 +68,7 @@ impl<'a> IndexedSymbols<'a> {
 
     /// The constructors of `class`, whose [`constructor_class`] is `class`, in list order.
     pub(super) fn constructors_of(self, class: &str) -> Vec<&'a Symbol> {
-        let base = class.split_once('<').map_or(class, |(base, _)| base);
-        let prefix = format!("{class}::{base}(");
+        let prefix = format!("{class}::");
         let positions: BTreeSet<usize> = self
             .in_name_order_from(&prefix)
             .take_while(|&position| self.symbols[position].name.starts_with(&prefix))
@@ -206,7 +205,7 @@ mod tests {
         );
         assert_eq!(
             indexed.constructors().iter().copied().collect::<Vec<_>>(),
-            [0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x50]
+            [0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x50]
         );
         assert_eq!(indexed.next_address(0x20), Some(0x28));
         assert_eq!(indexed.next_address(0x200), None);

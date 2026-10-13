@@ -2043,6 +2043,44 @@ fn pre_trigger_blocks_share_one_key_table() {
             "{key} is a pre-trigger key"
         );
     }
+
+    // The config's three event kinds with `pre_triggers` (events.cwt) read the same table.
+    for (field, block) in actual["events"].as_object().unwrap() {
+        assert_eq!(block, jobs, "{field}");
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn every_event_kind_reads_the_pre_trigger_table() {
+    let events = native().registry_fields("events").unwrap();
+    let jobs = native().registry_fields("common/pop_jobs").unwrap();
+    let table = find(&jobs.value, "possible_pre_triggers", |field| &field.name);
+    let pdx_native::FieldMembers::Fields(table_keys) = &table.members else {
+        panic!("possible_pre_triggers has no keys");
+    };
+    let table_keys: Vec<_> = table_keys.iter().map(|key| &key.name).collect();
+
+    // One `CEvent::ReadMember` reads every kind, so `pre_triggers` is not limited to the three
+    // kinds that the config names.
+    assert_eq!(events.value.len(), 22);
+    for kind in &events.value {
+        let pdx_native::FieldMembers::Fields(members) = &kind.members else {
+            panic!("{}: no members", kind.name);
+        };
+        let block = find(members, "pre_triggers", |field| &field.name);
+        let pdx_native::FieldMembers::Fields(keys) = &block.members else {
+            panic!("{}.pre_triggers has no keys", kind.name);
+        };
+
+        assert_eq!(block.reader.id, table.reader.id, "{}", kind.name);
+        assert_eq!(
+            keys.iter().map(|key| &key.name).collect::<Vec<_>>(),
+            table_keys,
+            "{}",
+            kind.name
+        );
+    }
 }
 
 #[test]
