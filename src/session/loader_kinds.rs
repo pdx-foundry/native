@@ -248,8 +248,7 @@ fn read_alternatives(paths: &[&TokenPath], reader: &Reader) -> Vec<FieldReadAlte
 }
 
 /// The scopes that the constructor receives on a key's `paths`; a path that the walk could not
-/// finish may build the owner in a scope that no path names. The engine names scope `0` "scope not
-/// set": a key whose every construction passes it reads its block in no scope.
+/// finish may build the owner in a scope that no path names.
 fn read_scope(
     paths: &[&TokenPath],
     names: Option<&[String]>,
@@ -266,13 +265,6 @@ fn read_scope(
             _ => Some(None),
         })
         .collect();
-
-    if scopes
-        .iter()
-        .all(|scope| *scope == Some(Value::Constant(0)))
-    {
-        return GrammarProperty::Known(Vec::new());
-    }
 
     normalize_scopes(scopes, names, GapSubject::field(key), gaps)
 }

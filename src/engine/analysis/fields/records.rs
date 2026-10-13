@@ -372,8 +372,9 @@ pub struct CollectionField {
     /// The category mask that the inserted object's constructor gives it, when that constructor
     /// builds a modifier container.
     pub container_mask: Option<Result<u64, Unresolved>>,
-    /// The distinct scopes that the inserted object's constructor receives on the joined paths,
-    /// `None` where a path's scope is not known. Empty when the constructor takes no scope.
+    /// The distinct `EScopeType` masks that the inserted object's constructor receives on the
+    /// joined paths, `None` where a path's scope is not known. Empty when the constructor takes
+    /// no scope.
     pub construction_scopes: Vec<Option<i64>>,
 }
 

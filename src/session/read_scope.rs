@@ -277,7 +277,9 @@ fn nested_fields(
 }
 
 /// The read scopes that the scope `arguments` give, with a gap at `subject` for each argument
-/// that names no scope type.
+/// that names no scope type. The engine names scope 0 "scope not set" and its scope check accepts
+/// every command in it, so a block whose every read passes 0 reads in no scope; a 0 beside
+/// another scope stays a gap.
 pub(super) fn normalize_scopes(
     arguments: Vec<Option<Value>>,
     names: Option<&[String]>,
@@ -288,6 +290,13 @@ pub(super) fn normalize_scopes(
     let mut reasons = Vec::new();
     if arguments.is_empty() {
         reasons.push("reader-boundary");
+    }
+    if !arguments.is_empty()
+        && arguments
+            .iter()
+            .all(|argument| *argument == Some(Value::Constant(0)))
+    {
+        return GrammarProperty::Known(Vec::new());
     }
     for argument in arguments {
         let result = match argument {
@@ -375,6 +384,28 @@ mod tests {
             assert_eq!(gaps.len(), 1);
         }
         assert!(matches!(scopes(vec![]).0, GrammarProperty::Unresolved));
+    }
+
+    #[test]
+    fn a_block_whose_every_read_passes_scope_zero_reads_in_no_scope() {
+        let zero = || Some(Value::Constant(0));
+
+        assert_eq!(
+            scopes(vec![zero()]),
+            (GrammarProperty::Known(vec![]), vec![])
+        );
+        assert_eq!(
+            scopes(vec![zero(), zero()]),
+            (GrammarProperty::Known(vec![]), vec![])
+        );
+        let (unknown_beside_zero, gaps) = scopes(vec![zero(), None]);
+        assert_eq!(unknown_beside_zero, GrammarProperty::Unresolved);
+        assert_eq!(
+            gaps.iter()
+                .map(|gap| gap.detail.as_str())
+                .collect::<Vec<_>>(),
+            ["read-scope: zero-mask", "read-scope: scope-argument"]
+        );
     }
 
     #[test]
