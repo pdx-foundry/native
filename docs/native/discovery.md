@@ -64,11 +64,10 @@ gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
 | Numerics | 216 | 517 | 41.78% |
 | Weights | 96 | 471 | 20.38% |
 | Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,261 | 1,855 | 67.98% |
-| **All units** | **4,563** | **7,259** | **62.86%** |
+| Scope context | 1,247 | 1,855 | 67.22% |
+| **All units** | **4,549** | **7,259** | **62.67%** |
 
-The rates are those of the tracked baseline after SDK-676 and SDK-812 (scope context 1,247 and
-all units 4,549 before SDK-812). Against the baseline before SDK-676 (4,483
+The rates are those of the tracked baseline after SDK-676. Against the baseline before it (4,483
 of 7,268 units, 61.68%; 4,283 open gaps), SDK-676 joined 19 root fields: nine weights complete
 their weight unit, and nine modifier fields, which an unknown family had left undetermined for
 weights, leave the weight denominator. It removed 43 of the 45 container gaps: 4,243 open gaps,
@@ -92,7 +91,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
-| SDK-812 | 242 | 66 | Block entry-context stops: of the 248 on `main` `a093883`, 15 repaired, 138 accepted, 95 open on blocks with a claim ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
+| SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
 | SDK-741 | 42 | 4 | `description_parameters` |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
@@ -191,11 +190,13 @@ property, or the conversion path ([answer rule](numeric-conversion.md#answer-rul
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
 so a loader-condition gap of another field stays open.
 
-SDK-812 (over a new recording at `a093883` plus its repairs) repairs 15 of the 248 entry-context
-gaps, accepts 138 and leaves 95 open; open gaps go from 4,243 to 4,088 (two `derived_names` path
-gaps of districts and specimens also close with the new `csetm` and switch-table rules), scope
-context from 1,247 to 1,261 and all units from 4,549 to 4,563. `--diff` against the baseline names
-49 registries: 7 change from the repairs and 46 move gaps to the limit.
+SDK-812 (over a new recording at `77847bb` plus its repairs) repairs 15 of the 249 entry-context
+gaps, accepts 138 and leaves 96 open: 95 on fields with a `replace_scopes` claim, and the
+planet classes' unnamed-evaluation gap, which the limit does not list. Against the SDK-813 column
+above, open gaps go from 4,328 to 4,173 (two `derived_names` path gaps of districts and specimens
+also close with the new `csetm` and switch-table rules), accepted gaps from 695 to 833, scope
+context from 1,309 to 1,323 and all units from 4,718 to 4,732 (62.97%). `--diff` against the
+baseline names 49 registries: 7 change from the repairs and 46 move gaps to the limit.
 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key

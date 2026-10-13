@@ -1499,7 +1499,7 @@ and loop bounds stay.
 `possible` and `context_menu_potential`, and observation mission `potential`. Each field has a
 known read scope, established contexts and no blocking gap.
 
-**Before and after.** Over the M452 recordings, before at `main` `a093883` (the tracked baseline):
+**Before and after.** Over the M452 recordings, before at `main` `77847bb` (the tracked baseline):
 
 | Stop | Before | After |
 | --- | ---: | ---: |
@@ -1508,18 +1508,19 @@ known read scope, established contexts and no blocking gap.
 | some entry scopes unresolved | 46 | 44 |
 | loop-limit | 21 | 21 |
 | branch-value | 16 | 2 |
-| N unnamed direct evaluations (registry) | 9 | 9 |
+| N unnamed direct evaluations (registry) | 10 | 10 |
 | no-caller | 8 | 8 |
 | caller-depth | 5 | 5 |
 | instruction | 5 | 4 |
 | selected-block-identity | 4 | 4 |
 | only tooltip calls | 1 | 1 |
-| **Total (registries)** | **248 (68)** | **233 (68)** |
+| **Total (registries)** | **249 (69)** | **234 (69)** |
 
-The SDK-553 run had 242 in 66 registries; SDK-710 and SDK-676 brought more blocks into the method
-before this work. Of the 233, an accepted limit covers 138 (below) and 95 stay open, on 61 fields
-with a field-level `replace_scopes` claim. Scope context goes from 1,247 to 1,261 complete fields:
-five from the repairs, the rest because the accepted gaps leave the counts.
+The SDK-553 run had 242 in 66 registries; SDK-710, SDK-676 and SDK-813 brought more blocks into
+the method before this work. Of the 234, an accepted limit covers 138 (below) and 96 stay open: 95
+on 61 fields with a field-level `replace_scopes` claim, and the planet classes' unnamed-evaluation
+gap, a registry that the limit does not list. Scope context goes from 1,309 to 1,323 complete
+fields: five from the repairs, the rest because the accepted gaps leave the counts.
 
 **Accepted limit.** The entry-context gaps of the 93 fields with no field-level `replace_scopes`
 claim (129 gaps), and the 9 registry gaps of direct evaluations whose block the method cannot name,
