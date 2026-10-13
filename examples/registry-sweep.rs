@@ -225,6 +225,11 @@ enum LimitSubjects {
     WeightKeys(&'static [&'static str]),
     /// These fields, by registry and field name.
     Fields(&'static [(&'static str, &'static str)]),
+    /// These keys, each one level below one of these fields.
+    FieldKeys {
+        fields: &'static [(&'static str, &'static str)],
+        keys: &'static [&'static str],
+    },
 }
 
 impl AcceptedLimit {
@@ -239,6 +244,15 @@ impl AcceptedLimit {
             (LimitSubjects::Fields(listed), Some(GapSubject::Field { name })) => listed
                 .iter()
                 .any(|(listed_registry, field)| *listed_registry == registry && field == name),
+            (LimitSubjects::FieldKeys { fields, keys }, Some(GapSubject::KeyPath { path })) => {
+                let [field, key] = path.as_slice() else {
+                    return false;
+                };
+
+                fields.iter().any(|(listed_registry, listed)| {
+                    *listed_registry == registry && listed == field
+                }) && keys.contains(&key.as_str())
+            }
             _ => false,
         };
 
@@ -286,7 +300,7 @@ const UNREPRESENTABLE_BOUNDS: &str =
     "Exact binary32 range endpoints cannot be represented by NumericBound.";
 
 /// Each accepted limit once. The first that covers a gap accepts it.
-const ACCEPTED_LIMITS: [AcceptedLimit; 4] = [
+const ACCEPTED_LIMITS: [AcceptedLimit; 7] = [
     AcceptedLimit {
         decision: "SDK-739: docs/native/numeric-conversion.md#token-value-methods",
         kind: GapKind::NumericConversion,
@@ -311,7 +325,53 @@ const ACCEPTED_LIMITS: [AcceptedLimit; 4] = [
         details: &[USE_TIME_SELECTIONS, USE_TIME_CONTEXT],
         subjects: LimitSubjects::Any,
     },
+    AcceptedLimit {
+        decision: SDK_817,
+        kind: GapKind::UnresolvedPath,
+        details: &[TOOLTIP_EMBEDDED_POINT],
+        subjects: LimitSubjects::Fields(&TOOLTIP_CLAUSES),
+    },
+    AcceptedLimit {
+        decision: SDK_817,
+        kind: GapKind::UnresolvedReader,
+        details: &[TOOLTIP_DELEGATE],
+        subjects: LimitSubjects::Fields(&TOOLTIP_CLAUSES),
+    },
+    AcceptedLimit {
+        decision: SDK_817,
+        kind: GapKind::UnresolvedStorage,
+        details: &[SCOPED_DESTINATION],
+        subjects: LimitSubjects::FieldKeys {
+            fields: &TOOLTIP_CLAUSES,
+            keys: &["mult", "multiplier"],
+        },
+    },
 ];
+
+const SDK_817: &str =
+    "SDK-817: docs/native/triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817";
+
+/// The triggered modifier fields of the Tooltip clause variant on M452.
+const TOOLTIP_CLAUSES: [(&str, &str); 5] = [
+    ("common/pop_jobs", "triggered_country_modifier"),
+    ("common/pop_jobs", "triggered_planet_modifier"),
+    (
+        "common/pop_jobs",
+        "triggered_planet_pop_group_modifier_for_all",
+    ),
+    (
+        "common/pop_jobs",
+        "triggered_planet_pop_group_modifier_for_species",
+    ),
+    ("common/pop_jobs", "triggered_system_modifier"),
+];
+
+/// The Tooltip clause details of `src/session/triggered_modifiers.rs` and
+/// `src/session/scoped_numeric.rs`.
+const TOOLTIP_EMBEDDED_POINT: &str =
+    "The triggered modifier analysis stopped at triggered-embedded-point.";
+const TOOLTIP_DELEGATE: &str = "The reader of keys that the triggered modifier does not name is not established: triggered-delegate.";
+const SCOPED_DESTINATION: &str = "Scoped destination vtable is not established.";
 
 const SDK_811: &str =
     "SDK-811: docs/native/registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811";
@@ -1438,6 +1498,75 @@ mod tests {
             Some(SDK_811),
             "Atlas credits no claim from any use-time selection"
         );
+    }
+
+    #[test]
+    fn only_the_listed_tooltip_clause_gaps_are_accepted() {
+        let (registry, field) = TOOLTIP_CLAUSES[0];
+        let on_field = || Some(GapSubject::Field { name: field.into() });
+        let on_keys = |keys: &[&str]| {
+            Some(GapSubject::KeyPath {
+                path: keys.iter().map(|&key| key.into()).collect(),
+            })
+        };
+        let decision = |kind: GapKind, subject: Option<GapSubject>, detail: &str, registry| {
+            let gap = Gap {
+                kind,
+                subject,
+                detail: detail.into(),
+            };
+
+            accepted_limit(&gap, registry, &[]).map(|limit| limit.decision)
+        };
+        let storage = GapKind::UnresolvedStorage;
+        let accepted = [
+            (GapKind::UnresolvedPath, on_field(), TOOLTIP_EMBEDDED_POINT),
+            (GapKind::UnresolvedReader, on_field(), TOOLTIP_DELEGATE),
+            (storage, on_keys(&[field, "mult"]), SCOPED_DESTINATION),
+            (storage, on_keys(&[field, "multiplier"]), SCOPED_DESTINATION),
+        ];
+        let open = [
+            (storage, on_keys(&["unlisted", "mult"]), SCOPED_DESTINATION),
+            (storage, on_keys(&[field, "key"]), SCOPED_DESTINATION),
+            (
+                storage,
+                on_keys(&[field, "modifier", "mult"]),
+                SCOPED_DESTINATION,
+            ),
+            (storage, on_field(), SCOPED_DESTINATION),
+            (GapKind::UnresolvedPath, on_field(), TOOLTIP_DELEGATE),
+            (
+                GapKind::UnresolvedPath,
+                on_field(),
+                "read-scope: scope-argument",
+            ),
+            (
+                GapKind::UnresolvedReader,
+                on_keys(&[field, "mult"]),
+                TOOLTIP_DELEGATE,
+            ),
+        ];
+
+        for (kind, subject, detail) in accepted {
+            assert_eq!(
+                decision(kind, subject.clone(), detail, registry),
+                Some(SDK_817),
+                "{kind:?} {subject:?}"
+            );
+            assert_eq!(
+                decision(kind, subject, detail, "common/buildings"),
+                None,
+                "the fields are listed for their own registry only"
+            );
+        }
+
+        for (kind, subject, detail) in open {
+            assert_eq!(
+                decision(kind, subject.clone(), detail, registry),
+                None,
+                "{kind:?} {subject:?} {detail}"
+            );
+        }
     }
 
     #[test]

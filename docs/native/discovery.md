@@ -73,7 +73,7 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
-ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
+ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
 [accepted limits](#accepted-limits-sdk-819), not open work.
 
 | Owner | Gaps | Registries | Shapes |
@@ -90,7 +90,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-812 | 242 | 66 | Block entry-context stops |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader |
 | SDK-741 | 42 | 4 | `description_parameters` |
-| SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
+| SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
 
@@ -116,6 +116,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
+| SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
 
 Before and after SDK-819, over the same recording:
 
@@ -154,6 +155,11 @@ Reader kinds went from 1,412 to 1,493 of 1,855 (76.12% to 80.49%), shapes and co
 1,093 to 1,331 (58.92% to 71.75%) and scope context from 1,152 to 1,234 (62.10% to 66.52%). The
 numeric, reference and weight denominators lost 81 undetermined fields each, because those
 fields now have a reader kind. `--diff` against the tracked baseline names 50 registries.
+
+SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recording at `main`
+`be49f13`, the open gaps went from 4,283 to 4,263. The five clause fields have no other reader-kind
+gap, so their reader kinds become complete: 1,493 to 1,498 (80.49% to 80.75%), and all units
+4,483 to 4,488 of 7,268. `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
