@@ -284,10 +284,10 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 | A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
 | No path of a getter's probe returns (`getter-path`) | 3 | |
 | No established key place (`constructor` 17, `key-storage` 4) | 21 | |
-| Every-item initialization not established ([accepted](#accepted-limit-conditions-and-missing-names-sdk-810)) | 4 | 4 |
-| Field values of a name not established (accepted) | 48 | 113 |
-| What a missing name gives not established (accepted) | 39 | 119 |
-| Field-derived name with unexplored field states (accepted) | 26 | 69 |
+| Every-item initialization not established ([accepted](#accepted-limit-conditions-and-missing-names-sdk-810)) | 4 | |
+| Field values of a name not established (accepted) | 47 | 112 |
+| What a missing name gives not established (accepted) | 38 | 117 |
+| Field-derived name with unexplored field states (accepted) | 25 | 67 |
 
 The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
 (18 gaps); the other `UnresolvedPath` rows are unchanged.

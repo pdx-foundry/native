@@ -109,7 +109,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | --- | ---: | ---: | --- |
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
-| SDK-810, [conditions and missing names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810) | 305 | 57 | Name conditions, misses and field states, and 4 every-item gaps |
+| SDK-810, [conditions and missing names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810) | 305 | 57 | Name conditions, misses and field states, and 4 every-item gaps (at `main` `29b025c`) |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
 | SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 | SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
