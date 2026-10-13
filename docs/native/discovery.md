@@ -67,7 +67,7 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
-ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
+ticket that owns them. The sweep repaired none. SDK-809, SDK-810, SDK-811 and SDK-817 are now
 [accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
@@ -78,14 +78,14 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
 | SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
-| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
+| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization: accepted |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
 | SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
-| SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
+| SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`): [repaired](modifier-masks.md#method-registry-fieldsv22) |
 | SDK-635 | 11 | 6 | Reference lookups |
 
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
@@ -109,6 +109,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | --- | ---: | ---: | --- |
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
+| SDK-810, [conditions and missing names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810) | 305 | 57 | Name conditions, misses and field states, and 4 every-item gaps (at `main` `29b025c`) |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
 | SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 | SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
@@ -188,12 +189,26 @@ SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recordin
 gap, so their reader kinds become complete: 1,576 to 1,581 (81.83% to 82.09%), and all units
 4,734 to 4,739 of 7,515 (62.99% to 63.06%). `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
+SDK-816 gives the 14 trait member containers their mask: each is an inline default that the
+baseline constructor run forgets at a later call, so only the entered run counts for it
+([modifier masks](modifier-masks.md#method-registry-fieldsv22)). Over a recording at `main`
+`29b025c`, the open gaps went from 4,031 to 4,017. The 14 fields have no other scope-context gap,
+so scope context becomes complete for them: 1,323 to 1,337 (68.69% to 69.42%), and all units
+4,739 to 4,753 of 7,515 (63.06% to 63.25%). `--diff` names only `common/traits`. Atlas credits no
+claim from these masks now: the config gives the fields `single_alias_right[modifier_clause]`, which
+names no category, and their `replace_scopes` claims also need entry contexts.
+
+SDK-810 accepts the 305 `derived_names` `UnresolvedCondition` gaps: Atlas tests no condition or
+miss of a derived name and joins no `## optional` line. Over a recording at `main` `29b025c`, the
+open gaps went from 4,031 to 3,726 and no status or rate changed. `--diff` names the 57
+registries whose gaps moved ([derived names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810)).
+
 SDK-808 names the obstacle of each read-scope gap ([gap details](#read-time-block-scopes-sdk-549)),
 reads each [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) in the scope
 that its constructor receives, and reads a block whose every read passes scope 0 in no scope. Over
-a recording at its merge with `main` `29b025c`, the open gaps went from 4,031 to 3,867, and scope
-context from 1,323 to 1,406 of 1,926 (68.69% to 73.00%); all units from 4,739 to 4,822 of 7,515
-(63.06% to 64.17%). No other relationship changed. `--diff` names 111 registries: 27 change their
+a recording at its merge with `main` `0bd8bb4`, the open gaps went from 3,712 to 3,548, and scope
+context from 1,337 to 1,420 of 1,926 (69.42% to 73.73%); all units from 4,753 to 4,836 of 7,515
+(63.25% to 64.35%). No other relationship changed. `--diff` names 111 registries: 27 change their
 scope-context counts (67 clause fields, 17 of them in `common/traits`, and 16 zero-scope fields
 become complete), and every one changes its open shapes.
 

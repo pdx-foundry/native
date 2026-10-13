@@ -2675,6 +2675,64 @@ fn a_member_container_built_inline_has_the_mask_that_the_owner_stores() {
 }
 
 #[test]
+fn an_ordinary_call_after_an_inline_container_leaves_its_mask_to_the_run_that_keeps_the_owner() {
+    let mut inline = persistent_fixture();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor;
+        mov x19, x0;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        movz x8, #1;
+        movk x8, #0xffff, lsl #32;
+        movk x8, #0xffff, lsl #48;
+        str x8, [x19, #0xe8]; // the default (1, every category) at member+0xa8
+        add x0, x19, #0x200;
+        bl extern 0xd000; // an ordinary member constructor that the baseline does not enter
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    inline.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
+
+    assert_eq!(
+        member_mask(inline),
+        Ok(crate::engine::analysis::modifiers::EVERY_CATEGORY)
+    );
+}
+
+#[test]
+fn a_constructor_that_keeps_the_owner_and_stores_no_mask_leaves_the_container_unreached() {
+    let mut missing = persistent_fixture();
+    let mut inline = Arm64::at(0xc000);
+    inline.prologue();
+    arm64!(inline;
+        mov x19, x0;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        movz x8, #1;
+        movk x8, #0xffff, lsl #32;
+        movk x8, #0xffff, lsl #48;
+        str x8, [x19, #0xe8]; // the default (1, every category) at member+0xa8
+        mov x0, x19
+    );
+    inline.epilogue();
+    arm64!(inline; ret);
+    missing
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructors
+        .push(Function {
+            name: "CExample::CExample(inline)".into(),
+            address: 0xc000,
+            code: inline.bytes(),
+        });
+
+    assert_eq!(member_mask(missing), Err("container-unreached"));
+}
+
+#[test]
 fn an_unknown_category_argument_or_a_disagreement_is_unresolved_not_every_category() {
     let unknown = member_container_fixture(|code| arm64!(code; ldr w2, [x1]));
     let mut disagreeing = member_container_fixture(|code| arm64!(code; mov w2, #0x407c));

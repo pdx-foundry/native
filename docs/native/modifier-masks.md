@@ -203,7 +203,10 @@ The engine part is `src/engine/analysis/fields/containers.rs` (the rule), `persi
   owner offset: `w2` for a category constructor, every category for a default one, unknown
   otherwise. At the end of each path it also reads the mask word of each requested destination
   whose reader family is `Modifier`, which is how an inline default (the edict) is seen. Both runs
-  (baseline and entered) and every owner constructor count.
+  (baseline and entered) and every owner constructor count, but a run counts only for the
+  destinations whose vtable point it establishes. The baseline forgets the owner at each call that
+  it does not enter, so an inline default stored before such a call is known only to the entered
+  run (SDK-816, the trait members).
 - **Clauses.** The nested-collection proof labels the clause constructor call with `w2`. Its data
   holds the constant pointer slots (not the writable ones), so a mask behind a global-offset-table
   bind is known, and the initialized zero-fill words, so `CGalacticObject::MODIFIER_CATEGORIES` is
@@ -256,6 +259,13 @@ accepts every category and tradition `triggered_modifier` has the country mask. 
 `relay_network_modifier`, which accepts every category. The values agree with the SDK-709 sites
 above.
 
+The 14 trait member containers (SDK-816) accept every category. `CTrait::CTrait(CString, int)`
+(0x100ce6510 on M452) builds 15 `CModifierWithTooltipData` members inline, 0xb8 apart: it loads the
+8-byte default once (`ldr d1`, 0x102c38bb8) and stores it at each container's +0xa8, then calls
+ordinary constructors (`CRootTrigger`, `CEffect`, `CMeanTimeToHappen`). The 14 joined fields read
+the containers at +0x3f8 to +0xd50; the first container, at +0x270, belongs to `modifier`, whose
+reader is not joined.
+
 Limits, all gaps:
 
 - **Unjoined members:** the pop category members (`mvni.2s` halt in `CPopCategory::CPopCategory`)
@@ -274,7 +284,7 @@ Limits, all gaps:
 - **Tooltip clauses** (pop jobs): the `modifier` key has no join, so it is `Unresolved`; the clause
   itself has its mask.
 - **No field:** districts and zones (no root fields), starbase components and species rights (base
-  or inherited reader), traits and component templates (no discovered registry).
+  or inherited reader), component templates (no discovered registry).
 
 ### Restricted containers (SDK-709 sites)
 
@@ -305,7 +315,7 @@ zones and traits.
 | `CZoneType::CSerializer` (`common/zones`) | `triggered_planet_modifier`, `triggered_district_planet_modifier`: planet; `triggered_country_modifier`, `triggered_district_country_modifier`: country |
 | `CStarbaseComponent<CStarbaseModule>`, `<CStarbaseBuilding>` (`common/starbase_modules`, `common/starbase_buildings`) | members `station_modifier`: 0x402ec27e, `country_modifier`: All, `system_modifier`: 0x4008c8fe, `planet_modifier`: planet, `orbit_modifier`: 0x400840fe, `ship_modifier`: 0x4008407e, `defense_platform_modifier`: 0x8407c, `waystation_network_system_modifier`, `waystation_network_country_modifier`: All; `triggered_station_`, `triggered_country_`, `triggered_system_`, `triggered_planet_`, `triggered_waystation_network_system_`, `triggered_waystation_network_country_modifier`: the member mask |
 | `CComponentTemplate` (`common/component_templates`, not a discovered registry) | `triggered_ship_modifier`: 0x400ac27e; `triggered_ship_design_modifier`: 0x8407c |
-| `CTrait` (`common/traits`, not a discovered registry) | `triggered_planet_modifier`, `triggered_planet_growth_habitability_modifier`, `triggered_background_planet_modifier`: planet; `triggered_system_modifier`, `triggered_sector_modifier`: system; `triggered_self_modifier`, `triggered_leader_modifier`: 0x80400; `triggered_species_modifier`, `triggered_pop_group_modifier`: pop group; `triggered_councilor_modifier`, `triggered_galcom_modifier`: country; `triggered_fleet_modifier`: fleet; `triggered_army_modifier`: 0x84200; `triggered_federation_modifier`: 0x400000; `triggered_modifier`: All |
+| `CTrait` (`common/traits`) | the 14 members (`country_modifier`, `self_modifier`, `councilor_modifier` and the others): All, inline default; `triggered_planet_modifier`, `triggered_planet_growth_habitability_modifier`, `triggered_background_planet_modifier`: planet; `triggered_system_modifier`, `triggered_sector_modifier`: system; `triggered_self_modifier`, `triggered_leader_modifier`: 0x80400; `triggered_species_modifier`, `triggered_pop_group_modifier`: pop group; `triggered_councilor_modifier`, `triggered_galcom_modifier`: country; `triggered_fleet_modifier`: fleet; `triggered_army_modifier`: 0x84200; `triggered_federation_modifier`: 0x400000; `triggered_modifier`: All |
 
 The table holds every direct, branch-island and factory call of a category constructor; a
 container that none of them builds is plain only where its default construction is seen. The
