@@ -193,10 +193,11 @@ to name the categories of the families' masks: a 15 s `sample` during the first 
 
 **Accepted:** about 30 s per full inventory, against the 218 s Atlas live snapshot and the
 minutes of a whole-inventory recording ([above](#whole-inventory-recording)); it blocks no sweep,
-by the rule of decision D6. Keep the modifier input in `BoundAnalysis`, as the family index is,
-if a consumer asks `modifier_families` more than once per inventory, or if the per-call cost grows
-past about 0.5 s. A batched `modifier_families_all` is not needed: the cost is the repeated input,
-not the per-registry work.
+by the rule of decision D6. The call uses only the input's `categories`, and
+`BoundAnalysis::category_input` already keeps that `CategoryInput` once per `Native`: pass it to
+`category_names` instead of building the modifier input, if a consumer asks `modifier_families`
+more than once per inventory, or if the per-call cost grows past about 0.5 s. A batched
+`modifier_families_all` is not needed: the cost is the repeated input, not the per-registry work.
 
 ## Live costs
 
