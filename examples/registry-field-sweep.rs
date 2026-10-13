@@ -436,7 +436,7 @@ impl SweepReport {
             "registries_by_root_gap": registries_by_root_gap(&self.cases),
             "report_limits": {
                 "failure_shapes": "Grouped by public gap detail.",
-                "reader_identity_stops": "Root and nested fields without a reader identity, by the distinct shapes of their read alternatives: a stopped alternative names its reason and the callee or mnemonic where it stopped; joined alternatives name why they share no identity. registries counts distinct registries.",
+                "reader_identity_stops": "Root fields, and nested fields of FieldMembers::Fields, without a reader identity (the fields that carry the UnresolvedReader gap; keys of attached modifier, weight and triggered-modifier grammars are outside it), by the distinct shapes of their read alternatives: a stopped alternative names its reason and the callee or mnemonic where it stopped; joined alternatives name why they share no identity. registries counts distinct registries.",
                 "registries_by_root_gap": "Registries whose answer has a registry-subject gap of each kind: an unfollowed root path, unnamed keys or unreadable input. Their internal stops are in stop_shapes.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",

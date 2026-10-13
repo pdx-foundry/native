@@ -15,8 +15,9 @@ pub struct Tally {
 }
 
 impl Tally {
-    /// Add each root and nested field of `registry` that has no reader identity, by the shape of
-    /// its alternatives in `result`.
+    /// Add each root field of `registry`, and each nested field of `FieldMembers::Fields`, that
+    /// has no reader identity, by the shape of its alternatives in `result`. Keys of an attached
+    /// grammar are outside the census: that grammar's method gives their gaps.
     pub fn add(
         &mut self,
         image: &Image,

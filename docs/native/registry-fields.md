@@ -89,8 +89,11 @@ Pitfalls:
 
 ### Fields with no shared reader
 
-The sweep report's `reader_identity_stops` groups every root and nested field without a reader
-identity by the distinct shapes of its read alternatives: a stopped alternative gives its reason
+The sweep report's `reader_identity_stops` groups every root field, and every nested field of
+`FieldMembers::Fields`, without a reader identity by the distinct shapes of its read
+alternatives; these are the fields that carry the `UnresolvedReader` gap. Keys of an attached
+modifier, weight or triggered-modifier grammar are outside it: their gaps come from that
+grammar's own method. A stopped alternative gives its reason
 and the callee or mnemonic where it stopped. `registries_by_root_gap` counts the registries with
 an unfollowed root path, unnamed keys or unreadable input; `stop_shapes` gives their internal
 stops, with a distinct registry count for each. Event-kind members count once for each kind.
@@ -103,7 +106,7 @@ M452, SDK-710: before at Native `34bd898` (`registry-fields/v34`), after at `reg
 | Root fields without identity | 419 | 338 |
 | Root fields of kind `Unknown` | 382 | 301 |
 | Root `Boolean` fields with repeat `Unknown` | 243 | 5 |
-| Gaps other than `OutsideMethod` | 4,482 | 4,131 |
+| Gaps other than `OutsideMethod` | 4,482 | 4,036 |
 | Registries with an unfollowed root path / unnamed keys / unreadable input | 74 / 15 / 12 | 74 / 15 / 12 |
 
 The shapes, grouped by family. Fields and registries are after the repair. Every census shape
@@ -316,8 +319,8 @@ bool)`, until the closing brace or the end of input; it clears nothing first). A
 and both `enable_if` forms of the name are one shared reader shape (`readers.rs`,
 `is_uniform_list`): `x0` the reader and `x1` an owner array, or a stack array that the loader
 converts after the call (17 fields on M452, such as `common/traits` `requires_traits`). The kind is
-`Block` and the family `NotApplicable`: the values are not commands, and no modifier container is
-read. The identity keeps the element type. Storage and repeat stay unknown; a stack array has no
+`Block` and the family `NotApplicable`: the values are not commands, so no modifier container is
+read and the read scope is `Known([])`. The identity keeps the element type. Storage and repeat stay unknown; a stack array has no
 destination. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
 grammar shares the reader rule: nested lists such as `create_species` `adjective.variables`
 join. 17 command answers change (`tests/population/m452/command-population.json`): list and
