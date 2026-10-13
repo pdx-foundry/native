@@ -59,14 +59,16 @@ impl Native {
                 .get(registry)
                 .is_some_and(|join| join.second_input);
 
-            Ok(normalized_families(
+            let mut answer = normalized_families(
                 registry,
                 result.as_ref(),
                 second_input,
                 &unjoined_sites(&index.joins),
                 &categories,
                 self.build(),
-            ))
+            );
+            self.add_keyed_class_gap(registry, &mut answer);
+            Ok(answer)
         })
     }
 }

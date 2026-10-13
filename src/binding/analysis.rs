@@ -100,16 +100,7 @@ impl ScheduledDatabases {
         &self,
         registry: &str,
     ) -> Option<Result<NamedRegistry<'_>, String>> {
-        use crate::engine::analysis::directories::Directory;
-
-        let databases: Vec<(&String, &String)> = self
-            .loader_directories
-            .iter()
-            .filter_map(|(database, directory)| match directory {
-                Directory::Named(name) if name == registry => Some((database, name)),
-                _ => None,
-            })
-            .collect();
+        let databases = self.loading_databases(registry);
         let [(database, name)] = databases[..] else {
             return (!databases.is_empty())
                 .then(|| Err(format!("{} databases load this directory", databases.len())));
@@ -122,19 +113,47 @@ impl ScheduledDatabases {
         };
 
         Some(match owners.get(database) {
-            Some(LoaderOwner::Owner(owner)) => Ok(NamedRegistry {
-                name,
-                database,
-                owner,
-            }),
+            Some(LoaderOwner::Owner(owner) | LoaderOwner::ByRootKey { other: owner, .. }) => {
+                Ok(NamedRegistry {
+                    name,
+                    database,
+                    owner,
+                })
+            }
             Some(LoaderOwner::Several(classes)) => Err(format!(
                 "the loader builds several classes with a member reader: {}",
                 classes.join(", ")
             )),
             Some(LoaderOwner::NoOwner) | None => {
-                Err("the loader builds no class with a member reader".into())
+                Err(binary::loader_owners::no_owner_reason(database).into())
             }
         })
+    }
+
+    /// The root key that the loader of `registry` reserves for another class than its owner, with
+    /// that class. `None` when the registry's one loader reserves no key.
+    pub(crate) fn keyed_class(&self, registry: &str) -> Option<(&str, &str)> {
+        let [(database, _)] = self.loading_databases(registry)[..] else {
+            return None;
+        };
+
+        match self.loader_owners.as_ref().ok()?.get(database)? {
+            LoaderOwner::ByRootKey { key, keyed, .. } => Some((key, keyed)),
+            _ => None,
+        }
+    }
+
+    /// Each unjoined database whose loader enumerates `registry`, with the registry's name.
+    fn loading_databases(&self, registry: &str) -> Vec<(&String, &String)> {
+        use crate::engine::analysis::directories::Directory;
+
+        self.loader_directories
+            .iter()
+            .filter_map(|(database, directory)| match directory {
+                Directory::Named(name) if name == registry => Some((database, name)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Every registry that an unjoined database's loader names and whose loaders build one owner.
@@ -612,7 +631,8 @@ impl VerifiedAnalysis<'_> {
             .filter(|(_, directory)| matches!(directory, Directory::Named(_)))
             .map(|(database, _)| database.clone())
             .collect();
-        let loader_owners = binary::loader_owners::loader_owners(&text, &image, &named);
+        let loader_owners =
+            binary::loader_owners::loader_owners(&text, &image, &named, self.reader_token_offset);
 
         Ok(ScheduledDatabases {
             inventory,
@@ -650,9 +670,10 @@ impl VerifiedAnalysis<'_> {
             .and_then(|schedule| schedule.loader_owners.as_ref().ok())
             .into_iter()
             .flat_map(BTreeMap::values)
-            .filter_map(|owner| match owner {
-                LoaderOwner::Owner(owner) => Some(owner.as_str()),
-                LoaderOwner::NoOwner | LoaderOwner::Several(_) => None,
+            .flat_map(|owner| match owner {
+                LoaderOwner::Owner(owner) => vec![owner.as_str()],
+                LoaderOwner::ByRootKey { keyed, other, .. } => vec![keyed.as_str(), other.as_str()],
+                LoaderOwner::NoOwner | LoaderOwner::Several(_) => vec![],
             })
     }
 

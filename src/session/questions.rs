@@ -444,12 +444,13 @@ impl Native {
             );
         }
         storage_gaps(&value, None, &mut gaps);
-        let answer = Answer {
+        let mut answer = Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         };
+        self.add_keyed_class_gap(registry, &mut answer);
         (answer, entry_gaps)
     }
 
@@ -464,6 +465,31 @@ impl Native {
             .registry_field_result(registry.trim_end_matches('/'))
             .map_err(|e| error(Operation::RegistryFields, e))?
             .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
+    }
+
+    /// Add to `answer`, an answer for `registry`'s owner, a gap for the root statements that the
+    /// registry's loader reads into another class. The gap is outside the method: the answer
+    /// covers the owner's items, and those statements are not its items.
+    pub(crate) fn add_keyed_class_gap<T>(&self, registry: &str, answer: &mut Answer<T>) {
+        let Ok(verified) = self.bound().analysis.verified() else {
+            return;
+        };
+        let Some((key, _)) = verified
+            .database_schedule()
+            .ok()
+            .and_then(|schedule| schedule.keyed_class(registry))
+        else {
+            return;
+        };
+
+        answer.gaps.push(Gap {
+            kind: GapKind::OutsideMethod,
+            subject: Some(GapSubject::registry(registry)),
+            detail: format!(
+                "Root statements with the key `{key}` are items of another class, which this \
+                 answer does not cover."
+            ),
+        });
     }
 
     /// The error for a registry that the operation does not read. A registry that
