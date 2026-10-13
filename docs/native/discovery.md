@@ -57,18 +57,22 @@ gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
 
 | Relationship | Complete | Denominator | Rate |
 | --- | ---: | ---: | ---: |
-| Fields | 98 | 185 | 52.97% |
-| Reader kinds | 1,412 | 1,855 | 76.12% |
-| Shapes and conditions | 1,093 | 1,855 | 58.92% |
+| Fields | 105 | 185 | 56.76% |
+| Reader kinds | 1,431 | 1,855 | 77.14% |
+| Shapes and conditions | 1,111 | 1,855 | 59.89% |
 | References | 24 | 417 | 5.76% |
 | Numerics | 216 | 598 | 36.12% |
-| Weights | 87 | 561 | 15.51% |
+| Weights | 96 | 552 | 17.39% |
 | Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,152 | 1,855 | 62.10% |
-| **All units** | **4,082** | **7,511** | **54.35%** |
+| Scope context | 1,165 | 1,855 | 62.80% |
+| **All units** | **4,148** | **7,502** | **55.29%** |
 
-No naming rule is complete because every `modifier_families` answer keeps one
-`UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
+The rates are those of the tracked baseline after SDK-676, which joined 19 root fields: nine
+weights complete their weight unit, and nine modifier fields, which an unknown family had left
+undetermined for weights, leave the weight denominator and removed 43
+of the 45 container gaps: 4,709 open gaps, SDK-739 accepting 394. Before it they were 4,082 of
+7,511 units (54.35%). No naming rule is complete because every `modifier_families` answer keeps
+one `UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
 SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all units at 3,985
 (53.06%).
 
