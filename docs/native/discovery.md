@@ -91,6 +91,9 @@ The sweep repaired none.
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
 
+SDK-809 (2026-10-13) keeps its 387 gaps as an [accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809):
+Atlas needs no numeric range or storage fact.
+
 Six registries are `Unsupported` for all three registry questions, because their loader builds
 no owner class or several (SDK-813; [custom-loader owners](registry-fields.md#custom-loader-owners)).
 The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
