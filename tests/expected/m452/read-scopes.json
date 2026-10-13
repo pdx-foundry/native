@@ -108,6 +108,43 @@
           "detail": "read-scope: scope-argument",
           "kind": "UnresolvedPath",
           "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "modifier",
+              "description_parameters"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "triggered_modifier",
+              "modifier",
+              "description_parameters"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: stored-scope",
+          "kind": "UnresolvedPath",
+          "subject": {
+            "kind": "key_path",
+            "path": [
+              "tradition_swap",
+              "triggered_modifier",
+              "potential"
+            ]
+          }
+        },
+        {
+          "detail": "read-scope: scope-argument",
+          "kind": "UnresolvedPath",
+          "subject": {
             "kind": "field",
             "name": "triggered_modifier"
           }
@@ -127,29 +164,7 @@
             "kind": "key_path",
             "path": [
               "tradition_swap",
-              "weight"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "tradition_swap",
               "triggered_modifier"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "tradition_swap",
-              "modifier"
             ]
           }
         }

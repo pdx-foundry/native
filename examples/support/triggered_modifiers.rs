@@ -1,6 +1,6 @@
 //! Triggered modifier clause variants, by reader identity, with the status and gaps of each field,
 //! and the triggered-named fields that no clause reader is bound to.
-use super::applies;
+use super::{applies, by_depth, flattened};
 use pdx_native::{
     Answer, BlockFamily, Field, FieldMembers, GrammarProperty, ModifierBlock,
     TriggeredModifierBlock,
@@ -12,6 +12,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Tally {
     variants: BTreeMap<String, Variant>,
     unbound: BTreeSet<String>,
+    /// The fields below a root field.
+    nested: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -42,36 +44,18 @@ fn established(block: &TriggeredModifierBlock) -> bool {
     nested && modifier_established(&other_keys.block)
 }
 
-/// Every field, with nested fields under their dotted path.
-fn flattened<'a>(prefix: &str, fields: &'a [Field], into: &mut Vec<(String, &'a Field)>) {
-    for field in fields {
-        let path = if prefix.is_empty() {
-            field.name.clone()
-        } else {
-            format!("{prefix}.{}", field.name)
-        };
-
-        if let FieldMembers::Fields(children) = &field.members {
-            flattened(&path, children, into);
-        }
-
-        into.push((path, field));
-    }
-}
-
 impl Tally {
     pub fn add(
         &mut self,
         registry: &str,
         answer: &Answer<Vec<Field>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut fields = Vec::new();
-        flattened("", &answer.value, &mut fields);
+        for (path, field) in flattened(&answer.value) {
+            let name = format!("{registry}#{}", path.join("."));
 
-        for (path, field) in &fields {
             if field.reader.family != BlockFamily::TriggeredModifier {
                 if field.name.contains("triggered") {
-                    self.unbound.insert(format!("{registry}#{path}"));
+                    self.unbound.insert(name);
                 }
                 continue;
             }
@@ -83,7 +67,7 @@ impl Tally {
             let gaps: Vec<_> = answer
                 .gaps
                 .iter()
-                .filter(|gap| applies(&gap.subject, &field.name))
+                .filter(|gap| applies(&gap.subject, &path))
                 .collect();
             let status = match &field.members {
                 FieldMembers::TriggeredModifier(block) if established(block) && gaps.is_empty() => {
@@ -93,7 +77,10 @@ impl Tally {
                 _ => "failed",
             };
             let variant = self.variants.entry(id).or_default();
-            variant.fields.insert(format!("{registry}#{path}"), status);
+            if path.len() > 1 {
+                self.nested.insert(name.clone());
+            }
+            variant.fields.insert(name, status);
 
             for gap in gaps {
                 *variant
@@ -108,6 +95,13 @@ impl Tally {
 
     pub fn report(self) -> Value {
         let mut counts = BTreeMap::<&str, usize>::new();
+        let depths = by_depth(
+            self.variants
+                .values()
+                .flat_map(|variant| variant.fields.iter())
+                .map(|(name, status)| (name, *status)),
+            &self.nested,
+        );
         let variants: BTreeMap<_, _> = self
             .variants
             .into_iter()
@@ -125,6 +119,7 @@ impl Tally {
 
         json!({
             "fields_by_status": counts,
+            "fields_by_depth": depths,
             "variants": variants,
             "unbound_triggered_named_fields": self.unbound,
         })

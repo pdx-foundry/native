@@ -1,8 +1,8 @@
 //! Normalize loader paths without losing the pairing between conditions and outcomes.
 use crate::answer::opaque_id;
 use crate::engine::analysis::fields::{
-    ConcreteReader, Condition, PathOutcome, ReaderJoin, RegistryFieldResult, RootField, TokenPath,
-    Value,
+    ConcreteReader, Condition, EmbeddedField, PathOutcome, ReaderJoin, RegistryFieldResult,
+    RootField, TokenPath, Value,
 };
 use crate::engine::analysis::readers;
 use crate::engine::analysis::references::{
@@ -207,6 +207,10 @@ pub(super) fn field(
                 .map(|child| self::field(child, &embedded.fields, references))
                 .collect(),
         );
+
+        if reads_no_container(embedded) {
+            normalized.accepted_categories = AcceptedCategories::NotApplicable;
+        }
     }
     if let FieldMembers::Fields(children) = &mut normalized.members {
         for child in children {
@@ -624,6 +628,30 @@ fn collection_field(
     }
 }
 
+/// The reader that hands each key of a persistent object to the object's member reader.
+const GENERIC_READ: &str = "CPersistent::Read(CReader&)";
+
+/// Whether an embedded object reads no modifier container itself. The engine checks entry
+/// categories only in a modifier `TryReadMember`, and every vtable that holds one also holds the
+/// modifier `Read` (90 of 90 slots on M452), so the object reaches a container only through a key
+/// that its member reader hands on. With the generic reader, that is so when the member reader
+/// names or rejects every key; a named key answers for its own container.
+fn reads_no_container(embedded: &EmbeddedField) -> bool {
+    let keys = &embedded.fields;
+    let named = |path: usize| keys.fields.iter().any(|key| key.paths.contains(&path));
+    let every_key_named_or_rejected = keys
+        .paths
+        .iter()
+        .enumerate()
+        .all(|(index, path)| path.outcome == PathOutcome::Rejected || named(index));
+    let every_gap_on_a_named_key = keys.gaps.iter().all(|gap| gap.path.is_some_and(named));
+
+    embedded.read == GENERIC_READ
+        && keys.partition_accounted
+        && every_key_named_or_rejected
+        && every_gap_on_a_named_key
+}
+
 /// A field's container categories before the container pass: a modifier reader reads a
 /// container, an unknown reader may, and an established reader of another family does not.
 fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
@@ -652,17 +680,44 @@ pub(super) fn prefix_conditions(field: &mut Field, parent: &str) {
         prefix_condition(&mut selection.condition, parent);
     }
 
-    let members = match &mut field.members {
-        FieldMembers::Fields(members) => members,
-        FieldMembers::ModifierBlock(crate::ModifierBlock {
-            fixed_keys:
-                crate::GrammarProperty::Known(members) | crate::GrammarProperty::Partial(members),
-            ..
-        }) => members,
-        _ => return,
-    };
-    for member in members {
+    prefix_member_conditions(field, parent);
+}
+
+/// Prefix every field path that a condition of a member of `field` tests with `parent`.
+pub(super) fn prefix_member_conditions(field: &mut Field, parent: &str) {
+    for member in members_mut(&mut field.members) {
         prefix_conditions(member, parent);
+    }
+}
+
+/// The member fields of a block, including the keys of the modifier block that a triggered
+/// clause reads for its other keys.
+fn members_mut(members: &mut FieldMembers) -> Vec<&mut Field> {
+    fn keys(keys: &mut crate::GrammarProperty<Vec<Field>>) -> Vec<&mut Field> {
+        match keys {
+            crate::GrammarProperty::Known(keys) | crate::GrammarProperty::Partial(keys) => {
+                keys.iter_mut().collect()
+            }
+            crate::GrammarProperty::Unresolved => Vec::new(),
+        }
+    }
+
+    match members {
+        FieldMembers::Fields(members) => members.iter_mut().collect(),
+        FieldMembers::ModifierBlock(block) => keys(&mut block.fixed_keys),
+        FieldMembers::WeightBlock(block) => keys(&mut block.fixed_keys),
+        FieldMembers::TriggeredModifier(clause) => {
+            let mut members = keys(&mut clause.fixed_keys);
+
+            if let crate::GrammarProperty::Known(other) | crate::GrammarProperty::Partial(other) =
+                &mut clause.other_keys
+            {
+                members.extend(keys(&mut other.block.fixed_keys));
+            }
+
+            members
+        }
+        _ => Vec::new(),
     }
 }
 

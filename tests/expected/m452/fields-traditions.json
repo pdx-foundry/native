@@ -792,10 +792,12 @@
      ]
     },
     {
-     "accepted_categories": "Unresolved",
+     "accepted_categories": "NotApplicable",
      "domain": "Unknown",
      "entry_contexts": [],
-     "members": "Unresolved",
+     "members": {
+      "WeightBlock": "f08cb83d92484a89"
+     },
      "name": "weight",
      "read": [
       {
@@ -803,9 +805,9 @@
        "outcome": {
         "Read": {
          "reader": {
-          "id": null,
+          "id": "f08cb83d92484a89",
           "kind": "Block",
-          "family": "Unknown",
+          "family": "Weight",
           "numeric": {
            "Known": null
           },
@@ -814,18 +816,29 @@
           }
          },
          "shape": {
-          "repeat": "Unknown",
+          "repeat": "Merges",
           "value": "Block"
          }
         }
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
-      "id": null,
+      "id": "f08cb83d92484a89",
       "kind": "Block",
-      "family": "Unknown",
+      "family": "Weight",
       "numeric": {
        "Known": null
       },
@@ -835,7 +848,7 @@
      },
      "reference": "NotEstablished",
      "shape": {
-      "repeat": "Unknown",
+      "repeat": "Merges",
       "value": "Block"
      },
      "uses": []
@@ -1212,29 +1225,78 @@
      ]
     },
     {
-     "accepted_categories": "Unresolved",
+     "accepted_categories": {
+      "Listed": [
+       "Pops",
+       "Orbital Stations",
+       "Space Stations",
+       "Military Ships",
+       "Civilian Ships",
+       "Science Ships",
+       "Fleets",
+       "Countries",
+       "Armies",
+       "Leaders",
+       "Planets",
+       "Transport Ships",
+       "Deposits",
+       "Megastructures",
+       "Habitability",
+       "Starbases",
+       "Economic Units",
+       "Star Systems",
+       "Waystations",
+       "Espionage",
+       "Owned Ships",
+       "Colony"
+      ]
+     },
      "domain": "Unknown",
      "entry_contexts": [],
-     "members": "Unresolved",
+     "members": {
+      "TriggeredModifier": "f9fb8c8f5f2ca714"
+     },
      "name": "triggered_modifier",
      "read": [
       {
        "condition": "Always",
-       "outcome": "Unresolved"
+       "outcome": {
+        "Read": {
+         "reader": {
+          "id": "f9fb8c8f5f2ca714",
+          "kind": "Block",
+          "family": "TriggeredModifier",
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
+         },
+         "shape": {
+          "repeat": "Accumulate",
+          "value": "Block"
+         }
+        }
+       }
       }
      ],
      "read_scope": "Unresolved",
      "reader": {
-      "id": null,
-      "kind": "Unknown",
-      "family": "Unknown",
-      "numeric": "Unresolved",
-      "scoped_operand": "Unresolved"
+      "id": "f9fb8c8f5f2ca714",
+      "kind": "Block",
+      "family": "TriggeredModifier",
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "shape": {
-      "repeat": "Unknown",
-      "value": "Unknown"
+      "repeat": "Accumulate",
+      "value": "Block"
      },
      "uses": []
     },
@@ -1443,10 +1505,45 @@
      "uses": []
     },
     {
-     "accepted_categories": "Unresolved",
+     "accepted_categories": {
+      "Listed": [
+       "Pops",
+       "Orbital Stations",
+       "Space Stations",
+       "Military Ships",
+       "Civilian Ships",
+       "Science Ships",
+       "Fleets",
+       "Countries",
+       "Armies",
+       "Leaders",
+       "Planets",
+       "Ship Components",
+       "Pop Factions",
+       "Transport Ships",
+       "Deposits",
+       "Megastructures",
+       "Habitability",
+       "Starbases",
+       "Economic Units",
+       "Star Systems",
+       "Waystations",
+       "Federations",
+       "Espionage",
+       "AI Economy",
+       "Ship Design Stats",
+       "Astral Rift",
+       "Cosmic Storm Influence Field",
+       "Owned Ships",
+       "Galactic Community",
+       "Colony"
+      ]
+     },
      "domain": "Unknown",
      "entry_contexts": [],
-     "members": "Unresolved",
+     "members": {
+      "ModifierBlock": "1c2988588f7e8eaa"
+     },
      "name": "modifier",
      "read": [
       {
@@ -1454,9 +1551,9 @@
        "outcome": {
         "Read": {
          "reader": {
-          "id": null,
+          "id": "1c2988588f7e8eaa",
           "kind": "Block",
-          "family": "Unknown",
+          "family": "Modifier",
           "numeric": {
            "Known": null
           },
@@ -1465,18 +1562,20 @@
           }
          },
          "shape": {
-          "repeat": "Unknown",
+          "repeat": "Merges",
           "value": "Block"
          }
         }
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": []
+     },
      "reader": {
-      "id": null,
+      "id": "1c2988588f7e8eaa",
       "kind": "Block",
-      "family": "Unknown",
+      "family": "Modifier",
       "numeric": {
        "Known": null
       },
@@ -1486,7 +1585,7 @@
      },
      "reference": "NotEstablished",
      "shape": {
-      "repeat": "Unknown",
+      "repeat": "Merges",
       "value": "Block"
      },
      "uses": []

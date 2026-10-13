@@ -1,29 +1,30 @@
 # Shared modifier-block grammar
 
-`registry_fields` attaches `FieldMembers::ModifierBlock` to root fields whose constructor proves
-one modifier reader address point. `fixed_keys` contains named fields; `entries` contains the
+`registry_fields` attaches `FieldMembers::ModifierBlock` to root and nested fields whose owner's
+constructor proves one modifier reader address point. `fixed_keys` contains named fields; `entries` contains the
 numeric and static-modifier-reference forms. Each property independently reports `Known`,
 `Partial` or `Unresolved`. There is no new operation or caller-side reader join.
 
 ## Exact-build result
 
-Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v31`. The four
+Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v36`. The four
 reader identities retain the read/member hash used by persistent fields:
 
 | Reader identity | Member implementation | Fields | Address points | Fixed keys | Fixed keys result |
 | --- | --- | ---: | ---: | ---: | --- |
-| `e327ea91dfe75d65` | `CModifier::ReadMember` | 2 | 1 | 2 | `Known` |
+| `e327ea91dfe75d65` | `CModifier::ReadMember` | 16 | 1 | 2 | `Known` |
 | `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 3 | 1 | 8 | `Known` |
-| `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 25 | 1 | 11 | `Known` |
-| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 7 | 1 | 13 | `Partial` |
+| `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 29 | 1 | 11 | `Known` |
+| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 18 | 1 | 13 | `Partial` |
 
-The full population covers 164 registries. Thirty-seven modifier fields share these four
-variants: **30 complete, 7 partial, 0 failed**. The seven partial fields are the
-CustomDescription variant, which keeps the `description_parameters` gaps (SDK-741). Every
-repeated reader identity has the same block. Another 47 generic persistent Block fields have no concrete
-reader join; they include thirteen weight-named fields. The four modifier fields of
-`common/agreement_term_values` join since the shared evaluator runs `ld1r` (SDK-547). Constructor-proven weight readers have
-their own grammar ([weight blocks](weight-blocks.md)).
+The full population covers 185 registries. Sixty-six modifier fields share these four variants:
+63 root fields (**47 complete, 16 partial**) and 3 nested fields (**1 complete, 2 partial**), 0
+failed. The partial fields are the CustomDescription variant, which keeps the
+`description_parameters` gaps (SDK-741). Every repeated reader identity has the same block, root
+or nested. The 23 root Block fields whose persistent read still has no constructor-proven reader
+are in [unjoined persistent fields](#unjoined-persistent-fields-sdk-676). The four modifier fields of
+`common/agreement_term_values` join since the shared evaluator runs `ld1r` (SDK-547).
+Constructor-proven weight readers have their own grammar ([weight blocks](weight-blocks.md)).
 
 All variants have two known entry forms. The smallest variant has `name` (skipped) and `data`
 (integer). Graphical adds `icon`, `custom_tooltip` (string), `icon_frame` (integer),
@@ -109,6 +110,81 @@ root and embedded blocks alike. A scalar key reads in no scope (`Known([])`). A 
 method does not classify stays `Unresolved` with a `read-scope` gap at its path. On M452 the modifier
 fixed keys that stay open are `description_parameters` (11 places).
 
+## Nested owners (SDK-676)
+
+A nested owner is an object that a root field constructs and inserts into a collection, and
+whose reader has no block family, such as `CTraditionSwap`. The binding gives it its own
+constructor evidence (the persistent binding of its class, with the shared stored-scope and
+initialized words) and its own inserted objects, one level deep. The method then walks it as it
+walks a root owner (`owner_result` in `fields.rs`), so its fields get persistent readers, address
+points, container masks, embedded keys and clause collections by the same code. Nested objects
+of a nested owner get neither, which was the depth of every nested owner before.
+
+The session attaches modifier, triggered modifier, container and weight grammar at every
+`FieldMembers::Fields` depth with the nested object's own result. Gaps name the full key path,
+and the field conditions inside an attached grammar name the path from the root
+(`tradition_swap.modifier.<key>`). A nested field keeps its nesting; nothing is copied to the root.
+
+On M452 the method finds three nested owners with fields:
+
+| Registry | Nested field | Result |
+| --- | --- | --- |
+| `common/traditions`, `common/ascension_perks` | `tradition_swap.modifier` | `1c2988588f7e8eaa`, the root `modifier` block and categories |
+| | `tradition_swap.triggered_modifier` | `f9fb8c8f5f2ca714`, the root clause and the country mask |
+| | `tradition_swap.weight` | weight identity `f08cb83d92484a89` |
+| `common/governments/authorities` | `advanced_authority_swap.modifier` | `ba5f8cddeba0d833`, every category |
+| | `advanced_authority_swap.weight` | weight identity `f08cb83d92484a89` |
+
+`advanced_authority_swap.election_type` keeps its reader-routing stop (SDK-710).
+
+**Not discovered.** Civics `swap_type`, situation `stages` and `approach`, psionic aura
+`intensity_level`, and patron `covenant` and `passive_accord` construct their objects through a
+path that stops before the collection is proven (`reader-routing` at `operator new`, or an
+indirect call). They are not nested owners for the method, so their members stay unresolved.
+Whether they hold modifier fields is not established; the discovery path belongs to SDK-551.
+
+## Unjoined persistent fields (SDK-676)
+
+A Block field whose persistent read has no constructor-agreed reader has no family, so it gets
+no block grammar; it also has the gap "The field's alternatives do not establish one shared
+reader." The class whose vtable a constructor stores at the destination on some paths gives each
+one's use. The constructor walk, not the modifier method, stops all of them.
+
+**Delegating constructors (repaired).** A default constructor that builds a stack `CString` and
+then delegates to the full constructor stopped the walk at the `CString` constructor, whose
+receiver is outside the owner (`persistent-constructor-owner`); the owner then had no agreed point.
+Such a constructor is now an ordinary call for the owner: the walk forgets what an unknown call
+may write and continues, so the delegated constructor's points join. This joined 19 fields:
+
+| Use | Fields |
+| --- | --- |
+| Modifier (`CCustomDescriptionModifier`, `1c2988588f7e8eaa`) | federation_laws `modifier`; federation_perks `envoy_modifier`, `federation_modifier`, `leader_modifier`, `members_modifier`; resolutions `modifier`; specialist_subject_perks `overlord_modifier`, `overlord_relay_network_modifier`, `subject_modifier` |
+| Weight | federation_laws `ai_weight`, `required_centralization`; federation_types `ai_weight`; galactic_focuses `weight`; leader_classes `ai_weight`, `ai_location_weight`; resolutions `ai_weight`; spynetworks `network_weight`, `strategy_weight` |
+| Other object (`SBeamFade`) | planet_destruction `fade`, whose keys `fade_in` and `fade_out` are now listed |
+
+Each joined field gets the grammar of its reader identity, its read scope, and its container
+categories (`Listed` for a modifier, `NotApplicable` otherwise); five weights also gain entry
+contexts. `common/sector_types` loses its registry `UnresolvedReader` gap, but its two fields
+stay unjoined (B below).
+
+**Still unjoined (23 fields).**
+
+| Use (class at the destination) | Fields | Obstacle |
+| --- | --- | --- |
+| Modifier (inline `CModifier`) | civics `modifier`; star_classes `modifier` | B; prerequisite SDK-710 |
+| Weight (`CMeanTimeToHappen`, `CScriptableValue`) | civics `ai_weight`, `random_weight`; diplomatic_actions `ai_acceptance`, `should_ai_propose`; sector_types `system_scores`, `local_capital_scores` | B |
+| Not established | ship_sizes `modifier`, `ship_modifier`, `map_icon_override` | path limit of the constructor walk |
+| Not established | storm_types `spawn_weight`, `storm_speed`, `storm_min_radius`, `storm_max_radius`, `storm_min_steps`, `storm_max_steps`, `storm_activation_period_in_months`, `storm_monthly_added_devastation`; situations `on_monthly`; global_ship_designs `name`; diplo_phrases `weight` | no constructor path keeps a point at the destination |
+| Not established | patrons `covenant` | `float-width` in the constructor walk |
+
+- **B.** The constructor copies `CString` members inline. The copy into the return of
+  `CPdxCommonStringAllocator::allocate` (an opaque call given an owner address), and a byte store
+  at an unknown index, forget the owner on most paths (civics: 24 of 32 entered paths). A repair
+  models what the string helpers write; it belongs to the shared constructor walk, which SDK-710
+  owns. Civics `modifier` (`+0x488`) and star_classes `modifier` (`+0x140`) are proven modifier
+  uses: some paths keep the `CModifier` vtable at their destination. They stay unsupported until
+  SDK-710 lands.
+
 ## Proof boundaries and gaps
 
 The virtual trailer is followed only with a constructor-proven address point, an owner-derived
@@ -137,8 +213,7 @@ named field. Equal public reader identities must have equal blocks; both the pop
 and installed-build parity test enforce this. Their negative controls reject a removed fixed key,
 a changed reference kind and conflicting blocks under one identity.
 
-Root fields without persistent joins, nested `tradition_swap.modifier` and command fixed-key grammar
-are unchanged. Triggered modifier clauses embed these blocks; their join is on the [triggered
+Command fixed-key grammar is unchanged. Triggered modifier clauses embed these blocks; their join is on the [triggered
 modifiers](triggered-modifiers.md) page. A repeated block `Merges` ([repeat
 behavior](registry-fields.md#repeat-behavior)). This answer does not establish icon post-read
 validation, deferred completion, localisation-key existence, authored-entry storage, or runtime
@@ -162,13 +237,14 @@ Findings of the SDK-498 prototype that the method does not report:
 
 ```sh
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH"
-cargo parity modifier_blocks
+cargo parity modifier_blocks nested_owners
 cargo live fixture_modifier_block
 ```
 
 The sweep's `modifier_blocks` section reports fields and address points per reader, key differences
-from the smallest variant, results, failure shapes and unjoined persistent `Block` fields (uses whose
-grammar is not covered, not proof that each is a modifier). The live fixture reads all 13 fixed
+from the smallest variant, results (`fields_by_depth` separates root and nested fields), failure
+shapes and unjoined persistent root `Block` fields (uses whose grammar is not covered, not proof
+that each is a modifier). The live fixture reads all 13 fixed
 keys, a numeric modifier, the scripted modifier `pop_job_amenities_mult` and the static modifier
 `gave_up_pop` with complete parsing and no diagnostic. It gives `name` once as a scalar and once
 as a block, which shows that a block value is skipped too. It does not test deferred completion or
