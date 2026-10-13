@@ -105,7 +105,7 @@ in 59 registries. Each gap's obstacle is a storage property or the range, never 
 | --- | ---: | ---: | --- |
 | Weight keys `days`, `months`, `years` (`CToken::GetInt()`) | 261 | 55 | `accepted_range`: no live fixture reaches a weight key |
 | Weight key `factor` (its `CToken::GetFloat()` alternative) | 85 | 54 | `accepted_range`: the same |
-| `float` fields (`dust_clouds` parameters, `star_classes`, `storm_types`) | 17 | 3 | `accepted_range`: no exact binary32 `NumericBound`; each field also has the bound gap (17 more) |
+| `float` fields (`dust_clouds` parameters, `star_classes`, `storm_types`) | 34 | 3 | `accepted_range`: no exact binary32 `NumericBound`. Each field has the incomplete gap and the bound gap |
 | `short` and `unsigned short` fields (`astral_actions`, `sector_types`) | 7 | 2 | Signedness and `accepted_range` |
 
 Atlas needs none of these facts. It credits a numeric claim only as the value form `int` or
