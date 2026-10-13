@@ -1657,6 +1657,29 @@ fn registries_are_named_by_their_content_directory() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn planet_classes_answer_the_random_list_key_as_a_root_statement() {
+    let answer = native().registry_fields("common/planet_classes").unwrap();
+    let names: Vec<&str> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert!(names.contains(&"can_be_capital"), "{names:?}");
+
+    let random_list = answer
+        .value
+        .iter()
+        .find(|field| field.name == "random_list")
+        .unwrap();
+    let pdx_native::FieldMembers::Fields(members) = &random_list.members else {
+        panic!("{:?}", random_list.members);
+    };
+    let members: Vec<&str> = members.iter().map(|field| field.name.as_str()).collect();
+    assert_eq!(members, ["name", "planets"]);
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_listed_registry_gets_an_answer_or_unsupported() {
     use std::collections::BTreeSet;
 
@@ -1687,7 +1710,6 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
-        "common/planet_classes",
         "common/ship_behaviors",
         "gfx/worldgfx",
         "prescripted_countries",

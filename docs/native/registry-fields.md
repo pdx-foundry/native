@@ -24,8 +24,8 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v36`) holds
-the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v37`) holds
+the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
@@ -37,7 +37,8 @@ their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`
 authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
 of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
 registries joined their reader once a delegating constructor's stack string no longer stops the
-constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against `v36`, SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the
+reserved key `random_list` ([root-key owners](#root-key-owners-sdk-813)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -602,7 +603,9 @@ template loader names its owner as a template argument. For a custom-loader regi
 database's own functions. The loader route is each of them that calls the file enumeration and
 each of them that the route calls directly. The owner is the one class with a member reader that
 the route builds: it calls the class's constructor or forms its primary vtable address point, as
-an inlined constructor does. None or several is `Unsupported` with the reason, never a choice.
+an inlined constructor does. Two built classes are owners [by root key](#root-key-owners-sdk-813)
+when one root key selects between them. None, or several in any other shape, is `Unsupported`
+with the reason, never a choice.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -634,8 +637,8 @@ an inlined constructor does. None or several is `Unsupported` with the reason, n
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 15 of the 21 names join an owner (sweep at `registry-fields/v31`; fields, then the
-answer):
+On M452, 16 of the 21 names join an owner (sweep at `registry-fields/v31`, and `v34` for
+`common/planet_classes`; fields, then the answer):
 
 | Registry | Owner | Fields | Answer |
 | --- | --- | --- | --- |
@@ -645,6 +648,7 @@ answer):
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
+| `common/planet_classes` | `CPlanetClass`, by root key | 70 | partial |
 | `common/special_projects` | `CSpecialProjectType` | 26 | partial |
 | `common/species_names` | `CSpeciesNames` | 5 | partial |
 | `common/start_screen_messages` | `CStartScreenMessage` | 3 | partial |
@@ -655,18 +659,67 @@ answer):
 | `events` | `CEvent` | 30 | partial |
 | `flags` | `SFlagColor` | 4 | partial |
 
-None is complete and none failed. Six are `Unsupported`: `common/colors`,
-`common/component_tags`, `common/ship_behaviors` and `gfx/worldgfx` build no class with a member
-reader on the route (`CWorldGfxDatabase` is itself the read object, and its `ReadMember` builds
-`CWorldGraphicalMapData` through a virtual read), `prescripted_countries` has two databases
-(`CEmpireDesign`, `CPrescriptedSpecies`), and the `common/planet_classes` route builds two classes
-with a member reader (`CPlanetClass`, `CPlanetClassRandomList`).
+None is complete and none failed. Six were `Unsupported`; SDK-813 answers `common/planet_classes`
+([root-key owners](#root-key-owners-sdk-813)) and states a narrower reason for the other five.
 
 - Pitfall: a constructor anywhere in the database's functions is not an owner.
   `CDiploPhraseDatabase::GetRandomValidPhrase` and `CTerraformDatabase::HasAvailableLinks` build a
   `CEventScope` (which has a `ReadMember`) on the stack to test triggers; they are off the route.
 - Pitfall: "any class whose method the loader calls" gives `CGameState`, `CEventScope` and
   `CScopeObjectReference` for `CEventManager`.
+
+### Root-key owners (SDK-813)
+
+`CPlanetClassDatabase::Init()` (`0x10115a26c`) builds two classes with a member reader. After
+each `CReader::ReadSimpleStatement()` (reader at `sp+0x70`) it loads the token at `sp+0xa8`
+(reader + `0x38`), compares it with `w23`, which holds `0x2714` (`random_list`), and branches
+`b.ne`. The equal side allocates `0x90` bytes, forms `vtable for CPlanetClassRandomList`+0x10 and
+calls `CPersistent::Read(CReader&)`. The other side builds `CPlanetClass(CString const&, int)` from
+the key, or finds the class of that key and reads into it again, and reads through slot `+0x20`.
+Both go back to the statement read.
+
+- **Rule.** `loader_owner` takes two built classes as owners by root key when a route function
+  has one statement read; the next three instructions load the word at the reader argument plus
+  the token offset, compare it with a constant (an immediate, or a register whose last write
+  before the comparison, in code order, is a `mov` of one; a call replaces a caller-saved
+  register) that names a token, and branch on equality; and the code from each side up to the
+  next statement read builds exactly one of the two classes, a different one on each side. Any
+  other shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
+  does not follow a path-dependent write of the constant.
+- **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), and its
+  fields are the registry's root fields. The reserved key is one more root field, `random_list`:
+  a root statement, as an [event kind](#event-kinds) is, not a member of a planet class. Its
+  members are the fields of `CPlanetClassRandomList`, `name` and `planets`, from a field run of
+  their own (the kept results are by registry and owner); their conditions, member gaps and registry-wide gaps move
+  under the key, and the run's `OutsideMethod` gaps, which repeat the owner's, are dropped. The
+  key's reader is a block with no identity, and its read scope is unresolved with a gap: the
+  method does not follow the inlined construction to `CPersistent::Read(CReader&)`.
+  `derived_names` and `modifier_families` answer `CPlanetClass` with one `OutsideMethod` gap
+  that names the reserved key. Atlas maps `random_list` to `type[planet_class_random_list]` (12
+  claims) and the other root fields to `type[planet_class]` (375) in SDK-818.
+- **The random list's reader.** `CPlanetClassRandomList::ReadMember` (`0x10115ce44`) first tests
+  the sign bit of a string's last byte (`ldrsb w8,[x0,#0x1f]`, `tbnz w8,#31`) and, when its
+  location string is empty, sets it from `CReader::GetFileLocationDescription()`; then `planets`
+  (`0x323b`) reads with `ReadUniform<CString>` into `+0x60` and `name` (`0x1b`) with
+  `Read(CString&)` into `+0x30`. The walker loads `ldrsb` as a byte and follows a `tbz`/`tbnz`
+  of a value that is not the token both ways, under an unresolved condition (a bit test of the
+  token is a gap). The paths through the location call stop there, so each key keeps an
+  unresolved alternative. Across the sweep these two rules changed only this answer.
+- **Pitfall.** A consumer that reads every root field as a member of an item reads `random_list`
+  as a planet-class field. The reserved key is a root statement; a planet class has no
+  `random_list` member.
+
+The other registries keep `Unsupported`, with the reason that the build's recipe states for each
+loader (`LoaderReason`, `binding/groups.rs`); a loader with no stated reason gets the general one,
+so another build never reuses an M452 reason. What would answer each:
+
+| Registry | Loader on M452 | Reason | What would answer it |
+| --- | --- | --- | --- |
+| `common/colors` | `CColorsDatabase::Init()` (`0x1012fb45c`) reads 7 fixed root keys (`0x2ec8`, `0x2b52`, `0x2c88`, `0x2e95`, `0x2ec9`, `0x3066`, `0x42f6`), each a block of `rgb`/`hsv` entries read with `CReader::Read(CColor&)` into the database | Fixed keys of unnamed colours; no item | An answer form for a block of unnamed values. Atlas's `type[country_color]` has 3 open claims |
+| `common/component_tags` | `CWeaponTagDatabase::InitInstance()` passes each token to `SComponentTag::RegisterTag` | Each token is a tag; no item | Nothing: Atlas reads it as `enum[component_tag]` |
+| `common/ship_behaviors` | `CShipBehaviorDatabase::ReadFile` (`0x1011b78b4`) takes `ship_behavior` (`0x311c`) and calls `CShipBehaviorReader::CreateAndRead(CReader&)` (`0x1011b79b4`), which builds `CShipBehavior` (no `ReadMember`), keeps it at `[x19]` and reads its own statements: token at `[x20,#0x38]`, compares and two byte jump tables | Own statement loop, no member reader | A field walk that starts after that statement read, with `[x19]` as the owner and a return to the loop as unresolved, not rejected. Only `Read(CString&)`, `Read(bool&)` and `Read(CFixedPoint&)` are shared readers there; the other keys use `CToken::GetFloat`, `CreateMovementPatternFromToken` on the value token or `ParseAdvancedStatement`, so most fields would stay unresolved. Atlas's `type[ship_behavior]` has 94 claims |
+| `gfx/worldgfx` | `CWorldGfxDatabase::ReadMember` builds `CWorldGraphicalMapData` on the stack and reads it with `CReader::Read(CPersistent&)` | The database is the read object | Milestone 6 |
+| `prescripted_countries` | Two databases enumerate it | "2 databases load this directory" | Milestone 6 |
 
 ### Owner vtables on M45-release
 

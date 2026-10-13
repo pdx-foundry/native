@@ -265,6 +265,26 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
+    /// Two shapes of custom loader give root statements instead of item fields. Where the loader
+    /// selects a scope by the root key, as the events loader does, every root field is a root
+    /// statement whose members are the item's fields. Where the loader reserves one root key for
+    /// another class, the root fields are the items of every other key, and one more root field
+    /// named for the reserved key is a root statement whose members are the other class's
+    /// fields.
+    ///
+    /// ```no_run
+    /// # fn example(native: &pdx_native::Native) -> Result<(), pdx_native::Error> {
+    /// let answer = native.registry_fields("common/planet_classes")?;
+    /// // `random_list = { … }` is a root statement, not a field of a planet class.
+    /// let random_list = answer.value.iter().find(|field| field.name == "random_list");
+    /// if let Some(pdx_native::FieldMembers::Fields(fields)) = random_list.map(|f| &f.members) {
+    ///     let names: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
+    ///     assert!(names.contains(&"planets"));
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
     /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
     /// [`Error::UnknownRegistry`].
@@ -292,7 +312,26 @@ impl Native {
             blocks: self.block_facts()?,
             categories: modifiers::category_names(self.category_input()?, []),
         };
-        let (answer, entry_gaps) = self.registry_field_answer(registry, &owner, &result, &facts);
+        let (mut answer, entry_gaps) =
+            self.registry_field_answer(registry, &owner, &result, &facts);
+        let keyed = self
+            .bound()
+            .analysis
+            .keyed_field_result(registry)
+            .map_err(|failure| error(Operation::RegistryFields, failure))?;
+        if let Some((key, class, keyed_result)) = keyed {
+            let (members, _) = self.registry_field_answer(registry, &class, &keyed_result, &facts);
+            let (field, gaps) = super::loader_kinds::reserved_key_field(
+                &key,
+                members.value,
+                members.gaps,
+                registry,
+            );
+            answer.value.push(field);
+            answer.gaps.extend(gaps);
+            answer.completeness = Completeness::from_gaps(&answer.gaps);
+        }
+
         Ok(RegistryFieldRun {
             answer,
             result,
@@ -482,6 +521,40 @@ impl Native {
             .registry_field_result(registry.trim_end_matches('/'))
             .map_err(|e| error(Operation::RegistryFields, e))?
             .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
+    }
+
+    /// Add to `answer`, an answer for `registry`'s owner, a gap for the root statements that the
+    /// registry's loader reads into another class. The gap is outside the method: the answer
+    /// covers the owner's items, and those statements are not its items.
+    pub(crate) fn add_keyed_class_gap<T>(
+        &self,
+        operation: Operation,
+        registry: &str,
+        answer: &mut Answer<T>,
+    ) -> Result<(), Error> {
+        let verified = self
+            .bound()
+            .analysis
+            .verified()
+            .map_err(|failure| error(operation, failure))?;
+        let Some((key, _)) = verified
+            .database_schedule()
+            .ok()
+            .and_then(|schedule| schedule.keyed_class(registry))
+        else {
+            return Ok(());
+        };
+
+        answer.gaps.push(Gap {
+            kind: GapKind::OutsideMethod,
+            subject: Some(GapSubject::registry(registry)),
+            detail: format!(
+                "Root statements with the key `{key}` are items of another class, which this \
+                 answer does not cover."
+            ),
+        });
+
+        Ok(())
     }
 
     /// The error for a registry that the operation does not read. A registry that
