@@ -151,6 +151,8 @@ pub enum Missing {
     NullObject,
     /// A scripted-trigger placeholder that holds the key as its name.
     ScriptedTriggerPlaceholder,
+    /// Nothing: a list reader logs the key and adds no item.
+    Omitted,
 }
 
 /// The lookup semantics that complete shapes establish.
@@ -175,8 +177,9 @@ pub struct ReaderLookup {
     pub directory: Option<String>,
     /// The lookup, or why no shape established it.
     pub lookup: Result<Lookup, Unresolved>,
-    /// The typed null object global that a missing key yields; `Some` exactly when the lookup is
-    /// established.
+    /// The typed null object global that the search selects for a missing key; `Some` exactly
+    /// when the lookup is established. `lookup.on_missing` says whether the reader keeps it
+    /// (`NullObject`) or drops it (`Omitted`).
     pub null_object: Option<String>,
 }
 
@@ -279,11 +282,11 @@ impl Method<'_> {
         reader: ReferenceReader<'_>,
     ) -> Result<(Lookup, String), Unresolved> {
         match reader.form {
-            ReaderForm::Immediate => self.immediate(callee),
+            ReaderForm::Immediate => self.immediate(callee, reader.database),
             ReaderForm::Deferred => self.deferred(callee, reader.database),
-            ReaderForm::DeferredList | ReaderForm::ImmediateList | ReaderForm::DeferredIndex => {
-                Err(Unresolved::new("reference-list-form"))
-            }
+            ReaderForm::ImmediateList => self.immediate_list(callee, reader.database),
+            ReaderForm::DeferredList => self.deferred_list(callee, reader.database),
+            ReaderForm::DeferredIndex => Err(Unresolved::new("reference-index-form")),
         }
     }
 
@@ -301,18 +304,28 @@ impl Method<'_> {
     }
 
     /// `ReadKeyReference<D>` looks the key up inside the call, in the database it is given.
-    fn immediate(&self, callee: &str) -> Result<(Lookup, String), Unresolved> {
+    fn immediate(&self, callee: &str, database: &str) -> Result<(Lookup, String), Unresolved> {
         let lines = self
             .lines(callee)
             .ok_or_else(|| Unresolved::new("reference-reader-body"))?;
         let own_clone =
             |bindings: &Bindings| bindings["cold"] == format!("{callee} [clone .cold.1]");
-        let search = if let Some(bindings) = IMMEDIATE_SCAN.matches(&lines) {
+        let scan = IMMEDIATE_SCAN
+            .matches(&lines)
+            .or_else(|| IMMEDIATE_SCAN_BASE.matches(&lines));
+        let search = if let Some(bindings) = scan {
             (null_object(&bindings) && own_clone(&bindings))
                 .then(|| (Some(KeyMatch::FirstEqual), bindings["null"].clone()))
         } else if let Some(bindings) = IMMEDIATE_MAP.matches(&lines) {
             (null_object(&bindings) && own_clone(&bindings))
                 .then(|| (self.map_find(&bindings), bindings["null"].clone()))
+        } else if let Some(bindings) = IMMEDIATE_GETTER.matches(&lines) {
+            let own = own_member(&bindings["getter"], database)
+                && bindings["folder"].starts_with(&format!("{database}::"));
+            (own && own_clone(&bindings))
+                .then(|| self.lines(&bindings["getter"]))
+                .flatten()
+                .and_then(|getter| self.getter_search(&getter).ok())
         } else {
             None
         };
@@ -358,6 +371,104 @@ impl Method<'_> {
         };
 
         Ok((lookup, null))
+    }
+
+    /// `ReadKeyReferenceUniform<D, CPdxArray<C const*>>` searches the database it is given for each
+    /// key of a block and appends each valid result, so a key that selects no item adds nothing.
+    /// That holds only while `C`'s validity check returns true and the null object's returns
+    /// false.
+    fn immediate_list(&self, callee: &str, database: &str) -> Result<(Lookup, String), Unresolved> {
+        let lines = self
+            .lines(callee)
+            .ok_or_else(|| Unresolved::new("reference-reader-body"))?;
+        let (bindings, key_match) = if let Some(bindings) = matching(&*LIST_SCANS, &lines) {
+            (bindings, Some(KeyMatch::FirstEqual))
+        } else if let Some(bindings) = matching(&*LIST_MAPS, &lines) {
+            let key_match = self.map_find(&bindings);
+            (bindings, key_match)
+        } else {
+            return Err(Unresolved::new("reference-list-shape"));
+        };
+        let item = list_item(&bindings, database)
+            .filter(|item| {
+                !bindings.contains_key("find")
+                    || initialization::map_element(&bindings["find"]) == Some(item)
+            })
+            .ok_or_else(|| Unresolved::new("reference-list-shape"))?;
+        let null_class = format!("TPdxNullObject<{item}>");
+        if self.validity(item) != Some(true) || self.validity(&null_class) != Some(false) {
+            return Err(Unresolved::new("reference-list-validity"));
+        }
+
+        let lookup = Lookup {
+            stage: Stage::WhileReading,
+            key_match,
+            empty_key_looked_up: true,
+            on_missing: Missing::Omitted,
+        };
+
+        Ok((lookup, bindings["null"].clone()))
+    }
+
+    /// `ReadKeyReferenceDeferredUniform<D>` appends the null object for each key of a block and
+    /// registers a lambda that later replaces that element with the search's result.
+    fn deferred_list(&self, callee: &str, database: &str) -> Result<(Lookup, String), Unresolved> {
+        let lines = self
+            .lines(callee)
+            .ok_or_else(|| Unresolved::new("reference-reader-body"))?;
+        let registration = DEFERRED_LIST
+            .matches(&lines)
+            .filter(|bindings| list_item(bindings, database).is_some())
+            .ok_or_else(|| Unresolved::new("reference-reader-shape"))?;
+        let own_lambda = format!("ReadKeyReferenceDeferredUniform<{database}>(");
+        if !registration["lambda"].contains(&own_lambda) {
+            return Err(Unresolved::new("reference-lambda-database"));
+        }
+        let operator = lambda_operator(&registration["lambda"])
+            .ok_or_else(|| Unresolved::new("reference-lambda"))?;
+        let lambda = self
+            .lines(&operator)
+            .ok_or_else(|| Unresolved::new("reference-lambda-body"))?;
+        let lambda_shape = || Unresolved::new("reference-lambda-shape");
+        let forward = LAMBDA_FORWARD
+            .matches(&lambda)
+            .filter(|forward| forward["forwarded"].contains(&own_lambda))
+            .ok_or_else(lambda_shape)?;
+        let forwarded = self.lines(&forward["forwarded"]).ok_or_else(lambda_shape)?;
+        let scan = FORWARDED_LIST_SCAN
+            .matches(&forwarded)
+            .ok_or_else(lambda_shape)?;
+        let searches_own_database = scan["database"]
+            == format!("TGameDatabase<{database}>::_pInstance")
+            && scan["null"] == registration["null"];
+        if !searches_own_database {
+            return Err(lambda_shape());
+        }
+
+        let lookup = Lookup {
+            stage: Stage::Deferred,
+            key_match: Some(KeyMatch::FirstEqual),
+            empty_key_looked_up: true,
+            on_missing: Missing::NullObject,
+        };
+
+        Ok((lookup, scan["null"].clone()))
+    }
+
+    /// The constant that `class`'s validity check returns, when the check's body is one. The
+    /// check is vtable slot `0x10`, which is `0x20` past the vtable symbol: the address point
+    /// follows the offset to the top and the type information.
+    fn validity(&self, class: &str) -> Option<bool> {
+        let vtable = format!("vtable for {class}");
+        let (address, _) = self.input.names.iter().find(|(_, name)| **name == vtable)?;
+        let check = self.input.names.get(&(address + 0x20))?;
+        let bindings = VALID.matches(&self.lines(check)?)?;
+
+        match bindings["value"].as_str() {
+            "0x0" => Some(false),
+            "0x1" => Some(true),
+            _ => None,
+        }
     }
 
     /// The trigger lookup forwards the token's number and text to a search of the trigger map,
@@ -407,14 +518,11 @@ impl Method<'_> {
         if let Some(bindings) = LAMBDA_GETTER.matches(lambda) {
             let getter = &bindings["getter"];
             let own = bindings["database"] == format!("{database}::_pInstance")
-                && getter.starts_with(&format!("{database}::"))
-                && getter.ends_with("(CString const&) const");
+                && own_member(getter, database);
             if !own {
                 return None;
             }
-            let scan = GETTER_SCAN.matches(&self.lines(getter)?)?;
-            return (null_object(&scan) && string_array_layout(&scan))
-                .then(|| (Some(KeyMatch::FirstEqual), scan["null"].clone()));
+            return self.getter_search(&self.lines(getter)?).ok();
         }
 
         None
@@ -430,6 +538,31 @@ impl Method<'_> {
 
         qualified.then_some(KeyMatch::Equal)
     }
+}
+
+/// Whether `getter` is a key getter of `database`: `D::name(CString const&) const`.
+fn own_member(getter: &str, database: &str) -> bool {
+    getter.starts_with(&format!("{database}::")) && getter.ends_with("(CString const&) const")
+}
+
+/// The first shape of `shapes` that matches `lines`.
+fn matching(shapes: &[Shape], lines: &[Line]) -> Option<Bindings> {
+    shapes.iter().find_map(|shape| shape.matches(lines))
+}
+
+/// `C` of a list reader's typed null object `TPdxNullObject<C>`, when the list appends `C const*`
+/// elements and, where the shape names it, the log names `database`'s type.
+fn list_item<'a>(bindings: &'a Bindings, database: &str) -> Option<&'a str> {
+    let item = initialization::null_type(bindings)?;
+    let appends = bindings["insert"].starts_with(&format!(
+        "{item} const*& CPdxArray<{item} const*, int>::InsertAtEmplace<"
+    ));
+    let logs = bindings.get("typeinfo").is_none_or(|typeinfo| {
+        *typeinfo == format!("typeinfo name for {database}")
+            || *typeinfo == format!("typeinfo for {database}")
+    });
+
+    (appends && logs).then_some(item)
 }
 
 /// Whether the shape's miss selects a typed null object.
@@ -470,6 +603,29 @@ static DEFERRED: LazyLock<Shape> =
     LazyLock::new(|| Shape::parse(include_str!("references/shapes/deferred.shape")));
 static IMMEDIATE_SCAN: LazyLock<Shape> =
     LazyLock::new(|| Shape::parse(include_str!("references/shapes/immediate_scan.shape")));
+static IMMEDIATE_SCAN_BASE: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/immediate_scan_base.shape")));
+static IMMEDIATE_GETTER: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/immediate_getter.shape")));
+static LIST_SCANS: LazyLock<[Shape; 3]> = LazyLock::new(|| {
+    [
+        Shape::parse(include_str!("references/shapes/list_scan.shape")),
+        Shape::parse(include_str!("references/shapes/list_scan_frame.shape")),
+        Shape::parse(include_str!("references/shapes/list_scan_ethic.shape")),
+    ]
+});
+static LIST_MAPS: LazyLock<[Shape; 2]> = LazyLock::new(|| {
+    [
+        Shape::parse(include_str!("references/shapes/list_map.shape")),
+        Shape::parse(include_str!("references/shapes/list_map_star.shape")),
+    ]
+});
+static DEFERRED_LIST: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/deferred_list.shape")));
+static FORWARDED_LIST_SCAN: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/forwarded_list_scan.shape")));
+static VALID: LazyLock<Shape> =
+    LazyLock::new(|| Shape::parse(include_str!("references/shapes/valid.shape")));
 static IMMEDIATE_MAP: LazyLock<Shape> =
     LazyLock::new(|| Shape::parse(include_str!("references/shapes/immediate_map.shape")));
 static LAMBDA_MAP: LazyLock<Shape> =

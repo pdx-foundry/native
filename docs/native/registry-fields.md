@@ -37,8 +37,10 @@ authorities gained their modifier, clause and weight grammar; 33 root fields tha
 of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
 registries joined their reader once a delegating constructor's stack string no longer stops the
 constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against `v36`, SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the
-reserved key `random_list` ([root-key owners](#root-key-owners-sdk-813)). Against `v40`, SDK-627 stated
-the [repeat rules](#repeat-behavior) of five more readers: 132 registry answers change, three
+reserved key `random_list` ([root-key owners](#root-key-owners-sdk-813)). Against `v39`, SDK-808 read the 69
+triggered modifier clauses in their [construction scope](triggered-modifiers.md#read-scope-sdk-808)
+and renamed the other read-scope gaps by [obstacle](discovery.md#read-time-block-scopes-sdk-549). Against `v40`, SDK-627 stated
+the [repeat rules](#repeat-behavior) of five more readers: 131 registry answers change, four
 registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 registries to
 916 in 109. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
@@ -975,7 +977,9 @@ Facts on M452:
   reader has one table and no scope split. The `PreCalc*Value` functions that fill the values per
   scope object are use-time code; which keys each one sets is not established.
 - The blocks' read scope is the [read-scope](#block-entry-contexts) answer (SDK-549); it stays
-  unresolved with a `read-scope: scope-argument` gap.
+  unresolved with a `read-scope: no-scope-parameter` gap (SDK-808): `CPersistent::Read` takes no
+  scope, and the method does not establish a scope that the object stores. Each key is `Boolean`
+  and has its own read scope.
 - `CEvent::CEvent(EScopeType)` builds its data in the nested constructor
   `CEvent::SEventData::SEventData(EScopeType)` at `this + 0x68`, which stores the `CPreTriggers`
   vtable point at its `+0x478`. The owner constructor walk enters a nested class's constructor
@@ -991,7 +995,7 @@ goes to one of two masks. A repeat keeps the earlier bit, so `Merges`, not `Repl
 fits because the values are the Boolean pair; the `Keyword` rule of
 [weight blocks](weight-blocks.md) is for an engine keyword set. This removed 672 key gaps
 (`UnresolvedReader` and `UnresolvedStorage`); each block keeps its own
-`read-scope: scope-argument` and repeat gaps. Derive the rule from the body (run the helper under `yes`, `no`
+read-scope and repeat gaps. Derive the rule from the body (run the helper under `yes`, `no`
 and another token, as command grammar forms do) when a second helper of this shape appears, or
 when `ReadValue` changes on a new build.
 

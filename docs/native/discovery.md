@@ -13,16 +13,16 @@ check a method in one task.
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v41` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v41`, `command-grammar/v20` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v41`, `command-grammar/v20` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v41`, `command-grammar/v20` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v41`, `command-grammar/v21` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v41`, `command-grammar/v21` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v41`, `command-grammar/v21` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
 | `Field.entry_contexts` in `registry_fields` | `registry-fields/v41` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
 | `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v41` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
 | `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v41` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
 | `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v41` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
-| `CommandGrammar.durations` | `command-grammar/v20` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
+| `CommandGrammar.durations` | `command-grammar/v21` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v3` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v20` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v21` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -67,18 +67,18 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
-ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
+ticket that owns them. The sweep repaired none. SDK-809, SDK-810, SDK-811 and SDK-817 are now
 [accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
 | --- | ---: | ---: | --- |
 | SDK-627 | 1,615 | 119 | Repeat behavior (`UnresolvedStorage`): [repaired in part](registry-fields.md#repeat-behavior) |
-| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask |
+| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask: clauses and zero masks repaired, other gaps name their obstacle |
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
 | SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
-| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
+| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization: accepted |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
@@ -86,7 +86,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`): [repaired](modifier-masks.md#method-registry-fieldsv22) |
-| SDK-635 | 11 | 6 | Reference lookups |
+| SDK-635 | 11 | 6 | Reference lookups: [repaired](references.md#list-readers) |
 
 SDK-627 (2026-10-13) states the [repeat rules](registry-fields.md#repeat-behavior) of
 `CTrigger::Read`, `CEffect::Read`, uniform arrays, key-reference lists and persistent objects
@@ -117,6 +117,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | --- | ---: | ---: | --- |
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
+| SDK-810, [conditions and missing names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810) | 305 | 57 | Name conditions, misses and field states, and 4 every-item gaps (at `main` `29b025c`) |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
 | SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 | SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
@@ -205,6 +206,47 @@ so scope context becomes complete for them: 1,323 to 1,337 (68.69% to 69.42%), a
 claim from these masks now: the config gives the fields `single_alias_right[modifier_clause]`, which
 names no category, and their `replace_scopes` claims also need entry contexts.
 
+SDK-810 accepts the 305 `derived_names` `UnresolvedCondition` gaps: Atlas tests no condition or
+miss of a derived name and joins no `## optional` line. Over a recording at `main` `29b025c`, the
+open gaps went from 4,031 to 3,726 and no status or rate changed. `--diff` names the 57
+registries whose gaps moved ([derived names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810)).
+
+SDK-808 names the obstacle of each read-scope gap ([gap details](#read-time-block-scopes-sdk-549)),
+reads each [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) in the scope
+that its constructor receives, and reads a block whose every read passes scope 0 in no scope. Over
+a recording at its merge with `main` `0bd8bb4`, the open gaps went from 3,712 to 3,548, and scope
+context from 1,337 to 1,420 of 1,926 (69.42% to 73.73%); all units from 4,753 to 4,836 of 7,515
+(63.25% to 64.35%). No other relationship changed. `--diff` names 111 registries: 27 change their
+scope-context counts (67 clause fields, 17 of them in `common/traits`, and 16 zero-scope fields
+become complete), and every one changes its open shapes.
+
+| Read-scope gap | Before | After |
+| --- | ---: | ---: |
+| `scope-argument` | 894 | 1 |
+| `reader-path` | — | 739 |
+| `no-scope-parameter` | — | 88 |
+| `stored-scope` | 74 | 5 |
+| `zero-mask` | 29 | 0 |
+
+The 69 clause fields and their 69 `potential` keys close. 722 of the `reader-path` gaps are on
+fields with no reader (418 are the 19 unread `CEvent` fields of the 22 event kinds); 17 are an
+unresolved alternative beside a joined one. The `no-scope-parameter` gaps are 73
+`CPersistent::Read` blocks (24 `pre_triggers`, embedded objects, unproven weight-named blocks), the
+5 Tooltip `modifier` keys and 10 readers of kind `Unknown`. In the command population, the 911
+`scope-argument` gaps of 427 answers become 781 `reader-path`, 120 `no-scope-parameter` and 15
+`scope-argument`; no completeness changes, and the zero-scope rule changes no command answer.
+
+**Atlas need.** Joined through the config type paths, 86 `replace_scopes` and `push_scope` claims
+sat on fields with a read-scope gap (ledger of Atlas `63c2028`). A `replace_scopes` claim needs a
+known read scope, entry contexts and no `UnresolvedPath` gap on the field; a `push_scope` claim
+needs the read scope only. The clause repair answers 39 claims' read scope; the two situations
+`push_scope` claims gain an answer now, and the 37 `replace_scopes` claims wait on clause entry
+contexts. The 23 claims on `reader-path` fields wait on their readers. The zero-scope rule answers
+the 7 `replace_scopes` claims whose fields already had entry contexts and no other blocking gap:
+`fallen_empires.possible`, civics `playable` and `ai_playable`, buildings `planet_limit` and
+`district_limit`, `bombardment_stances.planet_damage` and `authorities.random_weight`. Their
+answer is no scope, where the config gives the scope that each is used in.
+
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
@@ -217,6 +259,17 @@ above, open gaps go from 4,328 to 4,173 (two `derived_names` path gaps of distri
 also close with the new `csetm` and switch-table rules), accepted gaps from 695 to 833, scope
 context from 1,309 to 1,323 and all units from 4,718 to 4,732 (62.97%). `--diff` against the
 baseline names 49 registries: 7 change from the repairs and 46 move gaps to the limit.
+
+SDK-635 established the lookups of the list readers and of the bypass and planet-class immediate
+readers ([list readers](references.md#list-readers)). Over a new recording at its merge with
+`main` `7c33761`, the 11 `ReaderSemantics` reference gaps of 6 registries close: references go
+from 25 to 36 of 345 (no partial field remains), all units from 4,836 to 4,847 of 7,515 (64.35% to
+64.50%). `--diff` against the baseline names `common/megastructures`, `common/pop_jobs`,
+`common/ship_sizes`, `common/species_classes`, `common/star_classes/randomizers` and
+`common/traits`; no other relationship changes. In `command-population`, 10 commands whose value
+reads a reference lose their `form-reader-call` and `form-reference-lookup` stops and now stop at
+`PostValidate`; 7 lose a list or reader-shape reference gap, and the 2 that read technology
+tiers now say that the reader reads an index, not a key.
 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key
@@ -251,12 +304,32 @@ One additional comparison disagrees: config `any_owned_planet` says `planet`, bu
 reader explicitly passes mask `0x10000000000`, which names `colony`. Keep the engine result.
 This member-level replacement does not contradict the outer-reader assumption.
 
-**Limits.** Multiple reader paths retain separate scope sets. Zero masks, unnamed bits, missing
-boundaries and memory-loaded scopes remain gaps, including `every_owned_army`: its factory
+**Limits.** Multiple reader paths retain separate scope sets. A zero mask beside another scope,
+unnamed bits, missing boundaries and memory-loaded scopes remain gaps (a block whose every read
+passes scope 0 reads in no scope since SDK-808), including `every_owned_army`: its factory
 stores the army mask, but the method does not establish that value at member entry. Nested fields
 use the same rules and report gaps at their full key path. The removed strict forwarding proof
 and its string-helper findings are preserved in `.local/sdk-549/implementation/strict-forwarding-retained`.
 An unfinished member walk also keeps each established family's scope alternatives partial.
+
+**Gap details (SDK-808).** A read-scope gap names why a block alternative gives no scope:
+
+| Detail | Obstacle | Owner of the repair |
+| --- | --- | --- |
+| `reader-path` | The path stops before a reader, so no reader receives a scope. The field also has the reader gap. | The reader tickets (SDK-710; the `events` fields) |
+| `no-scope-parameter` | The reader takes no `EScopeType`, such as `CPersistent::Read` of an embedded object or a block whose object reader is not proven. | The object's own reader or stored scope |
+| `scope-argument` | The reader takes a scope, and the argument is not a constant, the enclosing scope or a load. | This method |
+| `stored-scope` | The argument loads a word that the method does not establish at member entry. | This method |
+| `zero-mask` | Scope 0 beside another scope. A block whose every read passes 0 reads in no scope (below). | This method |
+| `construction-scope` | A [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) whose constructor takes no scope. | This method |
+
+**Zero mask (SDK-808, agreed with Jackson 2026-10-13).** A block whose every read passes scope
+0 reads in no scope (`Known([])`): `CTrigger::CheckScopeSupport(EScopeType)` (`0x100d0863c`)
+returns true for scope 0, and the engine names it "scope not set". The rule is in
+`normalize_scopes`, so it also answers the [event kinds](registry-fields.md#event-kinds), stored
+zero weight fields and command blocks. The D5(a) weight entries, which pass a literal 0 and check
+later, keep their `OutsideMethod` gap. Later checks of the root readers are not read; the config
+gives these blocks the scope they are used in, so Atlas shows them as disagreements.
 
 The focused file-load fixture confirms the engine-selected country scope for a tradition trigger
 and effect. Inline fixture validation also passes. File-load diagnostics use the bound log hooks
@@ -272,7 +345,7 @@ properties. Failed command cases lack a receiver join; their public answers rema
 | Effects | 1,074 | 146 | 925 | 3 |
 | Triggers | 1,096 | 119 | 977 | 0 |
 
-The 1,593 registry fields have scope gaps for unknown arguments and zero masks. Command scope
+At SDK-549, the 1,593 registry fields had scope gaps for unknown arguments and zero masks. Command scope
 gaps are unknown arguments, memory-loaded scopes and missing child-family boundaries. The three
 failed receiver joins comprise two `factory-terminal` and one unsupported `instruction`; template
 constructor summaries (SDK-673) joined the six former `command-vtable` cases. Other grammar gaps are described on [command grammar](command-grammar.md) and
@@ -385,8 +458,8 @@ weight field whose constructors agree; it does not change the registry counts ab
 answers. The 73 weight fields stay partial for numeric, keyword and entry-context gaps. Each now
 has four `OutsideMethod` zero-mask limits (292, D5a), one for the `trigger` key match (73) and one
 for `parameters` (73, D3); the `ReaderSemantics` trigger gap and the `UnresolvedReader`
-`parameters` gap are gone (73 each). The nine stored-zero root fields keep `UnresolvedPath
-read-scope: zero-mask`. Modifier-block fields report `read_scope: Known([])` (D4), which removes
+`parameters` gap are gone (73 each). The nine stored-zero root fields kept `UnresolvedPath
+read-scope: zero-mask` until SDK-808. Modifier-block fields report `read_scope: Known([])` (D4), which removes
 82 `read-scope: scope-argument` gaps (745 to 663). The reference census is unchanged at 188
 readers (161 complete, 27 failed), and `trigger_lookup` is established.
 

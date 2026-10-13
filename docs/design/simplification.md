@@ -116,7 +116,8 @@ the numeric scanner boundary, is in the specification and on the
     `potential` stays `Unresolved`, with an `OutsideMethod` gap instead of an `UnresolvedPath` gap.
   - *Conditions.* The exact M452 build. The member reader passes a literal scope mask 0 when it
     reads the block. A stored scope that resolves to 0, such as the owner scope of building weight
-    fields, is not covered and keeps its `UnresolvedPath` gap.
+    fields, is not covered: since SDK-808 (2026-10-13, agreed with Jackson) a block whose every
+    read passes scope 0 reads in no scope (`Known([])`).
   - *Obstacle.* The engine checks these blocks later: `CScaledMTTHModifier::ValidateScope` checks
     `limit` in the scope type of the `scope` target, and `CComplexTriggerMTTHModifier::ValidateScope`
     checks `potential` in the received scope. The method does not read the validate functions.

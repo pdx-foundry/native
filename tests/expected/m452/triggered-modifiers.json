@@ -2,13 +2,13 @@
   "88f77b58ddf77488": {
     "fixed_keys": {
       "Known": [
-        ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
-        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
-        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["modifier", "Block", "Modifier", "Merges", {"ModifierBlock": "ba5f8cddeba0d833"}]
+        ["key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["potential", "Block", "Trigger", "Merges", {"Known": ["Enclosing"]}, "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", {"Known": []}, null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["modifier", "Block", "Modifier", "Merges", {"Known": []}, {"ModifierBlock": "ba5f8cddeba0d833"}]
       ]
     },
     "gaps": [
@@ -53,11 +53,6 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "UnresolvedPath",
-        {"kind": "key_path", "path": ["triggered_country_modifier", "potential"]},
-        "read-scope: stored-scope"
-      ],
-      [
         "OutsideMethod",
         {"kind": "field", "name": "triggered_country_modifier"},
         "Keys that the triggered modifier does not name, at `data`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
@@ -76,17 +71,17 @@
         "OutsideMethod",
         {"kind": "field", "name": "triggered_country_modifier"},
         "Keys that the triggered modifier does not name: The binary-lexer input path of save games and network data is outside this method."
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "field", "name": "triggered_country_modifier"},
-        "read-scope: scope-argument"
       ]
     ],
     "other_keys": {
       "Known": {
         "ModifierBlock": "ba5f8cddeba0d833"
       }
+    },
+    "read_scope": {
+      "Known": [
+        {"Types": [{"id": "8bb6b317643be13a", "name": "megastructure"}]}
+      ]
     },
     "sample": [
       "common/megastructures",
@@ -96,13 +91,13 @@
   "d3a866b65e16b749": {
     "fixed_keys": {
       "Known": [
-        ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
-        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
-        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["modifier", "Block", "Unknown", "Unknown", "Unresolved"]
+        ["key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["potential", "Block", "Trigger", "Merges", {"Known": ["Enclosing"]}, "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", {"Known": []}, null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["modifier", "Block", "Unknown", "Unknown", "Unresolved", "Unresolved"]
       ]
     },
     "gaps": [
@@ -118,13 +113,8 @@
       ],
       [
         "UnresolvedPath",
-        {"kind": "key_path", "path": ["triggered_planet_modifier", "potential"]},
-        "read-scope: stored-scope"
-      ],
-      [
-        "UnresolvedPath",
         {"kind": "key_path", "path": ["triggered_planet_modifier", "modifier"]},
-        "read-scope: scope-argument"
+        "read-scope: no-scope-parameter"
       ],
       [
         "UnresolvedPath",
@@ -135,14 +125,14 @@
         "UnresolvedReader",
         {"kind": "field", "name": "triggered_planet_modifier"},
         "The reader of keys that the triggered modifier does not name is not established: triggered-delegate."
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "field", "name": "triggered_planet_modifier"},
-        "read-scope: scope-argument"
       ]
     ],
     "other_keys": "Unresolved",
+    "read_scope": {
+      "Known": [
+        {"Types": [{"id": "df2999a8f7dba6f6", "name": "colony"}]}
+      ]
+    },
     "sample": [
       "common/pop_jobs",
       "triggered_planet_modifier"
@@ -151,13 +141,13 @@
   "f9fb8c8f5f2ca714": {
     "fixed_keys": {
       "Known": [
-        ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
-        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
-        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
-        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["mult", "ScopedNumeric", "NotApplicable", "Merges", null],
-        ["modifier", "Block", "Modifier", "Merges", {"ModifierBlock": "1c2988588f7e8eaa"}]
+        ["key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["potential", "Block", "Trigger", "Merges", {"Known": ["Enclosing"]}, "Unresolved"],
+        ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", {"Known": []}, null],
+        ["not_potential_override_text_key", "String", "NotApplicable", "Replace", {"Known": []}, null],
+        ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["mult", "ScopedNumeric", "NotApplicable", "Merges", {"Known": []}, null],
+        ["modifier", "Block", "Modifier", "Merges", {"Known": []}, {"ModifierBlock": "1c2988588f7e8eaa"}]
       ]
     },
     "gaps": [
@@ -202,11 +192,6 @@
         "Qualified scope and parameter grammar, reference lookup outcomes, and evaluated values remain outside this operand method."
       ],
       [
-        "UnresolvedPath",
-        {"kind": "key_path", "path": ["triggered_modifier", "potential"]},
-        "read-scope: stored-scope"
-      ],
-      [
         "OutsideMethod",
         {"kind": "field", "name": "triggered_modifier"},
         "Keys that the triggered modifier does not name, at `data`: The platform scanner's own conversion of the token text (overflow, the characters it consumes, locale and library behavior) is outside this method."
@@ -225,17 +210,17 @@
         "OutsideMethod",
         {"kind": "field", "name": "triggered_modifier"},
         "Keys that the triggered modifier does not name: The binary-lexer input path of save games and network data is outside this method."
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "field", "name": "triggered_modifier"},
-        "read-scope: scope-argument"
       ]
     ],
     "other_keys": {
       "Known": {
         "ModifierBlock": "1c2988588f7e8eaa"
       }
+    },
+    "read_scope": {
+      "Known": [
+        {"Types": [{"id": "44b5e21fe5e593d7", "name": "country"}]}
+      ]
     },
     "sample": [
       "common/traditions",

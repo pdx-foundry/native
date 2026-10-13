@@ -21,6 +21,10 @@ const INSERTED_CLASS: u64 = 1;
 const INSERTED_OFFSET: u64 = 2;
 const INSERTED_OBJECT: u64 = 3;
 const SPAN: u64 = 0x10000;
+/// The label of the scope that an object's constructor receives, at the object's address.
+const SCOPE: u64 = 1 << 58;
+/// A constructor scope argument that is not known on the path.
+const UNKNOWN_SCOPE: u64 = u64::MAX;
 
 pub(super) fn discover(
     input: &FieldInput,
@@ -79,6 +83,7 @@ pub(super) fn discover(
         .filter(|symbol| symbol.name == "operator new(unsigned long)")
         .map(|symbol| symbol.address)
         .collect();
+    let scope_registers = scope_registers(&input.symbols, objects);
     let mut collections = Vec::new();
     for field in fields.iter().filter(|field| {
         field
@@ -121,6 +126,13 @@ pub(super) fn discover(
                     match containers.and_then(|known| known.mask(target, machine)) {
                         Some(mask) => machine.label(containers::LABEL | at, mask),
                         None => machine.unlabel(containers::LABEL | at),
+                    }
+                    match scope_registers.get(&target) {
+                        Some(&register) => machine.label(
+                            SCOPE | at,
+                            machine.register(register).unwrap_or(UNKNOWN_SCOPE),
+                        ),
+                        None => machine.unlabel(SCOPE | at),
                     }
                     for (&offset, &point) in &object.vtables {
                         machine.write(at + offset, 8, point);
@@ -178,24 +190,29 @@ pub(super) fn discover(
                 );
                 let object = path.machine.labelled(INSERTED_OBJECT)?;
 
-                Some((inserted, path.machine.labelled(containers::LABEL | object)))
+                Some((
+                    inserted,
+                    path.machine.labelled(containers::LABEL | object),
+                    path.machine.labelled(SCOPE | object),
+                ))
             })
             .collect();
         let Some(joined) = joined.filter(|joined| !joined.is_empty()) else {
             continue;
         };
         let first = joined[0].0;
-        if joined.iter().any(|(other, _)| *other != first) {
+        if joined.iter().any(|(other, _, _)| *other != first) {
             continue;
         }
-        let container_mask = joined.iter().any(|(_, mask)| mask.is_some()).then(|| {
+        let container_mask = joined.iter().any(|(_, mask, _)| mask.is_some()).then(|| {
             let mut masks = PathMasks::default();
-            for (_, mask) in &joined {
+            for (_, mask, _) in &joined {
                 masks.add(*mask);
             }
 
             masks.agreed()
         });
+        let construction_scopes = construction_scopes(joined.iter().map(|(_, _, scope)| *scope));
         let object = &objects[first.0 as usize];
         let reader = object
             .reader
@@ -223,7 +240,96 @@ pub(super) fn discover(
             reader,
             fields: Box::new(fields),
             container_mask,
+            construction_scopes,
         });
     }
     collections
+}
+
+/// The register of each object constructor's scope parameter, for constructors whose last
+/// parameter is an `EScopeType`.
+fn scope_registers(
+    symbols: &[crate::engine::analysis::discovery::Symbol],
+    objects: &[super::ObjectReader],
+) -> BTreeMap<u64, usize> {
+    symbols
+        .iter()
+        .filter(|symbol| {
+            objects
+                .iter()
+                .any(|object| object.constructors.contains(&symbol.address))
+        })
+        .filter_map(|symbol| Some((symbol.address, scope_register(&symbol.name)?)))
+        .collect()
+}
+
+/// The argument register of a demangled function's last parameter when it is an `EScopeType`;
+/// `x0` is the receiver.
+fn scope_register(name: &str) -> Option<usize> {
+    let parameters = name.strip_suffix("EScopeType)")?;
+    let mut depth = 0;
+    let mut commas = 0;
+    for character in parameters.chars().rev() {
+        match character {
+            ')' | '>' => depth += 1,
+            '<' => depth -= 1,
+            '(' if depth == 0 => return Some(commas + 1),
+            '(' => depth -= 1,
+            ',' if depth == 0 => commas += 1,
+            _ => {}
+        }
+    }
+
+    None
+}
+
+/// The distinct scopes that the joined paths pass to the object's constructor, with `None` for a
+/// path whose scope is not known. Empty when no path's constructor takes a scope.
+fn construction_scopes(paths: impl Iterator<Item = Option<u64>>) -> Vec<Option<i64>> {
+    let paths: Vec<_> = paths.collect();
+    if paths.iter().all(Option::is_none) {
+        return Vec::new();
+    }
+    let mut scopes = Vec::new();
+    for scope in paths {
+        let scope = scope
+            .filter(|&scope| scope != UNKNOWN_SCOPE)
+            .map(|scope| scope as i64);
+        if !scopes.contains(&scope) {
+            scopes.push(scope);
+        }
+    }
+
+    scopes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_scope_parameter_register_counts_top_level_parameters() {
+        assert_eq!(
+            scope_register("C::C(int, ModifierCategory, EScopeType)"),
+            Some(3)
+        );
+        assert_eq!(
+            scope_register("C<A, B>::C(CPair<int, int>, EScopeType)"),
+            Some(2)
+        );
+        assert_eq!(scope_register("C::C(EScopeType)"), Some(1));
+        assert_eq!(scope_register("C::C(int)"), None);
+    }
+
+    #[test]
+    fn a_path_with_an_unknown_construction_scope_stays_beside_the_known_ones() {
+        let scopes = |paths: &[Option<u64>]| construction_scopes(paths.iter().copied());
+
+        assert_eq!(
+            scopes(&[Some(4), Some(UNKNOWN_SCOPE), Some(4)]),
+            [Some(4), None]
+        );
+        assert_eq!(scopes(&[Some(4), None]), [Some(4), None]);
+        assert_eq!(scopes(&[None, None]), []);
+    }
 }

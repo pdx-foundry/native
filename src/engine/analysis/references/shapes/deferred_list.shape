@@ -1,0 +1,263 @@
+# ReadKeyReferenceDeferredUniform<D> for each token of the block: append the typed null object
+# {null} to the destination array (x2) with {insert}, then register the token text, its file
+# location and a resolver lambda that captures the array and the new element's index. {lambda} is
+# the lambda's vtable.
+sub sp,sp,#0x1f0
+stp xr0,xr1,[sp,#0x190]
+stp xr2,xr3,[sp,#0x1a0]
+stp xr4,xr5,[sp,#0x1b0]
+stp xr6,xr7,[sp,#0x1c0]
+stp xr8,xr9,[sp,#0x1d0]
+stp x29,x30,[sp,#0x1e0]
+add x29,sp,#0x1e0
+mov xr6,x2
+mov xr7,x1
+mov xr5,x0
+adrp xr10,PAGE
+ldr xr10,[xr10,G] = ___stack_chk_guard
+ldr xr10,[xr10]
+stur xr10,[x29,#-0x60]
+add xr10,sp,#0x40
+add xr4,xr10,#0x8
+add xr0,xr10,#0x20
+add xr11,sp,#0x18
+add xr11,xr11,#0x18
+add xr10,xr10,#0x18
+stp xr11,xr10,[sp,#0x8]
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+add xr1,xr10,#0x10
+adrp xr10,PAGE
+add xr10,xr10,G = {lambda}
+add xr8,xr10,#0x10
+sub xr9,x29,#0x80
+ldr xr3,[xr7,#0x30]
+ldrb wr10,[xr3,#0x13c]
+cbnz wr10,@+11
+ldr xr10,[xr3]
+ldr xr10,[xr10,#0x10]
+mov x0,xr3
+blr xr10
+str w0,[xr3,#0x10]
+cbnz w0,@+3
+mov wr10,#0x13
+str wr10,[xr3,#0x18]
+mov wr10,#0x1
+strb wr10,[xr3,#0x13c]
+ldr wr10,[xr3,#0x18]
+cmp wr10,#0x4
+ccmp wr10,#0x13,#0x4,ne
+b.eq @+105
+ldr x0,[xr7,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr7,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+38
+mov xr2,x0
+add xr10,sp,#0x40
+mov x0,xr7
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x40]
+ldrb wr11,[sp,#0x44]
+strb wr11,[xr2,#0x4]
+str wr10,[xr2]
+mov xr3,xr2
+ldr xr10,[xr3,#0x8]!
+str wzr,[xr2,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr3
+blr xr10
+stp xzr,xzr,[sp,#0x18]
+ldr xr10,[xr3]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr3
+blr xr10
+ldr xr10,[sp,#0x48]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr4
+blr xr10
+ldr xr10,[xr3]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr3
+blr xr10
+str xr1,[sp,#0x48]
+str wzr,[sp,#0x5c]
+ldr x0,[sp,#0x50]
+cmp x0,xr0
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldr wr3,[xr6,#0x14]
+adrp xr10,PAGE
+ldr xr10,[xr10,G] = {null}
+ldr xr10,[xr10]
+str xr10,[sp,#0x40]
+add x2,sp,#0x40
+mov x0,xr6
+mov x1,xr3
+bl CALL = {insert}
+bl CALL = CGlobalDeferredDatabaseObjectResolver::Get()
+mov xr2,x0
+ldr x0,[xr7,#0x30]
+bl CALL = CLexer::Tok()
+ldr x1,[x0,#0x10]
+add x0,sp,#0x40
+bl CALL = CString::CString(char const*)
+add xr10,sp,#0x18
+mov x0,xr7
+bl CALL = CReader::GetFileLocationDescription() const
+stp xr8,xr6,[x29,#-0x80]
+stp xr3,xr9,[x29,#-0x70]
+add x2,sp,#0x40
+add x3,sp,#0x18
+sub x4,x29,#0x80
+mov x0,xr2
+mov x1,xr5
+bl CALL = CGlobalDeferredDatabaseObjectResolver::Register(CGlobalDeferredDatabaseObject const&, CString const&, CString const&, std::__1::function<bool (CString const&)>&&)
+ldur x0,[x29,#-0x68]
+sub xr10,x29,#0x80
+cmp x0,xr10
+b.eq @+4
+cbz x0,@+8
+mov wr10,#0x5
+b @+3
+sub x0,x29,#0x80
+mov wr10,#0x4
+ldr xr11,[x0]
+ldr xr10,[xr11,xr10,lsl#3]
+blr xr10
+ldrsb wr10,[sp,#0x2f]
+tbnz wr10,#0x1f,@+4
+ldrsb wr10,[sp,#0x57]
+tbz wr10,#0x1f,@-106
+b @+8
+ldr x1,[sp,#0x18]
+ldr xr10,[sp,#0x28]
+and x2,xr10,#0x7fffffffffffffff
+ldr x0,[sp,#0x8]
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0x57]
+tbz wr10,#0x1f,@-114
+ldr x1,[sp,#0x40]
+ldr xr10,[sp,#0x50]
+and x2,xr10,#0x7fffffffffffffff
+ldr x0,[sp,#0x10]
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @-120
+ldr x0,[xr7,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr7,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+44
+mov xr8,x0
+add xr6,sp,#0x40
+add xr10,sp,#0x40
+mov x0,xr7
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x40]
+ldrb wr11,[sp,#0x44]
+strb wr11,[xr8,#0x4]
+str wr10,[xr8]
+mov xr9,xr8
+ldr xr10,[xr9,#0x8]!
+str wzr,[xr8,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr9
+blr xr10
+add xr8,xr6,#0x8
+stp xzr,xzr,[sp,#0x18]
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr9
+blr xr10
+ldr xr10,[sp,#0x48]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr8
+blr xr10
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+add x1,sp,#0x18
+mov x0,xr9
+blr xr10
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+add xr10,xr10,#0x10
+str xr10,[sp,#0x48]
+str wzr,[sp,#0x5c]
+ldr x0,[sp,#0x50]
+add xr10,xr6,#0x20
+cmp x0,xr10
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldur xr10,[x29,#-0x60]
+adrp xr11,PAGE
+ldr xr11,[xr11,G] = ___stack_chk_guard
+ldr xr11,[xr11]
+cmp xr11,xr10
+b.ne @+9
+ldp x29,x30,[sp,#0x1e0]
+ldp xr8,xr9,[sp,#0x1d0]
+ldp xr6,xr7,[sp,#0x1c0]
+ldp xr4,xr5,[sp,#0x1b0]
+ldp xr2,xr3,[sp,#0x1a0]
+ldp xr0,xr1,[sp,#0x190]
+add sp,sp,#0x1f0
+ret
+bl CALL = ___stack_chk_fail
+bl CALL = ___clang_call_terminate
+bl CALL = ___clang_call_terminate
+mov xr7,x0
+ldur x0,[x29,#-0x68]
+sub xr10,x29,#0x80
+cmp x0,xr10
+b.ne @+4
+mov wr10,#0x4
+sub x0,x29,#0x80
+b @+9
+cbnz x0,@+7
+ldrsb wr10,[sp,#0x2f]
+tbnz wr10,#0x1f,@+11
+ldrsb wr10,[sp,#0x57]
+tbnz wr10,#0x1f,@+20
+mov x0,xr7
+bl CALL = __Unwind_Resume
+mov wr10,#0x5
+ldr xr11,[x0]
+ldr xr10,[xr11,xr10,lsl#3]
+blr xr10
+ldrsb wr10,[sp,#0x2f]
+tbz wr10,#0x1f,@-9
+ldr x1,[sp,#0x18]
+ldr xr10,[sp,#0x28]
+and x2,xr10,#0x7fffffffffffffff
+ldr x0,[sp,#0x8]
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr10,[sp,#0x57]
+tbz wr10,#0x1f,@-14
+b @+4
+mov xr7,x0
+ldrsb wr10,[sp,#0x57]
+tbz wr10,#0x1f,@-18
+ldr x1,[sp,#0x40]
+ldr xr10,[sp,#0x50]
+and x2,xr10,#0x7fffffffffffffff
+ldr x0,[sp,#0x10]
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr7
+bl CALL = __Unwind_Resume

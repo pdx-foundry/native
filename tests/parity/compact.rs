@@ -112,8 +112,9 @@ pub fn weight_blocks(native: &Native) -> super::Result<Value> {
     Ok(json!(variants))
 }
 
-/// One representative of each triggered modifier clause variant. A modifier block names its
-/// reader identity; its grammar is in `modifier-blocks.json`.
+/// One representative of each triggered modifier clause variant, with the scope that its owner
+/// constructs it in. A modifier block names its reader identity; its grammar is in
+/// `modifier-blocks.json`.
 pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
     let mut variants = BTreeMap::new();
     for (registry, name) in [
@@ -147,6 +148,7 @@ pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
                             key.reader.kind,
                             key.reader.family,
                             key.shape.repeat,
+                            key.read_scope,
                             members
                         ])
                     })
@@ -158,6 +160,7 @@ pub fn triggered_modifiers(native: &Native) -> super::Result<Value> {
             identity(field)?,
             json!({
                 "sample": [registry, name],
+                "read_scope": field.read_scope,
                 "fixed_keys": property(&block.fixed_keys, keys),
                 "other_keys": property(&block.other_keys, |members| json!({"ModifierBlock": members.reader.id})),
                 "gaps": gaps,

@@ -1357,6 +1357,7 @@ mod field_gap_tests {
             reader: None,
             fields: Box::new(member),
             container_mask: None,
+            construction_scopes: Vec::new(),
         });
 
         let reader_gaps: Vec<_> = field_gaps(&parent)
@@ -1554,6 +1555,7 @@ mod nested_attach_tests {
                 data_offset: None,
                 count_offset: None,
                 container_mask: None,
+                construction_scopes: Vec::new(),
                 class: "CSwap".into(),
                 reader: None,
                 fields: Box::new(child),

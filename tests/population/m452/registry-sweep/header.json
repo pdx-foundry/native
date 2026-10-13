@@ -28,18 +28,17 @@
       "rate": 0.8209
     },
     "references": {
-      "complete": 25,
+      "complete": 36,
       "denominator": 345,
-      "partial": 11,
-      "rate": 0.0725,
+      "rate": 0.1043,
       "undetermined": 309
     },
     "scope_context": {
-      "complete": 1337,
+      "complete": 1420,
       "denominator": 1926,
       "failed": 344,
-      "partial": 245,
-      "rate": 0.6942
+      "partial": 162,
+      "rate": 0.7373
     },
     "shapes_and_conditions": {
       "complete": 1481,

@@ -71,8 +71,12 @@ fn fields(
     gaps: &mut Vec<Gap>,
 ) {
     for field in fields {
-        // The weight method sets the read scope of a weight block from its stored scope.
-        if matches!(field.members, crate::FieldMembers::WeightBlock(_)) {
+        // The weight and clause methods set the read scope of their blocks from the scope that
+        // the block's object stores.
+        if matches!(
+            field.members,
+            crate::FieldMembers::WeightBlock(_) | crate::FieldMembers::TriggeredModifier(_)
+        ) {
             continue;
         }
         // A modifier block's or a parameter list's reader takes no scope, and its entries are
@@ -101,6 +105,7 @@ fn fields(
                 .collect()
         };
         let mut arguments = Vec::new();
+        let mut obstacles = Vec::new();
         let mut scalar = false;
         for outcome in outcomes {
             match outcome {
@@ -111,32 +116,77 @@ fn fields(
                     if matches!(reader.kind, ReaderKind::Block | ReaderKind::Unknown)
                         && reader.family != crate::BlockFamily::NotApplicable
                     {
-                        arguments.push(argument(&join));
+                        match argument(&join) {
+                            Ok(argument) => arguments.push(argument),
+                            Err(obstacle) => obstacles.push(obstacle),
+                        }
                     } else {
                         scalar = true;
                     }
                 }
-                PathOutcome::Gap(_) => arguments.push(None),
+                PathOutcome::Gap(_) => obstacles.push("reader-path"),
             }
         }
-        if scalar && arguments.is_empty() {
+        if scalar && arguments.is_empty() && obstacles.is_empty() {
             field.read_scope = GrammarProperty::Known(vec![]);
             continue;
         }
-        field.read_scope = normalize_scopes(arguments, names, GapSubject::field(&field.name), gaps);
+        let subject = GapSubject::field(&field.name);
+        field.read_scope = if arguments.is_empty() && !obstacles.is_empty() {
+            GrammarProperty::Unresolved
+        } else {
+            normalize_scopes(arguments, names, subject.clone(), gaps)
+        };
+        add_obstacles(&mut field.read_scope, &obstacles, subject, gaps);
     }
 }
 
-/// The established reader ABI supplies the scope after the reader and destination, or after
-/// the token for a member delegate. A name alone never repairs a missing routing join.
-fn argument(join: &ReaderJoin) -> Option<Value> {
+/// The scope argument of a block reader, or why the read gives none. The established reader
+/// ABI supplies the scope after the reader and destination, or after the token for a member
+/// delegate. A name alone never repairs a missing routing join.
+fn argument(join: &ReaderJoin) -> Result<Option<Value>, &'static str> {
     let ReaderJoin::Joined {
         callee, arguments, ..
     } = join
     else {
-        return None;
+        return Err("reader-path");
     };
-    readers::scope_argument(callee, arguments).cloned()
+    if !readers::takes_scope(callee) {
+        return Err("no-scope-parameter");
+    }
+
+    Ok(readers::scope_argument(callee, arguments).cloned())
+}
+
+/// Make `scope` partial, with a gap at `subject` for each distinct obstacle: a read alternative
+/// that gives no scope argument at all.
+fn add_obstacles(
+    scope: &mut GrammarProperty<Vec<ReadScope>>,
+    obstacles: &[&'static str],
+    subject: GapSubject,
+    gaps: &mut Vec<Gap>,
+) {
+    let mut named = Vec::new();
+    for &obstacle in obstacles {
+        if named.contains(&obstacle) {
+            continue;
+        }
+        named.push(obstacle);
+        gaps.push(gap_for_subject(
+            GapKind::UnresolvedPath,
+            Some(subject.clone()),
+            format!("read-scope: {obstacle}"),
+        ));
+    }
+    if named.is_empty() {
+        return;
+    }
+    *scope = match std::mem::replace(scope, GrammarProperty::Unresolved) {
+        GrammarProperty::Known(scopes) | GrammarProperty::Partial(scopes) if !scopes.is_empty() => {
+            GrammarProperty::Partial(scopes)
+        }
+        _ => GrammarProperty::Unresolved,
+    };
 }
 
 pub(super) fn grammar(
@@ -227,7 +277,9 @@ fn nested_fields(
 }
 
 /// The read scopes that the scope `arguments` give, with a gap at `subject` for each argument
-/// that names no scope type.
+/// that names no scope type. The engine names scope 0 "scope not set" and its scope check accepts
+/// every command in it, so a block whose every read passes 0 reads in no scope; a 0 beside
+/// another scope stays a gap.
 pub(super) fn normalize_scopes(
     arguments: Vec<Option<Value>>,
     names: Option<&[String]>,
@@ -238,6 +290,13 @@ pub(super) fn normalize_scopes(
     let mut reasons = Vec::new();
     if arguments.is_empty() {
         reasons.push("reader-boundary");
+    }
+    if !arguments.is_empty()
+        && arguments
+            .iter()
+            .all(|argument| *argument == Some(Value::Constant(0)))
+    {
+        return GrammarProperty::Known(Vec::new());
     }
     for argument in arguments {
         let result = match argument {
@@ -328,6 +387,28 @@ mod tests {
     }
 
     #[test]
+    fn a_block_whose_every_read_passes_scope_zero_reads_in_no_scope() {
+        let zero = || Some(Value::Constant(0));
+
+        assert_eq!(
+            scopes(vec![zero()]),
+            (GrammarProperty::Known(vec![]), vec![])
+        );
+        assert_eq!(
+            scopes(vec![zero(), zero()]),
+            (GrammarProperty::Known(vec![]), vec![])
+        );
+        let (unknown_beside_zero, gaps) = scopes(vec![zero(), None]);
+        assert_eq!(unknown_beside_zero, GrammarProperty::Unresolved);
+        assert_eq!(
+            gaps.iter()
+                .map(|gap| gap.detail.as_str())
+                .collect::<Vec<_>>(),
+            ["read-scope: zero-mask", "read-scope: scope-argument"]
+        );
+    }
+
+    #[test]
     fn a_modifier_block_is_read_in_no_scope_beside_a_trigger_block_that_keeps_its_scope() {
         use crate::engine::analysis::fields::ReaderJoin;
         use serde_json::json;
@@ -393,6 +474,65 @@ mod tests {
             matches!(scopes.as_slice(), [ReadScope::Types(types)] if types.len() == 1 && types[0].name == "country")
         );
         assert!(gaps.is_empty(), "{gaps:?}");
+    }
+
+    #[test]
+    fn a_block_that_gives_no_scope_argument_names_why() {
+        use crate::engine::analysis::{fields::ReaderJoin, stop::Unresolved};
+        use serde_json::json;
+
+        let block = || -> Field {
+            serde_json::from_value(json!({
+                "name": "block",
+                "reader": { "id": null, "kind": "Block", "family": "Unknown",
+                    "numeric": "Unresolved", "scoped_operand": "Unresolved" },
+                "shape": { "value": "Unknown", "repeat": "Unknown" }, "read": [],
+                "members": "Unresolved", "domain": "Unknown", "uses": [],
+                "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
+                "accepted_categories": "NotApplicable"
+            }))
+            .unwrap()
+        };
+        let reading = |join: ReaderJoin| RootField {
+            name: "block".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![join],
+        };
+        let joined = |callee: &str, arguments: Vec<(&str, Value)>| ReaderJoin::Joined {
+            callee: callee.into(),
+            arguments: arguments
+                .into_iter()
+                .map(|(register, value)| (register.to_owned(), value))
+                .collect(),
+            tail: true,
+        };
+        let reasons = |join: ReaderJoin| {
+            let mut values = [block()];
+            let mut gaps = Vec::new();
+            fields(&mut values, &[reading(join)], &[], None, &mut gaps);
+
+            assert_eq!(values[0].read_scope, GrammarProperty::Unresolved);
+            gaps.into_iter().map(|gap| gap.detail).collect::<Vec<_>>()
+        };
+        let reader = ("x0", Value::Reader(0));
+
+        assert_eq!(
+            reasons(ReaderJoin::Missing(Unresolved::new("delegate"))),
+            ["read-scope: reader-path"]
+        );
+        assert_eq!(
+            reasons(joined("CReader::Read(CPersistent&)", vec![reader.clone()])),
+            ["read-scope: no-scope-parameter"]
+        );
+        assert_eq!(
+            reasons(joined(
+                "CTrigger::Read(CReader&, EScopeType)",
+                vec![reader, ("x2", Value::Stack(8))]
+            )),
+            ["read-scope: scope-argument"]
+        );
     }
 
     #[test]

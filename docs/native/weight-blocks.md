@@ -183,10 +183,12 @@ Every field also has three `OutsideMethod` limits (SDK-722): the zero-mask read 
 `scaled_modifier`, its `limit`, `complex_trigger_modifier` and its `potential`; the key match of
 the `trigger` lookup; and `parameters`, read by the trigger that `trigger` names.
 
-Nine root fields also have a zero-mask read scope of their own, because their owner constructor
-stores scope `0`. No later scope check is known for these, so they keep an `UnresolvedPath` gap: the five weight fields of `common/buildings`, `planet_damage` in
-`common/bombardment_stances`, `weight_modifier` in `common/colony_types`, and `random_weight` in
-`common/ethics` and `common/governments/authorities`.
+Nine root fields have a stored scope `0` of their own, because their owner constructor stores it:
+the five weight fields of `common/buildings`, `planet_damage` in `common/bombardment_stances`,
+`weight_modifier` in `common/colony_types`, and `random_weight` in `common/ethics` and
+`common/governments/authorities`. No later scope check is known for these; since SDK-808 they
+read in no scope (`Known([])`), as every block whose every read passes scope 0 does
+([gap details](discovery.md#read-time-block-scopes-sdk-549)).
 
 Thirteen fields with weight names are persistent blocks without a constructor-proven reader, so the
 method does not see them: `ai_weight` in `common/federation_laws`, `common/federation_types`,
@@ -332,7 +334,8 @@ before the reader runs. The test
   another stays `UnresolvedReader`.
 - **A literal zero mask is not a stored zero.** The session splits literal scope mask 0, which the
   entry readers pass before their later scope check, from a stored scope that resolves to 0. Only
-  the literal one is `OutsideMethod`; split before the stored word is resolved.
+  the literal one is `OutsideMethod`; the stored one reads in no scope. Split before the stored
+  word is resolved.
 - **A bare nested value is not rejected.** `CPersistent::Read` has no scalar branch, so
   `scalar: None` means that no bare value is read, not that the engine reports one.
 - **The domain is every token value.** The method evaluates each value from zero to the largest

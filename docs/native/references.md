@@ -37,7 +37,8 @@ All facts below are for the exact executable in [targets](targets.md).
   `bool` argument is true.
 - `ReadKeyReferenceUniform<D, CPdxArray<…>>` has 13 instantiations,
   `ReadKeyReferenceDeferredUniform<CScriptedActionDatabase>` and
-  `ReadIndexReferenceDeferred<CTechnologyTierDatabase>` one each.
+  `ReadIndexReferenceDeferred<CTechnologyTierDatabase>` one each. The [list
+  readers](#list-readers) section gives their lookups.
 - `CDatabaseObjectEffect<D>::Read` (45) and `CDatabaseObjectTrigger<D>::Read` (75) tail-call the
   deferred reader with the command object as the owner.
 
@@ -65,11 +66,54 @@ addresses, template arguments and, for initializers, field offsets:
   `SPdxHash<CString>` and `std::equal_to<CString>`.
 - **Getter.** The static modifier lambda calls
   `CStaticModifierDatabase::GetStaticModifier(CString const&) const` on
-  `CStaticModifierDatabase::_pInstance`, stores the result and tail-calls vtable slot `0x98`. The
-  getter scans its own items (`this+0x3d0`, count `this+0x3dc`, key at `item+0x158`) with the same
-  comparison and returns the null object on a miss.
+  `CStaticModifierDatabase::_pInstance`, stores the result and tail-calls the item's validity
+  check, vtable slot `0x98`. The getter scans its own items (`this+0x3d0`, count `this+0x3dc`, key
+  at `item+0x158`) with the same comparison and returns the null object on a miss.
   `CPlanetClassDatabase::GetPlanetClass(CString const&)` wraps a `CHashTable::Find` and substitutes
-  the null object for a null result.
+  the null object for a null result. The lambdas of traits (`GetTrait`), planet classes,
+  strategic resources (`GetResource`) and special projects (`FindProjectType`) have the same
+  form with the validity check at slot `0x40` or `0x48`; the slot only selects the resolver's log.
+- **Immediate variants.** `ReadKeyReference<CBypassTypeDatabase>` is the immediate scan over items
+  whose key string is at `item+0x18` and whose validity check is called through the base at
+  `item+0x8`. `ReadKeyReference<CPlanetClassDatabase>` calls `GetPlanetClass` on the database
+  argument and returns its result. In both, as in every immediate reader, the validity check only
+  selects the log; the returned value is the item or the null object.
+
+### List readers
+
+- **Immediate list.** `ReadKeyReferenceUniform<D, CPdxArray<C const*>>(CReader&, D const&,
+  CPdxArray<C const*>&)` reads every token of a block (`CLexer::Tok()`; a token that starts with `@`
+  first goes through `CReader::ParseAdvancedStatement`). For each it searches the database
+  argument: an inline linear scan (11 instantiations) or `Find<CString>` on the map at `+0x58`
+  (ship sizes and star classes). A miss selects `TPdxNullObject<C>::_pInstance`. The reader then
+  calls the selected object's vtable slot `0x10`, its validity check: true appends the object with
+  `InsertAtEmplace` at the array's count, false logs `Failed to read key reference '%s' from
+  database '%s' at '%s'` and appends nothing. An empty key is compared like any other.
+- **Validity.** On M452 slot `0x10` of each of the 13 item classes returns the constant 1
+  (`CDatabaseObjectBase::IsValid()` or the class's own override), and slot `0x10` of
+  `vtable for TPdxNullObject<C>` is `TPdxNullObject<C>::IsValid() const`, which returns 0. So a
+  found item is appended and a key that selects nothing is omitted (`Missing::Omitted`). The
+  method reads both checks from the vtables; a check of another body leaves the lookup unresolved
+  (`reference-list-validity`).
+- **Stated rule: the null object's class.** The object at `TPdxNullObject<C>::_pInstance` is an
+  instance of `TPdxNullObject<C>`, so its validity check is that class's slot. Checked on M452 in
+  `TPdxNullObject<CJobTag>`, `<CEthic>` and `<CShipSize>::Initialize()`: each constructs the
+  object in `_Memory` and stores the address point of `vtable for TPdxNullObject<C>` in it.
+- **Five bodies.** The 13 instantiations are five canonical bodies once their type names are
+  placeholders: one scan for DistrictZoneSlot, JobTag, OverclockType, ScriptedAction and TraitTag;
+  one in another frame for ColonyAutomationCategory, CountryFocusCard, ShipCategory,
+  SpeciesArchetype and SpeciesClass; one for Ethic; one map search for ShipSize and one for
+  StarClass. The differences are instruction order and frame size, so each is its own shape
+  (`list_scan`, `list_scan_frame`, `list_scan_ethic`, `list_map`, `list_map_star`). The method
+  also checks that the append is `InsertAtEmplace` of `C const*` with `C` the null object's type,
+  and that the log names `D`.
+- **Deferred list.** `ReadKeyReferenceDeferredUniform<CScriptedActionDatabase>` appends the null
+  object for each token, then registers the token with a lambda that captures the array and the
+  new element's index. The lambda forwards to the linear scan of a forwarded deferred lambda,
+  whose result it stores in that element. So a key that selects nothing keeps the null object in
+  its place (`Missing::NullObject`).
+- **Index.** `ReadIndexReferenceDeferred<CTechnologyTierDatabase>` reads an index, not a key; the
+  method does not read it (`reference-index-form`). No registry field or command key reads it.
 
 ### Effect initializers
 
@@ -150,39 +194,40 @@ its own functions pass to
 
 ## Result on M45-release
 
-The executable has 188 reference readers. With the method's nine shapes, 159 establish every
-lookup fact and a content directory: 77 of 86 deferred readers and 82 of 87 immediate readers.
-The other 29 keep typed gaps:
+On M452 the executable has 188 reference readers. 181 establish every lookup fact and a content
+directory: 82 of 86 deferred readers, 85 of 87 immediate readers, the 13 immediate lists and the
+deferred list (SDK-635). The other 7 keep typed gaps:
 
 | Obstacle | Readers | Databases |
 | --- | ---: | --- |
-| List and index forms (`…Uniform`, `ReadIndexReferenceDeferred`) | 15 | 13 immediate lists, one deferred list, one deferred index |
-| Deferred lambda of another shape | 9 | ambient objects, bypass types, galaxy templates, leader traits, planet classes, special projects, species classes, strategic resources, traits |
-| Immediate reader of another shape | 5 | bypass types, gfx cultures, name lists, planet classes, species classes |
+| Deferred lambda of another shape (`reference-lambda-shape`) | 4 | ambient objects (calls `GetInstance()` first), bypass types (a forwarded scan with other item offsets), galaxy templates (loads `TGameDatabase<…>::_pInstance` with `ldr`), leader traits (`CTraitDatabase::GetLeaderTrait`, a getter of another database) |
+| Immediate getter reader of another shape (`reference-reader-shape`) | 2 | gfx cultures (`GetCulture`), name lists (`GetNameList`) |
+| Index, not a key (`reference-index-form`) | 1 | technology tiers |
 
-Six readers also lack a content directory: gfx cultures, name lists, planet classes (two readers),
-galaxy templates and leader traits. On M452 the two planet-class readers have
-`common/planet_classes`, which the loader reads from a global `char const*`
-([Custom-loader names](registry-fields.md#custom-loader-names)).
+Galaxy templates, leader traits, gfx cultures and name lists also have no content directory
+(SDK-551 owns the directory join). No registry field reads any of the seven. Command keys and
+command values that read them keep their gaps; Atlas reads only a lookup's target, so a missing
+directory is what would block it.
 
-The field sweep over all 164 registries finds 29 root and nested fields with a reference read:
-**21 complete, 7 partial, 1 failed**. Six partial fields read key lists (`pop_jobs#tags`,
-`megastructures#overclock_types`, `species_classes#ethics_to_prefer`,
-`star_classes/randomizers#stars`, and `scripted_action` in megastructures and ship sizes);
-`megastructures#bypass_type` uses an immediate reader of another shape. `ship_sizes#carries_colony` fails: its planet class reader has
-neither a directory nor a shape. On M452 it has the directory; the reader's shape is still not
-established. `council_agendas#finish_modifier` is complete:
-`common/static_modifiers`, deferred, first equal key, empty key looked up, null object on a miss.
+The registry field sweep (`tests/population/m452/registry-sweep`) counts 345 root fields whose
+reference relationship applies: **36 complete, 0 partial, 309 undetermined** (the reader kind is
+not established). The 11 fields that SDK-635 completed are the list fields `pop_jobs#tags`,
+`traits#tags`, `traits#species_class`, `traits#allowed_archetypes`,
+`species_classes#ethics_to_prefer`, `megastructures#overclock_types`,
+`star_classes/randomizers#stars` and `scripted_action` in megastructures and ship sizes, and the
+immediate readers of `megastructures#bypass_type` and `ship_sizes#carries_colony`.
+`council_agendas#finish_modifier` is `common/static_modifiers`, deferred, first equal key, empty
+key looked up, null object on a miss; `pop_jobs#tags` is `common/job_tags`, while reading, first
+equal key, empty key looked up, omitted on a miss.
 
 ### Owner initializers
 
-The same run analyzes every `PostInit()` in the executable. Of the 154 that name a global
-instance, **61 complete, 2 partial, 91 failed**:
+On M452 the method analyzes every `PostInit()` in the executable. Of the 154 that name a global
+instance, **63 complete, 91 failed**:
 
 | Result | Initializers | Shape |
 | --- | ---: | --- |
-| Complete | 61 | the shapes above, with a content directory and a key match |
-| Partial | 2 | `change_pc` and `start_terraform_progress`: the planet class database has no content directory. On M452 both have `common/planet_classes`. |
+| Complete | 63 | the shapes above, with a content directory and a key match |
 | Failed | 74 | another shape, such as a scan guarded by a flag at `this+0x228` (9), a scan with a validity check that stores null (8), or a getter wrapper that orders its loads differently |
 | Failed | 14 | the initializer holds several lookups (`CCreateCountry`, `CCreateSpecies`, `CFreeJobsOfType` …) |
 | Failed | 3 | a getter of another shape: `GetLeaderTrait`, `GetOnActionList` (no null substitute) and `CEventManager::GetEvent` |
@@ -217,16 +262,34 @@ string reader stores that key.
 
 ## Gaps
 
-- Initializers of another shape, several lookups or a guarded scan: follow-up with the counts
-  above. A guarded scan's condition is a stored flag that no child key is known to write.
+- Initializers of another shape, several lookups or another getter (the 91 above). Atlas reads a
+  command key's lookup: on M452, 105 `String` keys of 68 commands have no lookup because their
+  receiver's initializer is one of these, so Atlas reports a reference gap for each. The families
+  need semantics that the answer does not yet state; SDK-827 owns them:
+  - the 20 event effects (`country_event` …, key `id`): `CEventManager::GetEvent` selects by the
+    event id that `GetIDInNameSpace` parses, not by the key's bytes, and returns a null pointer on
+    a miss;
+  - the 24 species-rights commands (`set_citizenship_type`, `has_citizenship_type`,
+    `former_citizenship_type` … , key `type`): the scan's selected object passes its validity
+    check before the initializer stores `item+0x38` or null, and a `StringToToken` test sets a
+    flag;
+  - the resource commands (`has_resource`, `resource_income_compare` …, key `resource`) and
+    others that hold several lookups, which need the initializer split into one lookup per key.
+
+  A guarded scan's condition is a stored flag that no child key is known to write.
 - Registry objects: no registry item class on M45-release has a `PostInit()` that names a
   database, so registry fields have no initialization lookups.
-- List readers and the 14 unmatched singleton shapes: follow-up with counts.
-- Whether a missing key logs: the log depends on the stored object's validity check, which the
-  method does not join. The page records the messages; the answer does not claim them.
+- The seven readers in the table above.
+- Whether a missing key logs: the log depends on the selected object's validity check. The
+  method reads that check only for list readers, where it decides whether the item is kept. The
+  page records the messages; the answer does not claim them.
 - Duplicate definitions in a map-backed database: SDK-552 owns load-time replacement.
 
 ## Pitfalls
+
+- A list reader's miss is not stored. The immediate list appends only objects whose validity
+  check passes, and the null object's check fails; read both checks before claiming what a list
+  holds.
 
 - A reference reader's signature does not state its lookup: `ReadKeyReference<CArmyTypeDatabase>`
   scans linearly while `ReadKeyReference<CShipSizeDatabase>` calls the map `Find`.

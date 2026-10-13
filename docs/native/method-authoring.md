@@ -518,7 +518,8 @@ them.
 
 An accepted limit is a gap that the method could close but Atlas does not need. Native keeps
 reporting it; only the report counts it apart. `ACCEPTED_LIMITS` in the example lists each limit
-once: its gap kind, its exact details, the subjects it covers when the decision names them, and the
+once: its gap kind, its exact details (in a gap on an answer item, `{name}` stands for the item's
+name), the subjects it covers when the decision names them, and the
 ticket and knowledge page of the decision. The first limit that covers a gap accepts it. A gap whose
 detail, kind or subject differs stays open, so a limit never hides a new obstacle: for example, a
 numeric conversion-path gap is never accepted. Add a limit only with the decision that accepts it,
