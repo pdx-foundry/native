@@ -681,7 +681,13 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
                 .any(|gap| gap.kind == GapKind::OutsideMethod)
         );
         for name in &answer.value {
-            assert_eq!(name.lookup, NameLookup::Localization, "{name:?}");
+            let gfx = name.name.first() == Some(&NamePart::Literal("GFX_".into()));
+            let lookup = if gfx {
+                NameLookup::Sprite
+            } else {
+                NameLookup::Localization
+            };
+            assert_eq!(name.lookup, lookup, "{name:?}");
             let fixed = name
                 .name
                 .iter()
@@ -753,6 +759,27 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
         );
         assert!(terms(&tooltip).contains(&zero(path, false)));
     }
+    let icon = find(
+        &traditions,
+        vec![text("GFX_"), NamePart::ItemKey],
+        LookupStage::WhenUsed,
+        MissingName::Unresolved,
+    );
+    assert_eq!(icon.lookup, NameLookup::Sprite);
+    assert_eq!(
+        icon.condition,
+        FieldCondition::Unresolved,
+        "the interface caller decides"
+    );
+    let swap_icon = find(
+        &traditions,
+        vec![text("GFX_"), field(&["tradition_swap", "name"])],
+        LookupStage::WhenUsed,
+        MissingName::Unresolved,
+    );
+    assert_eq!(swap_icon.lookup, NameLookup::Sprite);
+    assert!(terms(&swap_icon).contains(&FieldCondition::Unresolved));
+    assert!(terms(&swap_icon).contains(&zero(&["tradition_swap", "inherit_icon"], true)));
     assert!(
         traditions
             .iter()

@@ -12,17 +12,17 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v35` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v35`, `command-grammar/v18` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v35`, `command-grammar/v18` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v35`, `command-grammar/v18` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v35` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v35` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v35` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
-| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v35` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
-| `CommandGrammar.durations` | `command-grammar/v18` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
+| `Native::registry_fields` | `registry-fields/v36` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v36`, `command-grammar/v19` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v36`, `command-grammar/v19` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v36`, `command-grammar/v19` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v36` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v36` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v36` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
+| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v36` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
+| `CommandGrammar.durations` | `command-grammar/v19` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v3` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
-| `Native::command_grammar` | `command-grammar/v18` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
+| `Native::command_grammar` | `command-grammar/v19` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
 | `Native::declarations` | `command-declarations/v3` | `declarations.rs`, `declarations/composition.rs` | [Effects and triggers](engine-commands.md#effects-and-triggers) |
 | `Native::modifiers` | `modifier-declarations/v1` | `modifiers.rs` | [Modifiers](engine-commands.md#modifiers) |
 | `Native::modifier_categories` | `modifier-categories/v1` | `modifiers.rs` | [Categories](engine-commands.md#categories) |
@@ -31,13 +31,13 @@ check a method in one task.
 | `Native::localization_declarations` | `localization-declarations/v1` | `localization.rs` | [Localization contexts, commands and links](engine-commands.md#localization-contexts-commands-and-links) |
 | `Native::on_actions`, `Native::game_rules` | `callbacks/v4` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
-| `Native::modifier_families` | `modifier-families/v3` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
-| `Field.accepted_categories` in `registry_fields` | `registry-fields/v35` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
+| `Native::modifier_families` | `modifier-families/v4` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
+| `Field.accepted_categories` in `registry_fields` | `registry-fields/v36` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
 | `Native::loader_rules` | `loader-rules/v5` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
-| `Native::derived_names` | `derived-names/v1` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
+| `Native::derived_names` | `derived-names/v3` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
 ## Registry sweep (SDK-553)
@@ -87,9 +87,9 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
-| SDK-707 | 328 | 116 | `derived_names` paths that stop |
+| SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
-| SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions |
+| SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
@@ -97,6 +97,16 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
+
+SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
+gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 300 other gaps in
+56 (SDK-810, after SDK-713's every-item change). The callers add 18 path gaps (caller paths that
+stop, unfollowed caller names, by-value results that are not stack slots, getters with no path to
+their return), and their six new sprite names add 12 condition and miss gaps. One
+`derived_names` answer, `common/starbase_levels`, becomes partial (a `getter-path` gap); no
+relationship status changes. The
+[string fields with a lookup claim](derived-names.md#string-fields-with-a-lookup-claim) keep the
+internal path shapes of their registries.
 
 ### Accepted limits (SDK-819)
 
@@ -131,6 +141,23 @@ and `UnresolvedStorage`); no status changed (`--diff` against the tracked baseli
 registry).
 `registry-sweep --diff` from the before report names 179 registries: each gains its gaps by shape,
 55 change their weight counts and 4 their numeric counts.
+
+SDK-713 repaired the every-item question that `modifier_families` and `derived_names` share, and
+the conditions of 13 families that config templates use. Over a new recording at its merge with
+`main` `09e2321`, the open gaps went from 4,750 to 4,699: `modifier_families` `UnresolvedPath`
+from 74 to 61 and `derived_names` `UnresolvedCondition` from 326 to 288 (the every-item gap from 36
+registries to 4, and six name conditions that it blocked). No relationship status or rate changed;
+`--diff` against the tracked baseline names the 36 registries whose gaps changed
+([modifier families](modifier-families.md#conditions)).
+
+SDK-710 followed Boolean stack temporaries into their member bits and joined the
+`CReader::ReadUniform<T>` list reader ([fields with no shared
+reader](registry-fields.md#fields-with-no-shared-reader)). Over a new recording at its merge with
+`main` `1f876e4`, the open gaps went from 4,729 to 4,283 (`registry_fields` from 3,843 to 3,397).
+Reader kinds went from 1,412 to 1,493 of 1,855 (76.12% to 80.49%), shapes and conditions from
+1,093 to 1,331 (58.92% to 71.75%) and scope context from 1,152 to 1,234 (62.10% to 66.52%). The
+numeric, reference and weight denominators lost 81 undetermined fields each, because those
+fields now have a reader kind. `--diff` against the tracked baseline names 50 registries.
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A

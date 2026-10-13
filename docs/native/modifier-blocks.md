@@ -7,7 +7,7 @@ numeric and static-modifier-reference forms. Each property independently reports
 
 ## Exact-build result
 
-Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v35`. The four
+Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v36`. The four
 reader identities retain the read/member hash used by persistent fields:
 
 | Reader identity | Member implementation | Fields | Address points | Fixed keys | Fixed keys result |
