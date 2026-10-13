@@ -869,7 +869,7 @@ pub struct ModifierFamily {
     /// `Native::modifiers`. They are the tags of this registration; a later registration of the
     /// same name can change the loaded tags.
     pub category_tags: DeclaredTags,
-    /// Whether every item of the registry generates the family.
+    /// Whether every item of the registry that a content file defines generates the family.
     pub condition: GenerationCondition,
     /// The longest name in bytes that the engine keeps, when a fixed-size buffer builds the name.
     /// The name for a key that would be longer is not established.
@@ -1013,11 +1013,13 @@ pub enum MissingName {
     Unresolved,
 }
 
-/// Whether every item of a registry generates a modifier family.
+/// Whether every item of a registry that a content file defines generates a modifier family.
+/// Items that the engine builds itself, such as the `yes` job that `CJobTypeDatabase` creates
+/// before content loads, are not covered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum GenerationCondition {
-    /// Every item generates it.
+    /// Every item that a content file defines generates it.
     Always,
     /// Some items may not generate it, such as when the engine checks an item field first, or the
     /// method could not follow every path. A gap names the family.

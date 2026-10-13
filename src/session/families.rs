@@ -22,7 +22,7 @@ impl Native {
     /// as `planet_{key}_build_speed_mult` for `common/buildings`.
     ///
     /// Each family is a name template with the place of the item key, the category tags, and
-    /// whether every item generates it. Apply [`ModifierFamily::name_for`] to item keys. Code that
+    /// whether every item that a content file defines generates it. Apply [`ModifierFamily::name_for`] to item keys. Code that
     /// generates modifiers from content that is not joined to this registry, such as code of
     /// content that Native does not name as a registry, is counted in an
     /// [`GapKind::UnnamedDeclaration`] gap, so the answer is partial while such code exists. Where
