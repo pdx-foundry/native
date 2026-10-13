@@ -284,10 +284,10 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 | A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
 | No path of a getter's probe returns (`getter-path`) | 3 | |
 | No established key place (`constructor` 17, `key-storage` 4) | 21 | |
-| Every-item initialization not established | 4 | |
-| Field values of a name not established | 47 | 112 |
-| What a missing name gives not established | 38 | 117 |
-| Field-derived name with unexplored field states | 25 | 67 |
+| Every-item initialization not established ([accepted](#accepted-limit-conditions-and-missing-names-sdk-810)) | 4 | 4 |
+| Field values of a name not established (accepted) | 48 | 113 |
+| What a missing name gives not established (accepted) | 39 | 119 |
+| Field-derived name with unexplored field states (accepted) | 26 | 69 |
 
 The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
 (18 gaps); the other `UnresolvedPath` rows are unchanged.
@@ -388,6 +388,52 @@ whose claims are naming lines or not in the list.
   `technology` items are also constructed by `CTechnology::ReadMember`; and
   `CEconomicCategoryDatabase` overrides the post-read loop with its own `PostReadInit()`, which
   the method does not run and which calls `CEconomicCategory::PostReadInit()` by no direct call.
+
+## Accepted limit: conditions and missing names (SDK-810)
+
+The four `UnresolvedCondition` shapes of the answer are an accepted limit. Native still reports
+them; the [sweep report](method-authoring.md#accepted-limits) counts them under SDK-810. On M452
+at `main` `29b025c`, before the limit:
+
+| Shape | Gaps | Registries |
+| --- | ---: | ---: |
+| What a missing name gives is not established | 119 | 39 |
+| The field values under which the engine uses a name are not established | 113 | 48 |
+| A field-derived name depends on field states that the method does not explore | 69 | 26 |
+| That the engine initializes every item after reading it is not established | 4 | 4 |
+
+The every-item gaps are the narrowed SDK-713 remainder, each with its obstacle in
+[gaps](#gaps).
+
+**Atlas need: none now.** Atlas `ledger` and `compare` at Atlas `main` `63c2028` (Native pin
+`ee01bf3`), over the SDK-798 recording and the `config` directory of `cwtools-stellaris-config`,
+give the SDK-798 headline (42.15%):
+
+- `naming_rule`, 495 claims, 130 covered. Atlas joins a `localisation` or `images` line to a
+  derived name by registry, rendered name and lookup only (Atlas
+  `src/coverage/language_subject.rs`, `Joins::derived_name`). It copies `stage`, `condition` and
+  `on_missing` into the rule without testing them, and no per-name gap of this answer becomes an
+  Atlas gap (`src/snapshot/registry.rs`, `assemble_derived_names`). The 365 uncovered claims
+  match no Native name: a resolved condition or miss credits none of them.
+- `naming_requirement` (`## optional`, `## required`), 121 claims. Atlas joins none of them.
+- Conditions: Atlas leaves out claims with config conditions, and the naming lines of a subtype go
+  through nested selectors that it does not credit (`src/coverage/projection.rs`,
+  `language_questions`).
+
+**Reopen** a shape when an Atlas claim depends on it: a naming claim that reads a name's condition
+or field states, a `## optional` or `## required` join to `on_missing`, or a claim that needs a name
+of post-read initialization to be `Always`. For a `## optional` join, 16 optional lines have a
+naming line that joins a Native name; 10 have an established miss, and 6 are one-field names with
+an unresolved one: `common/leader_classes` `{name_plural}` and `{description}`,
+`common/governments/civics` `{negative_description}` and `{description}`, and the `{icon}` files of
+`common/notification_modifiers` and `common/missions/missions`. The repair is a search run that
+varies the field's text state, so that the miss paths that depend on it are explored
+([what the answer does not publish](#what-the-answer-does-not-publish)).
+
+**After.** Over a recording at `main` `29b025c`, the open gaps go from 4,031 to 3,726 and the
+accepted gaps from 853 to 1,158. No relationship status or rate changes: a naming rule reads the
+completeness of the answer, which the limit does not change. `registry-sweep --diff` from the
+tracked baseline names the 57 registries whose open and accepted gaps changed.
 
 ## Pitfalls
 
