@@ -24,13 +24,14 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v33`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v34`) holds
 the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
 change when the 19 custom-loader names joined (SDK-787);
-their counts are in [custom-loader owners](#custom-loader-owners). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`, only the 336
+[pre_trigger keys](#pre-trigger-blocks) changed (SDK-807). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -92,10 +93,11 @@ rule applies only to a tail call: a call with an unexamined continuation proves 
 
 | Reader | Repeat | Engine fact (M452) |
 | --- | --- | --- |
-| Primitive readers (Boolean, integer, fixed-point, float, string) | `Replace` | The reader assigns one destination. A fixture repeats `unlocks_agenda`: two occurrences keep the second. |
+| Primitive readers (Boolean, integer, fixed-point, float, string), except `CPreTriggers::ReadValue` | `Replace` | The reader assigns one destination. A fixture repeats `unlocks_agenda`: two occurrences keep the second. |
 | `NParserUtil::ReadTrigger<T>`, `ReadEffect<T>` | `Replace` | `ReadTrigger<CRootTrigger>` (`0x100047bd8`) logs `Duplicate trigger at '%s'` when the count at `+0x7c` is nonzero, calls `CTriggerCollectionBase::DeleteAll()` and reads into the same object. `ReadEffect<CEffect>` (`0x10020cc30`) logs `Duplicate effect`, deletes each child, clears the count at `+0x1c` and reads again. All five instantiations share the shape. |
 | `CVariableValue::Read(CReader&, EScopeType)` | `Merges` | A literal replaces the literal slot; variable, trigger and script-value slots stay ([scoped numeric](scoped-numeric.md), live `repeat_*` cases). |
 | `CReader::Read(CPersistent&)` of a weight block | `Merges` | The persistent read (`0x1025b820c`) tail-calls the virtual `Read` at slot `+0x20`. `CMeanTimeToHappen::Read(CReader&)` (`0x10092e3f4`) reads a bare value into `base` or calls `CPersistent::Read`, so `base` is replaced and earlier entries stay. |
+| `CPreTriggers::ReadValue(CReader&, EPreTriggers)` | `Merges` | `0x1004d0008` logs `Pre-trigger "%s" is specified more than once` and still ORs the key's bit into the `yes` or `no` mask; no bit is cleared ([pre-trigger blocks](#pre-trigger-blocks)). |
 | `CReader::Read(CPersistent&)` of a modifier block | `Merges` | All four variants reach `CPdxModifier<…>::Read` (`0x100071fcc`). It deletes the child array and clears the entry counts at `+0x1c`, `+0x44` and `+0x9c`, then calls `CPersistent::Read`. Fixed keys are written only when present, so an omitted icon, tooltip or flag stays; `description_parameters` appends. |
 | `ReadKeyReferenceDeferred<D>` with an established lookup | `Replace` | Each occurrence registers its key and a lambda that writes the destination on a hit and on a miss. The resolver runs registrations in order ([references](references.md#reference-readers)), so the last occurrence's item is stored. |
 
@@ -269,6 +271,39 @@ bundles (see [retrieval](retrieval.md)): token dispatch is discovered without fi
 and transferred to AI attitudes; factories bind to inherited readers (six `create_starbase` and
 three `add_district` fields); one shared numeric operand grammar serves agenda cost and the
 timed-flag units, while `agenda_cooldown` is a plain integer.
+
+### Unresolved loader conditions on M452 (SDK-811)
+
+An accepted limit. On M452 the sweep keeps 207 "loader condition remains unresolved" gaps: 132 on
+the six `CEvent` members of each of the 22 event kinds, and 75 root fields in 33 other registries.
+By the test that stops:
+
+| Tested value | Outcomes | Gaps | Registries | Examples |
+| --- | --- | ---: | ---: | --- |
+| Owner word with no established named-field destination (pointer members, unnamed bytes) | Every one unresolved | 107 | 8 | `events` `desc`, `mean_time_to_happen`; `common/governments/civics` `potential` |
+| Reader input (token kind or reader state) | Every one unresolved | 88 | 30 | `events` `picture`; `common/colony_automation` `buildings` |
+| Owner word with no established named-field destination | Some unresolved | 5 | 1 | `common/special_projects` `on_start` |
+| Reader input | Some unresolved | 4 | 4 | `common/traits` `icon`; `common/ship_sizes` `graphical_culture` |
+| Reader input: block token or scalar | Established, unequal destinations | 2 | 2 | `common/ship_sizes` `hero_ship`; `common/pop_categories` `can_change_category` |
+| Global load and reader input | Every one unresolved | 1 | 1 | `common/traits` `leader_class` |
+
+No tested owner offset matches an established float or fixed-point destination, so the presence
+word limit of [read conditions](#read-conditions-and-use-time-inheritance) has no member here. A reader-input test chooses a value form; `FieldCondition` states
+stored values only. Atlas credits a field's value form and repeat only when `read` is exactly
+`[Always]`, and reads no `FieldCondition` term, so naming a condition credits no claim. A branch
+collapses to `Always` only when complementary tests reach equal complete outcomes; no gapped field
+has them. The other 205 gaps have at least one unresolved outcome: reader paths that SDK-710 owns.
+The 45 use-time gaps also stay: Native's `Field::uses` publishes the selections, and Atlas credits
+no claim from them.
+
+`ACCEPTED_LIMITS` in `examples/registry-sweep.rs` lists the 207 fields by registry, and accepts
+the use-time gaps by their details, so the sweep counts them apart from open work (SDK-819); a
+loader-condition gap of another field stays open. Remove a field from the list when its reopen
+condition holds. Revisit the 205 when SDK-710 gives complementary paths equal complete outcomes (rerun the sweep:
+the existing collapse removes those gaps), or when Atlas consumes condition terms, for example to
+select a config subtype (SDK-716). The two block-or-scalar fields already have complete, unequal
+outcomes, so neither trigger changes them: revisit them when Atlas needs a value form that depends
+on the input token, and decide then how an answer states a reader-input condition.
 
 ## Registry scheduling and owner joins
 
@@ -705,11 +740,14 @@ Facts on M452:
   The keys: `has_ground_combat`, `has_owner`, `has_planet`, `is_ai`, `is_being_assimilated`,
   `is_being_purged`, `is_capital`, `is_enslaved`, `is_homeworld`, `is_idle`, `is_occupied_flag`,
   `is_robotic`, `is_sapient`, `original_owner`.
-- `ReadValue` compares the reader's value token (`+0x278`) with token `0x3ff8` and `0x2cac`
-  directly, not through `CReader::Read(bool&)`. It sets the key's bit in a 16-bit mask at `+0x8`
-  or `+0xa`, and ignores any other value without a diagnostic. A key whose bit is already set
-  in either mask logs `Pre-trigger "%s" is specified more than once` and still sets the bit.
-  The token names of `0x3ff8` and `0x2cac` were not read.
+- `ReadValue` compares the id of the reader's value token (`+0x278`) with `0x3ff8` (`yes`) and
+  `0x2cac` (`no`) directly, not through `CReader::Read(bool&)`. `GetTokenArray()` names them at
+  `0x100dd26f8` and `0x100db0b1c`; they are the recipe's `boolean_tokens`. `yes` sets the key's
+  bit in the required-true mask at `+0x8`, `no` in the required-false mask at `+0xa`. Any other
+  value is ignored silently: no store and no diagnostic, where `CReader::Read(bool&)` reports
+  `Malformed token`. A key whose bit is already set in either mask logs
+  `Pre-trigger "%s" is specified more than once` and still sets the bit, so `yes` then `no`
+  sets both masks.
 - The config splits the keys into colony, pop and country sets (13 names; no `is_idle`). The
   reader has one table and no scope split. The `PreCalc*Value` functions that fill the values per
   scope object are use-time code; which keys each one sets is not established.
@@ -721,14 +759,18 @@ Facts on M452:
   like any other called constructor, and takes reader candidates from the vtable pages of the
   entered bodies as well as the owner's.
 
-Each of the two fields and each of the 22 event `pre_triggers` fields is listed with all 14 keys;
-every key keeps an `UnresolvedReader`, an `UnresolvedStorage` and a
-`read-scope: scope-argument` gap, because the walk does not follow `ReadValue`. So the result is
-partial for all 24 fields (none complete), with one failure shape: an unfollowed value helper.
-None failed. Establish the
-value form when Atlas needs it: the value is one of two literal tokens, and others are ignored,
-which the `Keyword` rule of [weight blocks](weight-blocks.md) does not cover (two different owner
-words, and a silent ignore instead of a diagnostic).
+Each of the two fields and each of the 22 event `pre_triggers` fields is listed with all 14 keys,
+and every key is `Boolean` with repeat `Merges` (`registry-fields/v34`, SDK-807). The rule is
+stated, not derived: `readers::PRE_TRIGGER_VALUE` classifies a tail call to
+`CPreTriggers::ReadValue(CReader&, EPreTriggers)` with the owner in `x0` and the reader in `x1`,
+like the stated `CReader::Read(bool&)` rule. The key has no one destination, because the value
+goes to one of two masks. A repeat keeps the earlier bit, so `Merges`, not `Replace`. `Boolean`
+fits because the values are the Boolean pair; the `Keyword` rule of
+[weight blocks](weight-blocks.md) is for an engine keyword set. This removed 672 key gaps
+(`UnresolvedReader` and `UnresolvedStorage`); each block keeps its own
+`read-scope: scope-argument` and repeat gaps. Derive the rule from the body (run the helper under `yes`, `no`
+and another token, as command grammar forms do) when a second helper of this shape appears, or
+when `ReadValue` changes on a new build.
 
 ## Block families
 
