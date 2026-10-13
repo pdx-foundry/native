@@ -101,7 +101,7 @@ Failure shapes, by field count:
 | Modifier-block reader gaps (`key`, `divide_over_pop_groups`, `name`; CustomDesc also `description_parameters`), at the `modifier` key and on the field for `other_keys` | 45 |
 | Numeric conversion of modifier entries and fixed keys ([numeric conversion](numeric-conversion.md)) | 45 |
 | Scoped-literal conversion and operand method of `mult` and `multiplier` | 45 |
-| Read scope of `potential` (stored scope) and of `modifier` and the field (scope argument) | 50 |
+| Read scope of `potential` (stored scope) and of `modifier` and the field (scope argument); the field and `potential` are [established](#read-scope-sdk-808) since SDK-808 | 50 |
 | Tooltip: embedded point, scoped destination and delegate | 5 |
 
 **Nested clauses (SDK-676, M452).** `tradition_swap.triggered_modifier` in traditions and
@@ -118,10 +118,46 @@ and the country mask; the sweep counts it as a nested field.
 
 The compact selections are in `tests/expected/m452/triggered-modifiers.json`.
 
+## Read scope (SDK-808)
+
+A clause reads its keys in the scope that its constructor receives. The field's `read_scope` is
+that scope, and a key that reads in the clause's stored scope word, such as `potential`, is
+`Enclosing`, so equal clause identities keep equal key grammar under different owners.
+
+- **The fact.** The nested-object walk (`fields/nested.rs`) takes the register of the last
+  parameter of the object's constructor when it is an `EScopeType` (`x3` for `(int,
+  ModifierCategory, EScopeType)`) at the constructor call; a factory that the walk enters passes
+  it on. `CollectionField.construction_scopes` holds the distinct scope of each joined path, with
+  `None` for an unknown one.
+- **Stated rule, not derived.** The constructor stores its scope argument in the word that the
+  member reader loads for `potential`, and nothing writes that word before the read. The walk
+  does not run the constructor. The session applies the rule only when every clause key that
+  loads its scope from the clause loads the same word (`src/session/triggered_modifiers.rs`).
+  Hand-read on M452: Static `CTriggeredModifierBase(int, ModifierCategory, EScopeType)`
+  `0x100d10640` does `mov x21, x3` … `str x21, [x19, #0x3e8]`; CustomDesc `0x100d11c54` stores
+  `x3` at `+0x428`; the Tooltip constructor `0x100d105dc` passes its arguments unchanged to the
+  Static constructor. Derive it (run the constructor with a marked `x3`) when a clause class
+  stores the scope elsewhere, or when a creation site writes the clause between construction and
+  read.
+- **Checks.** `tests/expected/m452/triggered-modifiers.json` has each variant's field and key
+  scopes. The config agrees for buildings and pop jobs `triggered_planet_modifier` (`colony`),
+  edicts `triggered_country_modifier` and traditions `triggered_modifier` (`country`). It disagrees
+  for megastructures `triggered_country_modifier`: config `country`, engine `megastructure`
+  (`CMegaStructureType::ReadMember` passes scope `1` through the by-reference factory at
+  `0x101124b58`). Keep the engine result. The config names by field the scope the modifier
+  applies to; the engine reads `potential` in the creation scope. Buildings
+  `triggered_country_modifier` reads in `colony` where the config says `country`, and its clause
+  alias (`triggered_modifier_by_planet_clause`) agrees with the engine.
+- **Atlas.** Atlas credits a field's `push_scope` claim from `read_scope` alone, so situations
+  `triggered_modifier` and `triggered_target_modifier` gain an answer: `situation`, where the
+  field annotations say `country` and `planet` and the clause alias
+  (`triggered_modifier_by_situation_clause`) says the situation. A `replace_scopes` claim also
+  needs entry contexts, which no clause field has yet.
+
 ## Gaps
 
-- `potential` and `modifier` keep their read-scope gaps; the scope is a constant at each creation
-  site and stays with SDK-549.
+- `modifier` keeps a read-scope gap: its embedded reader takes no scope argument
+  (`no-scope-parameter`), and the Tooltip variant has no join for it.
 - `mult` and `multiplier` keep the scoped-literal conversion and operand-method gaps of
   [scoped numeric](scoped-numeric.md).
 - The embedded block keeps every SDK-607 gap. For `other_keys` the gaps are stated on the field,
@@ -157,11 +193,11 @@ with `cardinality` and `replace_scopes` (cwtools `common/pop_jobs.cwt`, clause b
   for `triggered_system_modifier`) and leaves the minimum unresolved, neither of which these gaps
   touch;
 - credits `scope_context` only with a known `read_scope`, entry contexts and no `UnresolvedPath`
-  gap on the field. These fields have an unresolved read scope (`potential` stored scope,
-  `modifier` scope argument, SDK-808) and no entry contexts, as the Static fields have.
+  gap on the field. These fields read in their [construction scope](#read-scope-sdk-808) since
+  SDK-808, but have no entry contexts, as the Static fields have.
 
 **Reopen** the embedded-point limit when it is the last obstacle to a pop job `scope_context`
-claim (after SDK-808 and the entry contexts). Reopen the delegate and destination limits when Atlas
+claim (after the entry contexts). Reopen the delegate and destination limits when Atlas
 publishes triggered-clause members or `single_alias` claims.
 
 **M452 facts.** Executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`,

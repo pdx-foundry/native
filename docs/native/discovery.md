@@ -73,7 +73,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | Owner | Gaps | Registries | Shapes |
 | --- | ---: | ---: | --- |
 | SDK-627 | 1,615 | 119 | Repeat behavior (`UnresolvedStorage`) |
-| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask |
+| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask: clauses repaired, other gaps name their obstacle, zero mask open |
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
@@ -188,6 +188,38 @@ SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recordin
 gap, so their reader kinds become complete: 1,576 to 1,581 (81.83% to 82.09%), and all units
 4,734 to 4,739 of 7,515 (62.99% to 63.06%). `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
+SDK-808 names the obstacle of each read-scope gap ([gap details](#read-time-block-scopes-sdk-549))
+and reads each [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) in the scope
+that its constructor receives. Over a recording at its merge with `main` `29b025c`, the open gaps
+went from 4,031 to 3,896, and scope context from 1,323 to 1,390 of 1,926 (68.69% to 72.17%); all
+units from 4,739 to 4,806 of 7,515 (63.06% to 63.95%). No other relationship changed. `--diff`
+names 105 registries: 19 change their scope-context counts (67 clause fields become complete, 17
+of them in `common/traits`), and every one changes its open shapes.
+
+| Read-scope gap | Before | After |
+| --- | ---: | ---: |
+| `scope-argument` | 894 | 1 |
+| `reader-path` | — | 739 |
+| `no-scope-parameter` | — | 88 |
+| `stored-scope` | 74 | 5 |
+| `zero-mask` | 29 | 29 |
+
+The 69 clause fields and their 69 `potential` keys close. 722 of the `reader-path` gaps are on
+fields with no reader (418 are the 19 unread `CEvent` fields of the 22 event kinds); 17 are an
+unresolved alternative beside a joined one. The `no-scope-parameter` gaps are 73
+`CPersistent::Read` blocks (24 `pre_triggers`, embedded objects, unproven weight-named blocks), the
+5 Tooltip `modifier` keys and 10 readers of kind `Unknown`. In the command population, the 911
+`scope-argument` gaps of 427 answers become 781 `reader-path`, 120 `no-scope-parameter` and 15
+`scope-argument`; no completeness changes.
+
+**Atlas need.** Joined through the config type paths, 86 `replace_scopes` and `push_scope` claims
+sat on fields with a read-scope gap (ledger of Atlas `63c2028`). A `replace_scopes` claim needs a
+known read scope, entry contexts and no `UnresolvedPath` gap on the field; a `push_scope` claim
+needs the read scope only. The clause repair answers 39 claims' read scope; the two situations
+`push_scope` claims gain an answer now, and the 37 `replace_scopes` claims wait on clause entry
+contexts. The 23 claims on `reader-path` fields wait on their readers. Only the zero-mask fields
+would credit `replace_scopes` claims now (7); they stay open.
+
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
@@ -204,8 +236,9 @@ baseline names 49 registries: 7 change from the repairs and 46 move gaps to the 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key
 owners](registry-fields.md#root-key-owners-sdk-813)).
-The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
-the type-wide `event` block). The run proposes no manual exception.
+The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`, a [decided
+limit](registry-fields.md#the-events-loader-on-m452)) and SDK-815 (Atlas: the type-wide `event`
+block). The run proposes no manual exception.
 
 ## Read-time block scopes (SDK-549)
 
@@ -239,6 +272,26 @@ stores the army mask, but the method does not establish that value at member ent
 use the same rules and report gaps at their full key path. The removed strict forwarding proof
 and its string-helper findings are preserved in `.local/sdk-549/implementation/strict-forwarding-retained`.
 An unfinished member walk also keeps each established family's scope alternatives partial.
+
+**Gap details (SDK-808).** A read-scope gap names why a block alternative gives no scope:
+
+| Detail | Obstacle | Owner of the repair |
+| --- | --- | --- |
+| `reader-path` | The path stops before a reader, so no reader receives a scope. The field also has the reader gap. | The reader tickets (SDK-710; the `events` fields) |
+| `no-scope-parameter` | The reader takes no `EScopeType`, such as `CPersistent::Read` of an embedded object or a block whose object reader is not proven. | The object's own reader or stored scope |
+| `scope-argument` | The reader takes a scope, and the argument is not a constant, the enclosing scope or a load. | This method |
+| `stored-scope` | The argument loads a word that the method does not establish at member entry. | This method |
+| `zero-mask` | The argument is scope 0. | Kept open: see below |
+| `construction-scope` | A [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) whose constructor takes no scope. | This method |
+
+The zero mask stays open. `CTrigger::CheckScopeSupport(EScopeType)` (`0x100d0863c`) returns
+true for scope 0, and an event kind built with scope 0 already reads in no scope
+([event kinds](registry-fields.md#event-kinds)). A known empty list would also need the readers'
+later scope checks, the reason for decision D5(a) on weight entries. Close it when the later
+checks of the zero-mask root readers are read, or when the read-time rule is accepted for
+the 7 claims that it would credit (`fallen_empires.possible`, civics `playable` and
+`ai_playable`, buildings `planet_limit` and `district_limit`, `bombardment_stances.planet_damage`,
+`authorities.random_weight`).
 
 The focused file-load fixture confirms the engine-selected country scope for a tradition trigger
 and effect. Inline fixture validation also passes. File-load diagnostics use the bound log hooks
