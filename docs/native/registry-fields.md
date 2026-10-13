@@ -810,13 +810,15 @@ The 20 `*_event` effects on M452 are the typed kinds without `pop_event`. The co
 `8574760` has 21 kinds: no `pop_event`, and `carrier` as the push scope of `carrier_event`, which
 the engine reads as planet or ship. No vanilla file in `events/` has a `pop_event` key.
 
-**`namespace` is not answered (SDK-814).** An accepted limit. A `namespace = x` root statement
-registers a `CNameSpace` in the manager's hash table and is not a `CEvent` field, so
-`registry_fields("events")` does not list it; `loader_rules` names it only as a
-`RootKey(namespace)` definition form. Atlas's `events/` exception "`event_namespace`" keeps its 3
-claims (`type_existence`, `field_existence` and `value_form` of `namespace`) with no Native
-answer, and an answer would also need an Atlas join. Answer the root key and its value form on
-the events answer, with no new operation, when Atlas needs it beyond these 3 claims.
+**`namespace` gets no field answer (SDK-814).** A decided limit of the events answer. A
+`namespace = x` root statement registers a `CNameSpace` in the manager's hash table and is not a
+`CEvent` field, so `registry_fields("events")` does not list it. `loader_rules("events")` already
+answers the statement: `RootKey(namespace)` with `DefinitionName::Value`, so the value is the
+namespace's name. The sweep counts no Native gap for it, so `ACCEPTED_LIMITS` has no entry. Atlas's
+`events/` exception "`event_namespace`" keeps its 3 claims (`type_existence`, `field_existence`
+and `value_form` of `namespace`), because Atlas does not join that `loader_rules` answer to them.
+Add the join in Atlas, and add a Native answer only if the join needs more than the definition
+name, when Atlas needs `namespace` beyond these 3 claims.
 
 ### Event kinds
 
