@@ -147,8 +147,9 @@ families are Milestone 6.
    contract: a listed registry gets an answer or `Unsupported`, never `UnknownRegistry`. SDK-786
    joins a directory that a caller enumerates; SDK-787 answers `registry_fields` through the
    owner, and SDK-802 answers `derived_names` and `modifier_families`, for non-template
-   registries. SDK-789 and SDK-794 join the strategic-resource and planet-class generation sites
-   and name two-registry modifier templates. SDK-778 investigates the events route and nested
+   registries. SDK-789 gives the strategic-resource families their key place and live key read;
+   the planet-class sites stay a gap, because that loader builds two classes. SDK-794 names
+   two-registry modifier templates. SDK-778 investigates the events route and nested
    identity; SDK-784 settles nested definitions, or closes with no session if SDK-778 recommends
    an amendment.
 2. **Events and pre_triggers.** SDK-702 establishes event kinds and the scope each kind sets,

@@ -193,8 +193,8 @@ pub(in crate::binding) fn registry(
     let functions: Vec<u64> = root_functions
         .iter()
         .chain(&entered)
-        .chain(&constructors)
         .copied()
+        .chain(constructors.iter().map(|constructor| constructor.address))
         .collect();
     Ok(RegistryInput {
         roots,

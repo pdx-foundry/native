@@ -1,6 +1,8 @@
 //! Recipes: which layouts, bindings and live strategy make up one build's operations. A recipe is
 //! host-neutral data; a function value in it builds a binding that owns `String` or `Vec` data.
-use crate::binding::groups::{M45_TEMPLATE_LAYOUT, RegistryLayout, m452_fixture};
+use crate::binding::groups::{
+    LoaderDatabase, M45_TEMPLATE_LAYOUT, M452_LOADER_DATABASES, RegistryLayout, m452_fixture,
+};
 use crate::engine::analysis::callbacks::{CallbackLayout, RuleArray};
 use crate::engine::analysis::declarations::ParserSlots;
 use crate::engine::analysis::dynamic_names::CommandSlots;
@@ -14,6 +16,9 @@ pub(in crate::binding) enum StrategyId {
 pub(in crate::binding) struct Recipe {
     /// Where the build's template databases keep their items and key text.
     pub registry_layout: Option<RegistryLayout>,
+    /// Where each database that its own loader builds and whose item keys a session reads keeps
+    /// its items.
+    pub loader_databases: &'static [LoaderDatabase],
     /// Builds the fixture observation binding. A binding owns `String` and `Vec`, so a function
     /// holds it, as it holds `script_checks`.
     pub fixture: Option<fn() -> crate::protocol::observation::FixtureBinding>,
@@ -123,6 +128,7 @@ const M45_DEFAULT_REGISTRIES: &[&str] = &["common/traditions", "common/tradition
 
 pub(super) const M452: Recipe = Recipe {
     registry_layout: Some(M45_TEMPLATE_LAYOUT),
+    loader_databases: M452_LOADER_DATABASES,
     fixture: Some(m452_fixture),
     default_registries: M45_DEFAULT_REGISTRIES,
     strategy: StrategyId::MacSuspendedChildLoaderEntry,

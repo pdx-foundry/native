@@ -48,13 +48,13 @@ A root is a function that the engine runs for the items of one content database.
   does. On M452 the 15 such registries with one owner add one root:
   `CStrategicResource::InitPostRead`, which joins the `CModifierGeneratorBase::GenerateFrom` and
   `CDatabaseModifierGenerator<CStrategicResource>::Generate` sites to
-  `common/strategic_resources`. Its answer has no family yet: the item key place is not
-  established, because its key constructor is `CStrategicResource(CString const&, int)`, not the
-  template shape (SDK-789 gives it). The other 14 reach no generation call.
+  `common/strategic_resources` (eight families). The other 14 reach no generation call.
 - The post-read functions of `CPlanetClass`, `CZoneType::CSerializer` and
   `CEconomicCategory::CTriggeredModifierTable::CSerializer<N>` are roots with no named registry.
-  `common/planet_classes` has no one owner (its loader builds two classes), so its sites stay
-  gaps; `NamePart` has no part for them.
+  `common/planet_classes` has no one owner (its loader builds `CPlanetClass` and
+  `CPlanetClassRandomList`, both with a member reader), so `CPlanetClassModifierGenerator::CreateModifier`
+  stays an `UnnamedContent` gap and the registry is `Unsupported`. A join needs an owner rule that
+  selects the class that the loader keys by the file's top-level statements.
 - `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a second
   content object. Its names combine two registries' keys. A function is a second input when it
   takes an object of a class whose post-read code no template registry owns, except on the
@@ -97,8 +97,12 @@ The method does not establish the per-item call for two registries:
 
 ### Item keys
 
-The item constructor `<Item>::<Item>(int, CString const&)` copies the key argument inline. The
-by-value form `(int, CString)` has the same ARM64 call shape. Buildings, districts,
+The item constructor `<Item>::<Item>(int, CString const&)` copies the key argument (`x2`) inline. The
+by-value form `(int, CString)` has the same ARM64 call shape. A custom loader's item can take the
+key first: `CStrategicResource::CStrategicResource(CString const&, int)` (`0x100c60930` on M452)
+reads the key from `x1`, stores the int at `+0x18` and the key at `+0x20`. The probe runs each
+shape with the key in its own register; `COpinionModifier` has the same shape, so
+`common/opinion_modifiers` also gets a key place ([derived names](derived-names.md#population)). Buildings, districts,
 megastructures, situations and zones store the key at `+0x10`. Bypass stores its id at `+0x10`
 and the key at `+0x18`; `map_modes` also uses `+0x18`. The constructor probe establishes 156 of
 164 named registries on M45-release. Four have no matching constructor, and four constructor
@@ -108,7 +112,8 @@ offset. It also checks key uniqueness, nonempty keys and control characters.
 
 The live case `loaded_modifier_key_layouts` checks the loaded keys of the six generator
 registries (buildings, bypass, districts, megastructures, situations and zones) in one
-loaded-modifier session, and compares the `common/bypass` keys with its source keys. Their
+loaded-modifier session, and compares the `common/bypass` and `common/strategic_resources` keys
+with their source keys (26 strategic resources on M452). Their
 loaders run on the launch thread. An earlier control found the eight `common/map_modes` keys equal
 to its top-level source keys.
 
@@ -152,6 +157,14 @@ must read both words and take the copy when they differ.
 - **Generator registries.** The worker reads each registry's keys at the same point, from
   `TGameDatabase<Db>::_pInstance`. The database's directory must equal the registry, and the
   keys are at the established key offset.
+- **Custom-loader databases.** `CStrategicResourceDatabase` is no `TGameDatabase`. Its instance is
+  `CStrategicResourceDatabase::_pInstance` (`0x1032ed728` on M452). `CreateInstance` builds it in
+  place with `new(0x90)`; there is no constructor symbol. Its items are a `CPdxArray` at `+0x8`
+  (data) and `+0x14` (count), which `Init` and `GetResource(int)` use. It holds no directory text,
+  so the worker reads its keys without the directory check. The recipe states this layout
+  (`M452_LOADER_DATABASES`); a custom-loader registry whose database has no stated layout gets
+  no key read, with the reason. State another database's layout when Atlas needs its loaded
+  names.
 - **Case.** A generated name keeps the case of its item key. The table holds
   `BIOLOGICAL_logistic_growth_mult` and `LITHOID_logistic_growth_mult`, and content writes them
   in lower case. `CStaticLexer::AddDynamicToken` compares lower-case characters when it looks up a
@@ -203,14 +216,16 @@ items, and how many of the names that the template gives for them are loaded.
 | `common/resolution_categories` | `{key}_vote_strength_mult` | item | Unresolved | 37 | 37 |
 | `common/scripted_modifiers` | `{key}` (tags unresolved) | database loop | Always | 133 | 133 |
 | `common/situations` | `{key}_max_progress_add`, `{key}_max_progress_mult` | database | Unresolved | 90 | 1 each |
+| `common/strategic_resources` (M452) | `country_resource_max_{key}_add`, `ship_starbase_stockpile_{key}_collection_rate_add`/`_mult`, `starbase_collected_colony_{key}_add`, `starbase_collected_system_{key}_add`/`_mult`, `starbase_stockpile_{key}_capacity_add`/`_mult` | item | Unresolved | 26 | 26 each |
 | `common/species_archetypes` | `{key}_species_trait_points_add`, `_picks_add`, `_pop_happiness`, `_logistic_growth_mult`, `_bonus_pop_growth`, `_bonus_pop_growth_mult` | item | Unresolved | 6 | 4, 4, 2, 2, 2, 2 |
 | `common/technology/category` | `category_{key}_research_speed_mult`, `category_{key}_draw_chance_mult` | database loop | Unresolved | 13 | 13 each |
 | `common/zones` | `planet_{key}_build_speed_mult` | database | Always | 146 | 146 |
 
 `common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` return no
-family (see the gaps below). On M452 the 15 custom-loader registries with one owner answer partial
-with no family (see [Roots](#roots)); the six without one owner are `Unsupported` with the reason of
-the owner join. The five build-speed and
+family (see the gaps below). On M452 `common/strategic_resources` adds eight families (23 registries
+in `tests/expected/m452/modifier-families.json`); the other 14 custom-loader registries with one
+owner answer partial with no family (see [Roots](#roots)), and the six without one owner are
+`Unsupported` with the reason of the owner join. The five build-speed and
 windup templates of buildings, districts and bypass also equal all 680 registrations that the
 SDK-498 prototype hooks observed in two live runs. That control does not cover the district and
 building maximum families. The hooked sites on M45-release are `0x1000df770` (buildings),
@@ -238,6 +253,10 @@ pass a mask from an item field (for economic categories `+0x128`, the content's
 - **Path limit.** The item-root runs of districts, espionage types, ethics, species archetypes
   and economic categories exceed the path limit.
 - **Per-item call not established.** `pop_jobs` and `resolution_categories` (above).
+  `common/strategic_resources` has no database constructor symbol, so the loader run has no
+  database to start from (`NoDatabaseConstructor`). `CStrategicResourceDatabase::Init` constructs
+  each item and calls its `Read` through the vtable; running `CreateInstance` as the database
+  constructor, with the database layout above, is the change when Atlas needs `Always` here.
 - **Not traced.** Anomaly root runs have no failed path, but half of their returned paths skip
   the registration.
 

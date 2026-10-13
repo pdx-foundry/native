@@ -164,13 +164,15 @@ The 21 registries that a database's own loader names
 their loader builds, as `registry_fields` reads them. The six without one owner are
 `Unsupported` with the join's reason: `common/colors`, `common/component_tags`,
 `common/ship_behaviors` and `gfx/worldgfx` (no class with a member reader),
-`common/planet_classes` (two classes) and `prescripted_countries` (two databases). The other 15
-answer partial with no name, each with the `constructor` gap: the method finds the key place only
-in a template key constructor `Owner::Owner(int, CString const&)`, and these owners have other
-shapes, such as `CTrait::CTrait(CString, int)`, `CStrategicResource::CStrategicResource(CString
-const&, int)` and `CStaticModifier::CStaticModifier(CString const&)`. A key-constructor shape per
-loader is a change when Atlas needs the names of one of these registries; SDK-789 gives
-`common/strategic_resources` its key layout.
+`common/planet_classes` (two classes) and `prescripted_countries` (two databases). The key probe
+runs the template key constructor `Owner::Owner(int, CString const&)` (key in `x2`; the by-value
+form has the same call shape) and the key-first `Owner::Owner(CString const&, int)` (key in `x1`).
+On M452 the key-first shape gives `common/strategic_resources` (`+0x20`; three names, `{key}`,
+`{key}_desc` and `{key}_custom_tooltip`) and `common/opinion_modifiers` (one name, `{key}`) a key
+place. The other 13 answer partial with no name, each with the `constructor` gap; their owners
+have other shapes, such as `CTrait::CTrait(CString, int)` and
+`CStaticModifier::CStaticModifier(CString const&)`. A further shape is a change when Atlas needs
+the names of one of these registries.
 
 Gap shapes, by registry (the answer-item shapes also give their gap count):
 

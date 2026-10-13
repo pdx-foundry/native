@@ -10,7 +10,8 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::{Code, ReadOnlyData},
     families::{
-        DatabaseLayout, Definitions, FamilyInput, KeyStorageInput, Receiver, RegistryInput, Root,
+        DatabaseLayout, Definitions, FamilyInput, KeyConstructor, KeyStorageInput, Receiver,
+        RegistryInput, Root,
         joins::{self, DEPTH, GenerationSite, Graph, Joins, RootOf},
         loading::{Function, Loading},
     },
@@ -146,7 +147,7 @@ pub(in crate::binding) fn index(
             .iter()
             .map(|root| root.function)
             .chain(entered.iter().copied())
-            .chain(constructors.iter().copied())
+            .chain(constructors.iter().map(|constructor| constructor.address))
             .collect();
         inputs.insert(
             registry.name.to_owned(),
@@ -933,11 +934,25 @@ impl<'a> Names<'a> {
     }
 }
 
-/// The item constructors that take the key: by reference or by value.
-pub(super) fn constructors(symbols: &[Symbol], owner: &str) -> Vec<u64> {
-    ["CString const&", "CString"]
+/// The item constructors that take the key and one int: the template shape, with the key by
+/// reference or by value after the int, and the key by reference before the int.
+pub(super) fn constructors(symbols: &[Symbol], owner: &str) -> Vec<KeyConstructor> {
+    const SHAPES: [(&str, usize); 3] = [
+        ("int, CString const&", 2),
+        ("int, CString", 2),
+        ("CString const&, int", 1),
+    ];
+
+    SHAPES
         .iter()
-        .flat_map(|key| addresses(symbols, &format!("{owner}::{owner}(int, {key})")))
+        .flat_map(|(parameters, key_register)| {
+            addresses(symbols, &format!("{owner}::{owner}({parameters})"))
+                .into_iter()
+                .map(|address| KeyConstructor {
+                    address,
+                    key_register: *key_register,
+                })
+        })
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect()
@@ -953,8 +968,13 @@ pub(in crate::binding) fn key_storage(
     let constructors = constructors(symbols, owner);
     let text = Text::read(bytes, symbols)?;
 
+    let addresses: Vec<u64> = constructors
+        .iter()
+        .map(|constructor| constructor.address)
+        .collect();
+
     Ok(KeyStorageInput {
-        code: decoded(&text, &constructors),
+        code: decoded(&text, &addresses),
         data: super::declarations::read_only_data(bytes)?,
         strings: string_functions(symbols),
         layout: StringLayout {

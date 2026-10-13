@@ -239,7 +239,10 @@ fn analyze_roots(roots: Vec<Arm64>, helpers: Vec<Arm64>, storage: &Storage) -> N
             })
             .collect(),
         entered,
-        constructors: vec![CONSTRUCTOR],
+        constructors: vec![KeyConstructor {
+            address: CONSTRUCTOR,
+            key_register: 2,
+        }],
         loading: None,
         code: Code::decode(&ranges).expect("authored code decodes"),
     };

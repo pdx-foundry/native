@@ -206,8 +206,10 @@ impl Binding {
             .map(|directory| {
                 let candidate = named_candidate(verified.named_candidates(), directory)?;
                 let address = initial_loader(candidate, directory)?;
-                let key_offset =
-                    verified.registry_key_offset(candidate, layout.string_tag_offset());
+                let key_offset = verified.registry_key_offset(
+                    &candidate.record.owner_candidate,
+                    layout.string_tag_offset(),
+                );
                 Ok((
                     directory.clone(),
                     groups::registry_binding(layout, directory, address, key_offset),
@@ -217,8 +219,8 @@ impl Binding {
     }
 
     /// Where this session reads the loaded modifier table, and the database instance of each
-    /// registry in `registries` whose item keys it reads there. A registry with no template
-    /// loader gets no key read, with the reason.
+    /// registry in `registries` whose item keys it reads there. A registry whose own loader builds
+    /// a database with no stated item layout gets no key read, with the reason.
     pub(crate) fn modifier_table_binding(
         &self,
         registries: &[String],
@@ -227,6 +229,7 @@ impl Binding {
         let Some(layout) = operation.and_then(|operation| operation.registry_layout) else {
             return Err("this build has no loaded modifier table layout".into());
         };
+        let loader_databases = operation.map_or(&[][..], |operation| operation.loader_databases);
         let verified = self
             .analysis
             .verified()
@@ -234,22 +237,35 @@ impl Binding {
         let table = verified.modifier_table(layout.string_tag_offset())?;
         let mut instances = std::collections::BTreeMap::new();
         for directory in registries {
-            let candidate = match unique_named_candidate(verified.named_candidates(), directory) {
-                Some(candidate) => candidate,
-                None if matches!(verified.registry_owner(directory), Some(Ok(_))) => {
-                    let unread =
-                        "the registry has no template loader, so its item keys are not read";
-                    instances.insert(directory.clone(), (0, Err(unread.into())));
-                    continue;
+            // A template candidate's database is a `TGameDatabase`; a custom loader's is its own.
+            let database = match unique_named_candidate(verified.named_candidates(), directory) {
+                Some(candidate) => {
+                    let record = &candidate.record;
+                    let instance = format!("TGameDatabase<{}>::_pInstance", record.database);
+                    Some((record.owner_candidate.as_str(), instance, layout.items()))
                 }
-                None => return Err(format!("{directory}: no unique static registry candidate")),
+                None => {
+                    let Some(Ok(registry)) = verified.named_registry(directory) else {
+                        return Err(format!("{directory}: no unique static registry candidate"));
+                    };
+                    loader_databases
+                        .iter()
+                        .find(|database| database.class == registry.database)
+                        .map(|database| {
+                            let instance = format!("{}::_pInstance", database.class);
+                            (registry.owner, instance, database.items)
+                        })
+                }
             };
-            let instance = verified.symbol(&format!(
-                "TGameDatabase<{}>::_pInstance",
-                candidate.record.database
-            ));
-            let key_offset = verified.registry_key_offset(candidate, layout.string_tag_offset());
-            instances.insert(directory.clone(), registry_instance(instance, key_offset));
+            let Some((owner, instance, items)) = database else {
+                let unread = "the registry's own loader builds a database whose item layout is not stated, so its item keys are not read";
+                instances.insert(directory.clone(), (0, layout.items(), Err(unread.into())));
+                continue;
+            };
+
+            let key_offset = verified.registry_key_offset(owner, layout.string_tag_offset());
+            let (instance, key_offset) = registry_instance(verified.symbol(&instance), key_offset);
+            instances.insert(directory.clone(), (instance, items, key_offset));
         }
         Ok(groups::modifier_table_binding(
             table.layout,

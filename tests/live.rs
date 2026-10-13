@@ -42,6 +42,8 @@ const TRADITIONS: &str = "common/traditions";
 const CATEGORIES: &str = "common/tradition_categories";
 const ASCENSION_PERKS: &str = "common/ascension_perks";
 const RELICS: &str = "common/relics";
+/// A registry whose own loader builds its database (SDK-789).
+const STRATEGIC_RESOURCES: &str = "common/strategic_resources";
 /// The registries whose database generators register modifier families (SDK-540), with the
 /// item counts of the catalogued M452 build.
 const GENERATOR_REGISTRIES: [(&str, usize); 6] = [
@@ -2913,6 +2915,12 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
                 "common/technology/category",
                 "computing",
             ),
+            // SDK-789: a registry whose own loader builds its database.
+            (
+                "country_resource_max_alloys_add",
+                STRATEGIC_RESOURCES,
+                "alloys",
+            ),
         ] {
             let modifier = by_name.get(name).ok_or(name)?;
             if modifier.declared
@@ -3739,6 +3747,12 @@ async fn loaded_modifier_key_layouts(native: &Native) -> Outcome {
                 source_keys_match(keys, registry)?;
             }
         }
+        let strategic = answer
+            .value
+            .registry_items
+            .get(STRATEGIC_RESOURCES)
+            .ok_or_else(|| format!("no loaded strategic resources: {:?}", answer.gaps))?;
+        source_keys_match(strategic, STRATEGIC_RESOURCES)?;
         Ok(())
     }
     .await;

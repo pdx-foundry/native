@@ -16,6 +16,7 @@ pub(super) struct ResolvedObservation {
     pub script_checks: Option<crate::protocol::script_check::ScriptCheckBinding>,
     pub strategy: platform::StrategyResolution,
     pub registry_layout: Option<groups::RegistryLayout>,
+    pub loader_databases: &'static [groups::LoaderDatabase],
     pub default_registries: &'static [&'static str],
 }
 
@@ -65,6 +66,7 @@ fn assemble(
         machine: machine::resolve(image.architecture)?,
         strategy: platform::resolve(recipe.strategy),
         registry_layout: recipe.registry_layout,
+        loader_databases: recipe.loader_databases,
         default_registries: recipe.default_registries,
         fixture: recipe.fixture.map(|bind| bind()),
         script_checks: recipe.script_checks.map(|bind| bind()),

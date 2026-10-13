@@ -218,6 +218,9 @@ pub(super) fn not_established(reason: &NotEstablished) -> String {
             "no function of the database's classes calls a constructor of the item's class".into()
         }
         NotEstablished::NoVtable => "the item's class has no vtable in the executable".into(),
+        NotEstablished::NoDatabaseConstructor => {
+            "the database's class has no constructor, so the database that its loader receives is not known".into()
+        }
         NotEstablished::ConstructedElsewhere { .. } => {
             "another function constructs an item outside the database's code".into()
         }

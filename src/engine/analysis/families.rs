@@ -105,7 +105,7 @@ pub struct RegistryInput {
     /// the composers that they call.
     pub entered: BTreeSet<u64>,
     /// Every body of the item constructor that takes the key.
-    pub constructors: Vec<u64>,
+    pub constructors: Vec<KeyConstructor>,
     /// The code that makes the registry's items, when it has an item root.
     pub loading: Option<Loading>,
     /// Every root, entered function and constructor body, and the loading code.
@@ -130,10 +130,18 @@ pub struct Definitions {
     pub masks: BTreeMap<u64, u64>,
 }
 
+/// An item constructor that takes the key and one int, and the argument register (`x1` or `x2`)
+/// that holds the key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct KeyConstructor {
+    pub address: u64,
+    pub key_register: usize,
+}
+
 /// Constructor code and string behavior needed to locate an item's key independently of
 /// modifier generation.
 pub struct KeyStorageInput {
-    pub constructors: Vec<u64>,
+    pub constructors: Vec<KeyConstructor>,
     pub strings: StringFunctions,
     pub layout: StringLayout,
     pub code: Code,
@@ -156,7 +164,7 @@ pub(super) fn key_storage(
     data: &ReadOnlyData,
     strings: &StringFunctions,
     layout: StringLayout,
-    constructors: &[u64],
+    constructors: &[KeyConstructor],
 ) -> Result<u64, Unresolved> {
     if constructors.is_empty() {
         return Err(Unresolved::new("constructor"));
@@ -355,7 +363,7 @@ fn key_offset(
     data: &ReadOnlyData,
     strings: &StringFunctions,
     layout: StringLayout,
-    constructor: u64,
+    constructor: KeyConstructor,
 ) -> Result<u64, Unresolved> {
     let mut machine = Machine::new(code, data);
     let item = machine.reserve(ITEM_SPAN);
@@ -363,7 +371,8 @@ fn key_offset(
     write_key(&mut machine, layout, key, KeyForm::Long);
     machine.set_register(0, item);
     machine.set_register(1, 0);
-    machine.set_register(2, key);
+    machine.set_register(2, 0);
+    machine.set_register(constructor.key_register, key);
 
     let model = Model {
         functions: strings,
@@ -372,7 +381,7 @@ fn key_offset(
         sources: Sources::key_only(LONG_KEY),
     };
     let mut arena = Arena::default();
-    let paths = machine.run_paths(constructor, &mut |target, machine| {
+    let paths = machine.run_paths(constructor.address, &mut |target, machine| {
         if let Some(offset) = stored_key(machine, item) {
             machine.label(FOUND_KEY, offset);
             return Ok(Call::Stop);
@@ -817,15 +826,20 @@ mod tests {
     /// through vector registers. The temporary's last eight bytes are never written, so the copy
     /// of its capacity and flag byte is unknown.
     fn constructor(offset: u64) -> Rows {
+        constructor_with_key_in(offset, "x2")
+    }
+
+    /// A constructor that copies the key from the argument `key` into the item at `offset`.
+    fn constructor_with_key_in(offset: u64, key: &str) -> Rows {
         rows(
             CONSTRUCTOR,
             &[
                 ("sub", "sp,sp,#0x40"),
                 ("mov", "x20,x0"),
-                ("ldrsb", "w8,[x2,#0x17]"),
-                ("ldr", "x9,[x2]"),
+                ("ldrsb", &format!("w8,[{key},#0x17]")),
+                ("ldr", &format!("x9,[{key}]")),
                 ("cmp", "w8,#0"),
-                ("csel", "x22,x9,x2,lt"),
+                ("csel", &format!("x22,x9,{key},lt")),
                 ("mov", "x0,x22"),
                 ("bl", &format!("#{LENGTH:#x}")),
                 ("mov", "x23,x0"),
@@ -1082,10 +1096,17 @@ mod tests {
             registry: RegistryInput {
                 roots,
                 entered: entered.iter().copied().collect(),
-                constructors: constructor.into_iter().collect(),
+                constructors: constructor.into_iter().map(template_constructor).collect(),
                 loading: None,
                 code: code(parts),
             },
+        }
+    }
+
+    fn template_constructor(address: u64) -> KeyConstructor {
+        KeyConstructor {
+            address,
+            key_register: 2,
         }
     }
 
@@ -1849,7 +1870,7 @@ mod tests {
     fn live_key_storage_uses_each_item_constructors_offset() {
         let fixture = family_input(&[constructor(0x18)], &[], None);
         let key = KeyStorageInput {
-            constructors: vec![CONSTRUCTOR],
+            constructors: vec![template_constructor(CONSTRUCTOR)],
             strings: fixture.input.strings,
             layout: fixture.input.layout,
             code: fixture.registry.code,
@@ -1865,5 +1886,23 @@ mod tests {
             item_key_offset(&missing),
             Err(Unresolved::new("constructor"))
         );
+    }
+
+    #[test]
+    fn a_constructor_that_takes_the_key_first_reads_it_from_x1() {
+        let fixture = family_input(&[constructor_with_key_in(0x30, "x1")], &[], None);
+        let key = |key_register| KeyStorageInput {
+            constructors: vec![KeyConstructor {
+                address: CONSTRUCTOR,
+                key_register,
+            }],
+            strings: fixture.input.strings.clone(),
+            layout: fixture.input.layout,
+            code: fixture.registry.code.clone(),
+            data: fixture.input.data.clone(),
+        };
+
+        assert_eq!(item_key_offset(&key(1)), Ok(0x30));
+        assert!(item_key_offset(&key(2)).is_err());
     }
 }

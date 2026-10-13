@@ -576,11 +576,12 @@ fn m452_loaded_modifier_table_binds_by_symbol_with_each_generator_registry() {
         table.registries["common/zones"].key_storage,
         KeyStorage::Offset(0x10)
     );
-    // A custom-loader registry joins generation sites, but its keys are not read.
-    assert!(matches!(
-        &table.registries["common/strategic_resources"].key_storage,
-        KeyStorage::Unavailable(reason) if reason.contains("no template loader")
-    ));
+    // A database that its own loader builds: its own instance and item layout, no directory.
+    let strategic = &table.registries["common/strategic_resources"];
+    assert_eq!(strategic.instance, 0x1032ed728);
+    assert_eq!(strategic.directory_offset, None);
+    assert_eq!((strategic.data_offset, strategic.count_offset), (0x8, 0x14));
+    assert_eq!(strategic.key_storage, KeyStorage::Offset(0x20));
     assert!(
         binding
             .modifier_table_binding(&["common/no_such_registry".into()])
