@@ -1012,7 +1012,7 @@ mod tests {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.detail == "read-scope: scope-argument")
+                .any(|gap| gap.detail == "read-scope: reader-path")
         );
     }
 
@@ -1026,7 +1026,7 @@ mod tests {
         block.token = 9;
         block.readers = vec![ReaderJoin::Joined {
             callee: "CTrigger::Read(CReader&, EScopeType)".into(),
-            arguments: [("x2".into(), Value::Constant(0))].into(),
+            arguments: [("x2".into(), Value::Stack(8))].into(),
             tail: true,
         }];
         child.fields.fields.push(block);
@@ -1052,7 +1052,7 @@ mod tests {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.detail == "read-scope: zero-mask"
+                .any(|gap| gap.detail == "read-scope: scope-argument"
                     && gap.subject
                         == Some(GapSubject::key_path(vec![
                             "district_type".into(),

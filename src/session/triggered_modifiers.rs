@@ -1,7 +1,10 @@
 //! Attach triggered modifier clause grammar to fields whose collected object has a clause reader.
 use super::push_once;
 use crate::engine::analysis::{
-    fields::{ConcreteReader, ReaderJoin, RegistryFieldResult, RootField},
+    fields::{
+        CollectionField, ConcreteReader, PathOutcome, ReaderJoin, RegistryFieldResult, RootField,
+        Value,
+    },
     modifier_blocks::{
         ModifierBlockFacts,
         triggered::{Clause, TriggeredFacts},
@@ -13,7 +16,7 @@ use crate::engine::analysis::{
 };
 use crate::{
     BlockFamily, Field, FieldMembers, Gap, GapKind, GapSubject, GrammarProperty, ModifierMembers,
-    Reader, ReaderKind, TriggeredModifierBlock,
+    ReadScope, Reader, ReaderKind, TriggeredModifierBlock,
 };
 use std::collections::BTreeMap;
 
@@ -37,12 +40,21 @@ pub(super) fn attach(
         .iter_mut()
         .filter(|field| field.reader.family == BlockFamily::TriggeredModifier)
     {
-        let point = clause_point(result, &field.name);
+        let collection = clause_collection(result, &field.name);
+        let point = collection
+            .and_then(|collection| collection.reader.as_ref())
+            .map(|bound| bound.point);
 
         match point.and_then(|point| facts.clauses.points.get(&point)) {
             Some(Ok(clause)) => {
-                let block = normalize(clause, facts, &field.name, gaps);
+                let scopes = collection.map_or(&[][..], |collection| {
+                    collection.construction_scopes.as_slice()
+                });
+                let clause = in_construction_scope(clause);
+                let block = normalize(&clause, facts, &field.name, gaps);
+
                 field.members = FieldMembers::TriggeredModifier(Box::new(block));
+                field.read_scope = read_scope(scopes, facts.scope_names, &field.name, gaps);
             }
             failure => push(
                 gaps,
@@ -60,15 +72,92 @@ pub(super) fn attach(
     }
 }
 
-/// The address point of the clause object that the field's collection inserts.
-fn clause_point(result: &RegistryFieldResult, name: &str) -> Option<u64> {
+/// The collection that inserts the field's clause objects.
+fn clause_collection<'a>(
+    result: &'a RegistryFieldResult,
+    name: &str,
+) -> Option<&'a CollectionField> {
     let root = result.fields.iter().find(|root| root.name == name)?;
-    let collection = result
+
+    result
         .collections
         .iter()
-        .find(|collection| collection.token == root.token)?;
+        .find(|collection| collection.token == root.token)
+}
 
-    collection.reader.as_ref().map(|bound| bound.point)
+/// The scopes that a clause reads its keys in: the scopes its constructor receives, which the
+/// constructor stores in the clause's scope word (M452: `CTriggeredModifierBase` stores its
+/// `EScopeType` argument at `+0x3e8`, or `+0x428` for the custom-description variant).
+fn read_scope(
+    scopes: &[Option<i64>],
+    names: Option<&[String]>,
+    field: &str,
+    gaps: &mut Vec<Gap>,
+) -> GrammarProperty<Vec<ReadScope>> {
+    let subject = GapSubject::field(field);
+    if scopes.is_empty() {
+        push(
+            gaps,
+            GapKind::UnresolvedPath,
+            subject,
+            "read-scope: construction-scope".into(),
+        );
+        return GrammarProperty::Unresolved;
+    }
+    let arguments = scopes
+        .iter()
+        .map(|scope| scope.map(Value::Constant))
+        .collect();
+
+    super::read_scope::normalize_scopes(arguments, names, subject, gaps)
+}
+
+/// The clause with the scope that its keys load from the clause object replaced by the clause's
+/// own read scope, when every such key loads the same word. That word is the scope that the
+/// constructor stores, so equal clause readers keep equal key grammar under different owners.
+fn in_construction_scope(clause: &Clause) -> Clause {
+    let mut clause = clause.clone();
+    let joins = clause
+        .fields
+        .iter_mut()
+        .flat_map(|root| root.readers.iter_mut())
+        .chain(
+            clause
+                .paths
+                .iter_mut()
+                .filter_map(|path| match &mut path.outcome {
+                    PathOutcome::Reader(join) => Some(join),
+                    _ => None,
+                }),
+        );
+    let stored: Vec<_> = joins.filter_map(stored_scope).collect();
+    let mut words = stored.iter().map(|argument| (**argument).clone());
+    let Some(word) = words.next() else {
+        return clause;
+    };
+    if words.any(|other| other != word) {
+        return clause;
+    }
+    for argument in stored {
+        *argument = Value::EnclosingScope;
+    }
+
+    clause
+}
+
+/// The scope argument of a join that loads its scope from the clause object.
+fn stored_scope(join: &mut ReaderJoin) -> Option<&mut Value> {
+    let ReaderJoin::Joined {
+        callee, arguments, ..
+    } = join
+    else {
+        return None;
+    };
+    let register = readers::scope_register(callee)?;
+    let argument = arguments.get_mut(register)?;
+
+    matches!(argument, Value::Load(base, _) if matches!(**base, Value::Owner(_)))
+        .then_some(argument)
 }
 
 fn normalize(
@@ -277,4 +366,105 @@ fn push(gaps: &mut Vec<Gap>, kind: GapKind, subject: GapSubject, detail: String)
     };
 
     push_once(gaps, gap);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::analysis::stop::Unresolved;
+
+    const POTENTIAL: &str = "CTrigger::Read(CReader&, EScopeType)";
+
+    /// A clause whose `potential` and `limit` keys load their scope from `potential` and `limit`.
+    fn clause(potential: Value, limit: Value) -> Clause {
+        let key = |name: &str, token: i64, scope: Value| RootField {
+            name: name.into(),
+            token,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: POTENTIAL.into(),
+                arguments: [
+                    ("x0".to_owned(), Value::Owner(0x3f0)),
+                    ("x1".to_owned(), Value::Reader(0)),
+                    ("x2".to_owned(), scope),
+                ]
+                .into(),
+                tail: true,
+            }],
+        };
+
+        Clause {
+            fields: vec![key("potential", 1, potential), key("limit", 2, limit)],
+            paths: vec![],
+            fixed_complete: true,
+            embedded: BTreeMap::new(),
+            other_keys: Err(Unresolved::new("none")),
+            stops: vec![],
+        }
+    }
+
+    fn scopes(clause: &Clause) -> Vec<&Value> {
+        clause
+            .fields
+            .iter()
+            .flat_map(|root| &root.readers)
+            .filter_map(|join| match join {
+                ReaderJoin::Joined { arguments, .. } => arguments.get("x2"),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn word(offset: i64) -> Value {
+        Value::Load(Box::new(Value::Owner(offset)), 8)
+    }
+
+    #[test]
+    fn keys_that_load_the_one_scope_word_read_in_the_clause_scope() {
+        let one_word = in_construction_scope(&clause(word(0x3e8), word(0x3e8)));
+        let constant = in_construction_scope(&clause(word(0x3e8), Value::Constant(4)));
+
+        assert_eq!(
+            scopes(&one_word),
+            [&Value::EnclosingScope, &Value::EnclosingScope]
+        );
+        assert_eq!(
+            scopes(&constant),
+            [&Value::EnclosingScope, &Value::Constant(4)]
+        );
+    }
+
+    #[test]
+    fn keys_that_load_two_words_keep_their_stored_scopes() {
+        let two_words = in_construction_scope(&clause(word(0x3e8), word(0x428)));
+
+        assert_eq!(scopes(&two_words), [&word(0x3e8), &word(0x428)]);
+    }
+
+    #[test]
+    fn a_clause_reads_in_the_scopes_that_its_constructor_receives() {
+        let names = ["none", "planet", "country"].map(String::from);
+        let mut gaps = Vec::new();
+
+        let known = read_scope(&[Some(4)], Some(&names), "clause", &mut gaps);
+        let GrammarProperty::Known(alternatives) = known else {
+            panic!("{known:?}");
+        };
+        assert!(
+            matches!(alternatives.as_slice(), [ReadScope::Types(types)] if types[0].name == "country")
+        );
+        assert!(gaps.is_empty(), "{gaps:?}");
+
+        let partial = read_scope(&[Some(4), None], Some(&names), "clause", &mut gaps);
+        assert!(matches!(partial, GrammarProperty::Partial(_)));
+        assert_eq!(gaps[0].detail, "read-scope: scope-argument");
+
+        gaps.clear();
+        assert_eq!(
+            read_scope(&[], Some(&names), "clause", &mut gaps),
+            GrammarProperty::Unresolved
+        );
+        assert_eq!(gaps[0].detail, "read-scope: construction-scope");
+    }
 }

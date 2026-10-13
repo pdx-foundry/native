@@ -2811,6 +2811,35 @@ fn a_collected_container_has_the_mask_that_its_factory_passes() {
     assert_eq!(clause_mask(factory_fixture()), None);
 }
 
+/// The scopes that the factory fixture's constructor receives, after `argument` sets `x3` in the
+/// factory, when the constructor is named `constructor`.
+fn construction_scopes(constructor: &str, argument: impl Fn(&mut Arm64)) -> Vec<Option<i64>> {
+    let mut input = clause_container_fixture(argument);
+    for symbol in input
+        .symbols
+        .iter_mut()
+        .filter(|symbol| symbol.address == 0x9100)
+    {
+        symbol.name = constructor.into();
+    }
+
+    derive(input).collections[0].construction_scopes.clone()
+}
+
+#[test]
+fn a_collected_object_has_the_scope_that_its_constructor_receives() {
+    const SCOPED: &str = "CChild::CChild(int, ModifierCategory, EScopeType)";
+    let constant = |code: &mut Arm64| arm64!(code; mov w3, #0x40);
+    let unknown = |code: &mut Arm64| arm64!(code; ldr x3, [x20, #0x10]);
+
+    assert_eq!(construction_scopes(SCOPED, constant), [Some(0x40)]);
+    assert_eq!(construction_scopes(SCOPED, unknown), [None]);
+    assert_eq!(
+        construction_scopes("CChild::CChild(int, ModifierCategory)", constant),
+        []
+    );
+}
+
 /// The mask of the container that the collection inserts. The root builds `inserted` with
 /// `build`, and also a container with another mask before it and another after it that it never
 /// inserts. Constructor `0x9100` gives its category argument as the mask; `0x9400` gives none.
