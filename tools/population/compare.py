@@ -313,8 +313,8 @@ def read_report(path):
     if not path.is_dir():
         return json.loads(path.read_text())
     answers = {file.relative_to(path).with_suffix("").as_posix(): json.loads(file.read_text())
-               for file in sorted(path.rglob("*.json")) if file != path / "build.json"}
-    return {"build": json.loads((path / "build.json").read_text()), "answers": answers}
+               for file in sorted(path.rglob("*.json")) if file.is_file() and file != path / "header.json"}
+    return {**json.loads((path / "header.json").read_text()), "answers": answers}
 
 
 def main():

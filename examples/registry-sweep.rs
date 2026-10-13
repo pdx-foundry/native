@@ -1162,7 +1162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let report = sweep(Path::new(directory))?;
             population::write_baseline(
                 Path::new(baseline),
-                &report["build"],
+                &json!({ "build": report["build"], "relationships": report["relationships"] }),
                 &comparison_inputs(&report)?,
             )
         }
@@ -1646,7 +1646,7 @@ mod tests {
         let baseline_root = tempfile::tempdir().unwrap();
         population::write_baseline(
             baseline_root.path(),
-            &before["build"],
+            &json!({ "build": before["build"] }),
             &comparison_inputs(&before).unwrap(),
         )
         .unwrap();
@@ -1697,7 +1697,7 @@ mod tests {
         let baseline = |report: &Value| {
             population::write_baseline(
                 baseline_root.path(),
-                &report["build"],
+                &json!({ "build": report["build"] }),
                 &comparison_inputs(report).unwrap(),
             )
             .unwrap();

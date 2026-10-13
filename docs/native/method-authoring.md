@@ -350,7 +350,7 @@ The tracked [population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
 build and basis, and reports once which absent members matched their serde defaults. It fails on a
 report that is of another kind, has no `cases` or `inventories` array, has a row without a name or
-repeats a subject, and on a baseline directory without its `build.json`; `tools/population/compare.py`
+repeats a subject, and on a baseline directory without the build in its `header.json`; `tools/population/compare.py`
 rejects the same inputs. An empty report still compares.
 
 For command grammars, run and compare the whole population. `command-population` reads
@@ -408,9 +408,13 @@ cargo run --release --example command-population -- --baseline tests/population/
 
 `--baseline DIRECTORY` replaces the directory with only comparison inputs (answers, errors,
 status, inventory uncertainty): one `<subject>.json` file per subject, where each `/` in the subject
-is a directory, and `build.json` with the exact build. Use a separate directory for each supported
-build. Repeated baseline generation is byte-identical. PRs that change different subjects change
-different files, so they merge without conflicts.
+is a directory, and `header.json` with the exact build and the report's totals (the field sweep's
+`summary`, the registry sweep's `relationships`). Use a separate directory for each supported
+build. An answer keeps its build and basis but not its method or Native version: a method revision
+would otherwise change every subject, and `--diff` ignores them. Repeated baseline generation is
+byte-identical. PRs that change answers of different subjects change different files, so they
+merge with at most a `header.json` conflict. Knowledge pages link to the header totals and do not
+restate them; a ticket's section states its own change.
 
 When a merge of `main` conflicts in a baseline, or to bring every baseline up to date at once,
 merge `origin/main` and regenerate all three baselines:
@@ -420,8 +424,8 @@ python3 tools/population/regenerate.py
 ```
 
 It stops before it generates anything when a conflict is outside the three generated baselines.
-It stages the baselines and commits nothing; review the changed answers, update the counts on the
-knowledge pages, then commit.
+It stages the baselines and commits nothing; review the changed answers and totals, then commit.
+After you resolve a conflict that it reported, run it again to continue the same merge.
 
 To record every command grammar of an installation as recorded answers, then check the record
 against a new static run apart from `Basis`:

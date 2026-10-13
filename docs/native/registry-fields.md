@@ -24,9 +24,8 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep/` (recorded at `registry-fields/v38`) holds
-the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
-fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
+`tests/population/m452/registry-field-sweep/` holds the baseline. Its `header.json` has the
+counts (`summary`): registries by completeness, root fields and reader identities. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
 change when the 19 custom-loader names joined (SDK-787);

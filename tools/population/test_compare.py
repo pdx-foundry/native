@@ -250,7 +250,7 @@ class ComparisonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "Effect/command").mkdir(parents=True)
-            (root / "build.json").write_text('"build"\n')
+            (root / "header.json").write_text('{"build": "build"}\n')
             (root / "Effect/inventory.json").write_text('{"gaps": []}\n')
             (root / "Effect/command/a.json").write_text('{"status": "complete"}\n')
             self.assertEqual(read_report(root), {"build": "build", "answers": {
@@ -261,7 +261,7 @@ class RegenerateTest(unittest.TestCase):
     def test_only_generated_baselines_may_be_left_to_regeneration(self):
         for path in ["tests/population/m452/registry-field-sweep.json",
                      "tests/population/m452/registry-sweep/common/a.json",
-                     "tests/population/m452/command-population/build.json"]:
+                     "tests/population/m452/command-population/header.json"]:
             self.assertTrue(is_generated(path), path)
         for path in ["tests/population/m452/README.md",
                      "tests/population/m452/command-fixture-sample.json",

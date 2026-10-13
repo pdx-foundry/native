@@ -27,14 +27,23 @@ def git(*arguments):
     return subprocess.run(["git", *arguments], check=True, capture_output=True, text=True).stdout
 
 
+def is_merging():
+    return subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
+                          capture_output=True).returncode == 0
+
+
+def unmerged_paths():
+    return git("diff", "--name-only", "--diff-filter=U").split()
+
+
 def merge_main():
-    git("fetch", "origin", "main")
-    if subprocess.run(["git", "merge", "--no-commit", "origin/main"]).returncode == 0:
-        return
-    unmerged = git("diff", "--name-only", "--diff-filter=U").split()
-    if not unmerged:
-        sys.exit("git merge failed without conflicts; nothing was regenerated")
-    blocking = [path for path in unmerged if not is_generated(path)]
+    """Merge origin/main, or continue a merge that an earlier run stopped on."""
+    if not is_merging():
+        git("fetch", "origin", "main")
+        merged = subprocess.run(["git", "merge", "--no-commit", "origin/main"]).returncode == 0
+        if not merged and not unmerged_paths():
+            sys.exit("git merge failed without conflicts; nothing was regenerated")
+    blocking = [path for path in unmerged_paths() if not is_generated(path)]
     if blocking:
         sys.exit("resolve these conflicts, then run this script again:\n  " + "\n  ".join(blocking))
 
@@ -61,10 +70,8 @@ def main():
         sys.exit("set STELLARIS_PATH to the installed game")
     merge_main()
     regenerate(installation)
-    merging = subprocess.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
-                             capture_output=True).returncode == 0
-    print("Baselines regenerated and staged. Review the changed answers and the counts on the "
-          "knowledge pages, then " + ("run `git commit` to finish the merge." if merging else "commit."))
+    print("Baselines regenerated and staged. Review the changed answers and totals, "
+          "then " + ("run `git commit` to finish the merge." if is_merging() else "commit."))
 
 
 if __name__ == "__main__":

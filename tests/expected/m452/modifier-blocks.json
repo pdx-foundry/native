@@ -7,7 +7,7 @@
       ]
     },
     "fixed_keys": {
-      "Partial": [
+      "Known": [
         ["name", "Skipped"],
         ["icon", "String"],
         ["key", "String"],
@@ -18,37 +18,12 @@
         ["icon_frame", "Integer"],
         ["description", "String"],
         ["important", "Boolean"],
-        ["description_parameters", "Unknown"],
+        ["description_parameters", "Block", {"AnyKey": {"Known": ["Number", "Text", {"Keyword": "long_float"}, {"Keyword": "num64"}, {"Keyword": "unum64"}]}}],
         ["divide_over_pop_groups", "Boolean"],
         ["hide_from_country_list", "Boolean"]
       ]
     },
     "gaps": [
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
-        "The modifier block analysis stopped at instruction."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
-        "The modifier block analysis stopped at reader-routing."
-      ],
-      [
-        "UnresolvedReader",
-        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
-        "The modifier block analysis stopped at instruction."
-      ],
-      [
-        "UnresolvedPath",
-        {"kind": "key_path", "path": ["modifier", "description_parameters"]},
-        "read-scope: scope-argument"
-      ],
       [
         "OutsideMethod",
         {"kind": "key_path", "path": ["modifier", "data"]},

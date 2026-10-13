@@ -12,14 +12,14 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v38` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v38`, `command-grammar/v19` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v38`, `command-grammar/v19` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v38`, `command-grammar/v19` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v38` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v38` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v38` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
-| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v38` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
+| `Native::registry_fields` | `registry-fields/v39` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v39`, `command-grammar/v19` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v39`, `command-grammar/v19` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v39`, `command-grammar/v19` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v39` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v39` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v39` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
+| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v39` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
 | `CommandGrammar.durations` | `command-grammar/v19` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v3` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
 | `Native::command_grammar` | `command-grammar/v19` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
@@ -32,7 +32,7 @@ check a method in one task.
 | `Native::on_actions`, `Native::game_rules` | `callbacks/v5` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
 | `Native::modifier_families` | `modifier-families/v4` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
-| `Field.accepted_categories` in `registry_fields` | `registry-fields/v38` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
+| `Field.accepted_categories` in `registry_fields` | `registry-fields/v39` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
@@ -51,27 +51,17 @@ SDK-798). The recording stays on the capture host; its identity and the commands
 report are in the capture.
 
 The [sweep report](method-authoring.md#report-the-registry-sweep) over the recording gives the
-tracked baseline `tests/population/m452/registry-sweep/` (each registry's statuses) and these
-rates, over 185 registries and 1,855 root fields. Every request has an answer, partial with typed
-gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
+tracked baseline `tests/population/m452/registry-sweep/`: each registry's statuses, and in its
+`header.json` the complete count, denominator and rate of each relationship (`relationships`).
+The baseline generates those totals, so this page does not restate them; each ticket below states
+its own change. Every request has an answer, partial with typed gaps, or `Unsupported`; none
+fails, is missing or names an unknown registry.
 
-| Relationship | Complete | Denominator | Rate |
-| --- | ---: | ---: | ---: |
-| Fields | 105 | 185 | 56.76% |
-| Reader kinds | 1,512 | 1,855 | 81.51% |
-| Shapes and conditions | 1,349 | 1,855 | 72.72% |
-| References | 24 | 336 | 7.14% |
-| Numerics | 216 | 517 | 41.78% |
-| Weights | 96 | 471 | 20.38% |
-| Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,247 | 1,855 | 67.22% |
-| **All units** | **4,549** | **7,259** | **62.67%** |
-
-The rates are those of the tracked baseline after SDK-676. Against the baseline before it (4,483
-of 7,268 units, 61.68%; 4,283 open gaps), SDK-676 joined 19 root fields: nine weights complete
-their weight unit, and nine modifier fields, which an unknown family had left undetermined for
-weights, leave the weight denominator. It removed 43 of the 45 container gaps: 4,243 open gaps,
-and SDK-739 accepts 48 more weight-key ranges (687 accepted in all). No naming rule is complete because every `modifier_families` answer keeps
+Against the baseline before SDK-676 (4,483 of 7,268 units, 61.68%; 4,283 open gaps), SDK-676
+joined 19 root fields: nine weights complete their weight unit, and nine modifier fields, which an
+unknown family had left undetermined for weights, leave the weight denominator. It removed 43 of
+the 45 container gaps: 4,243 open gaps, and SDK-739 accepts 48 more weight-key ranges (687
+accepted in all). No naming rule is complete because every `modifier_families` answer keeps
 one `UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
 SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all units at 3,985
 (53.06%).
@@ -93,7 +83,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
-| SDK-741 | 42 | 4 | `description_parameters` |
+| SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
@@ -184,6 +174,13 @@ The 85 new open gaps and 8 accepted ones are the planet classes' own; one says t
 scope of `random_list` is not established. One composition site that was reached only from
 planet-class code is now joined, so every `modifier_families` answer counts 17 unjoined sites, not
 18.
+
+SDK-741 established `description_parameters` as `FieldMembers::AnyKey`
+([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)). Over a new recording at its
+merge with `main` `62f029e`, the open gaps went from 4,173 to 4,051: 88 `UnresolvedReader` stops
+(`instruction`, `reader-routing`) and 22 `read-scope: scope-argument` gaps at the key, and 12 at
+the triggered clauses' other keys, root and nested. `--diff` names 8 registries; only
+`common/ascension_perks` and `common/traditions` change a status (reader kinds 1,574 to 1,576).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
@@ -378,7 +375,7 @@ which `InitPostRead` reports and replaces ([keyword domains](weight-blocks.md#ke
 ## Modifier fixed-key readers (SDK-675)
 
 The shared modifier walk reads `name`, `key` and `divide_over_pop_groups`
-([fixed-key readers](modifier-blocks.md#fixed-key-readers-sdk-675)). `description_parameters` is
+([fixed-key readers](modifier-blocks.md#fixed-key-readers-sdk-675)). `description_parameters` was
 split to SDK-741. Two of the repairs are in the shared dispatch walker, so other fields and
 commands change too: `CReader::Read(bool&)` joins a stack temporary, and `CReader::SkipToken()`
 joins with the reader alone. M452, `registry-fields/v31`:
@@ -409,9 +406,8 @@ command population, 11 effects gain Boolean keys (`add_trait.show_message`,
 fleet effects); `spawn_custom_debris` gains five named Boolean keys that it did not report before.
 No other field or command joins through the setter rule or `SkipToken`.
 
-The seven partial modifier fields are the CustomDescription variant (`1c2988588f7e8eaa`); each
-keeps the `description_parameters` gaps (14 `instruction`, 14 `reader-routing`). The triggered
-clauses stay partial for their read-scope gaps.
+The seven partial modifier fields were the CustomDescription variant (`1c2988588f7e8eaa`); each
+kept the `description_parameters` gaps (14 `instruction`, 14 `reader-routing`) until SDK-741. The triggered clauses stay partial for their read-scope gaps.
 
 ## Triggered modifier clauses (SDK-673)
 

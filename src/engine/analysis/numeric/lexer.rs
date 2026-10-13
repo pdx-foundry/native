@@ -121,7 +121,7 @@ fn table_addresses(rows: &[Instruction], lines: &[Line]) -> Option<[u64; 3]> {
 }
 
 /// The address that `adrp xN,#page` and `add xN,xN,#offset` form together.
-fn page_address(adrp: &Instruction, add: &Instruction) -> Option<u64> {
+pub(crate) fn page_address(adrp: &Instruction, add: &Instruction) -> Option<u64> {
     if adrp.operation != "adrp" {
         return None;
     }

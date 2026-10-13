@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let output = sweep(installation)?;
             return population::write_baseline(
                 Path::new(directory),
-                &output["build"],
+                &json!({ "build": output["build"], "summary": output["summary"] }),
                 &normalized_cases(&output)?,
             );
         }
@@ -821,7 +821,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         population::write_baseline(
             root.path(),
-            &json!("build"),
+            &json!({"build": "build"}),
             &normalized_cases(&full).unwrap(),
         )
         .unwrap();
