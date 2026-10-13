@@ -149,7 +149,7 @@ registries to 4, and six name conditions that it blocked). No relationship statu
 SDK-710 followed Boolean stack temporaries into their member bits and joined the
 `CReader::ReadUniform<T>` list reader ([fields with no shared
 reader](registry-fields.md#fields-with-no-shared-reader)). Over a new recording at its merge with
-`main` `606579f`, the open gaps went from 4,699 to 4,253 (`registry_fields` from 3,843 to 3,397).
+`main` `1f876e4`, the open gaps went from 4,729 to 4,283 (`registry_fields` from 3,843 to 3,397).
 Reader kinds went from 1,412 to 1,493 of 1,855 (76.12% to 80.49%), shapes and conditions from
 1,093 to 1,331 (58.92% to 71.75%) and scope context from 1,152 to 1,234 (62.10% to 66.52%). The
 numeric, reference and weight denominators lost 81 undetermined fields each, because those
