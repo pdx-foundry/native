@@ -1,0 +1,234 @@
+# ReadKeyReferenceUniform<D, CPdxArray<C const*>> as a map search for each token of the block:
+# {find} on the database argument's map (x1 + 0x58); a missing entry selects the typed null object
+# {null}. The selected object is checked through vtable slot 0x10: a valid object is appended with
+# {insert}; an invalid one is logged with {typeinfo} and not appended. On M452: ShipSize.
+sub sp,sp,#0x1b0
+stp xr0,xr1,[sp,#0x150]
+stp xr2,xr3,[sp,#0x160]
+stp xr4,xr5,[sp,#0x170]
+stp xr6,xr7,[sp,#0x180]
+stp xr8,xr9,[sp,#0x190]
+stp x29,x30,[sp,#0x1a0]
+add x29,sp,#0x1a0
+mov xr7,x2
+mov xr9,x0
+add xr10,sp,#0x18
+add xr6,xr10,#0x8
+add xr4,xr10,#0x20
+add xr5,x1,#0x58
+add xr8,xr10,#0x18
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+add xr3,xr10,#0x10
+adrp xr0,PAGE
+ldr xr0,[xr0,G] = {null}
+b @+6
+str xr2,[sp,#0x18]
+ldr w1,[xr7,#0x14]
+add x2,sp,#0x18
+mov x0,xr7
+bl CALL = {insert}
+ldr xr2,[xr9,#0x30]
+ldrb wr10,[xr2,#0x13c]
+cbnz wr10,@+11
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+str w0,[xr2,#0x10]
+cbnz w0,@+3
+mov wr10,#0x13
+str wr10,[xr2,#0x18]
+mov wr10,#0x1
+strb wr10,[xr2,#0x13c]
+ldr wr10,[xr2,#0x18]
+cmp wr10,#0x4
+ccmp wr10,#0x13,#0x4,ne
+b.eq @+114
+ldr x0,[xr9,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+38
+mov xr1,x0
+add xr10,sp,#0x18
+mov x0,xr9
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x18]
+ldrb wr11,[sp,#0x1c]
+strb wr11,[xr1,#0x4]
+str wr10,[xr1]
+mov xr2,xr1
+ldr xr10,[xr2,#0x8]!
+str wzr,[xr1,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+stp xzr,xzr,[x29,#-0x68]
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr2
+blr xr10
+ldr xr10,[sp,#0x20]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr6
+blr xr10
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr2
+blr xr10
+str xr3,[sp,#0x20]
+str wzr,[sp,#0x34]
+ldr x0,[sp,#0x28]
+cmp x0,xr4
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr x1,[x0,#0x10]
+add x0,sp,#0x18
+bl CALL = CString::CString(char const*)
+add x1,sp,#0x18
+mov x0,xr5
+bl CALL = {find}
+ldrb wr10,[x0,#0x4]
+add xr11,x0,#0x30
+cmp wr10,#0xff
+csel xr10,xr0,xr11,eq
+ldr xr2,[xr10]
+ldrsb wr10,[sp,#0x2f]
+tbnz wr10,#0x1f,@+7
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+cbnz w0,@-88
+b @+11
+ldr x1,[sp,#0x18]
+ldr xr10,[sp,#0x28]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr8
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldr xr10,[xr2]
+ldr xr10,[xr10,#0x10]
+mov x0,xr2
+blr xr10
+cbnz w0,@-99
+sub x0,x29,#0x68
+adrp x1,PAGE
+add x1,x1,G = {source}
+mov w2,#0x46
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr2,[x0,#0x10]
+adrp xr10,PAGE
+add xr10,xr10,G = {typeinfo}
+ldr xr10,[xr10,#0x8]
+and xr1,xr10,#0x7fffffffffffffff
+add xr10,sp,#0x18
+mov x0,xr9
+bl CALL = CReader::GetFileLocationDescription() const
+ldrsb wr10,[sp,#0x2f]
+ldr xr11,[sp,#0x18]
+cmp wr10,#0x0
+add xr10,sp,#0x18
+csel xr10,xr11,xr10,lt
+stp xr1,xr10,[sp,#0x8]
+sub x0,x29,#0x68
+str xr2,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Failed to read key reference '%s' from database '%s' at '%s'"
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr10,[sp,#0x2f]
+tbz wr10,#0x1f,@-123
+ldr x1,[sp,#0x18]
+ldr xr10,[sp,#0x28]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr8
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+b @-129
+ldr x0,[xr9,#0x30]
+ldr xr10,[x0]
+ldr xr10,[xr10,#0x10]
+blr xr10
+ldr x0,[xr9,#0x30]
+bl CALL = CLexer::Tok()
+ldr xr10,[x0,#0x10]
+ldrb wr10,[xr10]
+cmp wr10,#0x40
+b.ne @+44
+mov xr8,x0
+add xr7,sp,#0x18
+add xr10,sp,#0x18
+mov x0,xr9
+bl CALL = CReader::ParseAdvancedStatement()
+ldr wr10,[sp,#0x18]
+ldrb wr11,[sp,#0x1c]
+strb wr11,[xr8,#0x4]
+str wr10,[xr8]
+mov xr9,xr8
+ldr xr10,[xr9,#0x8]!
+str wzr,[xr8,#0x1c]
+ldr xr10,[xr10,#0x10]
+mov x0,xr9
+blr xr10
+add xr8,xr7,#0x8
+stp xzr,xzr,[x29,#-0x68]
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr9
+blr xr10
+ldr xr10,[sp,#0x20]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr8
+blr xr10
+ldr xr10,[xr9]
+ldr xr10,[xr10,#0x18]
+sub x1,x29,#0x68
+mov x0,xr9
+blr xr10
+adrp xr10,PAGE
+add xr10,xr10,G = vtable for CPdxHybridArray<char, (unsigned int)256, int>
+add xr10,xr10,#0x10
+str xr10,[sp,#0x20]
+str wzr,[sp,#0x34]
+ldr x0,[sp,#0x28]
+add xr10,xr7,#0x20
+cmp x0,xr10
+b.eq @+3
+cbz x0,@+2
+bl CALL = operator delete[](void*)
+ldp x29,x30,[sp,#0x1a0]
+ldp xr8,xr9,[sp,#0x190]
+ldp xr6,xr7,[sp,#0x180]
+ldp xr4,xr5,[sp,#0x170]
+ldp xr2,xr3,[sp,#0x160]
+ldp xr0,xr1,[sp,#0x150]
+add sp,sp,#0x1b0
+ret
+bl CALL = ___clang_call_terminate
+bl CALL = ___clang_call_terminate
+b @+1
+mov xr9,x0
+ldrsb wr10,[sp,#0x2f]
+tbz wr10,#0x1f,@+6
+ldr x1,[sp,#0x18]
+ldr xr10,[sp,#0x28]
+and x2,xr10,#0x7fffffffffffffff
+mov x0,xr8
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr9
+bl CALL = __Unwind_Resume

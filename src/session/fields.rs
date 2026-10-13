@@ -486,6 +486,7 @@ pub(super) fn reference_lookup(
         on_missing: match lookup.on_missing {
             Missing::NullObject => MissingResult::NullObject,
             Missing::ScriptedTriggerPlaceholder => MissingResult::ScriptedTriggerPlaceholder,
+            Missing::Skipped => MissingResult::Skipped,
         },
     }
 }
@@ -517,11 +518,6 @@ pub(super) fn readers_reference_gap(
                     missing.insert(NO_DIRECTORY);
                 }
                 match &fact.lookup {
-                    Err(stop) if stop.reason == "reference-list-form" => {
-                        missing.insert(
-                            "the reader reads a list of keys, whose lookups are not established",
-                        );
-                    }
                     Err(_) => {
                         missing.insert("no qualified lookup shape matched the reader");
                     }

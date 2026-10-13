@@ -1,0 +1,129 @@
+# ReadKeyReference<D> that calls the database argument's getter {getter} with the token text and
+# returns its result. The result's validity check (vtable slot 0x40) only selects the log, which
+# names the database by {folder}. {cold} is the function's own outlined clone.
+sub sp,sp,#0xe0
+stp xr0,xr1,[sp,#0xa0]
+stp xr2,xr3,[sp,#0xb0]
+stp xr4,xr5,[sp,#0xc0]
+stp x29,x30,[sp,#0xd0]
+add x29,sp,#0xd0
+mov xr2,x2
+mov xr3,x1
+mov xr4,x0
+ldr x1,[x0,#0x288]
+sub x0,x29,#0x58
+bl CALL = CString::CString(char const*)
+sub x1,x29,#0x58
+mov x0,xr3
+bl CALL = {getter}
+mov xr5,x0
+tbnz wr2,#0,@+43
+ldr xr6,[xr5]
+ldr xr6,[xr6,#0x40]
+mov x0,xr5
+blr xr6
+tbnz w0,#0,@+38
+adrp x1,PAGE
+add x1,x1,G = {source}
+add x0,sp,#0x68
+mov w2,#0x30
+mov w3,#0x1000
+bl CALL = CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)
+ldursb wr6,[x29,#-0x41]
+ldur xr7,[x29,#-0x58]
+cmp wr6,#0x0
+sub xr6,x29,#0x58
+csel xr2,xr7,xr6,lt
+add xr6,sp,#0x40
+mov x0,xr3
+bl CALL = {folder}
+ldrsb wr0,[sp,#0x57]
+ldr xr1,[sp,#0x40]
+add xr3,sp,#0x18
+add xr6,sp,#0x18
+mov x0,xr4
+bl CALL = CReader::GetFileLocationDescription() const
+cmp wr0,#0x0
+add xr6,sp,#0x40
+csel xr6,xr1,xr6,lt
+ldrsb wr7,[sp,#0x2f]
+ldr xr8,[sp,#0x18]
+cmp wr7,#0x0
+csel xr7,xr8,xr3,lt
+stp xr6,xr7,[sp,#0x8]
+str xr2,[sp]
+adrp x1,PAGE
+add x1,x1,G = "Failed to read key reference '%s' from database '%s' at '%s'"
+add x0,sp,#0x68
+bl CALL = CPdxLogFileAndLine::operator()(char const*, ...)
+ldrsb wr6,[sp,#0x2f]
+tbnz wr6,#0x1f,@+18
+ldrsb wr6,[sp,#0x57]
+tbnz wr6,#0x1f,@+24
+ldursb wr6,[x29,#-0x41]
+tbz wr6,#0x1f,@+7
+sub xr6,x29,#0x58
+add x0,xr6,#0x18
+ldur x1,[x29,#-0x58]
+ldur xr6,[x29,#-0x48]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr5
+ldp x29,x30,[sp,#0xd0]
+ldp xr4,xr5,[sp,#0xc0]
+ldp xr2,xr3,[sp,#0xb0]
+ldp xr0,xr1,[sp,#0xa0]
+add sp,sp,#0xe0
+ret
+add xr6,sp,#0x18
+add x0,xr6,#0x18
+ldr x1,[sp,#0x18]
+ldr xr6,[sp,#0x28]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldrsb wr6,[sp,#0x57]
+tbz wr6,#0x1f,@-22
+add xr6,sp,#0x40
+add x0,xr6,#0x18
+ldr x1,[sp,#0x40]
+ldr xr6,[sp,#0x50]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldursb wr6,[x29,#-0x41]
+tbz wr6,#0x1f,@-22
+b @-29
+mov xr5,x0
+ldrsb wr6,[sp,#0x2f]
+tbz wr6,#0x1f,@+5
+add x0,sp,#0x18
+bl CALL = {cold}
+b @+2
+mov xr5,x0
+ldrsb wr6,[sp,#0x57]
+tbnz wr6,#0x1f,@+5
+ldursb wr6,[x29,#-0x41]
+tbnz wr6,#0x1f,@+17
+mov x0,xr5
+bl CALL = __Unwind_Resume
+add xr6,sp,#0x40
+add x0,xr6,#0x18
+ldr x1,[sp,#0x40]
+ldr xr6,[sp,#0x50]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+ldursb wr6,[x29,#-0x41]
+tbz wr6,#0x1f,@-9
+b @+6
+b @+2
+b @+1
+mov xr5,x0
+ldursb wr6,[x29,#-0x41]
+tbz wr6,#0x1f,@-15
+sub xr6,x29,#0x58
+add x0,xr6,#0x18
+ldur x1,[x29,#-0x58]
+ldur xr6,[x29,#-0x48]
+and x2,xr6,#0x7fffffffffffffff
+bl CALL = CPdxCommonStringAllocator::deallocate(char*, unsigned long)
+mov x0,xr5
+bl CALL = __Unwind_Resume

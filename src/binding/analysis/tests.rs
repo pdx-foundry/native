@@ -2056,3 +2056,56 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
     );
     assert_eq!(owners.len(), 22);
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_list_readers_and_getter_readers_establish_their_lookups() {
+    use crate::engine::analysis::references::{Missing, ReaderForm, reader};
+
+    let binding = crate::session::installed_native().bound();
+    let facts = binding.analysis.reference_facts().unwrap();
+    let missing = |database: &str, form: ReaderForm| -> Vec<Result<Missing, &str>> {
+        facts
+            .readers
+            .iter()
+            .filter(|(callee, _)| {
+                reader(callee).is_some_and(|reader| {
+                    reader.form == form && (database.is_empty() || reader.database == database)
+                })
+            })
+            .map(|(_, fact)| match &fact.lookup {
+                Ok(lookup) => Ok(lookup.on_missing),
+                Err(stop) => Err(stop.reason),
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        missing("", ReaderForm::ImmediateList),
+        [Ok(Missing::Skipped); 13]
+    );
+    assert_eq!(
+        missing("CScriptedActionDatabase", ReaderForm::DeferredList),
+        [Ok(Missing::NullObject)]
+    );
+    for database in ["CBypassTypeDatabase", "CPlanetClassDatabase"] {
+        assert_eq!(
+            missing(database, ReaderForm::Immediate),
+            [Ok(Missing::NullObject)],
+            "{database}"
+        );
+    }
+    // Resolver lambdas that call a getter and return a validity check other than slot 0x98.
+    for database in [
+        "CPlanetClassDatabase",
+        "CSpecialProjectDatabase",
+        "CStrategicResourceDatabase",
+        "CTraitDatabase",
+    ] {
+        assert_eq!(
+            missing(database, ReaderForm::Deferred),
+            [Ok(Missing::NullObject)],
+            "{database}"
+        );
+    }
+}
