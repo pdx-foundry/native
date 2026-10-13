@@ -23,13 +23,26 @@
 //! Each root runs twice: with a long key and with a short key, since the engine branches on the
 //! key's form. An input runs four times, once for each pair of the two keys' forms. A family is
 //! one name that one chain of calls registers. Every run must give it the same names at that
-//! chain, and every path must give it one mask. A family is `Always`
-//! generated only for a root that loops over every item, when no path fails, some path returns,
-//! and every returned path registers it. A branch on an unknown item field makes a path that
-//! skips the call, so such a family is never `Always`. Paths that end in a function that never
-//! returns, or in a trap, are ignored. An item root counts as a root that loops over every item
-//! only when `loading` establishes that the engine calls it for every item that the database
-//! loads; otherwise its families are never `Always`.
+//! chain, and every path must give it one mask. A family is `Always` generated only for a root
+//! that loops over every item, when, in its condition runs, no path fails, some path returns, and
+//! every returned path registers it. A branch on an unknown item field makes a path that skips the
+//! call, so such a family is never `Always`. Paths that end in a function that never returns, or
+//! in a trap, are ignored. An item root counts as a root that loops over every item only when
+//! `loading` establishes that the engine calls it for every item that content defines; otherwise
+//! its families are never `Always`.
+//!
+//! A root's condition runs follow the same code as its name runs, but join states at loop heads,
+//! so a loop of unknown length before the registrations does not spend the path bound, and stop a
+//! path once it has registered every name that the name run with its key form registered, at the
+//! same chain of calls: later code cannot take back a registration, so such a path counts as
+//! returned. Names come only from the name runs: a loop that registers on each pass does not
+//! join, and its later names would be lost.
+//!
+//! A cache field is an item word where a returned path of the name runs stores a modifier type
+//! that its own registration created. The engine keeps the item's type there and registers only
+//! while the field holds the value that the item's constructor leaves. The condition runs start
+//! with each cache field at that value, when every returned path of every constructor body leaves
+//! the same one.
 //!
 //! A helper can read the category mask of a declared modifier type from the engine's definition
 //! table (`CModifierGeneratorBase::GenerateFrom`). The run holds a table with the mask of each
@@ -40,7 +53,8 @@
 //! so only its registrations before that point count for the condition.
 //!
 //! An item's key does not change after its constructor. A store to an unknown address or a call
-//! that the model does not follow therefore leaves the key object and its text as they were.
+//! that the model does not follow therefore leaves the key object and its text as they were. No
+//! content reader writes a cache field.
 //!
 //! Outside the method: database state other than the item array reads as zero, so a gate on
 //! database state is not detected; memory that content fills reads as unknown; where a modifier
@@ -61,7 +75,7 @@ pub use joins::Receiver;
 pub use loading::{Loading, NotEstablished};
 
 /// Name and revision of the modifier-family method.
-pub const METHOD: &str = "modifier-families/v3";
+pub const METHOD: &str = "modifier-families/v4";
 
 /// The long key: longer than the longest short string, so the engine stores it in a buffer.
 const LONG_KEY: &str = "generatedmodifierfamilyitemkey01";
@@ -80,6 +94,11 @@ pub(super) const ITEM_SPAN: u64 = 0x4000;
 
 /// Bytes of zeroed database memory that a database root reads.
 const DATABASE_SPAN: u64 = 0x400;
+
+/// The most paths that one condition run follows. A loop of unknown length joins at its head, but
+/// each pass can still fork: `CEthic::InitPostRead` compares each ethic category's key before its
+/// registration, and its condition runs return on 210 paths on M452.
+const CONDITION_PATH_LIMIT: usize = 256;
 
 /// Labels at or above this value are the method's own facts about a path, not text labels. Every
 /// scratch and stack address is below it.
@@ -244,6 +263,10 @@ pub struct Family {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Condition {
     Always,
+    /// Every path registers the family, but some only after the model assumed the text of an
+    /// earlier name part that it does not follow; such a path may take branches that the engine
+    /// does not.
+    AfterAssumedText,
     /// A path skips the registration, or a path could not be followed.
     Unresolved,
     /// Only an item root registers it, and that the engine runs that root for every item is not
@@ -307,13 +330,16 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
         let runs: Vec<Vec<PathSummary>> = entry
             .key_forms()
             .into_iter()
-            .map(|forms| entry_paths(input, registry, entry, offset, forms))
+            .map(|forms| entry_paths(input, registry, entry, offset, forms, &Pass::Names))
             .collect();
 
         let (entry_families, entry_failures) = match entry {
-            Entry::Root(root) => run_families(&root.sites, &runs, |calls, name| {
-                condition(root, not_established.as_ref(), &runs, calls, name)
-            }),
+            Entry::Root(root) => {
+                let conditions = condition_runs(input, registry, entry, offset, &runs);
+                run_families(&root.sites, &runs, |calls, name| {
+                    condition(root, not_established.as_ref(), &conditions, calls, name)
+                })
+            }
             Entry::Input { second, .. } => {
                 run_families(&second.sites, &runs, |_, _| Condition::Unresolved)
             }
@@ -534,6 +560,64 @@ fn stored_key(machine: &Machine, item: u64) -> Option<u64> {
         .next()
 }
 
+/// The value that every returned path of every body of the item constructor leaves in each of the
+/// 4-byte item words at `fields`. A word has none when a path fails, no path returns, or the paths
+/// disagree. The constructor's int argument stays unknown.
+fn constructor_defaults(
+    input: &FamilyInput,
+    registry: &RegistryInput,
+    fields: &BTreeSet<u64>,
+) -> BTreeMap<u64, u64> {
+    let mut defaults: Option<BTreeMap<u64, Option<u64>>> = None;
+    for &constructor in &registry.constructors {
+        let mut machine = Machine::new(&registry.code, &input.data);
+        let item = machine.reserve(ITEM_SPAN);
+        let key = machine.allocate(input.layout.flag_byte + 1);
+        write_key(&mut machine, input.layout, key, KeyForm::Long);
+        machine.set_register(0, item);
+        machine.set_register(constructor.key_register, key);
+
+        let model = Model {
+            functions: &input.strings,
+            layout: input.layout,
+            data: &input.data,
+            sources: Sources::key_only(LONG_KEY),
+        };
+        let mut arena = Arena::default();
+        let paths = machine.run_paths(constructor.address, &mut |target, machine| {
+            follow(&model, target, machine, &mut arena)
+        });
+
+        let mut returned = false;
+        for path in &paths {
+            match ending(&input.strings, &path.end) {
+                Ending::Returned => returned = true,
+                Ending::Ignored => continue,
+                Ending::Failed => return BTreeMap::new(),
+            }
+            let left: BTreeMap<u64, Option<u64>> = fields
+                .iter()
+                .map(|&field| (field, path.machine.read(item + field, 4)))
+                .collect();
+            let agreed = defaults.get_or_insert_with(|| left.clone());
+            for (field, value) in agreed.iter_mut() {
+                if *value != left[field] {
+                    *value = None;
+                }
+            }
+        }
+        if !returned {
+            return BTreeMap::new();
+        }
+    }
+
+    defaults
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(field, value)| Some((field, value?)))
+        .collect()
+}
+
 fn model<'a>(
     input: &'a FamilyInput,
     form: KeyForm,
@@ -617,6 +701,59 @@ struct PathSummary {
     /// The chain and name of each registration made before the path first assumed text: only
     /// these show that the path registers them.
     established: BTreeSet<(Vec<u64>, Node)>,
+    /// The offset of each item word where the path stored a modifier type that one of its own
+    /// registrations created.
+    cache_fields: BTreeSet<u64>,
+}
+
+/// What a run of an entry is for.
+enum Pass<'a> {
+    /// The names, masks and limits: every path, without joins.
+    Names,
+    /// The condition of a root's families: states join at loop heads, a path ends once it has
+    /// registered each of `names` at its chain of calls, and each cache field starts at its
+    /// default.
+    Condition {
+        names: BTreeSet<(Vec<u64>, Node)>,
+        defaults: &'a BTreeMap<u64, u64>,
+    },
+}
+
+/// The condition runs of a root `entry`, one for each key form, from its name runs `runs`.
+fn condition_runs(
+    input: &FamilyInput,
+    registry: &RegistryInput,
+    entry: &Entry,
+    key_offset: u64,
+    runs: &[Vec<PathSummary>],
+) -> Vec<Vec<PathSummary>> {
+    let fields: BTreeSet<u64> = runs
+        .iter()
+        .flatten()
+        .flat_map(|path| path.cache_fields.iter().copied())
+        .collect();
+    let defaults = if fields.is_empty() {
+        BTreeMap::new()
+    } else {
+        constructor_defaults(input, registry, &fields)
+    };
+    entry
+        .key_forms()
+        .into_iter()
+        .zip(runs)
+        .map(|(forms, paths)| {
+            let names = paths
+                .iter()
+                .flat_map(|path| &path.records)
+                .map(|(calls, name, _)| (calls.clone(), name.clone()))
+                .collect();
+            let pass = Pass::Condition {
+                names,
+                defaults: &defaults,
+            };
+            entry_paths(input, registry, entry, key_offset, forms, &pass)
+        })
+        .collect()
 }
 
 /// One registration call of a root run, as the run records it.
@@ -640,6 +777,7 @@ fn entry_paths(
     entry: &Entry,
     key_offset: u64,
     forms: KeyForms,
+    pass: &Pass,
 ) -> Vec<PathSummary> {
     let form = forms.item;
     let mut machine = Machine::new(&registry.code, &input.data);
@@ -649,6 +787,11 @@ fn entry_paths(
         .map(|definitions| DefinitionTable::install(&mut machine, definitions));
     let item = machine.reserve(ITEM_SPAN);
     write_key(&mut machine, input.layout, item + key_offset, form);
+    if let Pass::Condition { defaults, .. } = pass {
+        for (&field, &value) in *defaults {
+            machine.write(item + field, 4, value);
+        }
+    }
 
     let mut arena = Arena::default();
     let mut registry_keys = BTreeMap::new();
@@ -694,7 +837,7 @@ fn entry_paths(
             .iter()
             .any(|second| second.function == target)
     };
-    let paths = machine.run_paths(entry.function(), &mut |target, machine| match target {
+    let mut calls = |target: Option<u64>, machine: &mut Machine| match target {
         Some(target) if target == input.registration => {
             let site = machine.known_register(30, "call-site")? - 4;
             let mut calls: Vec<u64> = machine.entered_calls().collect();
@@ -716,11 +859,30 @@ fn entry_paths(
             }
             machine.label(RECORD_COUNT + 1 + count, records.len() as u64 - 1);
             machine.label(RECORD_COUNT, count + 1);
+
+            if let Pass::Condition { names, .. } = pass {
+                let made: BTreeSet<(Vec<u64>, Node)> = (0..=count)
+                    .filter_map(|index| machine.labelled(RECORD_COUNT + 1 + index))
+                    .map(|record| &records[record as usize])
+                    .map(|made| (made.calls.clone(), arena.node(made.name).clone()))
+                    .collect();
+                if names.is_subset(&made) {
+                    return Ok(Call::Stop);
+                }
+            }
             Ok(Call::Return(Some(1)))
         }
         Some(target) if registry.entered.contains(&target) && !is_input(target) => Ok(Call::Enter),
         _ => follow(&model, target, machine, &mut arena),
-    });
+    };
+    let paths = match pass {
+        Pass::Names => machine.run_paths(entry.function(), &mut calls),
+        Pass::Condition { .. } => {
+            machine.set_path_limit(CONDITION_PATH_LIMIT);
+            machine.run_paths_joining(entry.function(), &mut calls)
+        }
+    };
+    let first_dynamic = table.as_ref().map(|table| table.first_dynamic);
 
     paths
         .into_iter()
@@ -730,8 +892,19 @@ fn entry_paths(
                 .filter_map(|index| path.machine.labelled(RECORD_COUNT + 1 + index))
                 .map(|record| &records[record as usize])
                 .collect();
+            let ending = match &path.end {
+                Ok(Exit::Stopped(target)) if *target == input.registration => Ending::Returned,
+                end => ending(&input.strings, end),
+            };
+            let cache_fields = match (first_dynamic, ending) {
+                (Some(first), Ending::Returned) => {
+                    stored_types(&path.machine, item, &(first..first + count))
+                }
+                _ => BTreeSet::new(),
+            };
             PathSummary {
-                ending: ending(&input.strings, &path.end),
+                ending,
+                cache_fields,
                 records: made
                     .iter()
                     .map(|registration| {
@@ -748,6 +921,18 @@ fn entry_paths(
                     })
                     .collect(),
             }
+        })
+        .collect()
+}
+
+/// The offset of each 4-byte word of the item at `item` that holds one of `types`.
+fn stored_types(machine: &Machine, item: u64, types: &std::ops::Range<u64>) -> BTreeSet<u64> {
+    (0..ITEM_SPAN)
+        .step_by(4)
+        .filter(|&offset| {
+            machine
+                .read(item + offset, 4)
+                .is_some_and(|value| types.contains(&value))
         })
         .collect()
 }
@@ -868,8 +1053,8 @@ fn run_families(
 }
 
 /// `Always` for a database root, or an item root that the engine runs for every item, when, in
-/// every run, no path failed, some path returned, and every returned path registered `name` at
-/// `calls` before it assumed any text.
+/// every condition run, no path failed, some path returned, and every returned path registered
+/// `name` at `calls` before it assumed any text.
 fn condition(
     root: &Root,
     not_established: Option<&NotEstablished>,
@@ -883,18 +1068,28 @@ fn condition(
         return Condition::ItemRoot(reason.clone());
     }
 
-    let always = every_returned_path(
-        runs,
-        |path| path.ending,
-        |path| {
-            path.established
-                .iter()
-                .any(|(at, registered)| at == calls && registered == name)
-        },
-    );
+    let registers = |established: bool| {
+        every_returned_path(
+            runs,
+            |path| path.ending,
+            |path| {
+                if established {
+                    path.established
+                        .iter()
+                        .any(|(at, registered)| at == calls && registered == name)
+                } else {
+                    path.records
+                        .iter()
+                        .any(|(at, registered, _)| at == calls && registered == name)
+                }
+            },
+        )
+    };
 
-    if always {
+    if registers(true) {
         Condition::Always
+    } else if registers(false) {
+        Condition::AfterAssumedText
     } else {
         Condition::Unresolved
     }
@@ -1424,7 +1619,7 @@ mod tests {
 
     /// Negative control: unresolved text that the code builds before the registration is
     /// written as the empty text, so that path cannot establish that every item generates the
-    /// family.
+    /// family; the condition says that the path registers it after assumed text.
     #[test]
     fn a_path_on_assumed_text_never_establishes_always() {
         let mut generator = concatenating_generator();
@@ -1449,7 +1644,7 @@ mod tests {
                 literal("_build_speed_mult")
             ]
         );
-        assert_eq!(family.condition, Condition::Unresolved);
+        assert_eq!(family.condition, Condition::AfterAssumedText);
 
         // The same text after the registration does not change that the item registers it.
         let mut generator = concatenating_generator();
@@ -1920,6 +2115,7 @@ mod tests {
         Loading {
             loaders: vec![function(LOADER, "CDb::Load()")],
             database_constructors: vec![function(DATABASE_CONSTRUCTOR, "CDb::CDb()")],
+            database_loops: Vec::new(),
             elsewhere: Vec::new(),
             inline_constructions: Vec::new(),
             constructors: [CONSTRUCTOR].into(),
@@ -2206,6 +2402,214 @@ mod tests {
         assert_eq!(
             matrix_fixture(true, true).only_family(),
             Err(Unresolved::new("key-forms-disagree"))
+        );
+    }
+
+    /// An item root at `ITEM_ROOT` whose call the engine makes for every item, with the generator
+    /// method, its helper, and the item constructor `constructor`.
+    fn every_item_root(root: &[(&str, &str)], constructor: Rows, helper: Rows) -> Fixture {
+        let mut fixture = fixture(
+            &[
+                constructor,
+                rows(ITEM_ROOT, root),
+                generator_method(),
+                size(),
+                helper,
+            ],
+            vec![Root {
+                function: ITEM_ROOT,
+                receiver: Receiver::Item,
+                sites: BTreeSet::from([0x87c]),
+            }],
+            &[METHOD, HELPER, SIZE],
+            Some(CONSTRUCTOR),
+        );
+        fixture.input.definitions = Some(definitions());
+        fixture.registry.loading = Some(loading());
+        fixture
+    }
+
+    /// The condition of the root's one family, `pop_{key}_max_add`.
+    fn root_condition(root: &[(&str, &str)], constructor: Rows, helper: Rows) -> Condition {
+        let family = every_item_root(root, constructor, helper)
+            .analyze()
+            .unwrap()
+            .families
+            .into_iter()
+            .find(|family| family.parts == [literal("pop_"), Part::ItemKey, literal("_max_add")])
+            .expect("the root's family");
+        family.condition
+    }
+
+    /// Counts down the item's word at `+0x200`, of unknown value, then calls the generator method.
+    /// `exit` is two instructions after the loop that may branch to `0x628`, past the call.
+    fn counting_root(exit: [(&'static str, &'static str); 2]) -> Vec<(&'static str, &'static str)> {
+        let [first, second] = exit;
+        vec![
+            ("sub", "sp,sp,#0xc0"),
+            ("str", "x0,[sp,#0xb8]"),
+            ("ldr", "w9,[x0,#0x200]"),
+            // 0x60c: the loop head.
+            ("cbz", "w9,#0x618"),
+            ("sub", "w9,w9,#1"),
+            ("b", "#0x60c"),
+            first,
+            second,
+            ("mov", "x0,sp"),
+            ("bl", "#0x700"),
+            // 0x628
+            ("add", "sp,sp,#0xc0"),
+            ("ret", ""),
+        ]
+    }
+
+    /// A loop of unknown length before the registration forks until the path bound in an unjoined
+    /// run; the condition runs join at its head.
+    #[test]
+    fn a_loop_of_unknown_length_before_the_registration_can_be_always() {
+        let counting = counting_root([("nop", ""), ("nop", "")]);
+        assert_eq!(
+            root_condition(&counting, constructor(0x10), helper()),
+            Condition::Always
+        );
+
+        let gated = counting_root([("ldr", "w10,[x0,#0x208]"), ("cbnz", "w10,#0x628")]);
+        assert_eq!(
+            root_condition(&gated, constructor(0x10), helper()),
+            Condition::Unresolved
+        );
+    }
+
+    /// Calls the generator method, then branches through `x15`, which the run cannot follow.
+    /// `before` is three instructions before the call.
+    fn stopping_root<'a>(before: [(&'a str, &'a str); 3]) -> Vec<(&'a str, &'a str)> {
+        let mut root = vec![
+            ("sub", "sp,sp,#0xc0"),
+            ("str", "x0,[sp,#0xb8]"),
+            ("mov", "x19,x0"),
+        ];
+        root.extend(before);
+        root.extend([("mov", "x0,sp"), ("bl", "#0x700"), ("br", "x15")]);
+        root
+    }
+
+    /// A path that has registered every name of the name runs ends there: later code cannot take
+    /// back a registration.
+    #[test]
+    fn a_path_ends_once_it_has_registered_every_name() {
+        let after_registration = stopping_root([("nop", ""), ("nop", ""), ("nop", "")]);
+        assert_eq!(
+            root_condition(&after_registration, constructor(0x10), helper()),
+            Condition::Always
+        );
+
+        let skipping = stopping_root([
+            ("ldr", "w8,[x19,#0x200]"),
+            ("cbz", "w8,#0x624"),
+            ("nop", ""),
+        ]);
+        assert_eq!(
+            root_condition(&skipping, constructor(0x10), helper()),
+            Condition::Unresolved
+        );
+
+        // The item's unknown string at `+0x300`, appended to a stack string.
+        let append = format!("#{APPEND_STRING:#x}");
+        let assumed = stopping_root([
+            ("add", "x0,sp,#0x40"),
+            ("add", "x1,x19,#0x300"),
+            ("bl", &append),
+        ]);
+        assert_eq!(
+            root_condition(&assumed, constructor(0x10), helper()),
+            Condition::AfterAssumedText
+        );
+    }
+
+    /// The helper, returning the new modifier type in `w0`.
+    fn returning_helper() -> Rows {
+        let mut lines = helper();
+        let tail = lines.split_off(lines.len() - 2);
+        let at = tail[0].0;
+        lines.push((at, "ldr".into(), "w0,[sp,#0x14]".into()));
+        lines.extend(
+            tail.into_iter()
+                .map(|(address, operation, operands)| (address + 4, operation, operands)),
+        );
+        lines
+    }
+
+    /// Registers only while the item's word at `+0x300` is zero, and keeps the new type there.
+    const CACHE_ROOT: [(&str, &str); 10] = [
+        ("sub", "sp,sp,#0xc0"),
+        ("mov", "x19,x0"),
+        ("str", "x0,[sp,#0xb8]"),
+        ("ldr", "w8,[x19,#0x300]"),
+        ("cbnz", "w8,#0x620"),
+        ("mov", "x0,sp"),
+        ("bl", "#0x700"),
+        ("str", "w0,[x19,#0x300]"),
+        // 0x620
+        ("add", "sp,sp,#0xc0"),
+        ("ret", ""),
+    ];
+
+    /// The item constructor, with `extra` after it stores the key.
+    fn constructor_then(extra: &[(&str, &str)]) -> Rows {
+        let mut lines = constructor(0x10);
+        let tail = lines.split_off(lines.len() - 2);
+        lines.extend(
+            extra
+                .iter()
+                .map(|(operation, operands)| (0, (*operation).into(), (*operands).into())),
+        );
+        lines.extend(tail);
+        lines
+            .into_iter()
+            .enumerate()
+            .map(|(index, (_, operation, operands))| {
+                (CONSTRUCTOR + index as u64 * 4, operation, operands)
+            })
+            .collect()
+    }
+
+    /// A cache field starts the condition runs at the value that every constructor path leaves.
+    #[test]
+    fn a_cache_field_at_its_constructor_default_registers_on_every_path() {
+        let empty = constructor_then(&[("str", "wzr,[x20,#0x300]")]);
+        assert_eq!(
+            root_condition(&CACHE_ROOT, empty, returning_helper()),
+            Condition::Always
+        );
+    }
+
+    #[test]
+    fn a_cache_field_without_one_known_default_is_not() {
+        let unresolved = |extra: &[(&str, &str)]| {
+            root_condition(&CACHE_ROOT, constructor_then(extra), returning_helper())
+        };
+
+        let filled = [("mov", "w9,#1"), ("str", "w9,[x20,#0x300]")];
+        assert_eq!(unresolved(&filled), Condition::Unresolved);
+
+        // `x1` is the constructor's int argument.
+        let by_index = [("str", "w1,[x20,#0x300]")];
+        assert_eq!(unresolved(&by_index), Condition::Unresolved);
+
+        let overwritten = [
+            ("str", "wzr,[x20,#0x300]"),
+            ("ldr", "w9,[x20,#0x400]"),
+            ("str", "w9,[x20,#0x300]"),
+        ];
+        assert_eq!(unresolved(&overwritten), Condition::Unresolved);
+
+        let failing = [("str", "wzr,[x20,#0x300]"), ("br", "x15")];
+        assert_eq!(unresolved(&failing), Condition::Unresolved);
+
+        // Without the cache field's default the root was never `Always`.
+        assert_eq!(
+            root_condition(&CACHE_ROOT, constructor(0x10), returning_helper()),
+            Condition::Unresolved
         );
     }
 }

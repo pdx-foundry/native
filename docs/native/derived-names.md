@@ -1,6 +1,6 @@
 # Derived names
 
-`Native::derived_names(registry)` (`derived-names/v2`) gives the names that a registry's own code
+`Native::derived_names(registry)` (`derived-names/v3`) gives the names that a registry's own code
 composes from an item key or a string field, and then checks or looks up, and the names that the
 direct callers of an item getter compose from the key or field that it returns
 ([interface callers](#interface-callers-of-name-getters-m452)): the parts of each name,
@@ -379,9 +379,15 @@ whose claims are naming lines or not in the list.
 - **Not followed:** the localisation wrappers `PdxLocalizeView<…>` and `InternalPdxLocalizeView<…>`
   that take key-value pairs. A name passed to one is an unfollowed call, not a derived name.
 - **Post-read initialization:** a name of `PostReadInit` is never `Always` unless
-  `families::loading::every_item` establishes that the engine runs it for every item. The database
-  loop, not the item's read, calls `PostReadInit()`, so it is not established for traditions or
-  agendas.
+  `families::loading::every_item` establishes that the engine runs it for every item. The
+  database's post-read loop, not the item's read, calls `PostReadInit()`; `every_item` establishes
+  the call from that loop ([modifier families](modifier-families.md#the-per-item-post-read-call)).
+  On M452 4 of the 36 registries that had the gap keep it. `system_types` and
+  `colony_automation_categories` have an `InitPostRead` root, and a destructor-shaped function
+  names their item's vtables (`TPdxNullObject<X>::~TPdxNullObject`, a destructor thunk);
+  `technology` items are also constructed by `CTechnology::ReadMember`; and
+  `CEconomicCategoryDatabase` overrides the post-read loop with its own `PostReadInit()`, which
+  the method does not run and which calls `CEconomicCategory::PostReadInit()` by no direct call.
 
 ## Pitfalls
 
