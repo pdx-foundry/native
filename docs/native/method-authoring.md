@@ -478,7 +478,7 @@ missing, and two `Unsupported` errors make it unsupported. For scope context, `r
 
 The properties do not mark every limit, so a gap that names the field also makes a complete
 relationship partial. It never makes one complete or failed. Gaps of kind `OutsideMethod` never
-count. An `UnresolvedCondition` gap does not count: a loader condition is already a `read`
+count, and neither do accepted gaps. An `UnresolvedCondition` gap does not count: a loader condition is already a `read`
 term, and a use-time selection is not a loader shape.
 
 | Gap kind, subject the field | Relationship left partial |
@@ -497,12 +497,23 @@ partial for this reason only. Six `UnresolvedPath` gaps on M452 fields are about
 or a triggered modifier, not scope context. Change the rule when a gap kind or subject separates
 them.
 
+### Accepted limits
+
+An accepted limit is a gap that the method could close but Atlas does not need. Native keeps
+reporting it; only the report counts it apart. `ACCEPTED_LIMITS` in the example lists each limit
+once: its gap kind, its exact details, the subjects it covers when the decision names them, and the
+ticket and knowledge page of the decision. The first limit that covers a gap accepts it. A gap whose
+detail, kind or subject differs stays open, so a limit never hides a new obstacle: for example, a
+numeric conversion-path gap is never accepted. Add a limit only with the decision that accepts it,
+and remove it when its reopen condition holds.
+
 ### The report
 
 The report lists the rates per relationship, then each registry's statuses, each reader identity's
 counts (fields without an identity under `none`), each field's statuses, and the failure shapes:
-each gap that is not `OutsideMethod`, by kind and detail with its digits replaced by `N`, and each
-error by operation and reason.
+each open gap (not `OutsideMethod` and not accepted), by kind and detail with its digits replaced
+by `N`; each accepted gap, by its limit's decision and the same shape; and each error by operation
+and reason.
 
 Record the inventory and the three registry questions, then report over the recording:
 
@@ -520,8 +531,10 @@ tracked baseline in the PR that changes the answers:
 cargo run --release --example registry-sweep -- --baseline .local/population/sweep-answers > tests/population/m452/registry-sweep.json
 ```
 
-The baseline holds one line for each registry: its registry statuses, and for each field
-relationship its counts by status and its rate.
+The baseline holds one line for each registry: its registry statuses, for each field relationship
+its counts by status and its rate, and its open and accepted gaps by shape (`open_gaps`,
+`accepted_gaps`). So `--diff` names a registry whose gaps move between open and accepted, or whose
+open shapes change, even when no status changes.
 
 ## Keep the knowledge in its home
 
