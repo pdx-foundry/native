@@ -30,7 +30,7 @@ pub struct ChildLayout {
 }
 
 /// Source stamp for the bounded command grammar method.
-pub const METHOD: &str = "command-grammar/v19";
+pub const METHOD: &str = "command-grammar/v20";
 const DELEGATION_LIMIT: usize = 8;
 const PATH_LIMIT: usize = 4096;
 
@@ -1581,7 +1581,7 @@ mod tests {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.detail == "read-scope: scope-argument")
+                .any(|gap| gap.detail == "read-scope: no-scope-parameter")
         );
         // A nested initializer that cannot be read keeps the answer partial at its key path.
         let child = &mut result.nested.get_mut("parent").unwrap().nested;
@@ -1670,7 +1670,7 @@ mod tests {
         };
         assert_eq!(fields[0].name, "value");
         assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].detail, "read-scope: scope-argument");
+        assert_eq!(gaps[0].detail, "read-scope: no-scope-parameter");
         assert_eq!(
             gaps[0].subject,
             Some(crate::GapSubject::key_path(vec![

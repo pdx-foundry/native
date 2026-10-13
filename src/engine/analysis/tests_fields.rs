@@ -2675,6 +2675,64 @@ fn a_member_container_built_inline_has_the_mask_that_the_owner_stores() {
 }
 
 #[test]
+fn an_ordinary_call_after_an_inline_container_leaves_its_mask_to_the_run_that_keeps_the_owner() {
+    let mut inline = persistent_fixture();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor;
+        mov x19, x0;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        movz x8, #1;
+        movk x8, #0xffff, lsl #32;
+        movk x8, #0xffff, lsl #48;
+        str x8, [x19, #0xe8]; // the default (1, every category) at member+0xa8
+        add x0, x19, #0x200;
+        bl extern 0xd000; // an ordinary member constructor that the baseline does not enter
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    inline.persistent.as_mut().unwrap().constructors[0].code = constructor.bytes();
+
+    assert_eq!(
+        member_mask(inline),
+        Ok(crate::engine::analysis::modifiers::EVERY_CATEGORY)
+    );
+}
+
+#[test]
+fn a_constructor_that_keeps_the_owner_and_stores_no_mask_leaves_the_container_unreached() {
+    let mut missing = persistent_fixture();
+    let mut inline = Arm64::at(0xc000);
+    inline.prologue();
+    arm64!(inline;
+        mov x19, x0;
+        add x0, x0, #0x40;
+        bl extern 0xa000;
+        movz x8, #1;
+        movk x8, #0xffff, lsl #32;
+        movk x8, #0xffff, lsl #48;
+        str x8, [x19, #0xe8]; // the default (1, every category) at member+0xa8
+        mov x0, x19
+    );
+    inline.epilogue();
+    arm64!(inline; ret);
+    missing
+        .persistent
+        .as_mut()
+        .unwrap()
+        .constructors
+        .push(Function {
+            name: "CExample::CExample(inline)".into(),
+            address: 0xc000,
+            code: inline.bytes(),
+        });
+
+    assert_eq!(member_mask(missing), Err("container-unreached"));
+}
+
+#[test]
 fn an_unknown_category_argument_or_a_disagreement_is_unresolved_not_every_category() {
     let unknown = member_container_fixture(|code| arm64!(code; ldr w2, [x1]));
     let mut disagreeing = member_container_fixture(|code| arm64!(code; mov w2, #0x407c));
@@ -2751,6 +2809,35 @@ fn a_collected_container_has_the_mask_that_its_factory_passes() {
     assert_eq!(clause_mask(constant), Some(Ok(0x400a_ca7e)));
     assert_eq!(clause_mask(zero_fill), Some(Ok(0x403f_dafe)));
     assert_eq!(clause_mask(factory_fixture()), None);
+}
+
+/// The scopes that the factory fixture's constructor receives, after `argument` sets `x3` in the
+/// factory, when the constructor is named `constructor`.
+fn construction_scopes(constructor: &str, argument: impl Fn(&mut Arm64)) -> Vec<Option<i64>> {
+    let mut input = clause_container_fixture(argument);
+    for symbol in input
+        .symbols
+        .iter_mut()
+        .filter(|symbol| symbol.address == 0x9100)
+    {
+        symbol.name = constructor.into();
+    }
+
+    derive(input).collections[0].construction_scopes.clone()
+}
+
+#[test]
+fn a_collected_object_has_the_scope_that_its_constructor_receives() {
+    const SCOPED: &str = "CChild::CChild(int, ModifierCategory, EScopeType)";
+    let constant = |code: &mut Arm64| arm64!(code; mov w3, #0x40);
+    let unknown = |code: &mut Arm64| arm64!(code; ldr x3, [x20, #0x10]);
+
+    assert_eq!(construction_scopes(SCOPED, constant), [Some(0x40)]);
+    assert_eq!(construction_scopes(SCOPED, unknown), [None]);
+    assert_eq!(
+        construction_scopes("CChild::CChild(int, ModifierCategory)", constant),
+        []
+    );
 }
 
 /// The mask of the container that the collection inserts. The root builds `inserted` with

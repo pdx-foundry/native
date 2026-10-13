@@ -1521,6 +1521,7 @@ mod tests {
                 data_offset: None,
                 count_offset: None,
                 container_mask: None,
+                construction_scopes: Vec::new(),
                 class: "CEntry".into(),
                 reader: None,
                 fields: Box::new(child),

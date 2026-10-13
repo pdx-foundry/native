@@ -134,8 +134,11 @@ for contexts and scope types.
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
   means equality with the parent's scope, never `Any`. A known empty list means that no scope is
   used to read the field's value or the block's children, as for a scalar or a modifier block.
-  Zero masks and unknown arguments remain unresolved; a weight entry that the engine reads with
-  mask 0 and checks later has an `OutsideMethod` gap (D5a). This is separate from
+  A block whose every read passes scope 0 reads in no scope (`Known([])`): the engine names
+  scope 0 "scope not set" and its scope check accepts every command in it. A zero beside another
+  scope and an unknown argument remain unresolved, with a gap that names the obstacle; a weight
+  entry that the engine reads with literal mask 0 and checks later has an `OutsideMethod` gap
+  (D5a). This is separate from
   evaluation `entry_contexts` and does not prove runtime availability.
 - Atlas uses `read_scope` for a registry block's `replace_scopes.this` comparison, and
   `child_scopes` or a named child's `read_scope` for command `push_scope`. It uses evaluation

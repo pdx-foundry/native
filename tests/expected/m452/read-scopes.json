@@ -67,57 +67,26 @@
           ]
         },
         "tradition_swap": "Unresolved",
-        "triggered_modifier": "Unresolved"
+        "triggered_modifier": {
+          "Known": [
+            {
+              "Types": [
+                {
+                  "id": "44b5e21fe5e593d7",
+                  "name": "country"
+                }
+              ]
+            }
+          ]
+        }
       },
       "gaps": [
         {
-          "detail": "read-scope: stored-scope",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "triggered_modifier",
-              "potential"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: stored-scope",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "tradition_swap",
-              "triggered_modifier",
-              "potential"
-            ]
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "field",
-            "name": "triggered_modifier"
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
             "name": "tradition_swap"
-          }
-        },
-        {
-          "detail": "read-scope: scope-argument",
-          "kind": "UnresolvedPath",
-          "subject": {
-            "kind": "key_path",
-            "path": [
-              "tradition_swap",
-              "triggered_modifier"
-            ]
           }
         }
       ]
@@ -155,7 +124,7 @@
       },
       "gaps": [
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
@@ -163,7 +132,7 @@
           }
         },
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
@@ -171,7 +140,7 @@
           }
         },
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
@@ -179,7 +148,7 @@
           }
         },
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
@@ -416,7 +385,7 @@
       },
       "gaps": [
         {
-          "detail": "read-scope: scope-argument",
+          "detail": "read-scope: reader-path",
           "kind": "UnresolvedPath",
           "subject": {
             "kind": "field",
