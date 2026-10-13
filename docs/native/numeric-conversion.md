@@ -28,6 +28,16 @@ reader's fact keeps two lists:
 `session/numeric.rs::limits` applies this rule to field, command and weight readers, and
 `session/scoped_numeric.rs` applies it to scoped literals.
 
+One subject gets one typed gap, whose detail names its most fundamental obstacle: the **conversion
+path** (no conversion facts, an unmatched or unjoined reader, or any typed reason other than the
+float bound), else a **storage** property (representation, width, signedness or scale), else the
+**range**. The float bound keeps its own gap. A field takes the obstacles of its reader and of
+each read alternative. A field whose alternatives read with different readers has no reader
+identity of its own; when every alternative is rejected or reads with an identified reader, the
+field reader adds no obstacle (the weight key `factor` reads with `GetFloat` or the direct
+fixed-point reader). The [registry sweep](discovery.md#accepted-limits-sdk-819) accepts the range
+and storage gaps below by their detail, never a conversion-path gap.
+
 ## Result on M452
 
 `numeric-population` covers all 164 registries with no failed question. Numeric root fields: 188
@@ -105,7 +115,7 @@ in 59 registries. Each gap's obstacle is a storage property or the range, never 
 | --- | ---: | ---: | --- |
 | Weight keys `days`, `months`, `years` (`CToken::GetInt()`) | 261 | 55 | `accepted_range`: no live fixture reaches a weight key |
 | Weight key `factor` (its `CToken::GetFloat()` alternative) | 85 | 54 | `accepted_range`: the same |
-| `float` fields (`dust_clouds` parameters, `star_classes`, `storm_types`) | 34 | 3 | `accepted_range`: no exact binary32 `NumericBound`. Each field has the incomplete gap and the bound gap |
+| `float` fields (`dust_clouds` parameters, `star_classes`, `storm_types`) | 34 | 3 | `accepted_range`: no exact binary32 `NumericBound`. Each field has the range gap and the bound gap |
 | `short` and `unsigned short` fields (`astral_actions`, `sector_types`) | 7 | 2 | Signedness and `accepted_range` |
 
 Atlas needs none of these facts. It credits a numeric claim only as the value form `int` or
@@ -114,7 +124,9 @@ Atlas needs none of these facts. It credits a numeric claim only as the value fo
 The weight-key range was already accepted for the council agenda gate (SDK-739). So the gaps stay
 open, with no live endpoint run, no binary32 bound and no signedness proof.
 
-Change this when Atlas adds a claim that needs a numeric range or storage property. To count the
+`ACCEPTED_LIMITS` in `examples/registry-sweep.rs` holds this limit and the SDK-739 weight-key
+range, so the sweep counts these gaps apart from open work (SDK-819). Change this when Atlas adds a
+claim that needs a numeric range or storage property. To count the
 gaps by reader again, join each gap's subject to its field's `reader.numeric` and its read
 alternatives in a sweep recording. On M452 at `15d230a` the counts above are unchanged from the
 SDK-553 run, and `registry-sweep --diff` against the tracked baseline changes no registry.

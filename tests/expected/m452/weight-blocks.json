@@ -518,7 +518,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "days"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -534,7 +534,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "months"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -550,7 +550,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "years"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -566,7 +566,7 @@
           "kind": "key_path",
           "path": ["ai_weight", "factor"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -1246,7 +1246,7 @@
           "kind": "key_path",
           "path": ["weight", "days"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -1262,7 +1262,7 @@
           "kind": "key_path",
           "path": ["weight", "months"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
@@ -1278,7 +1278,7 @@
           "kind": "key_path",
           "path": ["weight", "years"]
         },
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
       ],
       [
         "OutsideMethod",
