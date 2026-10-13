@@ -215,6 +215,8 @@ struct AcceptedLimit {
     /// The ticket and the knowledge page that record the decision.
     decision: &'static str,
     kind: GapKind,
+    /// The gap details. In a gap whose subject is an answer item, `{name}` stands for the item's
+    /// name.
     details: &'static [&'static str],
     subjects: LimitSubjects,
 }
@@ -233,6 +235,8 @@ enum LimitSubjects {
     },
     /// A gap of these registries' answers whose subject is the registry.
     Registries(&'static [&'static str]),
+    /// A gap whose subject is an item of the answer.
+    AnswerItems,
 }
 
 impl AcceptedLimit {
@@ -259,10 +263,15 @@ impl AcceptedLimit {
             (LimitSubjects::Registries(listed), Some(GapSubject::Registry { .. })) => {
                 listed.contains(&registry)
             }
+            (LimitSubjects::AnswerItems, Some(GapSubject::AnswerItem { .. })) => true,
             _ => false,
         };
+        let detail_listed = self.details.iter().any(|detail| match &gap.subject {
+            Some(GapSubject::AnswerItem { name }) => detail.replace("{name}", name) == gap.detail,
+            _ => *detail == gap.detail,
+        });
 
-        gap.kind == self.kind && self.details.contains(&gap.detail.as_str()) && subject_covered
+        gap.kind == self.kind && detail_listed && subject_covered
     }
 }
 
@@ -306,7 +315,7 @@ const UNREPRESENTABLE_BOUNDS: &str =
     "Exact binary32 range endpoints cannot be represented by NumericBound.";
 
 /// Each accepted limit once. The first that covers a gap accepts it.
-const ACCEPTED_LIMITS: [AcceptedLimit; 9] = [
+const ACCEPTED_LIMITS: [AcceptedLimit; 11] = [
     AcceptedLimit {
         decision: "SDK-739: docs/native/numeric-conversion.md#token-value-methods",
         kind: GapKind::NumericConversion,
@@ -364,6 +373,45 @@ const ACCEPTED_LIMITS: [AcceptedLimit; 9] = [
         details: &UNNAMED_EVALUATIONS,
         subjects: LimitSubjects::Registries(&UNNAMED_EVALUATION_REGISTRIES),
     },
+    AcceptedLimit {
+        decision: SDK_810,
+        kind: GapKind::UnresolvedCondition,
+        details: &NAME_PROPERTIES,
+        subjects: LimitSubjects::AnswerItems,
+    },
+    AcceptedLimit {
+        decision: SDK_810,
+        kind: GapKind::UnresolvedCondition,
+        details: &EVERY_ITEM_INITIALIZATION,
+        subjects: LimitSubjects::Registries(&EVERY_ITEM_REGISTRIES),
+    },
+];
+
+const SDK_810: &str =
+    "SDK-810: docs/native/derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810";
+
+/// The `UnresolvedCondition` details of a derived name in `src/session/names.rs`. A name's
+/// template is both the gap's answer item and the `{name}` of its detail.
+const NAME_PROPERTIES: [&str; 3] = [
+    "what a missing {name} gives is not established",
+    "the field values under which the engine uses {name} are not established",
+    "{name} also depends on field states that the method does not explore",
+];
+
+/// The M452 every-item details of `src/session/names.rs`, each with a reason of
+/// `src/session/families.rs`.
+const EVERY_ITEM_INITIALIZATION: [&str; 3] = [
+    "that the engine initializes every item after reading it is not established, so no name of the initialization is always used: a function forms an address of the item's vtables without calling its constructor, which the method does not follow",
+    "that the engine initializes every item after reading it is not established, so no name of the initialization is always used: another function constructs an item outside the database's code",
+    "that the engine initializes every item after reading it is not established, so no name of the initialization is always used: a path of a database function keeps an item that it constructed without running its post-read code",
+];
+
+/// The registries of the M452 every-item gaps. Such a gap of another registry stays open.
+const EVERY_ITEM_REGISTRIES: [&str; 4] = [
+    "common/colony_automation_categories",
+    "common/economic_categories",
+    "common/system_types",
+    "common/technology",
 ];
 
 const SDK_812: &str =
@@ -1763,6 +1811,59 @@ mod tests {
             decision(&unnamed, "common/unlisted"),
             None,
             "a new unnamed evaluation stays open"
+        );
+    }
+
+    #[test]
+    fn only_a_derived_name_property_of_its_own_item_is_accepted() {
+        let gap = |kind: GapKind, item: &str, detail: &str| Gap {
+            kind,
+            subject: Some(GapSubject::AnswerItem { name: item.into() }),
+            detail: detail.into(),
+        };
+        let decision =
+            |gap: &Gap| accepted_limit(gap, "common/traditions", &[]).map(|limit| limit.decision);
+        let condition = GapKind::UnresolvedCondition;
+
+        for detail in [
+            "what a missing {key}_desc gives is not established",
+            "the field values under which the engine uses {key}_desc are not established",
+            "{key}_desc also depends on field states that the method does not explore",
+        ] {
+            assert_eq!(
+                decision(&gap(condition, "{key}_desc", detail)),
+                Some(SDK_810),
+                "{detail}"
+            );
+            assert_eq!(
+                decision(&gap(condition, "{key}", detail)),
+                None,
+                "a detail that names another item stays open"
+            );
+            assert_eq!(
+                decision(&gap(GapKind::UnresolvedPath, "{key}_desc", detail)),
+                None,
+                "a gap of another kind stays open"
+            );
+        }
+
+        let every_item = |registry: &str| Gap {
+            kind: condition,
+            subject: Some(GapSubject::Registry {
+                name: registry.into(),
+            }),
+            detail: EVERY_ITEM_INITIALIZATION[1].into(),
+        };
+        assert_eq!(
+            accepted_limit(&every_item("common/technology"), "common/technology", &[])
+                .map(|limit| limit.decision),
+            Some(SDK_810)
+        );
+        assert_eq!(
+            accepted_limit(&every_item("common/buildings"), "common/buildings", &[])
+                .map(|limit| limit.decision),
+            None,
+            "a new every-item gap stays open"
         );
     }
 

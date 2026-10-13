@@ -67,7 +67,7 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
-ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
+ticket that owns them. The sweep repaired none. SDK-809, SDK-810, SDK-811 and SDK-817 are now
 [accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
@@ -78,7 +78,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
 | SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
-| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
+| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization: accepted |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
@@ -109,6 +109,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | --- | ---: | ---: | --- |
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
+| SDK-810, [conditions and missing names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810) | 305 | 57 | Name conditions, misses and field states, and 4 every-item gaps (at `main` `29b025c`) |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
 | SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 | SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
@@ -196,6 +197,11 @@ so scope context becomes complete for them: 1,323 to 1,337 (68.69% to 69.42%), a
 4,739 to 4,753 of 7,515 (63.06% to 63.25%). `--diff` names only `common/traits`. Atlas credits no
 claim from these masks now: the config gives the fields `single_alias_right[modifier_clause]`, which
 names no category, and their `replace_scopes` claims also need entry contexts.
+
+SDK-810 accepts the 305 `derived_names` `UnresolvedCondition` gaps: Atlas tests no condition or
+miss of a derived name and joins no `## optional` line. Over a recording at `main` `29b025c`, the
+open gaps went from 4,031 to 3,726 and no status or rate changed. `--diff` names the 57
+registries whose gaps moved ([derived names](derived-names.md#accepted-limit-conditions-and-missing-names-sdk-810)).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
