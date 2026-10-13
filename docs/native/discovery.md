@@ -73,7 +73,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | Owner | Gaps | Registries | Shapes |
 | --- | ---: | ---: | --- |
 | SDK-627 | 1,615 | 119 | Repeat behavior (`UnresolvedStorage`) |
-| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask: clauses repaired, other gaps name their obstacle, zero mask open |
+| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask: clauses and zero masks repaired, other gaps name their obstacle |
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
@@ -188,13 +188,14 @@ SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recordin
 gap, so their reader kinds become complete: 1,576 to 1,581 (81.83% to 82.09%), and all units
 4,734 to 4,739 of 7,515 (62.99% to 63.06%). `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
-SDK-808 names the obstacle of each read-scope gap ([gap details](#read-time-block-scopes-sdk-549))
-and reads each [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) in the scope
-that its constructor receives. Over a recording at its merge with `main` `29b025c`, the open gaps
-went from 4,031 to 3,896, and scope context from 1,323 to 1,390 of 1,926 (68.69% to 72.17%); all
-units from 4,739 to 4,806 of 7,515 (63.06% to 63.95%). No other relationship changed. `--diff`
-names 105 registries: 19 change their scope-context counts (67 clause fields become complete, 17
-of them in `common/traits`), and every one changes its open shapes.
+SDK-808 names the obstacle of each read-scope gap ([gap details](#read-time-block-scopes-sdk-549)),
+reads each [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) in the scope
+that its constructor receives, and reads a block whose every read passes scope 0 in no scope. Over
+a recording at its merge with `main` `29b025c`, the open gaps went from 4,031 to 3,867, and scope
+context from 1,323 to 1,406 of 1,926 (68.69% to 73.00%); all units from 4,739 to 4,822 of 7,515
+(63.06% to 64.17%). No other relationship changed. `--diff` names 111 registries: 27 change their
+scope-context counts (67 clause fields, 17 of them in `common/traits`, and 16 zero-scope fields
+become complete), and every one changes its open shapes.
 
 | Read-scope gap | Before | After |
 | --- | ---: | ---: |
@@ -202,7 +203,7 @@ of them in `common/traits`), and every one changes its open shapes.
 | `reader-path` | — | 739 |
 | `no-scope-parameter` | — | 88 |
 | `stored-scope` | 74 | 5 |
-| `zero-mask` | 29 | 29 |
+| `zero-mask` | 29 | 0 |
 
 The 69 clause fields and their 69 `potential` keys close. 722 of the `reader-path` gaps are on
 fields with no reader (418 are the 19 unread `CEvent` fields of the 22 event kinds); 17 are an
@@ -210,15 +211,18 @@ unresolved alternative beside a joined one. The `no-scope-parameter` gaps are 73
 `CPersistent::Read` blocks (24 `pre_triggers`, embedded objects, unproven weight-named blocks), the
 5 Tooltip `modifier` keys and 10 readers of kind `Unknown`. In the command population, the 911
 `scope-argument` gaps of 427 answers become 781 `reader-path`, 120 `no-scope-parameter` and 15
-`scope-argument`; no completeness changes.
+`scope-argument`; no completeness changes, and the zero-scope rule changes no command answer.
 
 **Atlas need.** Joined through the config type paths, 86 `replace_scopes` and `push_scope` claims
 sat on fields with a read-scope gap (ledger of Atlas `63c2028`). A `replace_scopes` claim needs a
 known read scope, entry contexts and no `UnresolvedPath` gap on the field; a `push_scope` claim
 needs the read scope only. The clause repair answers 39 claims' read scope; the two situations
 `push_scope` claims gain an answer now, and the 37 `replace_scopes` claims wait on clause entry
-contexts. The 23 claims on `reader-path` fields wait on their readers. Only the zero-mask fields
-would credit `replace_scopes` claims now (7); they stay open.
+contexts. The 23 claims on `reader-path` fields wait on their readers. The zero-scope rule answers
+the 7 `replace_scopes` claims whose fields already had entry contexts and no other blocking gap:
+`fallen_empires.possible`, civics `playable` and `ai_playable`, buildings `planet_limit` and
+`district_limit`, `bombardment_stances.planet_damage` and `authorities.random_weight`. Their
+answer is no scope, where the config gives the scope that each is used in.
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
@@ -281,17 +285,16 @@ An unfinished member walk also keeps each established family's scope alternative
 | `no-scope-parameter` | The reader takes no `EScopeType`, such as `CPersistent::Read` of an embedded object or a block whose object reader is not proven. | The object's own reader or stored scope |
 | `scope-argument` | The reader takes a scope, and the argument is not a constant, the enclosing scope or a load. | This method |
 | `stored-scope` | The argument loads a word that the method does not establish at member entry. | This method |
-| `zero-mask` | The argument is scope 0. | Kept open: see below |
+| `zero-mask` | Scope 0 beside another scope. A block whose every read passes 0 reads in no scope (below). | This method |
 | `construction-scope` | A [triggered modifier clause](triggered-modifiers.md#read-scope-sdk-808) whose constructor takes no scope. | This method |
 
-The zero mask stays open. `CTrigger::CheckScopeSupport(EScopeType)` (`0x100d0863c`) returns
-true for scope 0, and an event kind built with scope 0 already reads in no scope
-([event kinds](registry-fields.md#event-kinds)). A known empty list would also need the readers'
-later scope checks, the reason for decision D5(a) on weight entries. Close it when the later
-checks of the zero-mask root readers are read, or when the read-time rule is accepted for
-the 7 claims that it would credit (`fallen_empires.possible`, civics `playable` and
-`ai_playable`, buildings `planet_limit` and `district_limit`, `bombardment_stances.planet_damage`,
-`authorities.random_weight`).
+**Zero mask (SDK-808, agreed with Jackson 2026-10-13).** A block whose every read passes scope
+0 reads in no scope (`Known([])`): `CTrigger::CheckScopeSupport(EScopeType)` (`0x100d0863c`)
+returns true for scope 0, and the engine names it "scope not set". The rule is in
+`normalize_scopes`, so it also answers the [event kinds](registry-fields.md#event-kinds), stored
+zero weight fields and command blocks. The D5(a) weight entries, which pass a literal 0 and check
+later, keep their `OutsideMethod` gap. Later checks of the root readers are not read; the config
+gives these blocks the scope they are used in, so Atlas shows them as disagreements.
 
 The focused file-load fixture confirms the engine-selected country scope for a tradition trigger
 and effect. Inline fixture validation also passes. File-load diagnostics use the bound log hooks
@@ -420,8 +423,8 @@ weight field whose constructors agree; it does not change the registry counts ab
 answers. The 73 weight fields stay partial for numeric, keyword and entry-context gaps. Each now
 has four `OutsideMethod` zero-mask limits (292, D5a), one for the `trigger` key match (73) and one
 for `parameters` (73, D3); the `ReaderSemantics` trigger gap and the `UnresolvedReader`
-`parameters` gap are gone (73 each). The nine stored-zero root fields keep `UnresolvedPath
-read-scope: zero-mask`. Modifier-block fields report `read_scope: Known([])` (D4), which removes
+`parameters` gap are gone (73 each). The nine stored-zero root fields kept `UnresolvedPath
+read-scope: zero-mask` until SDK-808. Modifier-block fields report `read_scope: Known([])` (D4), which removes
 82 `read-scope: scope-argument` gaps (745 to 663). The reference census is unchanged at 188
 readers (161 complete, 27 failed), and `trigger_lookup` is established.
 
