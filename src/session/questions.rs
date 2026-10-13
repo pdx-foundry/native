@@ -265,6 +265,26 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
+    /// Two shapes of custom loader give root statements instead of item fields. Where the loader
+    /// selects a scope by the root key, as the events loader does, every root field is a root
+    /// statement whose members are the item's fields. Where the loader reserves one root key for
+    /// another class, the root fields are the items of every other key, and one more root field
+    /// named for the reserved key is a root statement whose members are the other class's
+    /// fields.
+    ///
+    /// ```no_run
+    /// # fn example(native: &pdx_native::Native) -> Result<(), pdx_native::Error> {
+    /// let answer = native.registry_fields("common/planet_classes")?;
+    /// // `random_list = { … }` is a root statement, not a field of a planet class.
+    /// let random_list = answer.value.iter().find(|field| field.name == "random_list");
+    /// if let Some(pdx_native::FieldMembers::Fields(fields)) = random_list.map(|f| &f.members) {
+    ///     let names: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
+    ///     assert!(names.contains(&"planets"));
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
     /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
     /// [`Error::UnknownRegistry`].
