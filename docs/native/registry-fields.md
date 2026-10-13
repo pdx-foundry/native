@@ -24,9 +24,12 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v31`) holds
-the baseline: **183 registries, 13 complete, 165 partial, 0 failed, 5 unsupported**, 1,859 root
-fields. The 164 template answers did not change when the 19 custom-loader names joined (SDK-787);
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v32`) holds
+the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
+fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
+30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
+listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
+change when the 19 custom-loader names joined (SDK-787);
 their counts are in [custom-loader owners](#custom-loader-owners). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -587,11 +590,65 @@ The 20 `*_event` effects on M452 are the typed kinds without `pop_event`. The co
 `8574760` has 21 kinds: no `pop_event`, and `carrier` as the push scope of `carrier_event`, which
 the engine reads as planet or ship. No vanilla file in `events/` has a `pop_event` key.
 
+### Event kinds
+
+`registry_fields("events")` answers one root field per kind (SDK-702, decision D4). Each kind's
+`read_scope` is the scope that the loader passes to `CEvent::CEvent(EScopeType)`: a known empty
+list for `event` (scope `0`), one alternative with planet and ship for `carrier_event`. Its
+members are the `CEvent` fields, the same for every kind, and a gap of a member is repeated
+below each kind (`country_event.trigger`). `namespace` and `inline_script` are not fields. The
+parity test `each_event_kind_is_a_root_field_read_in_the_scope_that_the_kind_selects` compares
+`tests/expected/m452/event-kinds.json` with the table above. Atlas joins kind `K`'s read scope to
+`type[event]/subtype[K]/$annotation:push_scope` through the kind's `type_key_filter`, and its
+known empty list to `scopeless`.
+
+- **The loader root.** The kind switch is in the file loader, not in an owner `ReadMember`, so the
+  field input has a second root (`FieldInput::loader_root`). The binding takes the one function
+  of the owner's database that calls `CReader::ReadSimpleStatement()` and an `(EScopeType)`
+  constructor of the owner; the walk starts after the statement read, with the reader in the
+  callee-saved register that the call's argument is copied from (`x23`). The token is the word at
+  the recipe's `reader_token_offset`, so the existing compares and byte jump tables partition it.
+- **The walk.** A call to the owner's constructor ends a path and joins with its arguments; `x1`
+  is the kind's scope. Every other call clobbers `x0`–`x18` and the walk goes on: the ABI keeps
+  `x19`–`x28`, and the case holds the scope in `w21`. A branch back to the statement read ends the
+  path as rejected. A loader with none of these functions has no loader root, and its answer is
+  unchanged.
+- **Validated assumption.** As for every custom-loader owner, the built object is taken as the
+  item that the loader reads; the walk ends at the constructor and does not follow the virtual
+  read. The kind's reader identity is the owner's primary vtable point (`CPersistent::Read` with
+  `CEvent::ReadMember`). Repeat behavior is not established: the duplicate rule belongs to
+  `loader_rules`.
+- **Known gaps.** The default case (`Corrupt Event Table Entry`) stops at a `movk`, and the
+  `namespace` case at an `ldursb`, so the answer has one registry gap for a root path that the
+  walk could not finish. The walk names every accepted kind regardless.
+
+`registry_fields` over `events/` at `registry-fields/v32`: 22 kinds, each read in an established
+scope; of the 30 `CEvent` fields, 7 are complete (`custom_gui`, `custom_gui_option`,
+`notification_event_icon`, `diplomatic_title`, `event_picture_background`, `specimen`,
+`event_message_type`), 3 are partial (`event_chain` with unresolved storage, `difficulty` and
+`notification_event_icon_frame` with the scanner's conversion outside the method) and 20 have no
+established reader. Their failure shapes, from `examples/inspect --registry-fields events`:
+
+- the path reaches a call that is not a reader: `operator new` for an object held by a
+  `shared_ptr` (`trigger`, `immediate`, `option`, `after`, `abort_trigger`, `abort_effect`,
+  `picture_event_data`, `desc`); `make_shared<…>(EScopeType const&)` (`picture`, `show_sound`,
+  `mean_time_to_happen`, `weight_multiplier`); `CEventTarget::CEventTarget(CToken)` (`situation`,
+  `location`); `strlen` or `CString::CString` of the token text (`id`, `title`, `message_desc`,
+  `base`); `CTriggeredEventDescription<…>::ReadEntry(CReader&, int, EScopeType)` (`desc`);
+  `shared_ptr<…>::reset` (`desc_clear`);
+- an unsupported instruction (`stur` to the frame, `cset`) on an alternative path and on 16
+  unnamed token paths, and three unsupported branch conditions.
+
+The block children take their scope from `CEvent + 0x68`, where the constructor stores the kind's
+scope, but none of their readers joins, so none is `Enclosing` yet. When a child's reader joins
+with scope `Load(Owner(0x68))`, it reads in the kind's scope once the constructor is shown to
+store its argument there. The `pre_triggers` keys belong to SDK-801.
+
 Pitfalls:
 
-- The kind switch is in the file loader, not in an owner `ReadMember`: the field method's root
-  (`binding/binary/fields.rs`, the owner `ReadMember`) does not reach the kinds. Each case reads
-  no value; it sets a constant that a later constructor call receives.
+- The kind switch is in the file loader, not in an owner `ReadMember`. Each case reads no value;
+  it sets a constant that a later constructor call receives. Read it from the loader root, not
+  from the owner's member walk.
 - The `*_event` effect declarations do not establish the loader's kinds: `pop_event` has a kind
   and no effect, and `event` has neither an effect nor a scope.
 - A token number is per build. Name tokens from `GetTokenArray()` (the constant in `w1` after

@@ -254,6 +254,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         RegistryFieldResult {
+            loader: None,
             persistent: destinations
                 .iter()
                 .map(|&destination| (destination, modifier.clone()))

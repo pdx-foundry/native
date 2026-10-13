@@ -1,7 +1,7 @@
 use super::tokens::{FunctionView, decode, function, number, register};
 use super::{
-    Condition, DataSection, FieldGap, FieldGapKind, FieldInput, Function, PathOutcome, ReaderJoin,
-    TableEntry, TokenPath, Value,
+    Condition, DataSection, FieldGap, FieldGapKind, FieldInput, Function, LoaderRoot, PathOutcome,
+    ReaderJoin, TableEntry, TokenPath, Value,
 };
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::discovery::{Symbol, SymbolIndex};
@@ -37,6 +37,8 @@ pub(crate) struct DispatchInput<'a> {
     /// The one owner-vtable target that joins as a member delegate when a tail call passes it the
     /// owner, reader and token unchanged.
     pub virtual_delegate: Option<&'a str>,
+    /// A loader root to walk from its statement read instead of a member reader's entry.
+    pub loader: Option<&'a LoaderRoot>,
 }
 
 /// Where dispatch finds a function body by name.
@@ -79,6 +81,7 @@ impl<'a> DispatchInput<'a> {
             owner_vtable: None,
             serializer_constructors: None,
             virtual_delegate: None,
+            loader: None,
         }
     }
 
@@ -853,8 +856,38 @@ pub(super) fn explore_owner(
             owner_vtable: None,
             serializer_constructors: None,
             virtual_delegate: None,
+            loader: None,
         },
         &root,
+    )
+}
+
+/// Every token path through the root switch of `loader`, a function of the input, and the jump
+/// tables in it that could not be decoded. A path ends at a call to the owner's constructor, which
+/// joins with its arguments, or as rejected where it returns to the statement loop. Other calls
+/// keep the callee-saved registers, as the ABI requires, so a scope constant held there reaches
+/// the constructor.
+pub(super) fn explore_loader(
+    input: &FieldInput,
+    symbol_index: &SymbolIndex,
+    loader: &LoaderRoot,
+) -> (Vec<TokenPath>, Vec<FieldGap>) {
+    explore_member(
+        &DispatchInput {
+            scope: None,
+            key_readers: &input.key_readers,
+            bodies: Bodies::Named(&input.functions),
+            symbols: &input.symbols,
+            symbol_index,
+            read_only_data: &input.read_only_data,
+            reader_token_offset: Some(loader.token_offset),
+            member_delegates: false,
+            owner_vtable: None,
+            serializer_constructors: None,
+            virtual_delegate: None,
+            loader: Some(loader),
+        },
+        &loader.function,
     )
 }
 
@@ -912,6 +945,18 @@ fn explore_member_with_wrapped_owner(
         .enumerate()
         .map(|(i, r)| (r.address, i))
         .collect();
+    if let Some(loader) = input.loader {
+        let Some(&start) = indexes.get(&loader.start) else {
+            let missing = Unresolved::new("loader-start");
+            return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
+        };
+        initial.pc = start;
+        initial.registers = BTreeMap::from([
+            (loader.reader.clone(), Value::Reader(0)),
+            ("xzr".into(), Value::Constant(0)),
+            ("sp".into(), Value::Stack(0)),
+        ]);
+    }
     let rejects = rejection(input);
     let mut pending = vec![initial];
     let mut leaves = Vec::new();
@@ -941,6 +986,14 @@ fn explore_member_with_wrapped_owner(
                 break;
             };
             let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
+            // The statement loop reads the next statement: this one built no owner on the path.
+            if input
+                .loader
+                .is_some_and(|loader| !state.path.is_empty() && row.address <= loader.start)
+            {
+                leaves.push(state.finish(row.address, PathOutcome::Rejected));
+                break;
+            }
             let repeated = if state.path.len() >= MAX_PATH {
                 Some(stop("step-limit", Obstacle::Bound(Bound::Steps(MAX_PATH))))
             } else if state.path.contains(&row.address) {
@@ -955,6 +1008,10 @@ fn explore_member_with_wrapped_owner(
             state.pc += 1;
             state.path.push(row.address);
             let args: Vec<_> = row.operands.split(',').collect();
+            if input.loader.is_some() && row.operation == "blr" {
+                state.clobber_call();
+                continue;
+            }
             if input.owner_vtable.is_some()
                 && matches!(row.operation.as_str(), "blr" | "br")
                 && !matches!(state.value(&row.operands), Some(Value::TableTarget { .. }))
@@ -991,6 +1048,31 @@ fn explore_member_with_wrapped_owner(
                 {
                     state.pc = *index;
                     continue;
+                }
+                if let Some(loader) = input.loader {
+                    if target.is_some_and(|target| loader.constructors.contains(&target)) {
+                        let callee = target
+                            .and_then(|address| input.symbol_index.name(input.symbols, address))
+                            .unwrap_or_default();
+                        let join = ReaderJoin::Joined {
+                            callee: callee.into(),
+                            arguments: state.registers.clone(),
+                            tail: row.operation == "b",
+                        };
+                        leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
+                        break;
+                    }
+                    if row.operation == "bl" {
+                        state.clobber_call();
+                        continue;
+                    }
+
+                    // A tail call to another function leaves the loader: no owner on this path.
+                    leaves.push(state.finish(
+                        row.address,
+                        PathOutcome::Gap(stop("loader-tail-call", Obstacle::Call)),
+                    ));
+                    break;
                 }
                 if let Some(slot) = target.and_then(|target| {
                     input

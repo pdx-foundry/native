@@ -74,7 +74,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v31";
+pub const METHOD: &str = "registry-fields/v32";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -118,6 +118,17 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));
     }
+    let loader = input.loader_root.as_ref().map(|root| {
+        let (paths, mut gaps) = dispatch::explore_loader(input, &symbol_index, root);
+        let (keys, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
+        gaps.extend(path_gaps);
+        LoaderKeys {
+            keys,
+            paths,
+            gaps,
+            item_reader: root.item_reader.clone(),
+        }
+    });
     let persistent = persistent::discover(input, &fields);
     gaps.extend(persistent.gaps);
     let embedded = persistent::embedded(
@@ -141,5 +152,6 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
         paths,
         gaps,
         partition_accounted,
+        loader,
     })
 }

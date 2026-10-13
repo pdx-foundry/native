@@ -731,6 +731,7 @@ mod tests {
     fn input(code: Vec<u8>) -> FieldInput {
         let symbols = vec![Symbol { name: "TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(), address: 0x7000 }];
         FieldInput {
+            loader_root: None,
             key_readers: Default::default(),
             persistent: None,
             owner: "CExample".into(),
@@ -756,6 +757,7 @@ mod tests {
             class: "CChild".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {
+                loader: None,
                 persistent: Default::default(),
                 persistent_points: Default::default(),
                 scoped_destinations: Default::default(),

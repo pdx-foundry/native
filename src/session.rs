@@ -22,6 +22,7 @@ mod fields;
 pub(crate) mod grammar;
 mod language;
 mod loaded_modifiers;
+mod loader_kinds;
 mod loader_rules;
 mod localization;
 mod modifier_blocks;

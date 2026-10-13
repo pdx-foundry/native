@@ -42,8 +42,29 @@ pub struct FieldInput {
     pub objects: Vec<ObjectReader>,
     /// Constructor evidence for generic persistent member destinations.
     pub persistent: Option<PersistentInput>,
+    /// The loader function whose root switch builds the owner, when a custom loader selects a
+    /// scope for each root key that it accepts.
+    pub loader_root: Option<LoaderRoot>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
+}
+
+/// A loader function that reads each root statement, switches on its token and passes a scope
+/// constant to the owner's `(EScopeType)` constructor for each root key that it accepts.
+#[derive(Debug, Clone, Serialize)]
+pub struct LoaderRoot {
+    /// The loader function's name; its body is one of the input's functions.
+    pub function: String,
+    /// The instruction after the statement read, where the walk starts.
+    pub start: u64,
+    /// The callee-saved register that holds the reader at `start`.
+    pub reader: String,
+    /// The reader offset of the statement's token word.
+    pub token_offset: u64,
+    /// Entry addresses of the owner's `(EScopeType)` constructor.
+    pub constructors: BTreeSet<u64>,
+    /// The persistent reader at the owner's primary address point.
+    pub item_reader: Option<ConcreteReader>,
 }
 /// Provenance of a value at a dispatch boundary; unknown values are omitted.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -253,6 +274,22 @@ pub struct RegistryFieldResult {
     pub gaps: Vec<FieldGap>,
     /// Whether all token intervals are accounted for; this does not close path gaps.
     pub partition_accounted: bool,
+    /// The root keys of the input's loader root, when it has one.
+    pub loader: Option<LoaderKeys>,
+}
+
+/// The root keys that a loader root names, with their own path ledger. Each key's readers join
+/// the owner's constructor, end in a gap, or are absent where every path rejects.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct LoaderKeys {
+    /// Named root keys of the loader's switch; `paths` indexes `LoaderKeys::paths`.
+    pub keys: Vec<RootField>,
+    /// The loader root's bounded token-path ledger.
+    pub paths: Vec<TokenPath>,
+    /// Gaps of the loader walk; `path` indexes `LoaderKeys::paths`.
+    pub gaps: Vec<FieldGap>,
+    /// The persistent reader at the owner's primary address point.
+    pub item_reader: Option<ConcreteReader>,
 }
 
 impl RegistryFieldResult {

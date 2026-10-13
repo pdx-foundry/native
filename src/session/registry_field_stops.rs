@@ -81,9 +81,7 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
 
 /// The block method's findings for the owner of `run`'s registry.
 fn entry_contexts(run: &RegistryFieldRun, facts: &BlockFacts) -> EntryContexts {
-    let field_blocks = run
-        .answer
-        .value
+    let field_blocks = super::loader_kinds::owner_fields(&run.answer.value, &run.result)
         .iter()
         .zip(&run.result.fields)
         .filter(|(field, _)| field_entries::takes_entry_contexts(field.reader.family))

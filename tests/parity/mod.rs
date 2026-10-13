@@ -70,6 +70,24 @@ pub fn read_scopes(native: &Native, expected: &Value) -> Result<Value> {
     Ok(json!({"build": native.build(), "registries": registries, "commands": commands}))
 }
 
+/// The scope names of each event kind's read scope; an empty list is no scope.
+pub fn event_kinds(native: &Native) -> Result<Value> {
+    let answer = current_answer(native, native.registry_fields("events")?)?;
+    let mut kinds = BTreeMap::new();
+    for field in &answer.value {
+        let GrammarProperty::Known(alternatives) = &field.read_scope else {
+            return Err(format!("{}: read scope {:?}", field.name, field.read_scope).into());
+        };
+        let names: Vec<_> = match alternatives.as_slice() {
+            [] => Vec::new(),
+            [ReadScope::Types(types)] => types.iter().map(|scope| scope.name.clone()).collect(),
+            other => return Err(format!("{}: read scope {other:?}", field.name).into()),
+        };
+        kinds.insert(field.name.clone(), names);
+    }
+    Ok(json!(kinds))
+}
+
 /// The keys of each selected field's embedded block: the field's reader identity, each key's
 /// reader kind, and the kinds of the gaps on each key.
 pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
@@ -209,6 +227,7 @@ pub const FILES: &[&str] = &[
     "scope-links.json",
     "pre-triggers.json",
     "loader-rules.json",
+    "event-kinds.json",
 ];
 
 pub fn expected_directory() -> PathBuf {
@@ -357,6 +376,7 @@ pub fn question(native: &Native, name: &str, expected: &Value) -> Result<Value> 
             Ok(json!(registries))
         }
         "pre-triggers.json" => pre_triggers(native, expected),
+        "event-kinds.json" => event_kinds(native),
         "modifier-blocks.json" => modifier_blocks(native),
         "weight-blocks.json" => weight_blocks(native),
         "triggered-modifiers.json" => triggered_modifiers(native),
