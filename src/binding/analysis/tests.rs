@@ -2082,7 +2082,7 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
 
     assert_eq!(
         missing("", ReaderForm::ImmediateList),
-        [Ok(Missing::Skipped); 13]
+        [Ok(Missing::Omitted); 13]
     );
     assert_eq!(
         missing("CScriptedActionDatabase", ReaderForm::DeferredList),

@@ -537,7 +537,7 @@ const LIST_SCAN_VALUES: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn an_immediate_list_skips_a_key_whose_null_object_fails_its_validity_check() {
+fn an_immediate_list_omits_a_key_whose_null_object_fails_its_validity_check() {
     let fact = lookup(
         &immediate_list("list_scan", LIST_SCAN_VALUES, "0x1", "0x0"),
         SHIP_LIST,
@@ -549,7 +549,7 @@ fn an_immediate_list_skips_a_key_whose_null_object_fails_its_validity_check() {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::Skipped,
+            on_missing: Missing::Omitted,
         })
     );
     assert_eq!(fact.null_object.as_deref(), Some(SHIP_NULL));

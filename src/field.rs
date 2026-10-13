@@ -355,7 +355,7 @@ pub enum MissingResult {
     /// check that a scripted trigger has the name.
     ScriptedTriggerPlaceholder,
     /// Nothing: a list reader logs the key and adds no item to the list.
-    Skipped,
+    Omitted,
     /// Not established.
     Unresolved,
 }

@@ -83,10 +83,10 @@
   "Lookups": [
    {
     "condition": "Always",
-    "empty_key": "Unresolved",
-    "key_match": "Unresolved",
-    "on_missing": "Unresolved",
-    "stage": "Unresolved",
+    "empty_key": "LookedUp",
+    "key_match": "Equal",
+    "on_missing": "NullObject",
+    "stage": "WhileReading",
     "target": {
      "Registry": {
       "name": "common/planet_classes"
@@ -99,10 +99,10 @@
   "Lookups": [
    {
     "condition": "Always",
-    "empty_key": "Unresolved",
-    "key_match": "Unresolved",
-    "on_missing": "Unresolved",
-    "stage": "Unresolved",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "Omitted",
+    "stage": "WhileReading",
     "target": {
      "Registry": {
       "name": "common/job_tags"
@@ -198,5 +198,8 @@
     }
    }
   ]
- }
+ },
+ "trigger/free_jobs_of_type": [
+  "The receiver's initializer reads a global instance, but no lookup of it is established: the initializer holds several lookups."
+ ]
 }

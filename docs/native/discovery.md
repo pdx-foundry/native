@@ -86,7 +86,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
-| SDK-635 | 11 | 6 | Reference lookups |
+| SDK-635 | 11 | 6 | Reference lookups: [repaired](references.md#list-readers) |
 
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
 gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 300 other gaps in
@@ -200,6 +200,17 @@ above, open gaps go from 4,328 to 4,173 (two `derived_names` path gaps of distri
 also close with the new `csetm` and switch-table rules), accepted gaps from 695 to 833, scope
 context from 1,309 to 1,323 and all units from 4,718 to 4,732 (62.97%). `--diff` against the
 baseline names 49 registries: 7 change from the repairs and 46 move gaps to the limit.
+
+SDK-635 established the lookups of the list readers and of the bypass and planet-class immediate
+readers ([list readers](references.md#list-readers)). Over a new recording at its merge with
+`main` `29b025c`, the 11 `ReaderSemantics` reference gaps of 6 registries close: references go
+from 25 to 36 of 345 (no partial field remains), all units from 4,739 to 4,750 of 7,515 (63.06% to
+63.21%). `--diff` against the baseline names `common/megastructures`, `common/pop_jobs`,
+`common/ship_sizes`, `common/species_classes`, `common/star_classes/randomizers` and
+`common/traits`; no other relationship changes. In `command-population`, 10 commands whose value
+reads a reference lose their `form-reader-call` and `form-reference-lookup` stops and now stop at
+`PostValidate`; 7 lose a list or reader-shape reference gap, and the 2 that read technology
+tiers now say that the reader reads an index, not a key.
 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key

@@ -152,7 +152,7 @@ pub enum Missing {
     /// A scripted-trigger placeholder that holds the key as its name.
     ScriptedTriggerPlaceholder,
     /// Nothing: a list reader logs the key and adds no item.
-    Skipped,
+    Omitted,
 }
 
 /// The lookup semantics that complete shapes establish.
@@ -403,7 +403,7 @@ impl Method<'_> {
             stage: Stage::WhileReading,
             key_match,
             empty_key_looked_up: true,
-            on_missing: Missing::Skipped,
+            on_missing: Missing::Omitted,
         };
 
         Ok((lookup, bindings["null"].clone()))
