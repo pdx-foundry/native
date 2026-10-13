@@ -243,11 +243,13 @@ cargo run --release --example derived-name-population -- "$STELLARIS_PATH"
 
 | Inventory | Total | Complete | Partial | Unsupported | Failed |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Registries | 185 | 62 | 117 | 6 | 0 |
+| Registries | 185 | 61 | 118 | 6 | 0 |
 
-Eighty-seven registries return names, and all of them are partial. The 62 complete answers
+Eighty-seven registries return names, and all of them are partial. The 61 complete answers
 return no name: no own method of theirs reaches a lookup or check, and no getter of theirs has a
-caller with one. Twenty-one of the 30 partial answers with no name have no established key place.
+caller with one. Twenty-one of the 31 partial answers with no name have no established key place;
+`common/starbase_levels` is partial only for its `getter-path` gap
+(`CStarbaseLevelType::GetTooltip`).
 
 The 21 registries that a database's own loader names
 ([custom-loader names](registry-fields.md#custom-loader-names)) are read through the owner that
@@ -282,22 +284,20 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 | A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
 | No path of a getter's probe returns (`getter-path`) | 3 | |
 | No established key place (`constructor` 17, `key-storage` 4) | 21 | |
-| Every-item initialization not established | 36 | |
-| Field values of a name not established | 48 | 118 |
+| Every-item initialization not established | 4 | |
+| Field values of a name not established | 47 | 112 |
 | What a missing name gives not established | 38 | 117 |
 | Field-derived name with unexplored field states | 25 | 67 |
 
 The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
 (18 gaps); the other `UnresolvedPath` rows are unchanged.
 
-The 36 every-item gaps are: a database path keeps an item without its post-read code (25), a
-function forms an item's vtable address without its constructor (6), another function constructs
-items (5).
+The four every-item gaps (36 before SDK-713) are listed in [gaps](#gaps).
 
 The 303 entries: 274 localisation, 18 file and 11 sprite; 224 when used and 79 at owner
 initialization. On a miss, 156 show the key, 117 are unresolved, 16 are silent and 14 are
 diagnostics; no entry is a fallback. The 67 names with a field part are all unresolved on a miss.
-Conditions: 118 `Always`, 67 with field terms, 118 `Unresolved`. The interface callers give six of
+Conditions: 124 `Always`, 67 with field terms, 112 `Unresolved`. The interface callers give six of
 the sprite entries ([what the callers give](#what-the-callers-give)).
 
 Findings of the run:
