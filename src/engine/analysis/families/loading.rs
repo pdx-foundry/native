@@ -21,11 +21,24 @@
 //! constructed received a call of every item root with the item in `x0`. A path that ends at a
 //! loop head is covered by a path with the same pending items, which goes on.
 //!
+//! The database's post-read loop (`TSingleObjectGameDatabase<Db, Owner, …>::PostReadInit()`) can
+//! also call an item root, such as `<Owner>::PostReadInit()`, for each item of its item array. It
+//! runs on the database as each constructor body leaves it, with an item array of two distinct
+//! items. A root that every returned path calls with both items, on no failed path, is called for
+//! every item of the array, whatever code constructed the item, so it needs no loader run.
+//!
+//! The items that the database's constructor builds, such as the `yes` job of `CJobTypeDatabase`,
+//! are the engine's own and no content file defines them; a content statement with the same key
+//! goes through `ReadExistingEntry`, which reads the item. The method requires the item roots only
+//! for the items of the other loaders.
+//!
 //! Assumptions: the null object (`TPdxNullObject<Owner>::Initialize`) is not an item of the
 //! database; a store to an unknown address, or a call that the run does not enter, changes
 //! neither the database's fields other than its item array nor an item's vtable pointers. A path
-//! that ends in a function that never returns, or in a trap, loads no item. Outside the method:
-//! an address of the vtables that code forms in a way that the binding's scan does not read.
+//! that ends in a function that never returns, or in a trap, loads no item. The engine runs the
+//! database's post-read loop once after it loads the database's files, and a loop that calls a root
+//! for both of two items treats every item alike. Outside the method: an address of the vtables
+//! that code forms in a way that the binding's scan does not read.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::evaluate::{Call, Code, Exit, Machine};
@@ -46,6 +59,8 @@ pub struct Loading {
     pub loaders: Vec<Function>,
     /// Every body of the database's constructor.
     pub database_constructors: Vec<Function>,
+    /// Every body of the database's post-read loop over its items.
+    pub database_loops: Vec<Function>,
     /// The functions of other classes that construct an item, other than the null object's
     /// initializer.
     pub elsewhere: Vec<String>,
@@ -64,8 +79,9 @@ pub struct Loading {
     pub dispatch: BTreeSet<u64>,
     /// The functions that return new memory.
     pub allocations: BTreeSet<u64>,
-    /// The loaders, the database constructors and the dispatch functions. The item roots are left
-    /// out, so that a branch into one reaches the run's call handler.
+    /// The loaders, the database constructors, the database's post-read loops and the dispatch
+    /// functions. The item roots are left out, so that a branch into one reaches the run's call
+    /// handler.
     pub code: Code,
 }
 
@@ -101,13 +117,28 @@ pub enum NotEstablished {
     },
 }
 
-/// Whether the functions that construct the registry's items call each of `roots` with each
-/// item on every path.
+/// Whether the engine calls each of `roots` with each item that content defines: the database's
+/// post-read loop calls it for every item, or the functions that construct the items call it with
+/// each item on every path.
 pub fn every_item(
     input: &FamilyInput,
     loading: &Loading,
     roots: &BTreeSet<u64>,
 ) -> Result<(), NotEstablished> {
+    let mut run = Run {
+        input,
+        loading,
+        roots: roots.iter().copied().collect(),
+    };
+    let databases = run.databases();
+    if let Ok(databases) = &databases {
+        let looped = run.looped_roots(databases);
+        run.roots.retain(|root| !looped.contains(root));
+        if run.roots.is_empty() {
+            return Ok(());
+        }
+    }
+
     if let Some(function) = loading.elsewhere.first() {
         return Err(NotEstablished::ConstructedElsewhere {
             function: function.clone(),
@@ -118,20 +149,25 @@ pub fn every_item(
             function: function.clone(),
         });
     }
-    if loading.loaders.is_empty() {
+    let content_loaders: Vec<&Function> = loading
+        .loaders
+        .iter()
+        .filter(|loader| {
+            !loading
+                .database_constructors
+                .iter()
+                .any(|constructor| constructor.address == loader.address)
+        })
+        .collect();
+    if content_loaders.is_empty() {
         return Err(NotEstablished::NoLoader);
     }
     if loading.vtables.is_empty() {
         return Err(NotEstablished::NoVtable);
     }
 
-    let run = Run {
-        input,
-        loading,
-        roots: roots.iter().copied().collect(),
-    };
-    let databases = run.databases()?;
-    for loader in &loading.loaders {
+    let databases = databases?;
+    for loader in content_loaders {
         for database in &databases {
             run.loader(database, loader)?;
         }
@@ -199,8 +235,90 @@ impl<'r> Run<'r> {
         }
     }
 
-    /// Run `loader` on the database, and require every path to read each item it constructed.
-    fn loader(&self, constructed: &Database, loader: &Function) -> Result<(), NotEstablished> {
+    /// The item roots that every body of the database's post-read loop calls for every item. A
+    /// database without such a loop gives none.
+    fn looped_roots(&self, databases: &[Database]) -> BTreeSet<u64> {
+        let mut looped: BTreeSet<u64> = self.roots.iter().copied().collect();
+        if self.loading.database_loops.is_empty() || self.loading.vtables.is_empty() {
+            return BTreeSet::new();
+        }
+
+        for function in &self.loading.database_loops {
+            for constructed in databases {
+                let received = self.received_in_loop(constructed, function);
+                looped.retain(|root| received.contains(root));
+            }
+        }
+        looped
+    }
+
+    /// The item roots that every returned path of `function` calls with each of two items of the
+    /// database's item array, or none when a path fails or none returns.
+    fn received_in_loop(&self, constructed: &Database, function: &Function) -> BTreeSet<u64> {
+        let (mut machine, database) = self.database_machine(constructed);
+        let layout = self.input.database;
+        let items: Vec<u64> = (0..2)
+            .map(|_| self.constructed_item(&mut machine))
+            .collect();
+        let array = machine.reserve(8 * items.len() as u64);
+        for (index, &item) in (0..).zip(&items) {
+            machine.write(array + 8 * index, 8, item);
+        }
+        machine.write(database + layout.items_offset, 8, array);
+        machine.write(database + layout.count_offset, 4, items.len() as u64);
+
+        let paths = machine.run_paths_joining(function.address, &mut |target, machine| {
+            self.call(target, machine)
+        });
+        // The label bits of the roots that each item received on every returned path.
+        let mut received = self.every_root();
+        let mut returned = false;
+        for path in &paths {
+            match self.ending(&path.end) {
+                Ending::Returned => {
+                    returned = true;
+                    for &item in &items {
+                        received &= path
+                            .machine
+                            .labelled(ITEMS | item)
+                            .unwrap_or(self.every_root());
+                    }
+                }
+                Ending::Covered | Ending::Ignored => {}
+                Ending::Failed(_) => return BTreeSet::new(),
+            }
+        }
+        if !returned {
+            return BTreeSet::new();
+        }
+
+        self.roots
+            .iter()
+            .enumerate()
+            .filter(|(bit, _)| received & 1 << bit != 0)
+            .map(|(_, &root)| root)
+            .collect()
+    }
+
+    /// A new item in `machine` with its class's vtables, which no item root has received.
+    fn constructed_item(&self, machine: &mut Machine) -> u64 {
+        let item = machine.reserve(ITEM_SPAN);
+        self.construct(machine, item);
+        item
+    }
+
+    /// Give the item at `item` its class's vtables, and mark it as received by no item root.
+    fn construct(&self, machine: &mut Machine, item: u64) {
+        for (&offset, &point) in &self.loading.vtables {
+            machine.write(item + offset, 8, point);
+            machine.protect(item + offset, 8);
+        }
+        machine.label(ITEMS | item, 0);
+    }
+
+    /// A machine that holds the database as its constructor leaves it, with an item array of
+    /// unknown length, and the database's address.
+    fn database_machine(&self, constructed: &Database) -> (Machine<'r>, u64) {
         let Database { bytes, reserved } = constructed;
         let mut machine = Machine::new(&self.loading.code, &self.input.data);
         let database = machine.reserve(DATABASE_SPAN);
@@ -219,6 +337,12 @@ impl<'r> Run<'r> {
             layout.count_offset + 4 - layout.items_offset,
         );
         machine.set_register(0, database);
+        (machine, database)
+    }
+
+    /// Run `loader` on the database, and require every path to read each item it constructed.
+    fn loader(&self, constructed: &Database, loader: &Function) -> Result<(), NotEstablished> {
+        let (mut machine, _) = self.database_machine(constructed);
         for &register in &loader.pointers {
             let argument = machine.reserve(ARGUMENT_SPAN);
             machine.set_register(register, argument);
@@ -255,11 +379,7 @@ impl<'r> Run<'r> {
         }
         if self.loading.constructors.contains(&target) {
             let item = machine.known_register(0, "item-address")?;
-            for (&offset, &point) in &self.loading.vtables {
-                machine.write(item + offset, 8, point);
-                machine.protect(item + offset, 8);
-            }
-            machine.label(ITEMS | item, 0);
+            self.construct(machine, item);
             return Ok(Call::Return(Some(item)));
         }
         if let Some(bit) = self.roots.iter().position(|&root| root == target) {
@@ -508,6 +628,7 @@ mod tests {
         Loading {
             loaders: vec![function(LOADER, "CDb::Load(CReader&)", &[1])],
             database_constructors: vec![function(DATABASE_CONSTRUCTOR, "CDb::CDb()", &[])],
+            database_loops: Vec::new(),
             elsewhere: Vec::new(),
             inline_constructions: Vec::new(),
             constructors: [ITEM_CONSTRUCTOR].into(),
@@ -563,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn a_database_constructor_that_adds_an_item_without_reading_it_does_not() {
+    fn items_that_the_database_constructor_builds_are_not_content_items() {
         let mut loading = loading(loader(NO_GATE), 0);
         let constructor = rows(
             DATABASE_CONSTRUCTOR,
@@ -581,7 +702,66 @@ mod tests {
         loading
             .loaders
             .push(function(DATABASE_CONSTRUCTOR, "CDb::CDb()", &[]));
-        assert_eq!(check(&loading, &[ROOT]), unread("CDb::CDb()"));
+        assert_eq!(check(&loading, &[ROOT]), Ok(()));
+    }
+
+    const DATABASE_LOOP: u64 = 0x700;
+
+    /// The database's post-read loop over its item array, which calls `ROOT` with each item.
+    /// `gate` is two instructions before the call that may branch to `NEXT`, past it.
+    fn database_loop(gate: [(&'static str, &str); 2]) -> Rows {
+        let [first, second] = gate;
+        rows(
+            DATABASE_LOOP,
+            &[
+                ("stp", "x19,x20,[sp,#-0x20]!"),
+                ("str", "x30,[sp,#0x10]"),
+                ("mov", "x19,x0"),
+                ("mov", "x20,#0"),
+                // 0x710: the loop head.
+                ("ldr", "w8,[x19,#0x54]"),
+                ("cmp", "x20,x8"),
+                ("b.ge", "#0x740"),
+                first,
+                second,
+                ("ldr", "x9,[x19,#0x48]"),
+                ("ldr", "x0,[x9,x20,lsl#3]"),
+                ("bl", &format!("#{ROOT:#x}")),
+                // 0x738: NEXT
+                ("add", "x20,x20,#1"),
+                ("b", "#0x710"),
+                // 0x740
+                ("ldr", "x30,[sp,#0x10]"),
+                ("ldp", "x19,x20,[sp],#0x20"),
+                ("ret", ""),
+            ],
+        )
+    }
+
+    /// A loader that never reads its items, and the database's post-read loop with `gate`.
+    fn looping(gate: [(&'static str, &str); 2]) -> Loading {
+        let unread = loader([("b", "#0x24c"), ("nop", "")]);
+        let mut loading = loading(unread.clone(), 0);
+        loading.code = code(&[database_constructor(0), unread, read(), database_loop(gate)]);
+        loading.database_loops = vec![function(DATABASE_LOOP, "CDb::PostReadInit()", &[])];
+        loading
+    }
+
+    #[test]
+    fn a_database_loop_that_calls_the_root_for_each_item_calls_it_for_every_item() {
+        assert_eq!(check(&looping(NO_GATE), &[ROOT]), Ok(()));
+    }
+
+    #[test]
+    fn a_database_loop_that_calls_the_root_for_its_first_item_only_does_not() {
+        let first_only = looping([("cbnz", "x20,#0x738"), ("nop", "")]);
+        assert_eq!(check(&first_only, &[ROOT]), unread("CDb::Load(CReader&)"));
+
+        // An item root that the loop does not call still needs the loader.
+        assert_eq!(
+            check(&looping(NO_GATE), &[ROOT, OTHER_ROOT]),
+            unread("CDb::Load(CReader&)")
+        );
     }
 
     #[test]

@@ -91,14 +91,28 @@ item's `CPersistent` base). Last, it inserts the item into the array at `+0x48`/
 - `TPdxNullObject<Owner>::Initialize` constructs the null object with index -1 and an empty key
   in its own storage.
 
-The method does not establish the per-item call for two registries:
+- Some database constructors build items of their own and insert them without a call to `Read`:
+  `CJobTypeDatabase` builds `yes`, and the constructors of the `council_agendas`, `deposits` and
+  `storm_types` databases construct items from the literals `yes`, `no` (and `random`). No content
+  file of those registries defines those keys; a content statement with the same key goes through `ReadExistingEntry`, which reads the
+  item. They are the engine's own items, so the method requires the item roots only for the items
+  of the other loaders. The `yes` job is the one loaded job without generated names (365 of 366).
+- `TSingleObjectGameDatabase<Db, Owner, …>::PostReadInit()` calls `<Owner>::PostReadInit()` for each
+  item of the array at `+0x48`/`+0x54`, whatever code built the item; `CPersistent::Read` does not
+  call it. The method runs that loop on the database as its constructor leaves it, with two
+  distinct items. A root that every returned path calls with both items needs no loader run. This
+  rests on the stated rule that a loop which calls a root for both of two items treats every item
+  alike: the loops of councilors (`0x100807e6c` on M452), buildings and traditions are
+  `for i in 0..count: items[i]->PostReadInit()` with no other test. A loop that tests the count
+  or the index before the call would break the rule; follow an arbitrary pass when one appears.
+  On M452 this establishes the call for 32 of the 36 `derived_names` registries that had none.
 
-- `CJobTypeDatabase::CJobTypeDatabase()` constructs one `pop_jobs` item and inserts it without a
-  call to `Read`. That is the one loaded job without generated names (365 of 366).
-- The `ReadExistingEntry` and `ReadNewEntry` of `resolution_categories` construct the item inline,
-  without a constructor call, and then call `CPersistent::Read` directly. The method does not
-  follow inline construction (an `InlineConstruction` gap), so whether the engine runs the call
-  there is not established.
+The method does not establish the per-item call where the database's `ReadExistingEntry` and
+`ReadNewEntry` construct the item inline, without a constructor call, and then call
+`CPersistent::Read` directly (`resolution_categories`, `espionage_operation_categories`). It does
+not follow inline construction (an `InlineConstruction` gap). Nor does it for an item root that a
+destructor-shaped function names with the item's vtables (`TPdxNullObject<X>::~TPdxNullObject`, a
+virtual override thunk of the destructor), or that another class constructs.
 
 ### Item keys
 
@@ -223,28 +237,29 @@ items, and how many of the names that the template gives for them are loaded.
 
 | Registry | Family | Root | Condition | Items | Loaded names |
 | --- | --- | --- | --- | ---: | ---: |
-| `common/anomalies` | `{key}_research_speed_mult` | item | Unresolved | 327 | 327 |
+| `common/anomalies` | `{key}_research_speed_mult` | item | Always | 327 | 327 |
 | `common/buildings` | `planet_{key}_build_speed_mult` | database | Always | 498 | 498 |
 | `common/buildings` | `{key}_max` | item | Unresolved | 498 | 0 |
 | `common/bypass` | `{key}_empire_windup_mult`, `_ship_windup_mult`, `_megastructure_bypass_windup_mult` (limit 127) | database | Always | 10 | 10 each |
-| `common/country_types` | `damage_vs_country_type_{key}_mult` (limit 511) | item | Unresolved | 101 | 101 |
+| `common/country_types` | `damage_vs_country_type_{key}_mult` (limit 511) | item | Always | 101 | 101 |
 | `common/districts` | `planet_{key}_build_speed_mult` | database | Always | 147 | 147 |
 | `common/districts` | `{key}_max_add`, `{key}_max_mult` | item | Unresolved | 147 | 147 each |
 | `common/economic_categories` | `{key}_produces_mult`, `_upkeep_mult`, `_cost_mult`, `_logistics_mult` (tags unresolved) | item | Unresolved | 269 | 46, 53, 35, 1 |
 | `common/economic_categories` (M452) | `{key}_{common/strategic_resources key}_produces_add`/`_mult`, `_upkeep_add`/`_mult`, `_cost_add`/`_mult`, `_logistics_add`/`_mult` (tags unresolved) | input | Unresolved | 270 × 26 | `_add`/`_mult`: produces 1,794/1,196, upkeep 858/1,326, cost 0/859, logistics 0/26 |
-| `common/espionage_operation_types` | `{key}_speed_mult`, `_skill_add`/`_mult`, `_difficulty_add`/`_mult`, `hostile_{key}_difficulty_add`/`_mult` | item | Unresolved | 27 | 27 each |
-| `common/ethics` | `pop_{key}_attraction_mult` | item | Unresolved | 17 | 17 |
+| `common/espionage_operation_types` | `{key}_speed_mult`, `_skill_add`/`_mult`, `_difficulty_add`/`_mult`, `hostile_{key}_difficulty_add`/`_mult` | item | Always | 27 | 27 each |
+| `common/ethics` | `pop_{key}_attraction_mult` | item | Always | 17 | 17 |
 | `common/governments/councilors` | `{key}_exp_gain` | database loop | Unresolved | 179 | 179 |
 | `common/megastructures` | `megastructure_{key}_build_speed_mult` | database | Always | 164 | 164 |
 | `common/patrons` | `add_attunement_{key}`, `{key}_attunement_mult` | database loop | Unresolved | 14 | 5 each |
 | `common/pop_categories` | `pop_cat_{key}_happiness`, `_political_power`, `_bonus_workforce_mult` | item | Always | 24 | 24 each |
-| `common/pop_jobs` | `job_{key}_add`, `_per_pop`, `_per_crime`, `_max_workforce_add`/`_mult`, `_automated_workforce_mult`, `pop_{key}_workforce_mult`, `pop_{key}_bonus_workforce_mult` | item | Unresolved | 366 | 365 each; automated 354 |
+| `common/pop_jobs` | `job_{key}_add` | item | Always | 366 | 365 |
+| `common/pop_jobs` | `job_{key}_per_pop`, `_per_crime`, `_max_workforce_add`/`_mult`, `_automated_workforce_mult`, `pop_{key}_workforce_mult`, `pop_{key}_bonus_workforce_mult` | item | Unresolved | 366 | 365 each; automated 354 |
 | `common/resolution_categories` | `{key}_vote_strength_mult` | item | Unresolved | 37 | 37 |
 | `common/scripted_modifiers` | `{key}` (tags unresolved) | database loop | Always | 133 | 133 |
 | `common/situations` | `{key}_max_progress_add`, `{key}_max_progress_mult` | database | Unresolved | 90 | 1 each |
 | `common/strategic_resources` (M452) | `country_resource_max_{key}_add`, `ship_starbase_stockpile_{key}_collection_rate_add`/`_mult`, `starbase_collected_colony_{key}_add`, `starbase_collected_system_{key}_add`/`_mult`, `starbase_stockpile_{key}_capacity_add`/`_mult` | item | Unresolved | 26 | 26 each |
 | `common/species_archetypes` | `{key}_species_trait_points_add`, `_picks_add`, `_pop_happiness`, `_logistic_growth_mult`, `_bonus_pop_growth`, `_bonus_pop_growth_mult` | item | Unresolved | 6 | 4, 4, 2, 2, 2, 2 |
-| `common/technology/category` | `category_{key}_research_speed_mult`, `category_{key}_draw_chance_mult` | database loop | Unresolved | 13 | 13 each |
+| `common/technology/category` | `category_{key}_research_speed_mult`, `category_{key}_draw_chance_mult` | database loop | Always | 13 | 13 each |
 | `common/zones` | `planet_{key}_build_speed_mult` | database | Always | 146 | 146 |
 
 `common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` return no
@@ -265,28 +280,62 @@ Tags come from the category mask of the registration. Economic categories and sc
 pass a mask from an item field (for economic categories `+0x128`, the content's
 `modifier_category`), so their tags are unresolved.
 
+### Conditions
+
+A root's condition runs join states at loop heads and end a path once it has registered every name
+of its name run (see the module comment of `families.rs`). Each starts the item's cache fields at
+their constructor default.
+
+- **Cache fields.** Many roots keep the item's registered modifier type in an item word and
+  register only while the word holds the value that the constructor writes: anomalies `+0x1c8`
+  (zero), country types `+0x580` (`0x7fffffff`, `0x10033e4ec`), ethics `+0x5c0` (zero), technology
+  categories `+0xc0` and `+0xc4` (zero). The method finds the word where a returned path stores a
+  type that its own registration created, and takes the value that every returned path of every
+  constructor body leaves there. The assumption that no content reader writes a cache field is
+  checked on three members by the loaded table (anomalies 327 of 327, ethics 17 of 17, technology
+  categories 13 of 13 generate their names; country types 101 of 101). No `registry_fields` field
+  of those three stores at the cache offset, but their storage is complete only for technology
+  categories (3 of 3; anomalies 12 of 14, ethics 15 of 19), so that is supporting evidence only.
+- **Loops before the registration.** `CEspionageOperationType::InitPostRead` loops over its stages
+  and `CEthic::InitPostRead` over the ethic categories before they register. An unjoined run of
+  such a loop spends the path bound; the condition runs join at the loop head. Ethics still forks
+  at each category's key compare: its condition runs return on 210 paths, under the condition runs'
+  bound of 256.
+
+**Population (SDK-713).** Over the 185 registries of the sweep recording on M452, the
+`modifier_families` gaps that are not `OutsideMethod` went from 253 to 240 (179 registries): 13
+families are now `Always`, and six `pop_jobs` gaps name the assumed text. The `derived_names` gaps
+went from 654 to 616: the every-item gap from 36 registries to 4, and six name conditions that it
+blocked are now established. No registry's sweep status changed (`registry-sweep --diff` against
+`tests/population/m452/registry-sweep.json`): every family answer keeps the `UnnamedDeclaration`
+gap of the unjoined sites.
+
 ### Why a condition stays `Unresolved`
 
-- **Item-field gates.** `CCountryType::InitPostRead` registers only when the field at `+0x580`
-  equals `0x7fffffff`; every loaded country type has that value (101 of 101). The buildings
-  `{key}_max` family needs bit 2 of `+0x17a8`, which no loaded building sets (0 of 498). The
-  situations generator tests `ldrb w8,[x23,#0x508]; cbz` before both calls (1 of 90 loaded).
+- **Item-field gates.** The buildings `{key}_max` family needs bit 2 of `+0x17a8`, which no loaded
+  building sets (0 of 498). The situations generator tests `ldrb w8,[x23,#0x508]; cbz` before both
+  calls (1 of 90 loaded).
 - **Content gates.** Economic categories generate only with `generate_mult_modifiers`. The 11 jobs
-  with `can_be_automated = no` have no `job_<job>_automated_workforce_mult`. Archetypes with
-  `uses_modifiers = no` or `robotic = yes`, leader classes without `leader_capacity`, and patrons
-  without `add_modifier = yes` have no names. A comparison that expands a template over a whole
-  type, or that takes the script value `random_list` as a planet class, reports these as missing
-  names; they are not engine omissions.
-- **Path limit.** The item-root runs of districts, espionage types, ethics, species archetypes
-  and economic categories exceed the path limit.
-- **Per-item call not established.** `pop_jobs` and `resolution_categories` (above).
+  with `can_be_automated = no` (`ldrb [x19,#0xa5a]`) have no `job_<job>_automated_workforce_mult`.
+  Archetypes with `uses_modifiers = no` or `robotic = yes`, leader classes without
+  `leader_capacity`, and patrons without `add_modifier = yes` have no names. A comparison that
+  expands a template over a whole type, or that takes the script value `random_list` as a planet
+  class, reports these as missing names; they are not engine omissions.
+- **Assumed text.** After `job_{key}_add`, `CJobTypeModifierGenerator::CreateAddIconKey` composes
+  `mod_job_` + the string at `+0x970` + `_add`. `SPopJobTypeSwap::CSerializer::InitPostRead`, which
+  the run does not follow, writes that string; no `registry_fields` field stores there. The model
+  writes the unresolved text as the empty text, so the six later `pop_jobs` registrations that
+  every path makes are not established (gap: "only after a name part that the method does not
+  follow").
+- **Path limit.** The item-root runs of districts, species archetypes and economic categories
+  exceed the path limit. `CGovernmentCouncilorType::PostReadInit` forks on two `HasLocalizeKey`
+  checks and indirect calls, and its loop around `SetModifierNameHolder` (`0x1008071d0`) does not
+  join (`loop-limit`).
+- **Per-item call not established.** `resolution_categories` (inline construction, above).
   `common/strategic_resources` has no database constructor symbol, so the loader run has no
   database to start from (`NoDatabaseConstructor`). `CStrategicResourceDatabase::Init` constructs
   each item and calls its `Read` through the vtable; running `CreateInstance` as the database
   constructor, with the database layout above, is the change when Atlas needs `Always` here.
-- **Not traced.** Anomaly root runs have no failed path, but half of their returned paths skip
-  the registration.
-
 ### Gaps
 
 The `UnnamedDeclaration` gap counts the 18 generation sites (M452) that are not joined to a
@@ -300,8 +349,10 @@ registry:
 
 Gaps in joined registries:
 
-- `common/leader_classes`: the eight families compose from `+0x1f0`, a string field of the item
-  that is not the key. The method does not name it.
+- `common/leader_classes`: the eight families compose from `+0x1f0`, the string field `name`
+  (`registry_fields` storage), not the key. Content writes `name` equal to the key, but the engine
+  reads the field. The family runs do not plant string fields, so the names stay unresolved (see
+  [config templates](#config-templates)).
 - `common/ship_sizes`: `CShipSizeModifierGenerator::CreateModifier(ModifierType)` lower-cases
   the base definition's localization key and replaces `mod_ship_` with `shipsize_{key}_`. The
   string model does not follow `ToLower` or `Replace`. The other call is not reached within the
@@ -314,9 +365,30 @@ Gaps in joined registries:
 Outside the methods: modifiers that the engine adds after the documentation point; where a
 modifier takes effect; the tags of a declared modifier after content registers it again; a second
 input of a class with no named registry, or items of two other registries on one context; joining
-states in the item-root runs,
-which would remove their path-limit failures; inline item construction; the family run of a
-copied thunk.
+states in the name runs, which loses the names that a loop registers on each pass; inline item
+construction; the family run of a copied thunk.
+
+### Config templates
+
+Config `modifiers.cwt` (commit `8574760`) has five template groups with no joined family (Atlas
+`docs/coverage/gap-triage.md`):
+
+- `<economic_category>`: its two lines are comments on the `<economic_category>_<resource>_…`
+  matrix, which the eight two-key families of `common/economic_categories` answer
+  (`NamePart::RegistryKey`, SDK-794).
+- `<zone>`: the one line is `planet_<zone>_build_speed_mult`, which `common/zones` answers
+  `Always`. The unjoined `CZoneTypeModifierGenerator::CreateMaxModifier` site gives no config
+  template.
+- `<leader_class>` (six lines): the names take the `name` field, not the key (gaps above). A family
+  with a field part would need runs that plant string fields, apart from the condition runs, since
+  planted text prunes branches. Atlas reads `NamePart::Field` as an uninterpreted part today, so
+  such a family would not credit the lines. Add it when Atlas reads field parts.
+- `<espionage_category>` (seven lines): `common/espionage_operation_categories` has the root, but
+  no constructor symbol, and its loaders construct the item inline, so the key place is not
+  established.
+- `enum[ship_class]` (ten lines): the ten `AddDefinition` calls in `CShipClassModifierHelper::Init`
+  compose names from the engine's ship-class enum before content loads (`NoRoot` above). They are
+  no registry's family.
 
 ## Pitfalls
 
@@ -344,6 +416,18 @@ Each of these gave a wrong answer once. Each now has an authored test with a neg
   key unresolved.
 - The new type is the path's own count of registrations, so forked paths never share one.
 
+**Condition runs.**
+
+- Take names only from unjoined runs. A loop that registers on each pass does not join (its labels
+  differ), and a joined run lost the economic-category `logistics_mult` names.
+- End a path when it has registered every name of its name run at its chain, not when it has
+  reached every call site. `GenerateFrom` is one site for several chains, and ending at the first
+  one lost the later `pop_jobs` families.
+- Do not enter `CPdxLogFileAndLine::CPdxLogFileAndLine`. Its byte-clearing loop spent the joined
+  runs' loop arrivals, as it did for derived names.
+- Take a cache field's default from complete constructor runs. The key-place probe stops at the
+  first call after the key and zeroes the other arguments.
+
 **The per-item call.**
 
 - Follow every pass of a loop: join states at loop heads. One pass missed a later pass that
@@ -362,7 +446,10 @@ Each of these gave a wrong answer once. Each now has an authored test with a neg
   reserved.
 
 **Assumptions** (not established): an input function is a member function, so the other item
-is in the register after `this` for its parameter; the null object is not an item of the database; an item's key
+is in the register after `this` for its parameter; the null object is not an item of the database;
+the engine runs the database's post-read loop once after loading, and a loop that calls a root for
+both of two items treats every item alike; the items that a database constructor builds are the
+engine's own; no content reader writes a cache field; an item's key
 does not change after its constructor; a store to an unknown address or a call that the run does not
 follow changes neither the key, the held definition masks, the database's fields other than its item
 array, nor an item's vtable pointers; a thunk runs its root, also when it holds a copy of the root's
