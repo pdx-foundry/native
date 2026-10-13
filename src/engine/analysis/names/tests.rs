@@ -255,6 +255,7 @@ fn registry_input(roots: Vec<Arm64>, helpers: Vec<Arm64>, other: Vec<Arm64>) -> 
         }],
         loading: None,
         getters: Vec::new(),
+        getter_entered: BTreeSet::new(),
         element_calls: BTreeSet::new(),
         sprite_slot: None,
         code: Code::decode(&ranges).expect("authored code decodes"),
@@ -1438,4 +1439,29 @@ fn a_returned_object_that_an_unfollowed_call_receives_may_have_changed() {
 
     assert!(result.names.is_empty(), "{:#?}", result.names);
     assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}
+
+#[test]
+fn a_composed_name_in_a_later_argument_of_an_unfollowed_call_may_have_changed() {
+    let (caller, sites) = lookup_caller(CALLER, |code| {
+        arm64!(code; add x3, sp, #0x20);
+        code.call(UNFOLLOWED);
+    });
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}
+
+#[test]
+fn a_getter_with_no_path_to_its_return_is_a_gap() {
+    let mut getter = Arm64::at(GETTER);
+    arm64!(getter; br x9);
+    let (caller, sites) = lookup_caller(CALLER, |_| {});
+
+    let result = analyze_getter(getter, vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("getter-path", 1)]));
 }

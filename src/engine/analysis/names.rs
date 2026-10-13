@@ -166,6 +166,10 @@ pub struct RegistryInput {
     pub loading: Option<Loading>,
     /// The `const` members that reach no sink and that other code calls before a use site.
     pub getters: Vec<Getter>,
+    /// The functions that a getter's run enters: those of `entered`, and the members and composers
+    /// that the getters call. A root's run does not enter the getters' members, which reach no
+    /// sink.
+    pub getter_entered: BTreeSet<u64>,
     /// The calls in the getters' callers that return a GUI element whose sprite slot looks a
     /// string up.
     pub element_calls: BTreeSet<u64>,
@@ -443,8 +447,13 @@ pub fn analyze(
             stage: Stage::WhenUsed,
             sites: BTreeSet::new(),
         };
-        let Some(returned) = analysis.returned_name(&root) else {
-            continue;
+        let returned = match analysis.returned_name(&root) {
+            Ok(Some(returned)) => returned,
+            Ok(None) => continue,
+            Err(reason) => {
+                failures.push(reason);
+                continue;
+            }
         };
 
         let (continuations, caller_failures) = analysis.continuations(getter, returned);
@@ -713,7 +722,8 @@ struct Analysis<'a> {
 impl Analysis<'_> {
     /// How one run of the getter returns a string with the key or a field in it, if it does, so
     /// that its callers are worth following. The run plants the fields when the registry has any.
-    fn returned_name(&self, root: &Root) -> Option<Returned> {
+    /// When no path of the run returns, whether the getter returns a name is not established.
+    fn returned_name(&self, root: &Root) -> Result<Option<Returned>, &'static str> {
         let kind = *self.kinds().last().unwrap_or(&Kind::Search);
         let plan = Plan {
             kind,
@@ -733,10 +743,12 @@ impl Analysis<'_> {
             matches!(event.kind, EventKind::Use { .. }) && event.chain == [probe.site]
         });
         let by_value = run.paths.iter().any(|path| path.by_value);
+        let stopped = run.paths.iter().all(|path| path.failure.is_some());
         match (returns, by_value) {
-            (false, _) => None,
-            (true, false) => Some(Returned::Reference),
-            (true, true) => Some(Returned::ByValue),
+            (false, _) if stopped => Err("getter-path"),
+            (false, _) => Ok(None),
+            (true, false) => Ok(Some(Returned::Reference)),
+            (true, true) => Ok(Some(Returned::ByValue)),
         }
     }
 
@@ -848,6 +860,7 @@ impl Analysis<'_> {
                 functions.follows(target) || functions.never_return.contains(&target)
             });
             if receives_name && !modelled {
+                forget_derived_texts(machine, &mut arena);
                 machine.label(LOST_NAME, 1);
             }
             // A string function on an object that the run does not know, such as a member of the
@@ -1065,7 +1078,11 @@ impl Analysis<'_> {
             bounded: BTreeSet::new(),
         };
         let result = machine.register(8);
-        let entered = &self.registry.entered;
+        let entered = if continuations.is_empty() {
+            &self.registry.entered
+        } else {
+            &self.registry.getter_entered
+        };
         let mut calls = |target, machine: &mut Machine| recorder.call(target, entered, machine);
         // A template run's collections hold one element, so its loops end, and joining at a loop
         // head would merge the installed element with the other values a path holds there.
@@ -1574,6 +1591,30 @@ fn receives_derived_text(machine: &Machine, arena: &Arena) -> bool {
             .chain(object)
             .any(|node| has_source(arena.node(node)))
     })
+}
+
+/// Make each text with a source part that an argument register holds, or that a string object in
+/// one holds, unresolved: a call that the run does not follow may change it. The string model
+/// forgets only the first three arguments.
+fn forget_derived_texts(machine: &mut Machine, arena: &mut Arena) {
+    for register in 0..8 {
+        let Some(address) = machine.register(register) else {
+            continue;
+        };
+        let buffer = machine.read(address, 8);
+        for text in [Some(address), buffer].into_iter().flatten() {
+            if machine
+                .labelled(text)
+                .is_some_and(|node| has_source(arena.node(node)))
+            {
+                let unresolved = arena.add(Node {
+                    parts: vec![Part::Unresolved],
+                    limit: None,
+                });
+                machine.label(text, unresolved);
+            }
+        }
+    }
 }
 
 /// The node of the name that a sink call receives in `argument`.

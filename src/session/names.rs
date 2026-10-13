@@ -139,6 +139,9 @@ fn failure(reason: &str, count: usize) -> String {
         "caller-path" => format!(
             "{count} lookup or sprite calls after a call of a name-returning method have caller paths that could not be followed"
         ),
+        "getter-path" => format!(
+            "{count} methods that other code calls before a lookup have no path that the method could follow to their return, so whether they return a name is not established"
+        ),
         "getter-result" => format!(
             "{count} calls of a method that returns a name by value give it a result object that the method does not follow"
         ),

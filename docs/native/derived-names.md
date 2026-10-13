@@ -200,8 +200,11 @@ value; `common/governments/civics`: `{picture}` from `GetPicture`.
 
 Gaps: a use site with a caller path that stops before it (`caller-path`), a name at the site that
 has an unfollowed part while it holds the getter's name or after the name went into an unfollowed
-call on that path (`caller-name`), and a by-value call whose result object is not a stack slot
-(`getter-result`). An unresolved name with no trace of the getter's name is not a use of it.
+call on that path (`caller-name`), a by-value call whose result object is not a stack slot
+(`getter-result`), and a getter whose probe has no path to its return (`getter-path`, such as
+`CTechnology::GetCost`). An unresolved name with no trace of the getter's name is not a use of it.
+A getter's runs enter the members and composers that the getters call; a root's runs do not, since
+those members reach no sink.
 
 ## Result on M451-hotfix
 
@@ -277,14 +280,15 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 | A fixed-size buffer bounds the name (`name-limit`) | 5 | |
 | A caller's name has an unfollowed part after the getter's name went into it (`caller-name`) | 2 | |
 | A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
+| No path of a getter's probe returns (`getter-path`) | 3 | |
 | No established key place (`constructor` 17, `key-storage` 4) | 21 | |
 | Every-item initialization not established | 36 | |
 | Field values of a name not established | 48 | 118 |
 | What a missing name gives not established | 38 | 117 |
 | Field-derived name with unexplored field states | 25 | 67 |
 
-The interface callers add the `caller-path`, `caller-name` and `getter-result` rows (15 gaps);
-the other `UnresolvedPath` rows are unchanged.
+The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
+(18 gaps); the other `UnresolvedPath` rows are unchanged.
 
 The 36 every-item gaps are: a database path keeps an item without its post-read code (25), a
 function forms an item's vtable address without its constructor (6), another function constructs
@@ -309,7 +313,7 @@ Findings of the run:
 - **Sprite checks** are rare: `GFX_{key}_bg` and `GFX_{key}_box_icon_rectangle` of districts,
   `GFX_{icon}` and `GFX_{map_counter_icon}` of ship sizes, and the council agenda icon, whose miss
   is unresolved as the engine facts above say.
-- **Run time.** The run takes about 80 s on one process, about 65 s without the interface
+- **Run time.** The run takes about 90 s on one process, about 65 s without the interface
   callers. `common/agreement_presets` is the slowest, at about 7 s.
 
 ### Config agreement

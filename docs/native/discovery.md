@@ -95,10 +95,10 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-635 | 11 | 6 | Reference lookups |
 
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
-gives `derived_names` 343 `UnresolvedPath` gaps in 116 registries (SDK-707) and 338 other gaps in
-58 (SDK-810): the callers add 15 path gaps (caller paths that stop, unfollowed caller names,
-by-value results that are not stack slots), and their six new sprite names add 12 condition and
-miss gaps. No registry status changes. The [string fields with a lookup claim](derived-names.md#string-fields-with-a-lookup-claim)
+gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 338 other gaps in
+58 (SDK-810): the callers add 18 path gaps (caller paths that stop, unfollowed caller names,
+by-value results that are not stack slots, getters with no path to their return), and their six
+new sprite names add 12 condition and miss gaps. No registry status changes. The [string fields with a lookup claim](derived-names.md#string-fields-with-a-lookup-claim)
 keep the internal path shapes of their registries.
 
 ### Accepted limits (SDK-819)

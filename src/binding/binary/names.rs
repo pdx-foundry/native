@@ -193,6 +193,20 @@ pub(in crate::binding) fn registry(
         &sinks,
         elements.as_ref(),
     );
+    let getter_functions: BTreeSet<u64> = callers
+        .getters
+        .iter()
+        .map(|getter| getter.function)
+        .collect();
+    let mut getter_entered = super::families::entered(
+        &text,
+        &names,
+        strings,
+        getter_functions.clone(),
+        reach.called(&getter_functions),
+        &recorded,
+    )?;
+    getter_entered.extend(&entered);
 
     let initialization: Vec<FamilyRoot> = roots
         .iter()
@@ -208,7 +222,7 @@ pub(in crate::binding) fn registry(
 
     let functions: Vec<u64> = root_functions
         .iter()
-        .chain(&entered)
+        .chain(&getter_entered)
         .copied()
         .chain(constructors.iter().map(|constructor| constructor.address))
         .chain(callers.getters.iter().map(|getter| getter.function))
@@ -229,6 +243,7 @@ pub(in crate::binding) fn registry(
     Ok(RegistryInput {
         roots,
         entered,
+        getter_entered,
         constructors,
         loading,
         getters,
@@ -657,6 +672,20 @@ impl Reach {
             }
         }
         sites
+    }
+
+    /// Every member that one of `functions` calls, through any number of member calls.
+    fn called(&self, functions: &BTreeSet<u64>) -> BTreeSet<u64> {
+        let mut called = BTreeSet::new();
+        let mut pending: Vec<u64> = functions.iter().copied().collect();
+        while let Some(member) = pending.pop() {
+            for &callee in self.callees.get(&member).into_iter().flatten() {
+                if called.insert(callee) {
+                    pending.push(callee);
+                }
+            }
+        }
+        called
     }
 
     /// The members that a root calls, through any number of member calls, and that reach a sink.
