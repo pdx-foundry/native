@@ -1,6 +1,6 @@
 # Derived names
 
-`Native::derived_names(registry)` (`derived-names/v1`) gives the names that a registry's own code
+`Native::derived_names(registry)` (`derived-names/v2`) gives the names that a registry's own code
 composes from an item key or a string field, and then checks or looks up: the parts of each name,
 what it is looked up in (localisation, sprites, files), the stage, the field condition, and what a
 missing name gives. Atlas matches the names to the config's `localisation` and `images` lines and

@@ -197,7 +197,7 @@ impl Code {
     /// control flow of this code, including `site`. A branch through a register may go to any
     /// instruction, such as a jump-table target on a path to `site`, so every such branch, and
     /// every instruction that reaches one, can reach `site`.
-    fn reaching(&self, site: u64) -> BTreeSet<u64> {
+    pub fn reaching(&self, site: u64) -> BTreeSet<u64> {
         let mut predecessors = BTreeMap::<u64, Vec<u64>>::new();
         let mut through_register = Vec::new();
         for (&address, operation) in &self.rows {
