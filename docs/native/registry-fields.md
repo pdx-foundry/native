@@ -24,7 +24,7 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v36`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v37`) holds
 the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
@@ -37,8 +37,8 @@ their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`
 authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
 of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
 registries joined their reader once a delegating constructor's stack string no longer stops the
-constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the reserved key
-`random_list` ([root-key owners](#root-key-owners-sdk-813)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against `v36`, SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the
+reserved key `random_list` ([root-key owners](#root-key-owners-sdk-813)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -689,14 +689,22 @@ Both go back to the statement read.
 - **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), and its
   fields are the registry's root fields. The reserved key is one more root field, `random_list`:
   a root statement, as an [event kind](#event-kinds) is, not a member of a planet class. Its
-  members are the fields of `CPlanetClassRandomList`, from a field run of their own (the kept
-  results are by registry and owner); their conditions, member gaps and registry-wide gaps move
+  members are the fields of `CPlanetClassRandomList`, `name` and `planets`, from a field run of
+  their own (the kept results are by registry and owner); their conditions, member gaps and registry-wide gaps move
   under the key, and the run's `OutsideMethod` gaps, which repeat the owner's, are dropped. The
   key's reader is a block with no identity, and its read scope is unresolved with a gap: the
   method does not follow the inlined construction to `CPersistent::Read(CReader&)`.
   `derived_names` and `modifier_families` answer `CPlanetClass` with one `OutsideMethod` gap
   that names the reserved key. Atlas maps `random_list` to `type[planet_class_random_list]` (12
   claims) and the other root fields to `type[planet_class]` (375) in SDK-818.
+- **The random list's reader.** `CPlanetClassRandomList::ReadMember` (`0x10115ce44`) first tests
+  the sign bit of a string's last byte (`ldrsb w8,[x0,#0x1f]`, `tbnz w8,#31`) and, when its
+  location string is empty, sets it from `CReader::GetFileLocationDescription()`; then `planets`
+  (`0x323b`) reads with `ReadUniform<CString>` into `+0x60` and `name` (`0x1b`) with
+  `Read(CString&)` into `+0x30`. The walker loads `ldrsb` as a byte and follows a `tbz`/`tbnz`
+  of a value that is not the token both ways, under an unresolved condition (a bit test of the
+  token is a gap). The paths through the location call stop there, so each key keeps an
+  unresolved alternative. Across the sweep these two rules changed only this answer.
 - **Pitfall.** A consumer that reads every root field as a member of an item reads `random_list`
   as a planet-class field. The reserved key is a root statement; a planet class has no
   `random_list` member.
