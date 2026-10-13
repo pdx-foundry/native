@@ -303,6 +303,7 @@ pub(crate) fn constructor_points(
                 path_containers.push(path_containers_of(&path.machine, owner, offsets, binding));
             }
             let points = established.ok_or(Unresolved::new("persistent-constructor-return"))?;
+            speak_for_established(&mut path_containers, &points);
             Ok((
                 points,
                 established_words.unwrap_or_default(),
@@ -391,21 +392,43 @@ fn path_containers_of(
     masks
 }
 
-/// The agreed mask of each container at a kept point, over the masks of every path.
+/// Limit the paths of one run to the containers whose address points the run establishes, with an
+/// entry for each, so that an empty entry is a path that does not construct the container. A run
+/// that does not establish a point, such as a baseline that forgets the owner at an ordinary call
+/// after an inline construction, says nothing about that container.
+fn speak_for_established(paths: &mut [BTreeMap<i64, BTreeSet<u64>>], points: &BTreeMap<i64, u64>) {
+    for path in paths {
+        path.retain(|offset, _| points.contains_key(offset));
+
+        for &offset in points.keys() {
+            path.entry(offset).or_default();
+        }
+    }
+}
+
+/// The agreed mask of each container at a kept point that a path gives a mask, over the masks of
+/// every path that has an entry for it.
 fn container_masks(
     paths: &[BTreeMap<i64, BTreeSet<u64>>],
     points: &BTreeMap<i64, u64>,
 ) -> BTreeMap<i64, Result<u64, Unresolved>> {
-    let offsets: BTreeSet<i64> = paths.iter().flat_map(|path| path.keys().copied()).collect();
+    let offsets: BTreeSet<i64> = paths
+        .iter()
+        .flat_map(|path| path.iter())
+        .filter(|(_, masks)| !masks.is_empty())
+        .map(|(&offset, _)| offset)
+        .collect();
 
     offsets
         .into_iter()
         .filter(|offset| points.contains_key(offset))
         .map(|offset| {
             let mut masks = PathMasks::default();
-            for path in paths {
-                masks.add(path.get(&offset).into_iter().flatten().copied());
+
+            for path_masks in paths.iter().filter_map(|path| path.get(&offset)) {
+                masks.add(path_masks.iter().copied());
             }
+
             (offset, masks.agreed())
         })
         .collect()
