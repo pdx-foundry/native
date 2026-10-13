@@ -194,6 +194,7 @@ enum Case {
     FixtureTransfer,
     FixtureRelicPortrait,
     FixtureBlockParsing,
+    FixtureRepeatReaders,
     FixtureReadScope,
     FixtureModifierCategory,
     FixtureModifierBlock,
@@ -415,6 +416,7 @@ fn cases() -> Vec<(String, Case)> {
         Case::FixtureRelicPortrait,
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
+    cases.push(("fixture_repeat_readers".into(), Case::FixtureRepeatReaders));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
     cases.push((
         "fixture_triggered_modifier".into(),
@@ -759,6 +761,7 @@ fn cases() -> Vec<(String, Case)> {
 async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
+        Case::FixtureRepeatReaders => fixture_repeat_readers(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierCategory => fixture_modifier_category(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
@@ -1332,6 +1335,124 @@ async fn fixture_block_parsing(native: &Native) -> Outcome {
         {
             return Err(format!("block parser joins: {answer:?}").into());
         }
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// Each reader that a stated repeat rule names (`registry-fields.md`, "Repeat behavior") reads
+/// a repeated field twice and returns both times. Fixture storage decodes no block or array, so
+/// a diagnostic is the only storage evidence: the second `placement_rules` logs `Duplicate
+/// trigger` for its `planet_possible`, which shows that the object kept the first block's
+/// trigger. Every other line logs nothing. One fixture holds one registry directory, so the two
+/// registries load in two sessions.
+async fn fixture_repeat_readers(native: &Native) -> Outcome {
+    let edicts = r#"native_repeat_edict = {
+ potential = { always = yes }
+ potential = { always = no }
+ effect = { set_country_flag = native_repeat_a }
+ effect = { set_country_flag = native_repeat_b }
+}
+"#;
+    let megastructures = r#"native_repeat_megastructure = {
+ upgrade_from = { native_repeat_a }
+ upgrade_from = { native_repeat_b }
+ placement_rules = { planet_possible = { always = yes } }
+ placement_rules = { planet_possible = { always = no } }
+ scripted_action = { dyson_shoot }
+ scripted_action = { dyson_shoot }
+ cycle_title = { key = native_repeat_a literal = yes }
+ cycle_title = { key = native_repeat_b }
+}
+"#;
+    // Each field with the lines of its two occurrences, and the diagnostic that the second logs.
+    repeated_fields_read_twice(
+        native,
+        "common/edicts",
+        "native_repeat_edict",
+        edicts,
+        &[("potential", [2, 3], None), ("effect", [4, 5], None)],
+    )
+    .await?;
+    repeated_fields_read_twice(
+        native,
+        "common/megastructures",
+        "native_repeat_megastructure",
+        megastructures,
+        &[
+            ("upgrade_from", [2, 3], None),
+            ("placement_rules", [4, 5], Some("Duplicate trigger")),
+            ("scripted_action", [6, 7], None),
+            ("cycle_title", [8, 9], None),
+        ],
+    )
+    .await
+}
+
+/// Load `text` as one file of `registry`, and check that each field of `definition` in
+/// `repeated` is read at both of its lines and returns. The first line logs nothing; the second
+/// logs only the given diagnostic, or nothing.
+async fn repeated_fields_read_twice(
+    native: &Native,
+    registry: &str,
+    definition: &str,
+    text: &str,
+    repeated: &[(&str, [u64; 2], Option<&str>)],
+) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FixtureFieldQuestion, FixtureParsing, FixtureRequest};
+    let file = format!("{registry}/native_repeat.txt");
+    let request = FixtureRequest::field_outcomes(
+        file.clone(),
+        text,
+        repeated.iter().map(|(field, _, _)| {
+            FixtureFieldQuestion::new(registry, definition, *field).with_parsing()
+        }),
+    );
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let logged_at = |line: u64| -> Vec<&str> {
+            answer
+                .value
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    matches!(&diagnostic.join, DiagnosticJoin::Source { file: logged, line: at, .. }
+                        if *logged == file && *at == line)
+                })
+                .map(|diagnostic| diagnostic.text.as_str())
+                .collect()
+        };
+        for (field, lines, second) in repeated {
+            let read_twice = answer
+                .value
+                .field_outcomes
+                .iter()
+                .find(|outcome| outcome.question.field == *field)
+                .is_some_and(|outcome| match &outcome.parsing {
+                    FixtureParsing::Observed {
+                        occurrences,
+                        completeness: Completeness::Complete,
+                    } => {
+                        occurrences.len() == 2
+                            && occurrences.iter().zip(lines).all(|(occurrence, line)| {
+                                occurrence.line == *line && occurrence.return_line.is_some()
+                            })
+                    }
+                    _ => false,
+                });
+            let second_logged = logged_at(lines[1]);
+            let expected_second = match second {
+                None => second_logged.is_empty(),
+                Some(text) => second_logged.len() == 1 && second_logged[0].starts_with(text),
+            };
+            if !read_twice || !logged_at(lines[0]).is_empty() || !expected_second {
+                return Err(format!("repeated `{field}`: {answer:?}").into());
+            }
+        }
+
         Ok(())
     }
     .await;

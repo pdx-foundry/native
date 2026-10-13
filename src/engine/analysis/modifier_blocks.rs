@@ -359,6 +359,7 @@ mod tests {
                     member: root.into(),
                     family: crate::BlockFamily::Modifier,
                     delegate: None,
+                    post_read: [None, None],
                 },
             )]),
             functions: BTreeMap::from([(

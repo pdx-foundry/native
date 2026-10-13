@@ -225,7 +225,7 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
 /// Whether `callee` is `CReader::ReadUniform<T>`, which appends each value of a `{ a b c }` list
 /// to the array that it receives. The template's `enable_if` return type differs for an
 /// enumeration element and for any other element.
-fn is_uniform_list(callee: &str) -> bool {
+pub(crate) fn is_uniform_list(callee: &str) -> bool {
     let Some(rest) = callee.strip_prefix("std::__1::enable_if<") else {
         return false;
     };
@@ -258,6 +258,15 @@ pub(crate) fn reads_embedded_object(join: &ReaderJoin) -> bool {
 /// `CEffect::Read` do not.
 pub(crate) fn clears_before_reading(callee: &str) -> bool {
     matching_template(callee, "ReadTrigger") || matching_template(callee, "ReadEffect")
+}
+
+/// Whether the reader adds each statement of the block to the trigger or effect that it
+/// receives and keeps the children that an earlier occurrence added.
+pub(crate) fn adds_children(callee: &str) -> bool {
+    matches!(
+        callee,
+        "CTrigger::Read(CReader&, EScopeType)" | "CEffect::Read(CReader&, EScopeType)"
+    )
 }
 
 fn matching_template(callee: &str, method: &str) -> bool {

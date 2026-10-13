@@ -3,7 +3,7 @@
     "fixed_keys": {
       "Known": [
         ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
         ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
@@ -97,7 +97,7 @@
     "fixed_keys": {
       "Known": [
         ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
         ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],
@@ -152,7 +152,7 @@
     "fixed_keys": {
       "Known": [
         ["key", "String", "NotApplicable", "Replace", null],
-        ["potential", "Block", "Trigger", "Unknown", "Unresolved"],
+        ["potential", "Block", "Trigger", "Merges", "Unresolved"],
         ["show_if_not_potential", "Boolean", "NotApplicable", "Replace", null],
         ["not_potential_override_text_key", "String", "NotApplicable", "Replace", null],
         ["multiplier", "ScopedNumeric", "NotApplicable", "Merges", null],

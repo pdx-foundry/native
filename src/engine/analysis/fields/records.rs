@@ -406,6 +406,8 @@ pub struct StorageSelection {
 pub struct ConcreteReader {
     pub read: String,
     pub member: String,
+    /// The targets of the two post-read hook slots, when they have a unique symbol.
+    pub post_read: [Option<String>; 2],
     pub family: crate::BlockFamily,
     /// The target of the family's delegate slot, for readers that share read and member.
     pub delegate: Option<String>,

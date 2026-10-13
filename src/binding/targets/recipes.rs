@@ -41,6 +41,9 @@ pub(in crate::binding) struct PersistentRecipe {
     pub token_text: u64,
     pub read_slot: u64,
     pub member_slot: u64,
+    /// The `InitPostRead()` and `InitPostRead(CString const&, int, int)` slots, which
+    /// `CPersistent::Read` calls after the members.
+    pub post_read_slots: [u64; 2],
     /// Offset of a modifier container's 32-bit category mask from the container's start.
     pub container_mask_offset: u64,
     pub families: &'static [FamilyAnchor],
@@ -275,6 +278,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         token_text: 0x10,
         read_slot: 0x20,
         member_slot: 0x28,
+        post_read_slots: [0x30, 0x38],
         container_mask_offset: 0xac,
         families: &[
             FamilyAnchor {

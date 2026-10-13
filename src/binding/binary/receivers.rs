@@ -181,6 +181,7 @@ pub(super) fn concrete_reader(
         delegate: anchor
             .and_then(|anchor| anchor.delegate_slot)
             .and_then(slot),
+        post_read: recipe.post_read_slots.map(slot),
         read,
         member,
     })
@@ -454,6 +455,7 @@ mod tests {
             token_text: 0,
             read_slot: 0,
             member_slot: 0,
+            post_read_slots: [0; 2],
             container_mask_offset: 0xac,
             families: &[],
         };
@@ -494,6 +496,7 @@ mod tests {
             token_text: 0,
             read_slot: 0,
             member_slot: 0,
+            post_read_slots: [0; 2],
             container_mask_offset: 0xac,
             families: &[],
         };
@@ -531,6 +534,7 @@ mod tests {
             token_text: 0,
             read_slot: 0,
             member_slot: 0,
+            post_read_slots: [0; 2],
             container_mask_offset: 0xac,
             families: &[],
         };
