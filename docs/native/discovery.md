@@ -80,7 +80,7 @@ The sweep repaired none.
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion |
-| SDK-707 | 328 | 116 | `derived_names` paths that stop |
+| SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): [accepted limit](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) |
@@ -90,6 +90,13 @@ The sweep repaired none.
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
+
+SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
+gives `derived_names` 343 `UnresolvedPath` gaps in 116 registries (SDK-707) and 338 other gaps in
+58 (SDK-810): the callers add 15 path gaps (caller paths that stop, unfollowed caller names,
+by-value results that are not stack slots), and their six new sprite names add 12 condition and
+miss gaps. No registry status changes. The [string fields with a lookup claim](derived-names.md#string-fields-with-a-lookup-claim)
+keep the internal path shapes of their registries.
 
 SDK-809 (2026-10-13) keeps its 387 gaps as an [accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809):
 Atlas needs no numeric range or storage fact.

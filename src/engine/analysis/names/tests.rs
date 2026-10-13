@@ -1416,3 +1416,26 @@ fn a_name_returned_by_value_into_an_unknown_object_is_a_gap() {
     assert!(result.names.is_empty(), "{:#?}", result.names);
     assert_eq!(result.failures, BTreeMap::from([("getter-result", 1)]));
 }
+
+#[test]
+fn a_returned_object_that_an_unfollowed_call_receives_may_have_changed() {
+    let mut caller = Arm64::at(CALLER);
+    let getter = caller.here();
+    caller.call(GETTER);
+    arm64!(caller; mov x21, x0);
+    caller.call(UNFOLLOWED);
+    arm64!(caller; ldr x0, [x21]; ldr x1, [x21, #8]);
+    let site = caller.here();
+    caller.call(LOOKUP);
+    arm64!(caller; ret);
+    let sites = CallerSites {
+        element: 0,
+        getter,
+        site,
+    };
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}

@@ -42,9 +42,18 @@
 //! after that point establish no condition and no miss behavior, and a search path that goes on
 //! after it is incomplete.
 //!
-//! Outside the method: names that other code composes, such as interface code; the run-time
-//! choice behind a selection (which collection element, its validity); field states that template
-//! runs do not explore; the meaning of fields that the engine sets itself.
+//! A getter is a `const` member that reaches no sink and returns a string with the key or a field
+//! in it, by reference in `x0` or by value in the `x8` object. Each of its direct callers runs from
+//! just after the call to each later lookup or sprite call, with the getter's name as a key text,
+//! and gives how it composes the name; the getter's own runs then use each returned name through
+//! each composition. A sprite call is a call through the sprite slot of a GUI element's own
+//! vtable, where the element came from an element call. A caller's own branches are not explored,
+//! so its names are never `Always`.
+//!
+//! Outside the method: names that other code composes without a getter, or after passing the
+//! getter's name on; the run-time choice behind a selection (which collection element, its
+//! validity); field states that template runs do not explore; the meaning of fields that the
+//! engine sets itself.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::evaluate::{Call, Code, Exit, Machine, Path};
@@ -490,33 +499,52 @@ struct CallerObjects {
     /// The string object that the getter returns: the item key's text, so that the model names
     /// the getter's name as the key.
     name: u64,
+    /// The node of the getter's name. Unlike the item key's own node, a call that the run does not
+    /// follow makes it unresolved, since the caller may change the string.
+    node: u64,
     /// The vtable of every element object, whose sprite slot holds [`SPRITE_CALL`], when the
     /// executable has a sprite slot.
     vtable: Option<u64>,
 }
 
 impl CallerObjects {
-    fn plant(machine: &mut Machine, layout: StringLayout, sprite_slot: Option<u64>) -> Self {
+    fn plant(
+        machine: &mut Machine,
+        arena: &mut Arena,
+        layout: StringLayout,
+        sprite_slot: Option<u64>,
+    ) -> Self {
+        let node = arena.add(Node {
+            parts: vec![Part::ItemKey],
+            limit: None,
+        });
         let name = machine.reserve(ITEM_SPAN);
-        Self::write_name(machine, layout, name);
+        write_source(
+            machine,
+            layout,
+            name,
+            KeyForm::Long.text(),
+            KeyForm::Long,
+            node,
+        );
         let vtable = sprite_slot.map(|slot| {
             let vtable = machine.allocate(slot + 8);
             machine.write(vtable + slot, 8, SPRITE_CALL);
             machine.protect(vtable, slot + 8);
             vtable
         });
-        Self { name, vtable }
+        Self { name, node, vtable }
     }
 
     /// Write the getter's name into the string object at `object`.
-    fn write_name(machine: &mut Machine, layout: StringLayout, object: u64) {
+    fn write_name(&self, machine: &mut Machine, layout: StringLayout, object: u64) {
         write_source(
             machine,
             layout,
             object,
             KeyForm::Long.text(),
             KeyForm::Long,
-            ITEM_KEY,
+            self.node,
         );
     }
 
@@ -778,12 +806,13 @@ impl Analysis<'_> {
         let layout = self.shared.layout;
         let mut machine = Machine::new(&self.registry.code, &self.shared.data);
         let mut arena = Arena::default();
-        let objects = CallerObjects::plant(&mut machine, layout, self.registry.sprite_slot);
+        let objects =
+            CallerObjects::plant(&mut machine, &mut arena, layout, self.registry.sprite_slot);
         let seeded = match (seed, result) {
             (Seed::Name, None) => objects.name,
             (Seed::Name, Some(offset)) => {
                 let object = machine.stack_pointer() + offset;
-                CallerObjects::write_name(&mut machine, layout, object);
+                objects.write_name(&mut machine, layout, object);
                 object
             }
             (Seed::Element, _) => objects.element(&mut machine),
@@ -800,12 +829,15 @@ impl Analysis<'_> {
         let functions = &self.shared.strings;
         let mut calls = |target: Option<u64>, machine: &mut Machine| {
             if target == Some(getter) {
-                return Ok(Call::Return(match result {
-                    None => Some(objects.name),
-                    Some(_) => machine.register(8).inspect(|&object| {
-                        CallerObjects::write_name(machine, layout, object);
-                    }),
-                }));
+                let returned = match (result, machine.register(8)) {
+                    (None, _) => Some(objects.name),
+                    (Some(_), Some(object)) => {
+                        objects.write_name(machine, layout, object);
+                        Some(object)
+                    }
+                    (Some(_), None) => None,
+                };
+                return Ok(Call::Return(returned));
             }
             if element_calls.contains(&machine.pc()) {
                 return Ok(Call::Return(Some(objects.element(machine))));

@@ -270,7 +270,7 @@ impl Elements {
         };
 
         let mut slots = BTreeSet::new();
-        let mut typed = BTreeSet::new();
+        let mut typed_getters = BTreeSet::new();
         for symbol in symbols {
             let Some(class) = element_class(&symbol.name) else {
                 continue;
@@ -286,7 +286,7 @@ impl Elements {
             });
             if let Some((&slot, _)) = sprite_slot {
                 slots.insert(slot);
-                typed.insert(symbol.address);
+                typed_getters.insert(symbol.address);
             }
         }
         let [sprite_slot] = slots.into_iter().collect::<Vec<_>>()[..] else {
@@ -294,19 +294,20 @@ impl Elements {
         };
 
         let container = vtable_group(symbols, data, "CContainerWindow")?;
-        let mut getters = typed.clone();
+        let mut getters = typed_getters.clone();
         let mut displacements = BTreeSet::new();
         for (&displacement, &function) in &container.primary {
-            let branches_to_typed = text
+            let branches_to_typed_getter = text
                 .function_within(function, 4)
                 .and_then(|code| decode_arm64(code, function).ok())
                 .is_some_and(|rows| {
                     rows.first().is_some_and(|row| {
                         row.operation == "b"
-                            && number(&row.operands).is_some_and(|target| typed.contains(&target))
+                            && number(&row.operands)
+                                .is_some_and(|target| typed_getters.contains(&target))
                     })
                 });
-            if typed.contains(&function) || branches_to_typed {
+            if typed_getters.contains(&function) || branches_to_typed_getter {
                 getters.insert(function);
                 displacements.insert(displacement);
             }
@@ -383,7 +384,7 @@ impl Callers {
             }
             if used {
                 functions.insert(function);
-                element_calls.extend(caller.elements);
+                element_calls.extend(caller.element_calls);
             }
         }
 
@@ -410,7 +411,7 @@ struct Caller {
     targets: BTreeSet<u64>,
     code: Code,
     sites: Vec<(u64, UseCall)>,
-    elements: BTreeSet<u64>,
+    element_calls: BTreeSet<u64>,
 }
 
 impl Caller {
@@ -432,14 +433,16 @@ impl Caller {
         let mut element_calls = BTreeSet::new();
         for (index, row) in rows.iter().enumerate() {
             match row.operation.as_str() {
-                "bl" => {
+                "bl" | "b" => {
                     let Some(target) = number(&row.operands) else {
                         continue;
                     };
                     if sinks.contains(&target) {
                         sites.push((row.address, UseCall::Sink(target)));
                     }
-                    if elements.is_some_and(|elements| elements.getters.contains(&target)) {
+                    let element =
+                        elements.is_some_and(|elements| elements.getters.contains(&target));
+                    if row.operation == "bl" && element {
                         element_calls.insert(row.address);
                     }
                 }
@@ -468,7 +471,7 @@ impl Caller {
             rows,
             targets,
             sites,
-            elements: element_calls,
+            element_calls,
         })
     }
 
@@ -492,7 +495,7 @@ impl Caller {
                 let element_starts = match use_call {
                     UseCall::Sink(_) => Vec::new(),
                     UseCall::Register(_) => self
-                        .elements
+                        .element_calls
                         .iter()
                         .copied()
                         .filter(|element| {

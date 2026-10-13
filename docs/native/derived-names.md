@@ -391,6 +391,9 @@ whose claims are naming lines or not in the list.
 - **A string function on an unknown object is not a stop in a caller.** Callers build strings in
   members of their own objects; the root runs' `string-object` stop made thousands of caller paths
   fail with no relation to the getter's name.
+- **Give the caller's placeholder its own key node.** The item key's node survives every
+  unfollowed call, since a root's item key does not change. A caller may change the string that
+  a getter returned, so its placeholder needs a node that an unfollowed call makes unresolved.
 - **An unresolved name at a use site is not a use of the getter's name.** Count it only when it
   still holds the name, or when the name went into an unfollowed call on that path.
 
