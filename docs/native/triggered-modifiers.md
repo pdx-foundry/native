@@ -92,7 +92,7 @@ branch-island stub whose body the method does not enter, so the members that the
 builds (`+0x30`, `+0x238`) stay unknown: `modifier` has no join, `mult` and `multiplier` have no
 scoped destination, and `other_keys` is `Unresolved` because the Tooltip delegate looks up a static
 modifier and reads two members (`triggered-delegate`). Its seven clause keys and their kinds are
-the same as Static's.
+the same as Static's. These gaps are an [accepted limit](#accepted-limit-tooltip-clauses-sdk-817).
 
 Failure shapes, by field count:
 
@@ -130,6 +130,61 @@ The compact selections are in `tests/expected/m452/triggered-modifiers.json`.
   members, so it has no storage gap. Occurrence bounds are not established.
 - Condition timing, how a multiplier scales the modifier and where it takes effect are runtime
   behavior (see [modifier masks](modifier-masks.md#gaps)).
+- The Tooltip variant's embedded point, delegate and scoped destination are an
+  [accepted limit](#accepted-limit-tooltip-clauses-sdk-817).
+
+## Accepted limit: tooltip clauses (SDK-817)
+
+The 20 Tooltip gaps of the M452 sweep are on the five `common/pop_jobs` clause fields
+(`triggered_country_modifier`, `triggered_planet_modifier`, `triggered_system_modifier` and the
+two `triggered_planet_pop_group_modifier_for_*`):
+
+| Kind | Subject | Detail | Gaps |
+| --- | --- | --- | ---: |
+| `UnresolvedPath` | field | `triggered-embedded-point` | 5 |
+| `UnresolvedReader` | field | `triggered-delegate` (`other_keys`) | 5 |
+| `UnresolvedStorage` | `mult`, `multiplier` | Scoped destination vtable is not established. | 10 |
+
+**Atlas need: none now.** The config gives each field `single_alias_right[triggered_modifier*_clause]`
+with `cardinality` and `replace_scopes` (cwtools `common/pop_jobs.cwt`, clause bodies in
+`aliases.cwt`). Atlas at `95e260b`:
+
+- does not project `single_alias` bodies or recurse into `FieldMembers::TriggeredModifier`, so
+  `modifier`, `mult`, `multiplier` and the direct modifier keys have no Native subject;
+- credits `value_form` (block) and `nested_grammar` (a triggered clause counts as established
+  members) without these facts;
+- gets the cardinality maximum from `Accumulate` (unlimited, which disagrees with the config's 1
+  for `triggered_system_modifier`) and leaves the minimum unresolved, neither of which these gaps
+  touch;
+- credits `scope_context` only with a known `read_scope`, entry contexts and no `UnresolvedPath`
+  gap on the field. These fields have an unresolved read scope (`potential` stored scope,
+  `modifier` scope argument, SDK-808) and no entry contexts, as the Static fields have.
+
+**Reopen** the embedded-point limit when it is the last obstacle to a pop job `scope_context`
+claim (after SDK-808 and the entry contexts). Reopen the delegate and destination limits when Atlas
+publishes triggered-clause members or `single_alias` claims.
+
+**M452 facts.** Executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`,
+read with `examples/inspect`:
+
+- Both Tooltip constructors call the base constructor C2 through an import stub in `__stubs`: the
+  image imports its own weak `CTriggeredModifierBase<CStaticModifier>` C2. C1 is `b` to the same
+  stub. The constructor walk does not enter a stub, so the base members at `+0x30` and `+0x238` are
+  unknown: no embedded point, and no scoped destination for `mult` and `multiplier`. A repair
+  resolves an import stub that names a body of the image to that body, in
+  `src/binding/binary/receivers.rs`, where the branch-island rules are.
+- The Tooltip class adds a second `CStaticModifier` at `+0x4d8` and a
+  `CPdxArray<pair<CStaticModifier const*, CFixedPoint>>` at `+0x688`.
+- The delegate `ReadModifier` looks the key up in `CStaticModifierDatabase`, then calls virtual
+  slot `+0x98` of the result. When that is true, the key names a static modifier: it appends the
+  modifier and the token's float to `+0x688` and reads the key into `+0x238`
+  (`AddItselfToPostInitModifiers` when the post-init database exists). Otherwise
+  `CStaticModifier::ReadMember` reads the key into `+0x4d8`, then into `+0x238`. The route is
+  conditional and reaches two objects, so the one-member rule refuses it correctly; a repair must
+  also state that a key may name a static modifier.
+
+Over the same recording, the report moves the 20 gaps from open to accepted. Reader kinds of the
+five fields go from partial to complete; no other status changes.
 
 ## Pitfalls
 

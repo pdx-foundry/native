@@ -21,17 +21,16 @@
       "undetermined": 309
     },
     "reader_kinds": {
-      "complete": 1576,
+      "complete": 1581,
       "denominator": 1926,
       "failed": 304,
-      "partial": 46,
-      "rate": 0.8183
+      "partial": 41,
+      "rate": 0.8209
     },
     "references": {
-      "complete": 25,
+      "complete": 36,
       "denominator": 345,
-      "partial": 11,
-      "rate": 0.0725,
+      "rate": 0.1043,
       "undetermined": 309
     },
     "scope_context": {
