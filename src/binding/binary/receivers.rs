@@ -14,32 +14,34 @@ use std::collections::{BTreeMap, BTreeSet};
 // Bound decoded constructor input to avoid unbounded analysis of oversized bodies.
 const MAX_CONSTRUCTOR_CODE_BYTES: usize = 65536;
 
-/// The class of a constructor symbol, `Class::Class(…)` or `Class<Arguments>::Class(…)`. The
-/// class is the name before the first scope separator outside template arguments, so a nested
-/// class's constructor does not match.
+/// The class of a constructor symbol, `Class::Class(…)`, `Outer::Class::Class(…)` or
+/// `Class<Arguments>::Class(…)`. The class is the name before the last scope separator outside
+/// template arguments, so a nested class's constructor names the nested class.
 pub(super) fn constructor_class(name: &str) -> Option<&str> {
-    let separator = top_level_scope(name)?;
+    let separator = last_top_level_scope(name)?;
     let (class, method) = (&name[..separator], &name[separator + 2..]);
-    let base = class.split_once('<').map_or(class, |(base, _)| base);
+    let last = last_top_level_scope(class).map_or(class, |at| &class[at + 2..]);
+    let base = last.split_once('<').map_or(last, |(base, _)| base);
 
     method.strip_prefix(base)?.starts_with('(').then_some(class)
 }
 
-/// The byte offset of the first `::` outside template arguments, before any parameter list.
-fn top_level_scope(name: &str) -> Option<usize> {
+/// The byte offset of the last `::` outside template arguments, before any parameter list.
+fn last_top_level_scope(name: &str) -> Option<usize> {
     let mut depth = 0usize;
+    let mut last = None;
 
     for (at, character) in name.char_indices() {
         match character {
             '<' => depth += 1,
             '>' => depth = depth.checked_sub(1)?,
-            '(' if depth == 0 => return None,
-            ':' if depth == 0 && name[at..].starts_with("::") => return Some(at),
+            '(' if depth == 0 => break,
+            ':' if depth == 0 && name[at..].starts_with("::") => last = Some(at),
             _ => {}
         }
     }
 
-    None
+    last
 }
 
 /// Constructor entries reached directly or through register-move wrappers, with their compiler
@@ -290,10 +292,15 @@ pub(super) fn persistent(
     }
     let name = |address| names.unique(address).map(str::to_owned);
     let mut pages = BTreeSet::new();
-    for body in &bodies {
-        for row in
-            decode_arm64(&body.code, body.address).map_err(|_| AnalysisError::InvalidRange)?
-        {
+    let entered = constructor_bodies
+        .values()
+        .map(|body| (body.address, &body.code));
+    for (address, code) in bodies
+        .iter()
+        .map(|body| (body.address, &body.code))
+        .chain(entered)
+    {
+        for row in decode_arm64(code, address).map_err(|_| AnalysisError::InvalidRange)? {
             if matches!(row.operation.as_str(), "adrp" | "adr")
                 && let Some((_, operand)) = row.operands.split_once(',')
                 && let Some(address) = crate::engine::analysis::decode::number(operand)
@@ -411,7 +418,9 @@ mod tests {
         assert_eq!(constructor_class("A::A(int)"), Some("A"));
         assert_eq!(constructor_class("A<B<C>>::A(int)"), Some("A<B<C>>"));
         assert_eq!(constructor_class("A<x::Y>::A()"), Some("A<x::Y>"));
-        assert_eq!(constructor_class("A::B::B()"), None);
+        assert_eq!(constructor_class("A::B::B()"), Some("A::B"));
+        assert_eq!(constructor_class("A<x::Y>::B::B()"), Some("A<x::Y>::B"));
+        assert_eq!(constructor_class("A::B::A()"), None);
         assert_eq!(constructor_class("A<B>::~A()"), None);
         assert_eq!(constructor_class("A::Read(B::C)"), None);
     }
@@ -495,5 +504,39 @@ mod tests {
 
         symbols[2].name = "CExample::CExample(int)".into();
         assert_eq!(bind(&symbols).constructors.len(), 2);
+    }
+
+    #[test]
+    fn a_nested_class_constructor_called_by_the_owner_is_entered() {
+        let code = arm64!(at 0x1000;
+            bl extern 0x1008;
+            ret;
+            ret
+        );
+        let bytes = macho_with_text(&code);
+        let symbols = vec![
+            Symbol {
+                name: "CExample::CExample()".into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "CExample::SData::SData()".into(),
+                address: 0x1008,
+            },
+        ];
+        let recipe = PersistentRecipe {
+            string_array: [0; 3],
+            compound_sizes: [0; 3],
+            value_token: 0,
+            token_text: 0,
+            read_slot: 0,
+            member_slot: 0,
+            container_mask_offset: 0xac,
+            families: &[],
+        };
+        let input = bind_constructors(&bytes, &symbols, "CExample", &recipe);
+
+        assert!(input.summaries.contains_key(&0x1008));
+        assert!(input.constructor_bodies.contains_key(&0x1008));
     }
 }

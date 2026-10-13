@@ -24,7 +24,7 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v32`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v33`) holds
 the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
@@ -622,12 +622,13 @@ known empty list to `scopeless`.
   `namespace` case at an `ldursb`, so the answer has one registry gap for a root path that the
   walk could not finish. The walk names every accepted kind regardless.
 
-`registry_fields` over `events/` at `registry-fields/v32`: 22 kinds, each read in an established
+`registry_fields` over `events/` at `registry-fields/v33`: 22 kinds, each read in an established
 scope; of the 30 `CEvent` fields, 7 are complete (`custom_gui`, `custom_gui_option`,
 `notification_event_icon`, `diplomatic_title`, `event_picture_background`, `specimen`,
-`event_message_type`), 3 are partial (`event_chain` with unresolved storage, `difficulty` and
-`notification_event_icon_frame` with the scanner's conversion outside the method) and 20 have no
-established reader. Their failure shapes, from `examples/inspect --registry-fields events`:
+`event_message_type`), 4 are partial (`event_chain` with unresolved storage, `difficulty` and
+`notification_event_icon_frame` with the scanner's conversion outside the method, and
+`pre_triggers`, see [pre-trigger blocks](#pre-trigger-blocks)) and 19 have no established
+reader. Their failure shapes, from `examples/inspect --registry-fields events`:
 
 - the path reaches a call that is not a reader: `operator new` for an object held by a
   `shared_ptr` (`trigger`, `immediate`, `option`, `after`, `abort_trigger`, `abort_effect`,
@@ -642,10 +643,13 @@ established reader. Their failure shapes, from `examples/inspect --registry-fiel
 The block children take their scope from `CEvent + 0x68`, where the constructor stores the kind's
 scope, but none of their readers joins, so none is `Enclosing` yet. When a child's reader joins
 with scope `Load(Owner(0x68))`, it reads in the kind's scope once the constructor is shown to
-store its argument there. The `pre_triggers` keys belong to SDK-801.
+store its argument there.
 
 Pitfalls:
 
+- A constructor of a nested class (`CEvent::SEventData::SEventData`) is a constructor of
+  `CEvent::SEventData`. A class name taken before the first `::` misses it; the walk then does
+  not enter it, and `pre_triggers` has no reader.
 - The kind switch is in the file loader, not in an owner `ReadMember`. Each case reads no value;
   it sets a constant that a later constructor call receives. Read it from the loader root, not
   from the owner's member walk.
@@ -685,7 +689,13 @@ Pitfalls:
 `common/pop_jobs` `possible_pre_triggers` and `common/pop_faction_types` `can_join_pre_triggers`
 read one embedded `CPreTriggers` object. Both fields have reader identity `87346602eebc8fd3`
 (`CPersistent::Read`, `CPreTriggers::ReadMember`), so the blocks share one key table.
-`tests/expected/m452/pre-triggers.json` holds the keys; `cargo parity pre_trigger` checks them.
+Every event kind reads the same object: `CEvent::ReadMember` sends token `pre_triggers` to
+`CReader::Read(CPersistent&)` on `CEvent + 0x4e0`, so all 22 kinds accept the block, not only the
+config's three (`colony`, `carrier` and `country` subtypes in `events.cwt`). Each
+`<kind>.pre_triggers` has the same reader identity and the same 14 keys.
+`tests/expected/m452/pre-triggers.json` holds the keys of the two registry fields and of the
+config's three kinds; `cargo parity pre_trigger` checks them, and
+`every_event_kind_reads_the_pre_trigger_table` checks all 22 kinds.
 
 Facts on M452:
 
@@ -705,10 +715,17 @@ Facts on M452:
   scope object are use-time code; which keys each one sets is not established.
 - The blocks' read scope is the [read-scope](#block-entry-contexts) answer (SDK-549); it stays
   unresolved with a `read-scope: scope-argument` gap.
+- `CEvent::CEvent(EScopeType)` builds its data in the nested constructor
+  `CEvent::SEventData::SEventData(EScopeType)` at `this + 0x68`, which stores the `CPreTriggers`
+  vtable point at its `+0x478`. The owner constructor walk enters a nested class's constructor
+  like any other called constructor, and takes reader candidates from the vtable pages of the
+  entered bodies as well as the owner's.
 
-Each of the two fields is listed with all 14 keys; every key keeps an `UnresolvedReader`, an
-`UnresolvedStorage` and a `read-scope: scope-argument` gap, because the walk does not follow `ReadValue`. So the result is partial
-for both fields, with one failure shape: an unfollowed value helper. None failed. Establish the
+Each of the two fields and each of the 22 event `pre_triggers` fields is listed with all 14 keys;
+every key keeps an `UnresolvedReader`, an `UnresolvedStorage` and a
+`read-scope: scope-argument` gap, because the walk does not follow `ReadValue`. So the result is
+partial for all 24 fields (none complete), with one failure shape: an unfollowed value helper.
+None failed. Establish the
 value form when Atlas needs it: the value is one of two literal tokens, and others are ignored,
 which the `Keyword` rule of [weight blocks](weight-blocks.md) does not cover (two different owner
 words, and a silent ignore instead of a diagnostic).

@@ -40,5 +40,64 @@
       },
       "reader": "87346602eebc8fd3"
     }
+  },
+  "events": {
+    "carrier_event.pre_triggers": {
+      "keys": {
+        "has_ground_combat": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_planet": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_ai": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_assimilated": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_purged": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_capital": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_enslaved": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_homeworld": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_idle": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_occupied_flag": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_robotic": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_sapient": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "original_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"}
+      },
+      "reader": "87346602eebc8fd3"
+    },
+    "colony_event.pre_triggers": {
+      "keys": {
+        "has_ground_combat": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_planet": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_ai": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_assimilated": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_purged": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_capital": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_enslaved": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_homeworld": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_idle": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_occupied_flag": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_robotic": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_sapient": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "original_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"}
+      },
+      "reader": "87346602eebc8fd3"
+    },
+    "country_event.pre_triggers": {
+      "keys": {
+        "has_ground_combat": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "has_planet": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_ai": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_assimilated": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_being_purged": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_capital": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_enslaved": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_homeworld": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_idle": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_occupied_flag": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_robotic": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "is_sapient": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"},
+        "original_owner": {"gaps": ["UnresolvedReader", "UnresolvedStorage"], "reader": "Unknown"}
+      },
+      "reader": "87346602eebc8fd3"
+    }
   }
 }

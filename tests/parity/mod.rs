@@ -89,7 +89,8 @@ pub fn event_kinds(native: &Native) -> Result<Value> {
 }
 
 /// The keys of each selected field's embedded block: the field's reader identity, each key's
-/// reader kind, and the kinds of the gaps on each key.
+/// reader kind, and the kinds of the gaps on each key. A selected name `kind.field` names a member
+/// of a root field.
 pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
     let mut registries = BTreeMap::new();
     for (registry, selected) in expected
@@ -103,11 +104,7 @@ pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
             .ok_or("expected pre-trigger field selection")?
             .keys()
         {
-            let field = answer
-                .value
-                .iter()
-                .find(|field| &field.name == name)
-                .ok_or("selected field is in the answer")?;
+            let field = field_at(&answer.value, name).ok_or("selected field is in the answer")?;
             let FieldMembers::Fields(members) = &field.members else {
                 fields.insert(
                     name,
@@ -135,6 +132,20 @@ pub fn pre_triggers(native: &Native, expected: &Value) -> Result<Value> {
         registries.insert(registry, fields);
     }
     Ok(json!(registries))
+}
+
+/// The field at the dotted `path` among `fields` and their members.
+fn field_at<'a>(fields: &'a [Field], path: &str) -> Option<&'a Field> {
+    let (name, rest) = path
+        .split_once('.')
+        .map_or((path, None), |(name, rest)| (name, Some(rest)));
+    let field = fields.iter().find(|field| field.name == name)?;
+
+    match (rest, &field.members) {
+        (None, _) => Some(field),
+        (Some(rest), FieldMembers::Fields(members)) => field_at(members, rest),
+        (Some(_), _) => None,
+    }
 }
 
 /// The loader rules of each registry that the tracked file selects, with the kind, subject and
