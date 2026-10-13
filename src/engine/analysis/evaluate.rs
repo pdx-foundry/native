@@ -2234,8 +2234,9 @@ impl<'a> Machine<'a> {
     /// br    xT
     /// ```
     ///
-    /// Only [`SWITCH_RUN`] instructions run between the guard and the branch, and no direct branch
-    /// enters that run, so every path to the branch passed the guard with an index of at most `K`.
+    /// Only [`SWITCH_RUN`] instructions run between the guard and the branch, the current frame
+    /// began before that run, and no direct branch enters it, so every path to the branch passed
+    /// the guard with an index of at most `K`.
     fn switch_cases(&self, pc: u64, branch: &Operand) -> Option<Vec<u64>> {
         let Operand::Register(branch) = branch else {
             return None;
@@ -2284,8 +2285,9 @@ impl<'a> Machine<'a> {
             return None;
         }
 
+        // The frame must have begun at or before the run, or the walk never passed the guard.
         let (start, bound) = self.switch_guard(pc - 12, index.name)?;
-        if self.code.is_entered_between(start, pc) {
+        if self.entered() > start || self.code.is_entered_between(start, pc) {
             return None;
         }
 
@@ -3917,6 +3919,17 @@ mod tests {
             ],
         );
         assert_eq!(path_returns(&load_on_base, &data), stopped);
+
+        // A walk that begins after the guard never tested the index.
+        let guarded = byte_switch(("mov", "w9,w0"), &[]);
+        let mut machine = Machine::new(&guarded, &data);
+        machine.set_register(1, 0);
+        let paths = machine.run_paths(0x108, &mut |_, _| Ok(Call::Return(None)));
+        let ends: Vec<_> = paths
+            .into_iter()
+            .map(|path| path.end.map_err(|unresolved| unresolved.reason))
+            .collect();
+        assert_eq!(ends, [Err("branch-value")]);
 
         // The table has fewer entries than the guard allows.
         let short = ReadOnlyData::new(vec![(0x1010, vec![0, 2])]);

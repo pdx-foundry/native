@@ -24,7 +24,7 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v37`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v38`) holds
 the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
@@ -227,17 +227,18 @@ by unsigned intervals of `token - base`, and it holds more direct comparisons
 
 **An unknown index (SDK-812).** A path walk forks to every case of a table whose index is unknown
 only when the code before the `br` proves the bound in this straight-line shape: the guard
-`cmp wJ,#K; b.hi`; then only moves, address arithmetic and loads that write no base register, which set no
-flags and do not branch; no direct branch into that run; and the index copied once from `wJ` by a
-32-bit `mov` after the guard or, with no copy, set by a 32-bit write before the `cmp`, so its upper
-half is zero. Any other shape keeps the `branch-value` stop, and one path of `Machine::run` stops
-there too. Assumption: a branch through a register does not enter a guard run. Checked on
-`CSpatialObjectRefCaster::FillEventScope` (byte table, 11 cases, `mov w9,w0`),
-`CFleetOrbitalSlotHandle::ExecFunctor<SSetupScopeObjectFunctor&, CEventScope&>` (byte table, 4
-cases, `sub w8,w8,#1` before `cmp w8,#3`) and `CreateFleetOrderButtons` (halfword table, 39 cases,
-`mov w8,w0`). The adr's base must not be the index or the table register, and the load must not
-overwrite the base. On M452 it changes block entry contexts, one `derived_names` gap, one on_action
-and five game-rule gaps ([SDK-812](#block-entry-context-stops-on-m452-sdk-812)).
+`cmp wJ,#K; b.hi`; then only moves, address arithmetic and loads that write no base register,
+which set no flags and do not branch; a frame that began at or before that run, and no direct
+branch into it; and the index copied once from `wJ` by a 32-bit `mov` after the guard or, with no
+copy, set by a 32-bit write before the `cmp`, so its upper half is zero. The adr's base must not be
+the index or the table register, and the load must not overwrite the base. Any other shape keeps
+the `branch-value` stop, and one path of `Machine::run` stops there too. Assumption: a branch
+through a register does not enter a guard run. Checked on `CSpatialObjectRefCaster::FillEventScope`
+(byte table, 11 cases, `mov w9,w0`), `CFleetOrbitalSlotHandle::ExecFunctor<SSetupScopeObjectFunctor&,
+CEventScope&>` (byte table, 4 cases, `sub w8,w8,#1` before `cmp w8,#3`) and
+`CreateFleetOrderButtons` (halfword table, 39 cases, `mov w8,w0`). On M452 it changes block entry
+contexts, one `derived_names` gap, one on_action and five game-rule gaps
+([SDK-812](#block-entry-context-stops-on-m452-sdk-812)).
 
 **The default case.** The rule is in the module comment of `fields.rs`. Pitfall: "the most
 frequent target is the default" is wrong. `CMissionType::ReadMember` has a table for tokens
@@ -1464,9 +1465,10 @@ these could gain from this method. The other 87 also wait on the read scope (SDK
 - A switch table with an unknown index forks to each case when its guard proves the bound
   ([compiler jump tables](#compiler-jump-tables)). Observation mission `potential` resolves: the
   order button's `CFleetOrbitalSlotHandle::ExecFunctor` now gives each orbital type. Button effect
-  `potential` and `allow` gain their `SetupScopeObject` types, and deposit
-  `can_be_cleared_potential` gains planet, ship and astral rift (one case stays unreadable, so its
-  `branch-value` gap becomes an unresolved scope). The mission blocks lose `branch-value`, but
+  `potential` and `allow` gain the types of `SetupScopeObject`'s cases but keep a `branch-value`
+  stop on a walk that begins after a guard, and deposit `can_be_cleared_potential` gains planet,
+  ship and astral rift (one case stays unreadable, so its `branch-value` gap becomes an unresolved
+  scope). The mission blocks lose `branch-value`, but
   `FillEventScope`'s eleven cases then take their runs past the path limit.
 - A scope parameter linked into the entry's scope is read at the callers (module comment of
   `callbacks/blocks.rs`). `CMegaStructureType::IsPotential(CCountry const&, CEventScope&)` builds a
@@ -1479,10 +1481,10 @@ these could gain from this method. The other 87 also wait on the read scope (SDK
   when each context that the run read comes back at the same evaluation with its read slots
   unchanged and its unread ones read, so a bound cannot hide an arrival that the retry missed.
 
-Before the accepted limit, `registry-sweep --diff` against the baseline names 8 registries: the
-six above, and districts and specimens, whose `derived_names` each lose one path gap (an
+Before the accepted limit, `registry-sweep --diff` against the baseline names 7 registries: five
+of the six above (button effects keeps its gap counts), and districts and specimens, whose `derived_names` each lose one path gap (an
 `instruction` stop at `csetm`, a `branch-value` stop at a switch table) with the same names. With
-the limit, it names 50: 46 move gaps to the limit, and 10 change their scope context counts (3 from
+the limit, it names 49: 46 move gaps to the limit, and 10 change their scope context counts (3 from
 the repairs). No command grammar changes (`command-population --diff`), and the field sweep changes
 only these entry contexts.
 
@@ -1505,17 +1507,17 @@ known read scope, established contexts and no blocking gap.
 | path-limit | 54 | 56 |
 | some entry scopes unresolved | 46 | 44 |
 | loop-limit | 21 | 21 |
-| branch-value | 16 | 0 |
+| branch-value | 16 | 2 |
 | N unnamed direct evaluations (registry) | 9 | 9 |
 | no-caller | 8 | 8 |
 | caller-depth | 5 | 5 |
 | instruction | 5 | 4 |
 | selected-block-identity | 4 | 4 |
 | only tooltip calls | 1 | 1 |
-| **Total (registries)** | **248 (68)** | **231 (68)** |
+| **Total (registries)** | **248 (68)** | **233 (68)** |
 
 The SDK-553 run had 242 in 66 registries; SDK-710 and SDK-676 brought more blocks into the method
-before this work. Of the 231, an accepted limit covers 138 (below) and 93 stay open, on 61 fields
+before this work. Of the 233, an accepted limit covers 138 (below) and 95 stay open, on 61 fields
 with a field-level `replace_scopes` claim. Scope context goes from 1,247 to 1,261 complete fields:
 five from the repairs, the rest because the accepted gaps leave the counts.
 

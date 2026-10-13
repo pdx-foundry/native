@@ -225,6 +225,8 @@ enum LimitSubjects {
     WeightKeys(&'static [&'static str]),
     /// These fields, by registry and field name.
     Fields(&'static [(&'static str, &'static str)]),
+    /// A gap of these registries' answers whose subject is the registry.
+    Registries(&'static [&'static str]),
 }
 
 impl AcceptedLimit {
@@ -239,6 +241,9 @@ impl AcceptedLimit {
             (LimitSubjects::Fields(listed), Some(GapSubject::Field { name })) => listed
                 .iter()
                 .any(|(listed_registry, field)| *listed_registry == registry && field == name),
+            (LimitSubjects::Registries(listed), Some(GapSubject::Registry { .. })) => {
+                listed.contains(&registry)
+            }
             _ => false,
         };
 
@@ -321,7 +326,7 @@ const ACCEPTED_LIMITS: [AcceptedLimit; 6] = [
         decision: SDK_812,
         kind: GapKind::UnresolvedPath,
         details: &UNNAMED_EVALUATIONS,
-        subjects: LimitSubjects::Any,
+        subjects: LimitSubjects::Registries(&UNNAMED_EVALUATION_REGISTRIES),
     },
 ];
 
@@ -346,6 +351,19 @@ const ENTRY_CONTEXT_STOPS: [&str; 9] = [
 const UNNAMED_EVALUATIONS: [&str; 2] = [
     "1 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
     "2 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
+];
+
+/// The registries of the M452 unnamed-evaluation gaps. Such a gap of another registry stays open.
+const UNNAMED_EVALUATION_REGISTRIES: [&str; 9] = [
+    "common/colony_automation",
+    "common/governments/civics",
+    "common/map_modes",
+    "common/on_actions",
+    "common/ship_sizes",
+    "common/special_projects",
+    "common/starbase_buildings",
+    "common/starbase_modules",
+    "events",
 ];
 
 /// The M452 trigger, effect and weight fields with an entry-context gap and no field-level
@@ -1599,6 +1617,23 @@ mod tests {
             decision(&gap(field, "read-scope: scope-argument"), registry),
             None,
             "another obstacle of a listed field stays open"
+        );
+
+        let unnamed = Gap {
+            kind: GapKind::UnresolvedPath,
+            subject: Some(GapSubject::Registry {
+                name: UNNAMED_EVALUATION_REGISTRIES[0].into(),
+            }),
+            detail: UNNAMED_EVALUATIONS[0].into(),
+        };
+        assert_eq!(
+            decision(&unnamed, UNNAMED_EVALUATION_REGISTRIES[0]),
+            Some(SDK_812)
+        );
+        assert_eq!(
+            decision(&unnamed, "common/unlisted"),
+            None,
+            "a new unnamed evaluation stays open"
         );
     }
 
