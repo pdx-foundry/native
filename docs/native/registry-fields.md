@@ -136,7 +136,7 @@ may reach every owner byte after the member, the modifier's vtable included. The
 `exact_build_string_and_token_constructor_effects` asserts this. Obstacle: no stated rule says
 that the string allocator returns memory outside the owner. Repair: state that rule for the
 `CString` allocator and check it on three constructors. It is an evaluator rule for every
-constructor walk, command grammar included, so it is outside this walker repair.
+constructor walk, command grammar included, so it is outside this walker repair (SDK-822).
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
 unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
