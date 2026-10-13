@@ -75,8 +75,12 @@ fn fields(
         if matches!(field.members, crate::FieldMembers::WeightBlock(_)) {
             continue;
         }
-        // A modifier block's reader takes no scope, and its entries are not read in one.
-        if matches!(field.members, crate::FieldMembers::ModifierBlock(_)) {
+        // A modifier block's or a parameter list's reader takes no scope, and its entries are
+        // not read in one.
+        if matches!(
+            field.members,
+            crate::FieldMembers::ModifierBlock(_) | crate::FieldMembers::AnyKey { .. }
+        ) {
             field.read_scope = GrammarProperty::Known(vec![]);
             continue;
         }

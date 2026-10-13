@@ -1440,7 +1440,8 @@ pub enum BlockFamily {
     /// The family is not established, including conflicting or missing alternatives.
     #[default]
     Unknown,
-    /// An established reader of a scalar, or of a list of values, has no child command family.
+    /// An established reader of a scalar, of a list of values, or of a block whose members are
+    /// `FieldMembers::AnyKey` has no child command family.
     NotApplicable,
 }
 
