@@ -861,7 +861,9 @@ pub enum DeclaredTags {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModifierFamily {
-    /// The parts of each generated name, in order. At least one part is the item key.
+    /// The parts of each generated name, in order. At least one part is the item key. A family
+    /// whose names also take the key of an item of another registry has one
+    /// [`NamePart::RegistryKey`] part, and generates one name for each pair of items.
     pub name: Vec<NamePart>,
     /// The intended-use category tags of each generated modifier, by the rule of
     /// `Native::modifiers`. They are the tags of this registration; a later registration of the
@@ -877,15 +879,61 @@ pub struct ModifierFamily {
 
 impl ModifierFamily {
     /// The modifier name that the family gives the item named `key`, or `None` when the name
-    /// would be longer than `name_limit`, or when a part is a field, whose text a key does not
-    /// give.
+    /// would be longer than `name_limit`, when a part is a field, whose text a key does not give,
+    /// or when the family also takes the key of another registry's item (use
+    /// [`ModifierFamily::name_for_keys`]).
     pub fn name_for(&self, key: &str) -> Option<String> {
+        self.compose(key, None)
+    }
+
+    /// The modifier name that a family of two registries gives the item named `key` and the item
+    /// named `registry_key` of [`ModifierFamily::second_registry`], or `None` for a family of one
+    /// registry, when a part is a field, or when the name would be longer than `name_limit`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pdx_native::{DeclaredTags, GenerationCondition, ModifierFamily, NamePart};
+    /// let family = ModifierFamily {
+    ///     name: vec![
+    ///         NamePart::ItemKey,
+    ///         NamePart::Literal("_".into()),
+    ///         NamePart::RegistryKey("common/strategic_resources".into()),
+    ///         NamePart::Literal("_produces_mult".into()),
+    ///     ],
+    ///     category_tags: DeclaredTags::Unresolved,
+    ///     condition: GenerationCondition::Unresolved,
+    ///     name_limit: None,
+    /// };
+    /// assert_eq!(family.second_registry(), Some("common/strategic_resources"));
+    /// assert_eq!(
+    ///     family.name_for_keys("planet_jobs", "rare_crystals").as_deref(),
+    ///     Some("planet_jobs_rare_crystals_produces_mult"),
+    /// );
+    /// assert_eq!(family.name_for("planet_jobs"), None);
+    /// ```
+    pub fn name_for_keys(&self, key: &str, registry_key: &str) -> Option<String> {
+        self.second_registry()?;
+        self.compose(key, Some(registry_key))
+    }
+
+    /// The registry of the family's [`NamePart::RegistryKey`] part, when its names also take the
+    /// key of an item of that registry.
+    pub fn second_registry(&self) -> Option<&str> {
+        self.name.iter().find_map(|part| match part {
+            NamePart::RegistryKey(registry) => Some(registry.as_str()),
+            _ => None,
+        })
+    }
+
+    fn compose(&self, key: &str, registry_key: Option<&str>) -> Option<String> {
         let name: String = self
             .name
             .iter()
             .map(|part| match part {
                 NamePart::Literal(text) => Some(text.as_str()),
                 NamePart::ItemKey => Some(key),
+                NamePart::RegistryKey(_) => registry_key,
                 NamePart::Field(_) => None,
             })
             .collect::<Option<_>>()?;
@@ -904,6 +952,10 @@ pub enum NamePart {
     Literal(String),
     /// The key of the item, such as `building_foundry`.
     ItemKey,
+    /// The key of an item of another registry, by its content directory, such as
+    /// `common/strategic_resources`. Only a modifier family whose names combine the keys of two
+    /// registries has one.
+    RegistryKey(String),
     /// The text of a string field of the item, by its path from the registry's definition, such
     /// as `["tradition_swap", "name"]`. Modifier families have no field part.
     Field(Vec<String>),
@@ -978,7 +1030,8 @@ pub enum GenerationCondition {
 pub struct LoadedModifiers {
     /// Every loaded modifier, in the engine's table order.
     pub modifiers: Vec<LoadedModifier>,
-    /// The item keys of each registry whose families were applied, as the engine holds them at
+    /// The item keys of each registry whose families were applied, or whose keys a family of two
+    /// registries combines, as the engine holds them at
     /// the same point, by content directory. A registry whose keys could not be read is absent
     /// and has a gap.
     pub registry_items: std::collections::BTreeMap<String, Vec<String>>,
@@ -1000,18 +1053,24 @@ pub struct LoadedModifier {
     /// Whether the executable declares this name: it is in `Native::modifiers`.
     pub declared: bool,
     /// Each family and loaded item whose generated name is this name. A family explains a name
-    /// only when [`ModifierFamily::name_for`] gives it for a key of the family's registry that
-    /// the engine holds; names are never matched by similarity.
+    /// only when [`ModifierFamily::name_for`], or [`ModifierFamily::name_for_keys`] for a family
+    /// of two registries, gives it for keys that the engine holds; names are never matched by
+    /// similarity.
     pub generated_by: Vec<GeneratedName>,
 }
 
-/// A modifier name that a family of `Native::modifier_families` gives for one loaded item.
+/// A modifier name that a family of `Native::modifier_families` gives for one loaded item, or
+/// for one pair of loaded items.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GeneratedName {
     /// The family's registry, such as `common/buildings`.
     pub registry: String,
     /// The key of the item, such as `building_foundry`.
     pub item: String,
+    /// The key of the item of the template's [`NamePart::RegistryKey`] registry, such as
+    /// `rare_crystals`, for a family of two registries.
+    #[serde(deserialize_with = "crate::answer::required_option")]
+    pub second_item: Option<String>,
     /// The family's name template, as in [`ModifierFamily::name`].
     pub template: Vec<NamePart>,
 }

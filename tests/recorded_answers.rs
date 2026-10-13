@@ -645,6 +645,7 @@ async fn the_loaded_modifier_inventory_reads_its_recorded_file_with_no_game() {
                     { "name": "planet_building_capital_build_speed_mult",
                       "category_tags": { "Listed": ["Colony"] }, "declared": false,
                       "generated_by": [{ "registry": "common/buildings", "item": "building_capital",
+                          "second_item": null,
                           "template": [{ "Literal": "planet_" }, "ItemKey",
                                        { "Literal": "_build_speed_mult" }] }] },
                     { "name": "job_example_add", "category_tags": "Unresolved",

@@ -438,17 +438,8 @@ pub fn compact_families(answer: &Answer<Vec<ModifierFamily>>) -> Value {
         .value
         .iter()
         .map(|family| {
-            let template: String = family
-                .name
-                .iter()
-                .map(|part| match part {
-                    NamePart::Literal(text) => text.as_str(),
-                    NamePart::ItemKey => "{key}",
-                    other => panic!("unexpected part {other:?}"),
-                })
-                .collect();
             json!({
-                "template": template,
+                "template": template(&family.name),
                 "category_tags": family.category_tags,
                 "condition": family.condition,
                 "name_limit": family.name_limit,
@@ -499,6 +490,7 @@ fn template(name: &[NamePart]) -> String {
         .map(|part| match part {
             NamePart::Literal(text) => text.clone(),
             NamePart::ItemKey => "{key}".into(),
+            NamePart::RegistryKey(registry) => format!("{{{registry} key}}"),
             NamePart::Field(path) => format!("{{{}}}", path.join("/")),
             other => panic!("unexpected part {other:?}"),
         })
