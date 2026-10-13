@@ -1,6 +1,6 @@
 # Modifier families
 
-`Native::modifier_families(registry)` (`modifier-families/v3`) gives the modifier names that a
+`Native::modifier_families(registry)` (`modifier-families/v4`) gives the modifier names that a
 registry's code registers for each item. `Game::loaded_modifiers` (`loaded-modifiers/v1`) gives
 the modifier table after all content loads, and joins each entry to a declaration or a family.
 The module comments of `engine/analysis/families.rs`, `families/joins.rs`, `families/loading.rs`,

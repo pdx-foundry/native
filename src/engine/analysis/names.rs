@@ -64,7 +64,7 @@ use crate::NameLookup;
 mod tests;
 
 /// Name and revision of the derived-name method.
-pub const METHOD: &str = "derived-names/v1";
+pub const METHOD: &str = "derived-names/v2";
 
 /// The most names whose outcome one root's runs enumerate.
 const CHECK_BOUND: usize = 4;
