@@ -950,7 +950,8 @@ Facts on M452:
   scope object are use-time code; which keys each one sets is not established.
 - The blocks' read scope is the [read-scope](#block-entry-contexts) answer (SDK-549); it stays
   unresolved with a `read-scope: no-scope-parameter` gap (SDK-808): `CPersistent::Read` takes no
-  scope, and the keys read in none.
+  scope, and the method does not establish a scope that the object stores. Each key is `Boolean`
+  and has its own read scope.
 - `CEvent::CEvent(EScopeType)` builds its data in the nested constructor
   `CEvent::SEventData::SEventData(EScopeType)` at `this + 0x68`, which stores the `CPreTriggers`
   vtable point at its `+0x478`. The owner constructor walk enters a nested class's constructor

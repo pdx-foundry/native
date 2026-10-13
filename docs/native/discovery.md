@@ -270,8 +270,9 @@ One additional comparison disagrees: config `any_owned_planet` says `planet`, bu
 reader explicitly passes mask `0x10000000000`, which names `colony`. Keep the engine result.
 This member-level replacement does not contradict the outer-reader assumption.
 
-**Limits.** Multiple reader paths retain separate scope sets. Zero masks, unnamed bits, missing
-boundaries and memory-loaded scopes remain gaps, including `every_owned_army`: its factory
+**Limits.** Multiple reader paths retain separate scope sets. A zero mask beside another scope,
+unnamed bits, missing boundaries and memory-loaded scopes remain gaps (a block whose every read
+passes scope 0 reads in no scope since SDK-808), including `every_owned_army`: its factory
 stores the army mask, but the method does not establish that value at member entry. Nested fields
 use the same rules and report gaps at their full key path. The removed strict forwarding proof
 and its string-helper findings are preserved in `.local/sdk-549/implementation/strict-forwarding-retained`.
@@ -310,7 +311,7 @@ properties. Failed command cases lack a receiver join; their public answers rema
 | Effects | 1,074 | 146 | 925 | 3 |
 | Triggers | 1,096 | 119 | 977 | 0 |
 
-The 1,593 registry fields have scope gaps for unknown arguments and zero masks. Command scope
+At SDK-549, the 1,593 registry fields had scope gaps for unknown arguments and zero masks. Command scope
 gaps are unknown arguments, memory-loaded scopes and missing child-family boundaries. The three
 failed receiver joins comprise two `factory-terminal` and one unsupported `instruction`; template
 constructor summaries (SDK-673) joined the six former `command-vtable` cases. Other grammar gaps are described on [command grammar](command-grammar.md) and

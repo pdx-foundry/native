@@ -156,8 +156,9 @@ that scope, and a key that reads in the clause's stored scope word, such as `pot
 
 ## Gaps
 
-- `modifier` keeps a read-scope gap: its embedded reader takes no scope argument
-  (`no-scope-parameter`), and the Tooltip variant has no join for it.
+- The Tooltip variant's `modifier` keeps a `no-scope-parameter` read-scope gap: it has no join to
+  a modifier block, and its embedded reader takes no scope argument. In the Static and CustomDesc
+  variants, `modifier` is a modifier block and reads in no scope (`Known([])`).
 - `mult` and `multiplier` keep the scoped-literal conversion and operand-method gaps of
   [scoped numeric](scoped-numeric.md).
 - The embedded block keeps every SDK-607 gap. For `other_keys` the gaps are stated on the field,
