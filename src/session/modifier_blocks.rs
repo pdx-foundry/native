@@ -7,8 +7,8 @@ use crate::engine::analysis::{
     stop::Unresolved,
 };
 use crate::{
-    AcceptedCategories, BlockFamily, Field, FieldMembers, Gap, GapKind, GapSubject,
-    GrammarProperty, ModifierBlock, ModifierEntry, ReaderKind,
+    AcceptedCategories, BlockFamily, Field, FieldMembers, FieldReadOutcome, Gap, GapKind,
+    GapSubject, GrammarProperty, ModifierBlock, ModifierEntry, ReaderKind,
 };
 use std::collections::BTreeSet;
 
@@ -190,6 +190,11 @@ fn any_keys(fields: &mut [Field], variant: &Variant, path: &[String], gaps: &mut
         };
         field.members = FieldMembers::AnyKey { value_forms };
         field.reader.family = BlockFamily::NotApplicable;
+        for alternative in &mut field.read {
+            if let FieldReadOutcome::Read { reader, .. } = &mut alternative.outcome {
+                reader.family = BlockFamily::NotApplicable;
+            }
+        }
         field.accepted_categories = AcceptedCategories::NotApplicable;
     }
 }
@@ -319,21 +324,29 @@ mod tests {
 
     #[test]
     fn a_parameter_list_key_takes_any_key_and_reads_in_no_scope() {
-        let list = |name: &str, token: i64| RootField {
+        let read = ReaderJoin::Stored {
+            callee: "CSerializer::ReadMember(CReader&, int)".into(),
+            kind: ReaderKind::Block,
+            destination: None,
+            repeat: crate::RepeatBehavior::Accumulate,
+        };
+        let list = |name: &str, token: i64, path: usize| RootField {
             name: name.into(),
             token,
             constructor: 0,
-            paths: vec![],
-            readers: vec![ReaderJoin::Stored {
-                callee: "CSerializer::ReadMember(CReader&, int)".into(),
-                kind: ReaderKind::Block,
-                destination: None,
-                repeat: crate::RepeatBehavior::Accumulate,
-            }],
+            paths: vec![path],
+            readers: vec![read.clone()],
+        };
+        let path = |token: i64| TokenPath {
+            domain: [token, token],
+            conditions: vec![],
+            instructions: vec![],
+            terminal: 0,
+            outcome: PathOutcome::Reader(read.clone()),
         };
         let variant = Variant {
-            fields: vec![list("parameters", 4), list("unlexed", 5)],
-            paths: vec![],
+            fields: vec![list("parameters", 4, 0), list("unlexed", 5, 1)],
+            paths: vec![path(4), path(5)],
             fixed_complete: true,
             entries: GrammarProperty::Known(vec![]),
             stops: vec![],
@@ -365,6 +378,10 @@ mod tests {
         );
         assert_eq!(keys[0].read_scope, GrammarProperty::Known(vec![]));
         assert_eq!(keys[0].reader.family, BlockFamily::NotApplicable);
+        assert!(matches!(
+            &keys[0].read[0].outcome,
+            FieldReadOutcome::Read { reader, .. } if reader.family == BlockFamily::NotApplicable
+        ));
         assert_eq!(
             keys[1].members,
             FieldMembers::AnyKey {

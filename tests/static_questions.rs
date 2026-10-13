@@ -187,6 +187,10 @@ fn check_description_parameters(field: &pdx_native::Field) {
 
     assert_eq!(field.reader.kind, ReaderKind::Block);
     assert_eq!(field.reader.family, BlockFamily::NotApplicable);
+    assert!(field.read.iter().all(|alternative| matches!(
+        &alternative.outcome,
+        FieldReadOutcome::Read { reader, .. } if reader.family == BlockFamily::NotApplicable
+    )));
     assert_eq!(field.shape.value, ValueShape::Block);
     assert_eq!(field.shape.repeat, RepeatBehavior::Accumulate);
     assert_eq!(field.read_scope, GrammarProperty::Known(vec![]));
