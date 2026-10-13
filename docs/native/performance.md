@@ -160,7 +160,9 @@ At `13c94ba`, before those three changes, the walls were 79 s and 172 s, the CPU
 - **The same costs reach Atlas.** At `13c94ba` the Atlas live snapshot took 432 s with 3.8 GB
   resident. Its three game sessions took about 75 s; the rest was Native static analysis on one
   thread, of which the per-member symbol map took about 67 s and `derived_names` repeating each
-  registry's field method about 69 s. Both are gone; the new snapshot time is not measured.
+  registry's field method about 69 s. Both are gone. At `ee01bf3` (185 registries) the Atlas live
+  snapshot of the Milestone 5 sweep (SDK-798) took 218 s wall with 4.05 GB peak resident, of which
+  `modifier_families` is about 30 s ([below](#modifier-families)).
 
 ## Whole-inventory recording
 
@@ -172,6 +174,29 @@ recording takes under 0.1 s. `record-command-grammars` records all 2,178 command
 [hashing](#hashing-dominates-the-first-static-query)). Both take minutes, so the cost of
 recording a whole inventory blocks no sweep (decision D6 of the Milestone 5 plan; SDK-640,
 SDK-651).
+
+## Modifier families
+
+Measured on M452 at `ee01bf3` on the host above, release build, one thread, nothing else running:
+a program opens one `Native`, asks `registries`, and asks `modifier_families` for each of the 185
+registries twice (SDK-591, over the list that SDK-783 and SDK-786 grew from 164).
+
+| Order | First call | Later calls (median, max) | 185 calls |
+| --- | --- | --- | --- |
+| First question after `registries` | 2.5 s | 0.18 s, 0.21 s | 33.9 s; again 31.5 s |
+| After a `registry_fields` and a `derived_names` loop, as Atlas asks | 0.17 s | 0.17 s, 0.21 s | 30.3 s; again 30.1 s |
+
+Peak resident was 0.48 GB and 1.42 GB. The family index is kept, but each call builds the
+modifier input again (`BoundAnalysis::modifier_input`, the declared modifiers and categories), only
+to name the categories of the families' masks: a 15 s `sample` during the first loop puts 10,617 of
+10,618 samples of `modifier_families` there. The rest of a call costs under 1 ms.
+
+**Accepted:** about 30 s per full inventory, against the 218 s Atlas live snapshot and the
+minutes of a whole-inventory recording ([above](#whole-inventory-recording)); it blocks no sweep,
+by the rule of decision D6. Keep the modifier input in `BoundAnalysis`, as the family index is,
+if a consumer asks `modifier_families` more than once per inventory, or if the per-call cost grows
+past about 0.5 s. A batched `modifier_families_all` is not needed: the cost is the repeated input,
+not the per-registry work.
 
 ## Live costs
 
