@@ -19,7 +19,7 @@ const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's fi
 const BUILD_WIDE: [(&str, &str); 2] = [
     (
         "file_order",
-        "The order in which the loader reads its files is a rule of the build's file system, stated once from its code and not for each registry. No fixture verifies it.",
+        "The order in which the loader reads its files is a rule of the build's file system, stated once from its code and not for each registry. A live fixture control checks it for a template loader.",
     ),
     (
         "mod_over_vanilla",
@@ -298,10 +298,11 @@ mod tests {
             ]
         );
         assert!(
-            answer.gaps[..2]
-                .iter()
-                .all(|gap| gap.detail.ends_with("No fixture verifies it."))
+            answer.gaps[0]
+                .detail
+                .ends_with("A live fixture control checks it for a template loader.")
         );
+        assert!(answer.gaps[1].detail.ends_with("No fixture verifies it."));
     }
 
     #[test]

@@ -1,11 +1,12 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v4`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v5`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
 build; each answer has an `OutsideMethod` gap for each (subjects `file_order`,
-`mod_over_vanilla`) that says that no fixture verifies it. The code is
+`mod_over_vanilla`). [Fixture controls](#fixture-controls) lists the rules that a live fixture
+checks and the ones that it cannot reach. The code is
 `src/engine/analysis/loader_rules.rs`, `directories::enumeration_calls`,
 `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`
 (`existing_entry_rules`), `src/binding/analysis.rs` (`loader_evidence`) and
@@ -180,7 +181,8 @@ in byte order of its path below the folder: case-sensitive, so `B.txt` before `a
 array order (index from 0, step `0x28`). A pre-enumerated result has the same arguments and comes
 from the same function.
 
-Limits: no fixture verifies the order. A custom loader's own loop over the names is not read.
+Limits: `loader_rule_file_order` checks the order for a template loader
+([fixture controls](#fixture-controls)). A custom loader's own loop over the names is not read.
 
 ## Mod over vanilla
 
@@ -357,6 +359,42 @@ string comes from.
   kept.
 - `common/species_names` (`name_field = name`): the loader names collections and name sets by
   keys (a species class, a key under `named_lists`, and each set's key), not by a `name` field.
+
+## Fixture controls
+
+Each control is a `tests/live.rs` case (`tests/live/loader_rules.rs`). It reads the static
+answer, writes the fixture in the stated form and predicts from the stated rule what the loader
+does with it, and compares the fixture observation with the prediction. A duplicate control
+defines one key twice: the first definition sets two string fields, the second only one. The prediction comes from the rule, not from the registry. The worker reads each
+definition's key from the item constructor, so a construction at a root statement's line shows
+that the loader named it by that statement's key.
+
+| Rule | Case | Registry | Prediction |
+| --- | --- | --- | --- |
+| `LastWins`, a key repeated in one file | `loader_rule_last_wins` | `common/traditions` | Two constructions at one owner; the field that only the first sets is empty; the second value of the other; one `Object with key: … already exists` at the second definition |
+| `Merges`, a key repeated in one file | `loader_rule_merges` | `common/governments/authorities` | One construction; the first value of the field that only the first sets; the second value of the other; no such diagnostic |
+| File order, and `LastWins` across two files | `loader_rule_file_order` | `common/traditions` | `native_rule_B.txt` loads before `native_rule_a.txt` (byte order; an order that ignores case would differ); then as `LastWins` |
+| `Root` / `Key` | each case above | both | Each construction of the key is at a root statement with that key |
+| `RootKey(k)` / `Field(f)` | `loader_rule_field_name` | `common/special_projects` | A definition written as `k = { … f = name }` is observed under `name`; the inline binding reads the name from the item |
+
+Each case also reads back the recorded static answer and fixture observation apart from `Basis`,
+and the harness checks that the ordinary profile is unchanged.
+
+Rules that no fixture reaches, with their limits:
+
+- `extension`, `name_contains`, `recursion`: a fixture writes only `.txt` files directly in the
+  folder (`FixtureRequest`), so it cannot show which other names or subdirectories a loader reads.
+- Mod over vanilla: a fixture has no second mount (decision D3).
+- A custom loader's duplicate rule (`Unresolved`), and the `namespace` / `Value` and `Root` /
+  `Field("id")` forms of `events`: a fixture binds template loaders and one inline loader
+  (`common/special_projects`), not the events loader.
+- `RootKey(k)` / `Field(f)` of the other custom loaders (`common/ship_behaviors`, `gfx/worldgfx`):
+  the same form as `common/special_projects`, but no fixture binding of their own.
+- Swap blocks (`Nested` / `Field("name")` at `tradition_swap`, `technology_swap` and
+  `advanced_authority_swap`): a fixture question names a root definition, not a swap.
+- The other `Merges` registries: `common/economic_plans` and `common/portrait_sets` have no
+  string field with a storage binding; `common/country_limits/ownership_limits` and
+  `common/portrait_categories` have no fixture loader. The rule is the same template handler.
 
 ## Result on M452
 
