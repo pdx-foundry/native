@@ -8,7 +8,8 @@
 //! `Native::from_recorded_answers` and writes the report, or only its comparison inputs.
 //!
 //! `registry-sweep --diff BEFORE AFTER` compares two reports or baselines and writes each
-//! registry and relationship whose statuses changed.
+//! registry and relationship whose statuses changed, and each registry whose open or accepted
+//! gaps changed.
 // The report shares only the baseline format and its reader.
 #[allow(dead_code)]
 #[path = "support/population.rs"]
@@ -36,6 +37,9 @@ const NUMERICS: &str = "numerics";
 const WEIGHTS: &str = "weights";
 const NAMING_RULES: &str = "naming_rules";
 const SCOPE_CONTEXT: &str = "scope_context";
+/// A registry row's gaps by shape, open or accepted; not relationships.
+const OPEN_GAPS: &str = "open_gaps";
+const ACCEPTED_GAPS: &str = "accepted_gaps";
 
 /// The outcome of one unit of one relationship.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -204,11 +208,362 @@ fn gap_relationship(kind: GapKind) -> Option<&'static str> {
     }
 }
 
+/// A gap that the method could close but Atlas does not need, with the decision that accepts it.
+/// The report counts its gaps apart from the open failure shapes, and no rate counts them.
+struct AcceptedLimit {
+    /// The ticket and the knowledge page that record the decision.
+    decision: &'static str,
+    kind: GapKind,
+    details: &'static [&'static str],
+    subjects: LimitSubjects,
+}
+
+/// The gap subjects that an accepted limit covers.
+enum LimitSubjects {
+    Any,
+    /// These fixed keys of a weight block.
+    WeightKeys(&'static [&'static str]),
+    /// These fields, by registry and field name.
+    Fields(&'static [(&'static str, &'static str)]),
+}
+
+impl AcceptedLimit {
+    /// Whether this limit accepts `gap` of the answer of `registry` whose value is `fields`.
+    fn covers(&self, gap: &Gap, registry: &str, fields: &[Field]) -> bool {
+        let subject_covered = match (&self.subjects, &gap.subject) {
+            (LimitSubjects::Any, _) => true,
+            (LimitSubjects::WeightKeys(keys), Some(GapSubject::KeyPath { path })) => {
+                path.last().is_some_and(|key| keys.contains(&key.as_str()))
+                    && weight_key(fields, path)
+            }
+            (LimitSubjects::Fields(listed), Some(GapSubject::Field { name })) => listed
+                .iter()
+                .any(|(listed_registry, field)| *listed_registry == registry && field == name),
+            _ => false,
+        };
+
+        gap.kind == self.kind && self.details.contains(&gap.detail.as_str()) && subject_covered
+    }
+}
+
+/// Whether `path` names a fixed key of a weight block in `fields`.
+fn weight_key(fields: &[Field], path: &[String]) -> bool {
+    let Some((key, parents)) = path.split_last() else {
+        return false;
+    };
+    let mut members = fields;
+    let mut in_weight_block = false;
+    for name in parents {
+        let Some(parent) = members.iter().find(|field| &field.name == name) else {
+            return false;
+        };
+        in_weight_block = matches!(parent.members, FieldMembers::WeightBlock(_));
+        members = match &parent.members {
+            FieldMembers::Fields(children) => children,
+            FieldMembers::WeightBlock(block) => fixed_keys(&block.fixed_keys),
+            FieldMembers::ModifierBlock(block) => fixed_keys(&block.fixed_keys),
+            _ => return false,
+        };
+    }
+
+    in_weight_block && members.iter().any(|field| &field.name == key)
+}
+
+/// The established fixed keys of a block, or none.
+fn fixed_keys(keys: &GrammarProperty<Vec<Field>>) -> &[Field] {
+    match keys {
+        GrammarProperty::Known(keys) | GrammarProperty::Partial(keys) => keys,
+        GrammarProperty::Unresolved => &[],
+    }
+}
+
+/// The `NumericConversion` details of `src/session/numeric.rs` that name a range or storage
+/// obstacle. A conversion-path gap is never accepted.
+const UNKNOWN_RANGE: &str =
+    "Numeric conversion is incomplete: the accepted range is not established.";
+const UNKNOWN_STORAGE: &str = "Numeric conversion is incomplete: a storage property (representation, width, signedness or scale) is not established.";
+const UNREPRESENTABLE_BOUNDS: &str =
+    "Exact binary32 range endpoints cannot be represented by NumericBound.";
+
+/// Each accepted limit once. The first that covers a gap accepts it.
+const ACCEPTED_LIMITS: [AcceptedLimit; 4] = [
+    AcceptedLimit {
+        decision: "SDK-739: docs/native/numeric-conversion.md#token-value-methods",
+        kind: GapKind::NumericConversion,
+        details: &[UNKNOWN_RANGE],
+        subjects: LimitSubjects::WeightKeys(&["days", "months", "years", "factor"]),
+    },
+    AcceptedLimit {
+        decision: "SDK-809: docs/native/numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809",
+        kind: GapKind::NumericConversion,
+        details: &[UNKNOWN_RANGE, UNKNOWN_STORAGE, UNREPRESENTABLE_BOUNDS],
+        subjects: LimitSubjects::Any,
+    },
+    AcceptedLimit {
+        decision: SDK_811,
+        kind: GapKind::UnresolvedCondition,
+        details: &[UNRESOLVED_LOADER_CONDITION],
+        subjects: LimitSubjects::Fields(&LOADER_CONDITIONS),
+    },
+    AcceptedLimit {
+        decision: SDK_811,
+        kind: GapKind::UnresolvedCondition,
+        details: &[USE_TIME_SELECTIONS, USE_TIME_CONTEXT],
+        subjects: LimitSubjects::Any,
+    },
+];
+
+const SDK_811: &str =
+    "SDK-811: docs/native/registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811";
+
+/// The `UnresolvedCondition` details of `src/session/questions.rs`.
+const UNRESOLVED_LOADER_CONDITION: &str =
+    "A loader condition remains unresolved; its outcome is retained separately.";
+const USE_TIME_SELECTIONS: &str = "Use-time analysis covers local Boolean selections only; enclosing context, other callers and bounded or unsupported paths remain unresolved.";
+const USE_TIME_CONTEXT: &str =
+    "The local use-time flag test is established; the enclosing selection context is unresolved.";
+
+/// The fields of the M452 loader-condition gaps that SDK-811 accepts, each with its own reopen
+/// condition. A loader-condition gap of another field stays open.
+const LOADER_CONDITIONS: [(&str, &str); 207] = [
+    ("common/buildings", "is_colony"),
+    ("common/colony_automation", "buildings"),
+    ("common/colony_automation", "job_changes"),
+    ("common/colony_types", "ai_building_set_affinity"),
+    ("common/country_focus/focus_rewards", "mode"),
+    ("common/country_types", "modules"),
+    ("common/edicts", "edict_cap_usage"),
+    ("common/espionage_operation_types", "target_allow"),
+    ("common/espionage_operation_types", "target_potential"),
+    ("common/ethics", "leader_background_job_weight"),
+    ("common/federation_perks", "triggered_modifier"),
+    ("common/federation_types", "levels"),
+    ("common/global_ship_designs", "behaviour"),
+    ("common/global_ship_designs", "custom_military_power"),
+    ("common/global_ship_designs", "custom_trade_weight"),
+    ("common/global_ship_designs", "hide_size"),
+    ("common/global_ship_designs", "is_boss"),
+    ("common/global_ship_designs", "owned_upgrade"),
+    ("common/global_ship_designs", "parent"),
+    ("common/global_ship_designs", "required_component"),
+    ("common/global_ship_designs", "resource_restriction"),
+    ("common/global_ship_designs", "section"),
+    ("common/global_ship_designs", "ship_size"),
+    ("common/global_ship_designs", "upgrades_to"),
+    ("common/governments/authorities", "possible"),
+    ("common/governments/authorities", "potential"),
+    ("common/governments/civics", "has_secondary_species"),
+    ("common/governments/civics", "leader_background_job_weight"),
+    ("common/governments/civics", "modification"),
+    ("common/governments/civics", "possible"),
+    ("common/governments/civics", "potential"),
+    ("common/leader_classes", "ai_weight_for_planet_assignment"),
+    ("common/leader_classes", "default_category"),
+    ("common/leader_classes", "leader_background_job_weight"),
+    ("common/megastructures", "upgrade_desc"),
+    ("common/mutations", "ship_components"),
+    ("common/personalities", "ship_roles"),
+    ("common/policies", "category"),
+    ("common/pop_categories", "can_change_category"),
+    ("common/pop_faction_types", "actions"),
+    ("common/ship_sizes", "construction_type"),
+    ("common/ship_sizes", "graphical_culture"),
+    ("common/ship_sizes", "hero_ship"),
+    ("common/situations", "picture"),
+    ("common/situations", "progress_direction"),
+    ("common/situations", "stages"),
+    ("common/special_projects", "cost"),
+    ("common/special_projects", "on_progress_25"),
+    ("common/special_projects", "on_progress_50"),
+    ("common/special_projects", "on_progress_75"),
+    ("common/special_projects", "on_start"),
+    ("common/special_projects", "on_success"),
+    ("common/special_projects", "tech_department"),
+    ("common/species_classes", "possible"),
+    ("common/species_classes", "possible_secondary"),
+    ("common/species_classes", "randomized"),
+    ("common/starbase_levels", "picture"),
+    ("common/starbase_modules", "collected_colony_resources"),
+    ("common/starbase_modules", "collected_system_resources"),
+    ("common/start_screen_messages", "trigger"),
+    ("common/technology", "mod_weight_if_group_picked"),
+    ("common/traits", "forced_happiness"),
+    ("common/traits", "icon"),
+    ("common/traits", "leader_class"),
+    (
+        "common/traits",
+        "triggered_background_planet_pop_group_modifier",
+    ),
+    ("common/war_goals", "forbidden_peace_offers"),
+    ("events", "agreement_event.desc"),
+    ("events", "agreement_event.desc_clear"),
+    ("events", "agreement_event.mean_time_to_happen"),
+    ("events", "agreement_event.picture"),
+    ("events", "agreement_event.show_sound"),
+    ("events", "agreement_event.weight_multiplier"),
+    ("events", "astral_rift_event.desc"),
+    ("events", "astral_rift_event.desc_clear"),
+    ("events", "astral_rift_event.mean_time_to_happen"),
+    ("events", "astral_rift_event.picture"),
+    ("events", "astral_rift_event.show_sound"),
+    ("events", "astral_rift_event.weight_multiplier"),
+    ("events", "bypass_event.desc"),
+    ("events", "bypass_event.desc_clear"),
+    ("events", "bypass_event.mean_time_to_happen"),
+    ("events", "bypass_event.picture"),
+    ("events", "bypass_event.show_sound"),
+    ("events", "bypass_event.weight_multiplier"),
+    ("events", "carrier_event.desc"),
+    ("events", "carrier_event.desc_clear"),
+    ("events", "carrier_event.mean_time_to_happen"),
+    ("events", "carrier_event.picture"),
+    ("events", "carrier_event.show_sound"),
+    ("events", "carrier_event.weight_multiplier"),
+    ("events", "colony_event.desc"),
+    ("events", "colony_event.desc_clear"),
+    ("events", "colony_event.mean_time_to_happen"),
+    ("events", "colony_event.picture"),
+    ("events", "colony_event.show_sound"),
+    ("events", "colony_event.weight_multiplier"),
+    ("events", "cosmic_storm_event.desc"),
+    ("events", "cosmic_storm_event.desc_clear"),
+    ("events", "cosmic_storm_event.mean_time_to_happen"),
+    ("events", "cosmic_storm_event.picture"),
+    ("events", "cosmic_storm_event.show_sound"),
+    ("events", "cosmic_storm_event.weight_multiplier"),
+    ("events", "cosmic_storm_influence_field_event.desc"),
+    ("events", "cosmic_storm_influence_field_event.desc_clear"),
+    (
+        "events",
+        "cosmic_storm_influence_field_event.mean_time_to_happen",
+    ),
+    ("events", "cosmic_storm_influence_field_event.picture"),
+    ("events", "cosmic_storm_influence_field_event.show_sound"),
+    (
+        "events",
+        "cosmic_storm_influence_field_event.weight_multiplier",
+    ),
+    ("events", "country_event.desc"),
+    ("events", "country_event.desc_clear"),
+    ("events", "country_event.mean_time_to_happen"),
+    ("events", "country_event.picture"),
+    ("events", "country_event.show_sound"),
+    ("events", "country_event.weight_multiplier"),
+    ("events", "espionage_operation_event.desc"),
+    ("events", "espionage_operation_event.desc_clear"),
+    ("events", "espionage_operation_event.mean_time_to_happen"),
+    ("events", "espionage_operation_event.picture"),
+    ("events", "espionage_operation_event.show_sound"),
+    ("events", "espionage_operation_event.weight_multiplier"),
+    ("events", "event.desc"),
+    ("events", "event.desc_clear"),
+    ("events", "event.mean_time_to_happen"),
+    ("events", "event.picture"),
+    ("events", "event.show_sound"),
+    ("events", "event.weight_multiplier"),
+    ("events", "first_contact_event.desc"),
+    ("events", "first_contact_event.desc_clear"),
+    ("events", "first_contact_event.mean_time_to_happen"),
+    ("events", "first_contact_event.picture"),
+    ("events", "first_contact_event.show_sound"),
+    ("events", "first_contact_event.weight_multiplier"),
+    ("events", "fleet_event.desc"),
+    ("events", "fleet_event.desc_clear"),
+    ("events", "fleet_event.mean_time_to_happen"),
+    ("events", "fleet_event.picture"),
+    ("events", "fleet_event.show_sound"),
+    ("events", "fleet_event.weight_multiplier"),
+    ("events", "leader_event.desc"),
+    ("events", "leader_event.desc_clear"),
+    ("events", "leader_event.mean_time_to_happen"),
+    ("events", "leader_event.picture"),
+    ("events", "leader_event.show_sound"),
+    ("events", "leader_event.weight_multiplier"),
+    ("events", "observer_event.desc"),
+    ("events", "observer_event.desc_clear"),
+    ("events", "observer_event.mean_time_to_happen"),
+    ("events", "observer_event.picture"),
+    ("events", "observer_event.show_sound"),
+    ("events", "observer_event.weight_multiplier"),
+    ("events", "planet_event.desc"),
+    ("events", "planet_event.desc_clear"),
+    ("events", "planet_event.mean_time_to_happen"),
+    ("events", "planet_event.picture"),
+    ("events", "planet_event.show_sound"),
+    ("events", "planet_event.weight_multiplier"),
+    ("events", "pop_event.desc"),
+    ("events", "pop_event.desc_clear"),
+    ("events", "pop_event.mean_time_to_happen"),
+    ("events", "pop_event.picture"),
+    ("events", "pop_event.show_sound"),
+    ("events", "pop_event.weight_multiplier"),
+    ("events", "pop_faction_event.desc"),
+    ("events", "pop_faction_event.desc_clear"),
+    ("events", "pop_faction_event.mean_time_to_happen"),
+    ("events", "pop_faction_event.picture"),
+    ("events", "pop_faction_event.show_sound"),
+    ("events", "pop_faction_event.weight_multiplier"),
+    ("events", "pop_group_event.desc"),
+    ("events", "pop_group_event.desc_clear"),
+    ("events", "pop_group_event.mean_time_to_happen"),
+    ("events", "pop_group_event.picture"),
+    ("events", "pop_group_event.show_sound"),
+    ("events", "pop_group_event.weight_multiplier"),
+    ("events", "ship_event.desc"),
+    ("events", "ship_event.desc_clear"),
+    ("events", "ship_event.mean_time_to_happen"),
+    ("events", "ship_event.picture"),
+    ("events", "ship_event.show_sound"),
+    ("events", "ship_event.weight_multiplier"),
+    ("events", "situation_event.desc"),
+    ("events", "situation_event.desc_clear"),
+    ("events", "situation_event.mean_time_to_happen"),
+    ("events", "situation_event.picture"),
+    ("events", "situation_event.show_sound"),
+    ("events", "situation_event.weight_multiplier"),
+    ("events", "starbase_event.desc"),
+    ("events", "starbase_event.desc_clear"),
+    ("events", "starbase_event.mean_time_to_happen"),
+    ("events", "starbase_event.picture"),
+    ("events", "starbase_event.show_sound"),
+    ("events", "starbase_event.weight_multiplier"),
+    ("events", "system_event.desc"),
+    ("events", "system_event.desc_clear"),
+    ("events", "system_event.mean_time_to_happen"),
+    ("events", "system_event.picture"),
+    ("events", "system_event.show_sound"),
+    ("events", "system_event.weight_multiplier"),
+    (
+        "gfx/projectiles/planet_destruction",
+        "hit_entity_positioning",
+    ),
+    ("interface/resource_groups", "category"),
+    ("interface/resource_groups", "onclick"),
+    ("interface/resource_groups", "resources"),
+    ("interface/resource_groups", "show_only_if_owned"),
+    ("map/galaxy", "arms"),
+    ("map/galaxy", "countries"),
+    ("map/galaxy", "fallen_empires"),
+    ("map/galaxy", "ring"),
+];
+
+/// The accepted limit that covers `gap` of the answer of `registry` whose value is `fields`.
+fn accepted_limit(gap: &Gap, registry: &str, fields: &[Field]) -> Option<&'static AcceptedLimit> {
+    ACCEPTED_LIMITS
+        .iter()
+        .find(|limit| limit.covers(gap, registry, fields))
+}
+
+/// A gap that leaves work open: not `OutsideMethod` and not an accepted limit.
+fn is_open(gap: &Gap, registry: &str, fields: &[Field]) -> bool {
+    gap.kind != GapKind::OutsideMethod && accepted_limit(gap, registry, fields).is_none()
+}
+
 /// The status of each field relationship that applies to `field`, a root field of an answer
-/// with these gaps.
-fn field_statuses(field: &Field, gaps: &[Gap]) -> BTreeMap<&'static str, Status> {
+/// with these open gaps.
+fn field_statuses(field: &Field, open_gaps: &[&Gap]) -> BTreeMap<&'static str, Status> {
     let mut statuses = property_statuses(field);
-    for gap in gaps.iter().filter(|gap| gap.kind != GapKind::OutsideMethod) {
+    for gap in open_gaps {
         let relationship = match &gap.subject {
             Some(GapSubject::Field { name }) if *name == field.name => gap_relationship(gap.kind),
             Some(GapSubject::KeyPath { path }) if path[0] == field.name => Some(WEIGHTS),
@@ -431,6 +786,27 @@ impl Counts {
     }
 }
 
+/// The gaps of one failure shape and the registries that have them.
+#[derive(Default, Serialize)]
+struct ShapeCount {
+    gaps: usize,
+    registries: BTreeSet<String>,
+}
+
+impl ShapeCount {
+    fn add(&mut self, registry: &str) {
+        self.gaps += 1;
+        self.registries.insert(registry.to_owned());
+    }
+}
+
+/// One registry's gaps that are not `OutsideMethod`, by shape.
+#[derive(Default)]
+struct RegistryGaps {
+    open: BTreeMap<String, usize>,
+    accepted: BTreeMap<String, usize>,
+}
+
 /// The report state, gathered registry by registry.
 #[derive(Default)]
 struct Sweep {
@@ -443,8 +819,9 @@ struct Sweep {
     fields: BTreeMap<String, BTreeMap<&'static str, Status>>,
     /// Registries whose `registry_fields` question has no answer, so no field units.
     registries_without_field_units: Counts,
-    gap_shapes: BTreeMap<String, BTreeSet<String>>,
-    gap_counts: BTreeMap<String, usize>,
+    open_shapes: BTreeMap<String, ShapeCount>,
+    /// The gaps of each accepted limit, by its decision, then shape.
+    accepted_shapes: BTreeMap<&'static str, BTreeMap<String, ShapeCount>>,
     errors: BTreeMap<String, BTreeSet<String>>,
 }
 
@@ -457,11 +834,20 @@ impl Sweep {
         derived: Outcome<Vec<DerivedName>>,
         families: Outcome<Vec<ModifierFamily>>,
     ) {
-        self.add_failure_shapes(registry, "registry_fields", &fields);
-        self.add_failure_shapes(registry, "derived_names", &derived);
-        self.add_failure_shapes(registry, "modifier_families", &families);
+        let answered = fields
+            .answer()
+            .map_or(&[][..], |answer| answer.value.as_slice());
+        let mut gaps = RegistryGaps::default();
+        self.add_failure_shapes(registry, "registry_fields", &fields, answered, &mut gaps);
+        self.add_failure_shapes(registry, "derived_names", &derived, &[], &mut gaps);
+        self.add_failure_shapes(registry, "modifier_families", &families, &[], &mut gaps);
 
         let mut row = serde_json::Map::new();
+        for (key, shapes) in [(OPEN_GAPS, gaps.open), (ACCEPTED_GAPS, gaps.accepted)] {
+            if !shapes.is_empty() {
+                row.insert(key.into(), json!(shapes));
+            }
+        }
         for (relationship, status) in [
             (FIELDS, fields_status(&fields)),
             (NAMING_RULES, naming_status(&derived, &families)),
@@ -474,16 +860,20 @@ impl Sweep {
         }
 
         let mut counts: BTreeMap<&'static str, Counts> = BTreeMap::new();
-        let (answered, gaps) = match fields.answer() {
-            Some(answer) => (answer.value.as_slice(), answer.gaps.as_slice()),
+        let open_gaps: Vec<_> = match fields.answer() {
+            Some(answer) => answer
+                .gaps
+                .iter()
+                .filter(|gap| is_open(gap, registry, answered))
+                .collect(),
             None => {
                 self.registries_without_field_units
                     .add(fields_status(&fields).status);
-                (&[][..], &[][..])
+                Vec::new()
             }
         };
         for field in answered {
-            let statuses = field_statuses(field, gaps);
+            let statuses = field_statuses(field, &open_gaps);
             let by_reader = self.readers.entry(reader_name(field)).or_default();
             for (relationship, status) in &statuses {
                 counts.entry(relationship).or_default().add(*status);
@@ -499,7 +889,16 @@ impl Sweep {
         self.registries.insert(registry.to_owned(), row.into());
     }
 
-    fn add_failure_shapes<T>(&mut self, registry: &str, operation: &str, outcome: &Outcome<T>) {
+    /// Count each gap that is not `OutsideMethod` under its shape, open or accepted, in the
+    /// report and in this registry's `gaps`. `fields` is the answer's value when it has fields.
+    fn add_failure_shapes<T>(
+        &mut self,
+        registry: &str,
+        operation: &str,
+        outcome: &Outcome<T>,
+        fields: &[Field],
+        gaps: &mut RegistryGaps,
+    ) {
         match outcome {
             Outcome::Answer(answer) => {
                 for gap in answer
@@ -512,11 +911,19 @@ impl Sweep {
                         gap.kind,
                         without_digits(&gap.detail)
                     );
-                    *self.gap_counts.entry(shape.clone()).or_default() += 1;
-                    self.gap_shapes
+                    let Some(limit) = accepted_limit(gap, registry, fields) else {
+                        *gaps.open.entry(shape.clone()).or_default() += 1;
+                        self.open_shapes.entry(shape).or_default().add(registry);
+                        continue;
+                    };
+
+                    *gaps.accepted.entry(shape.clone()).or_default() += 1;
+                    self.accepted_shapes
+                        .entry(limit.decision)
+                        .or_default()
                         .entry(shape)
                         .or_default()
-                        .insert(registry.to_owned());
+                        .add(registry);
                 }
             }
             Outcome::Failed(reason) | Outcome::Unsupported(reason) => {
@@ -541,14 +948,6 @@ impl Sweep {
                 .map(|(relationship, counts)| (relationship, counts.report()))
                 .collect()
         };
-        let gap_shapes: BTreeMap<_, _> = self
-            .gap_shapes
-            .into_iter()
-            .map(|(shape, registries)| {
-                let count = self.gap_counts[&shape];
-                (shape, json!({ "gaps": count, "registries": registries }))
-            })
-            .collect();
         json!({
             "build": build,
             "registry_inventory": registries,
@@ -561,7 +960,11 @@ impl Sweep {
                 .map(|(reader, groups)| (reader, counts(groups)))
                 .collect::<BTreeMap<_, _>>(),
             "fields": self.fields,
-            "failure_shapes": { "gaps": gap_shapes, "errors": self.errors },
+            "failure_shapes": {
+                "gaps": self.open_shapes,
+                "accepted": self.accepted_shapes,
+                "errors": self.errors,
+            },
         })
     }
 }
@@ -667,7 +1070,7 @@ fn read_report(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
     Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
 
-/// Each registry's statuses, from a baseline or a full report.
+/// Each registry's statuses and gaps by shape, from a baseline or a full report.
 fn comparison_inputs(report: &Value) -> population::ReportResult<BTreeMap<String, Value>> {
     if let Some(answers) = population::baseline_answers(report)? {
         return Ok(answers);
@@ -682,7 +1085,8 @@ fn comparison_inputs(report: &Value) -> population::ReportResult<BTreeMap<String
         .collect())
 }
 
-/// Each registry and relationship whose statuses differ between two reports.
+/// Each registry and relationship whose statuses, or open or accepted gaps, differ between two
+/// reports.
 fn diff(before: &Value, after: &Value) -> population::ReportResult<Value> {
     let before = comparison_inputs(before).map_err(|error| format!("before report: {error}"))?;
     let after = comparison_inputs(after).map_err(|error| format!("after report: {error}"))?;
@@ -900,6 +1304,178 @@ mod tests {
             report["relationships"]["numerics"],
             json!({ "partial": 1, "undetermined": 1, "denominator": 2, "rate": 0.0 })
         );
+    }
+
+    const UNKNOWN_CONVERSION_PATH: &str =
+        "Numeric conversion is incomplete: the engine conversion path is not established.";
+
+    fn numeric_gap(subject: Value, detail: &str) -> Value {
+        json!({ "kind": "NumericConversion", "subject": subject, "detail": detail })
+    }
+
+    /// One registry whose fields each have one numeric gap: accepted, or a near miss.
+    fn write_limits(root: &Path, gaps: Value) {
+        let mut days = established_field("ai_weight");
+        days["name"] = json!("days");
+        let mut weight = established_field("ai_weight");
+        weight["reader"] = json!({ "id": "weight", "kind": "Block", "family": "Weight",
+            "numeric": { "Known": null }, "scoped_operand": { "Known": null } });
+        weight["members"] = json!({ "WeightBlock": { "scalar": { "Known": null },
+            "fixed_keys": { "Known": [days.clone()] }, "operations": { "Known": [] },
+            "operation_repeat": "Replace", "other_keys": "Rejected" } });
+        let fields: Vec<_> = ["short_value", "path_value", "kind_value"]
+            .into_iter()
+            .map(established_field)
+            .chain([days, weight])
+            .collect();
+        let none = answer(json!([]), "Complete", json!([]));
+        write_registry(
+            root,
+            "common/limits",
+            answer(json!(fields), "Partial", gaps),
+            none.clone(),
+            none,
+        );
+        write(root, "build.json", json!("example-build"));
+        write(
+            root,
+            "registries.json",
+            answer(json!([{ "name": "common/limits" }]), "Complete", json!([])),
+        );
+    }
+
+    fn field(name: &str) -> Value {
+        json!({ "kind": "field", "name": name })
+    }
+
+    #[test]
+    fn only_a_gap_that_an_accepted_limit_covers_leaves_the_open_counts() {
+        let root = tempfile::tempdir().unwrap();
+        let weight_days = json!({ "kind": "key_path", "path": ["ai_weight", "days"] });
+        write_limits(
+            root.path(),
+            json!([
+                numeric_gap(field("short_value"), UNKNOWN_STORAGE),
+                numeric_gap(field("path_value"), UNKNOWN_CONVERSION_PATH),
+                { "kind": "UnresolvedStorage", "subject": field("kind_value"), "detail": UNKNOWN_RANGE },
+                numeric_gap(field("days"), UNKNOWN_RANGE),
+                numeric_gap(weight_days.clone(), UNKNOWN_RANGE),
+                numeric_gap(weight_days, UNKNOWN_STORAGE),
+            ]),
+        );
+        let report = sweep(root.path()).unwrap();
+        let status = |field: &str, relationship: &str| {
+            report["fields"][format!("common/limits#{field}")][relationship].clone()
+        };
+
+        assert_eq!(status("short_value", NUMERICS), "complete");
+        assert_eq!(status("days", NUMERICS), "complete");
+        assert_eq!(
+            status("path_value", NUMERICS),
+            "partial",
+            "a path gap stays open"
+        );
+        assert_eq!(
+            status("kind_value", SHAPES_AND_CONDITIONS),
+            "partial",
+            "the range detail of another kind stays open"
+        );
+
+        let shape = |detail: &str| format!("registry_fields | NumericConversion: {detail}");
+        let accepted = &report["failure_shapes"]["accepted"];
+        let [weight_range, sdk_809] =
+            [&ACCEPTED_LIMITS[0], &ACCEPTED_LIMITS[1]].map(|limit| &accepted[limit.decision]);
+        assert_eq!(
+            *weight_range,
+            json!({ shape(UNKNOWN_RANGE): { "gaps": 1, "registries": ["common/limits"] } }),
+            "only the weight-block key is SDK-739's; a root field named days is not"
+        );
+        assert_eq!(sdk_809[shape(UNKNOWN_RANGE)]["gaps"], 1);
+        assert_eq!(
+            sdk_809[shape(UNKNOWN_STORAGE)]["gaps"],
+            2,
+            "a storage gap of a weight key is SDK-809's"
+        );
+
+        let open = &report["failure_shapes"]["gaps"];
+        assert_eq!(open.as_object().unwrap().len(), 2);
+        assert_eq!(open[shape(UNKNOWN_CONVERSION_PATH)]["gaps"], 1);
+        assert_eq!(
+            report["registries"]["common/limits"][OPEN_GAPS],
+            json!({ shape(UNKNOWN_CONVERSION_PATH): 1,
+                format!("registry_fields | UnresolvedStorage: {UNKNOWN_RANGE}"): 1 })
+        );
+    }
+
+    #[test]
+    fn only_a_listed_field_has_its_loader_condition_accepted() {
+        let (registry, field) = LOADER_CONDITIONS[0];
+        let gap = |name: &str, detail: &str| Gap {
+            kind: GapKind::UnresolvedCondition,
+            subject: Some(GapSubject::Field { name: name.into() }),
+            detail: detail.into(),
+        };
+        let decision = |gap: &Gap, registry: &str| {
+            accepted_limit(gap, registry, &[]).map(|limit| limit.decision)
+        };
+
+        assert_eq!(
+            decision(&gap(field, UNRESOLVED_LOADER_CONDITION), registry),
+            Some(SDK_811)
+        );
+        assert_eq!(
+            decision(&gap("unlisted", UNRESOLVED_LOADER_CONDITION), registry),
+            None,
+            "a new loader-condition gap stays open"
+        );
+        assert_eq!(
+            decision(&gap(field, UNRESOLVED_LOADER_CONDITION), "common/unlisted"),
+            None,
+            "the field is listed for its own registry only"
+        );
+        assert_eq!(
+            decision(&gap("unlisted", USE_TIME_CONTEXT), registry),
+            Some(SDK_811),
+            "Atlas credits no claim from any use-time selection"
+        );
+    }
+
+    #[test]
+    fn the_diff_names_a_registry_whose_open_or_accepted_gaps_change() {
+        let root = tempfile::tempdir().unwrap();
+        let path_gap = numeric_gap(field("path_value"), UNKNOWN_CONVERSION_PATH);
+        write_limits(root.path(), json!([path_gap]));
+        let before = sweep(root.path()).unwrap();
+        let baseline: Value = serde_json::from_str(
+            &population::format_baseline(&before["build"], &comparison_inputs(&before).unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+
+        write_limits(
+            root.path(),
+            json!([
+                path_gap,
+                numeric_gap(field("path_value"), "Another open obstacle."),
+                numeric_gap(field("short_value"), UNKNOWN_STORAGE),
+            ]),
+        );
+        let after = sweep(root.path()).unwrap();
+
+        for before in [&before, &baseline] {
+            let changes = diff(before, &after).unwrap()["changes"].clone();
+            let changed: Vec<_> = changes
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|change| change["relationship"].as_str().unwrap())
+                .collect();
+            assert_eq!(
+                changed,
+                [ACCEPTED_GAPS, OPEN_GAPS],
+                "no status changes, so only the gaps name the registry: {changes}"
+            );
+        }
     }
 
     #[test]
