@@ -1217,6 +1217,7 @@ mod tests {
             method_of: Some("COwner".into()),
             registers: BTreeMap::from([(0, "COwner".into())]),
             members: BTreeMap::new(),
+            scope_parameters: BTreeSet::new(),
         };
         let named = named_functions(
             &[site],

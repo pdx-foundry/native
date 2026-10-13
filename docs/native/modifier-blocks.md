@@ -7,19 +7,20 @@ numeric and static-modifier-reference forms. Each property independently reports
 
 ## Exact-build result
 
-Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v37`. The four
+Verified on the exact M452 build in [targets](targets.md) at `registry-fields/v39`. The four
 reader identities retain the read/member hash used by persistent fields:
 
 | Reader identity | Member implementation | Fields | Address points | Fixed keys | Fixed keys result |
 | --- | --- | ---: | ---: | ---: | --- |
-| `e327ea91dfe75d65` | `CModifier::ReadMember` | 16 | 1 | 2 | `Known` |
+| `e327ea91dfe75d65` | `CModifier::ReadMember` | 17 | 1 | 2 | `Known` |
 | `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 3 | 1 | 8 | `Known` |
 | `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 29 | 1 | 11 | `Known` |
 | `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 18 | 1 | 13 | `Known` |
 
-The full population covers 185 registries. Sixty-six modifier fields share these four variants:
-63 root fields (**63 complete**) and 3 nested fields (**3 complete**), 0 failed. Every repeated
-reader identity has the same block, root or nested. The 23 root Block fields whose persistent read still has no constructor-proven reader
+The full population covers 185 registries. Sixty-seven modifier fields share these four variants:
+64 root fields (**64 complete**, with `common/planet_classes.modifier` since SDK-813) and 3 nested
+fields (**3 complete**), 0 failed. Every repeated reader identity has the same block, root or
+nested. The 23 root Block fields whose persistent read still has no constructor-proven reader
 are in [unjoined persistent fields](#unjoined-persistent-fields-sdk-676). The four modifier fields of
 `common/agreement_term_values` join since the shared evaluator runs `ld1r` (SDK-547).
 Constructor-proven weight readers have their own grammar ([weight blocks](weight-blocks.md)).

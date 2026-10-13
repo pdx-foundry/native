@@ -535,6 +535,65 @@ fn an_unresolved_state_alternative_stays_attached_to_the_field() {
 }
 
 #[test]
+fn a_bit_test_of_an_owner_byte_keeps_both_paths_under_an_unstated_condition() {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        ldrsb w8, [x0, #0x1f]; // the sign bit of a string's last byte
+        tbnz w8, #31, extern 0x1008;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1018;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        ret
+    );
+
+    let result = derive(input);
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert_eq!(result.fields.len(), 1);
+    assert_eq!(reads.len(), 2);
+    assert!(
+        reads.iter().all(|path| path
+            .conditions
+            .iter()
+            .any(|condition| condition.at == 0x1004 && condition.value.is_none())),
+        "{reads:?}"
+    );
+}
+
+#[test]
+fn a_bit_test_of_the_token_is_a_gap() {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        tbnz w2, #3, extern 0x1014; // a bit of the token
+        cmp w2, #7; // token 7
+        b.eq extern 0x1014;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        ret
+    );
+
+    let result = derive(input);
+
+    assert!(result.fields.is_empty());
+    assert!(result.paths.iter().any(
+        |path| matches!(&path.outcome, PathOutcome::Gap(gap) if gap.reason == "token-bit-test")
+    ));
+}
+
+#[test]
 fn a_branch_into_the_constructor_cannot_bypass_argument_provenance() {
     let mut input = fixture();
     // This branch is outside the eight-instruction constructor window.

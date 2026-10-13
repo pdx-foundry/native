@@ -22,6 +22,8 @@ mod fixtures;
 
 pub(crate) struct BoundAnalysis {
     declarations: &'static super::targets::DeclarationRecipe,
+    /// Why each listed custom loader builds no item, on the bound build.
+    loader_reasons: &'static [super::groups::LoaderReason],
     /// Where a template database holds its items, when the build has a template layout.
     database: Option<DatabaseLayout>,
     installation: Installation,
@@ -52,9 +54,9 @@ pub(crate) struct BoundAnalysis {
     names: OnceLock<crate::engine::analysis::names::NameInput>,
     /// One immutable input per family; callers verify the executable before each access.
     grammar: [OnceLock<Result<(GrammarInput, DeclarationResult), AnalysisError>>; 2],
-    /// The field method's result of each registry already asked for, by registry name. A failed
+    /// The field method's result of each registry and owner already asked for. A failed
     /// run is not kept.
-    registry_fields: Mutex<BTreeMap<String, Arc<RegistryFieldResult>>>,
+    registry_fields: Mutex<BTreeMap<(String, String), Arc<RegistryFieldResult>>>,
 }
 
 /// The place of a command family's input in the bound analysis's `grammar` array.
@@ -90,6 +92,8 @@ pub(crate) struct ScheduledDatabases {
     pub loader_directories: BTreeMap<String, crate::engine::analysis::directories::Directory>,
     /// The owner that the loader of each named unjoined database builds, keyed by its type.
     pub loader_owners: Result<BTreeMap<String, LoaderOwner>, AnalysisError>,
+    /// Why each listed loader builds no item, on the bound build.
+    pub(in crate::binding) loader_reasons: &'static [super::groups::LoaderReason],
 }
 
 impl ScheduledDatabases {
@@ -100,16 +104,7 @@ impl ScheduledDatabases {
         &self,
         registry: &str,
     ) -> Option<Result<NamedRegistry<'_>, String>> {
-        use crate::engine::analysis::directories::Directory;
-
-        let databases: Vec<(&String, &String)> = self
-            .loader_directories
-            .iter()
-            .filter_map(|(database, directory)| match directory {
-                Directory::Named(name) if name == registry => Some((database, name)),
-                _ => None,
-            })
-            .collect();
+        let databases = self.loading_databases(registry);
         let [(database, name)] = databases[..] else {
             return (!databases.is_empty())
                 .then(|| Err(format!("{} databases load this directory", databases.len())));
@@ -122,19 +117,53 @@ impl ScheduledDatabases {
         };
 
         Some(match owners.get(database) {
-            Some(LoaderOwner::Owner(owner)) => Ok(NamedRegistry {
-                name,
-                database,
-                owner,
-            }),
+            Some(LoaderOwner::Owner(owner) | LoaderOwner::ByRootKey { other: owner, .. }) => {
+                Ok(NamedRegistry {
+                    name,
+                    database,
+                    owner,
+                })
+            }
             Some(LoaderOwner::Several(classes)) => Err(format!(
                 "the loader builds several classes with a member reader: {}",
                 classes.join(", ")
             )),
-            Some(LoaderOwner::NoOwner) | None => {
-                Err("the loader builds no class with a member reader".into())
-            }
+            Some(LoaderOwner::NoOwner) | None => Err(self
+                .loader_reasons
+                .iter()
+                .find(|stated| stated.database == database.as_str())
+                .map_or(
+                    "the loader builds no class with a member reader",
+                    |stated| stated.reason,
+                )
+                .into()),
         })
+    }
+
+    /// The root key that the loader of `registry` reserves for another class than its owner, with
+    /// that class. `None` when the registry's one loader reserves no key.
+    pub(crate) fn keyed_class(&self, registry: &str) -> Option<(&str, &str)> {
+        let [(database, _)] = self.loading_databases(registry)[..] else {
+            return None;
+        };
+
+        match self.loader_owners.as_ref().ok()?.get(database)? {
+            LoaderOwner::ByRootKey { key, keyed, .. } => Some((key, keyed)),
+            _ => None,
+        }
+    }
+
+    /// Each unjoined database whose loader enumerates `registry`, with the registry's name.
+    fn loading_databases(&self, registry: &str) -> Vec<(&String, &String)> {
+        use crate::engine::analysis::directories::Directory;
+
+        self.loader_directories
+            .iter()
+            .filter_map(|(database, directory)| match directory {
+                Directory::Named(name) if name == registry => Some((database, name)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Every registry that an unjoined database's loader names and whose loaders build one owner.
@@ -219,6 +248,7 @@ pub(crate) struct VerifiedAnalysis<'a> {
     persistent: &'static super::targets::PersistentRecipe,
     /// The reader offset of the current statement's token word.
     reader_token_offset: u64,
+    loader_reasons: &'static [super::groups::LoaderReason],
 }
 
 impl VerifiedAnalysis<'_> {
@@ -612,12 +642,14 @@ impl VerifiedAnalysis<'_> {
             .filter(|(_, directory)| matches!(directory, Directory::Named(_)))
             .map(|(database, _)| database.clone())
             .collect();
-        let loader_owners = binary::loader_owners::loader_owners(&text, &image, &named);
+        let loader_owners =
+            binary::loader_owners::loader_owners(&text, &image, &named, self.reader_token_offset);
 
         Ok(ScheduledDatabases {
             inventory,
             loader_directories,
             loader_owners,
+            loader_reasons: self.loader_reasons,
         })
     }
 
@@ -650,9 +682,10 @@ impl VerifiedAnalysis<'_> {
             .and_then(|schedule| schedule.loader_owners.as_ref().ok())
             .into_iter()
             .flat_map(BTreeMap::values)
-            .filter_map(|owner| match owner {
-                LoaderOwner::Owner(owner) => Some(owner.as_str()),
-                LoaderOwner::NoOwner | LoaderOwner::Several(_) => None,
+            .flat_map(|owner| match owner {
+                LoaderOwner::Owner(owner) => vec![owner.as_str()],
+                LoaderOwner::ByRootKey { keyed, other, .. } => vec![keyed.as_str(), other.as_str()],
+                LoaderOwner::NoOwner | LoaderOwner::Several(_) => vec![],
             })
     }
 
@@ -818,26 +851,56 @@ impl BoundAnalysis {
             return Ok(None);
         };
         let owner = owner.to_owned();
-        let kept = self.kept_registry_fields().get(registry).cloned();
+        let result = self.owner_field_result(&verified, registry, &owner)?;
 
-        if let Some(result) = kept {
-            return Ok(Some((owner, result)));
+        Ok(Some((owner, result)))
+    }
+
+    /// The root key that the loader of `registry` reserves for another class than its owner, that
+    /// class, and the field method's result for it. `None` when the loader reserves no key.
+    pub(crate) fn keyed_field_result(
+        &self,
+        registry: &str,
+    ) -> Result<Option<(String, String, Arc<RegistryFieldResult>)>, AnalysisError> {
+        let verified = self.verified()?;
+        let Some((key, class)) = verified
+            .database_schedule()
+            .ok()
+            .and_then(|schedule| schedule.keyed_class(registry))
+        else {
+            return Ok(None);
+        };
+        let (key, class) = (key.to_owned(), class.to_owned());
+        let result = self.owner_field_result(&verified, registry, &class)?;
+
+        Ok(Some((key, class, result)))
+    }
+
+    /// The field method's result for the items of `owner` in `registry`, run once.
+    fn owner_field_result(
+        &self,
+        verified: &VerifiedAnalysis<'_>,
+        registry: &str,
+        owner: &str,
+    ) -> Result<Arc<RegistryFieldResult>, AnalysisError> {
+        let key = (registry.to_owned(), owner.to_owned());
+        if let Some(result) = self.kept_registry_fields().get(&key).cloned() {
+            return Ok(result);
         }
 
-        let input = self.registry_field_input(&verified, registry, &owner)?;
+        let input = self.registry_field_input(verified, registry, owner)?;
         let result = Arc::new(fields::analyze(&input)?);
-        let kept = self
-            .kept_registry_fields()
-            .entry(registry.to_owned())
-            .or_insert(result)
-            .clone();
 
-        Ok(Some((owner, kept)))
+        Ok(self
+            .kept_registry_fields()
+            .entry(key)
+            .or_insert(result)
+            .clone())
     }
 
     fn kept_registry_fields(
         &self,
-    ) -> std::sync::MutexGuard<'_, BTreeMap<String, Arc<RegistryFieldResult>>> {
+    ) -> std::sync::MutexGuard<'_, BTreeMap<(String, String), Arc<RegistryFieldResult>>> {
         self.registry_fields
             .lock()
             .expect("registry field result lock")
@@ -870,12 +933,14 @@ impl BoundAnalysis {
 
     pub(super) fn new(
         declarations: &'static super::targets::DeclarationRecipe,
+        loader_reasons: &'static [super::groups::LoaderReason],
         database: Option<DatabaseLayout>,
         installation: Installation,
         invalidated: Arc<Mutex<Option<UnavailableReason>>>,
     ) -> Self {
         Self {
             declarations,
+            loader_reasons,
             database,
             installation,
             invalidated,
@@ -930,6 +995,7 @@ impl BoundAnalysis {
         Ok(VerifiedAnalysis {
             persistent: &self.declarations.persistent,
             reader_token_offset: self.declarations.reader_token_offset,
+            loader_reasons: self.loader_reasons,
             executable,
             catalog,
         })

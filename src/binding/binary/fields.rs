@@ -47,7 +47,7 @@ impl SharedFieldInput {
 }
 
 /// The function that reads each root statement of a custom loader's files.
-const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
+pub(super) const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
 
 /// The custom loader whose root switch the field input may read: its database class and the
 /// reader offset of a statement's token word.
