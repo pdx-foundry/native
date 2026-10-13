@@ -135,7 +135,7 @@ On M452 the method finds three nested owners with fields:
 | `common/governments/authorities` | `advanced_authority_swap.modifier` | `ba5f8cddeba0d833`, every category |
 | | `advanced_authority_swap.weight` | weight identity `f08cb83d92484a89` |
 
-`advanced_authority_swap.tags` and `election_type` keep their reader-routing stops (SDK-710).
+`advanced_authority_swap.election_type` keeps its reader-routing stop (SDK-710).
 
 **Not discovered.** Civics `swap_type`, situation `stages` and `approach`, psionic aura
 `intensity_level`, and patron `covenant` and `passive_accord` construct their objects through a

@@ -217,9 +217,12 @@ fn nested_owners_carry_the_grammar_of_their_root_identities() {
     assert_eq!(modifier.reader.family, BlockFamily::Modifier);
     assert!(matches!(modifier.members, FieldMembers::ModifierBlock(_)));
     // Negative control: a key whose reader path stops gets no modifier grammar.
-    let tags = child(swap, "tags");
-    assert_eq!(tags.reader.family, BlockFamily::Unknown);
-    assert_eq!(tags.accepted_categories, AcceptedCategories::Unresolved);
+    let election_type = child(swap, "election_type");
+    assert_eq!(election_type.reader.family, BlockFamily::Unknown);
+    assert_eq!(
+        election_type.accepted_categories,
+        AcceptedCategories::Unresolved
+    );
 
     // An object whose member reader names or rejects every key reads no container itself.
     let behaviour = native.registry_fields("common/attitudes").unwrap().value;

@@ -33,7 +33,7 @@ change when the 19 custom-loader names joined (SDK-787);
 their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`, only the 336
 [pre_trigger keys](#pre-trigger-blocks) changed (SDK-807). Against `v34`, the
 [uniform lists](#uniform-lists) and the [bit fields](#bit-fields) changed (SDK-710). Against
-`v35`, NN registries changed (SDK-676): the nested owners of traditions, ascension perks and
+`v35`, 22 registries changed (SDK-676): the nested owners of traditions, ascension perks and
 authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
 of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
 registries joined their reader once a delegating constructor's stack string no longer stops the
