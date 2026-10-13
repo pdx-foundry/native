@@ -185,3 +185,33 @@ fn stopped_at(image: &Image, instruction: u64) -> String {
         None => row.operation,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shape_counts_each_field_and_each_registry_once() {
+        let mut tally = Tally::default();
+        for (shape, field) in [
+            ("reader-routing: bl A", "common/a#x"),
+            ("reader-routing: bl A", "common/a#y"),
+            ("reader-routing: bl A", "common/b#x"),
+            ("instruction: ret", "common/a#z"),
+        ] {
+            tally
+                .shapes
+                .entry(shape.into())
+                .or_default()
+                .push(field.into());
+        }
+
+        let report = tally.report();
+        assert_eq!(report["fields"], 4);
+        assert_eq!(report["registries"], 2);
+        assert_eq!(report["shapes"][0]["shape"], "reader-routing: bl A");
+        assert_eq!(report["shapes"][0]["fields"], 3);
+        assert_eq!(report["shapes"][0]["registries"], 2);
+        assert_eq!(report["shapes"][1]["registries"], 1);
+    }
+}

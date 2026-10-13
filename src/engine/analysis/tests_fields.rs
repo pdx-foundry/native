@@ -2929,6 +2929,7 @@ fn a_boolean_merged_into_one_bit_of_an_owner_word_replaces_that_bit() {
     let copied = boolean_temporary(arm64!(at 0x1030;
         ldrb w8, [sp, #0x10]; // the temporary
         strb w8, [x19, #0x48];
+        ldp d9, d8, [sp], #0x70; // a restore after the merge may move the stack pointer
         ret
     ));
     assert!(matches!(
@@ -3001,7 +3002,10 @@ fn a_temporary_loaded_before_the_reader_call_is_not_the_value_read() {
         ret
     ));
     assert!(
-        matches!(result.fields[0].readers[..], [ReaderJoin::Joined { tail: false, .. }]),
+        matches!(
+            result.fields[0].readers[..],
+            [ReaderJoin::Joined { tail: false, .. }]
+        ),
         "{:?}",
         result.fields[0].readers
     );
@@ -3026,9 +3030,53 @@ fn a_continuation_that_ends_without_a_return_keeps_the_reader_call() {
     ] {
         let result = boolean_temporary(continuation);
         assert!(
-            matches!(result.fields[0].readers[..], [ReaderJoin::Joined { tail: false, .. }]),
+            matches!(
+                result.fields[0].readers[..],
+                [ReaderJoin::Joined { tail: false, .. }]
+            ),
             "{:?}",
             result.fields[0].readers
         );
     }
+}
+
+#[test]
+fn a_merged_boolean_temporary_is_a_known_reader_of_its_table_case() {
+    // As above, the default may be past the unresolved wide path. Token 102's case reads a
+    // Boolean into a temporary and merges it into bit 3 of the owner word at 0x40.
+    let mut input = halfword_table();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CReader::Read(bool&)".into();
+    input.functions[0].code.extend(arm64!(at 0x1050;
+        ret;
+        mov x19, x0; // the owner
+        mov x20, x1; // the reader
+        add x1, sp, #0x10; // the temporary
+        mov x0, x20;
+        bl extern 0x4000; // CReader::Read(bool&)
+        ldrb w8, [sp, #0x10];
+        ldr w9, [x19, #0x40];
+        and w9, w9, #0xfffffff7;
+        orr w8, w9, w8, lsl #3;
+        str w8, [x19, #0x40];
+        ret
+    ));
+    replace(&mut input, 0x100c, arm64!(at 0x100c; b.hi extern 0x1050));
+    replace(&mut input, 0x1040, arm64!(at 0x1040; b extern 0x1054));
+    let result = derive(input);
+
+    let fields: Vec<_> = result.fields.iter().map(|f| f.token).collect();
+    assert_eq!(fields, [100, 102], "{:?}", result.gaps);
+    assert!(matches!(
+        result.fields[1].readers[..],
+        [ReaderJoin::Stored {
+            destination: None,
+            ..
+        }]
+    ));
+    assert!(jump_table_gaps(&result).is_empty(), "{:?}", result.gaps);
 }

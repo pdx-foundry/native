@@ -1072,4 +1072,26 @@ mod tests {
         let empty = report(json!([]));
         assert_eq!(diff(&empty, &empty).unwrap()["changed_registries"], 0);
     }
+
+    #[test]
+    fn a_registry_counts_once_for_each_kind_of_root_gap() {
+        let gap =
+            |kind: &str, subject: Value| json!({ "kind": kind, "subject": subject, "detail": "" });
+        let registry = json!({ "kind": "registry", "name": "common/a" });
+        let field = json!({ "kind": "field", "name": "x" });
+        let cases = [
+            json!({ "answer": { "gaps": [
+                gap("UnresolvedPath", registry.clone()),
+                gap("UnresolvedPath", registry.clone()),
+                gap("UnnamedField", field.clone()),
+            ] } }),
+            json!({ "answer": { "gaps": [gap("UnreadableInput", registry)] } }),
+            json!({ "status": "unsupported" }),
+        ];
+
+        assert_eq!(
+            registries_by_root_gap(&cases),
+            json!({ "UnnamedField": 0, "UnreadableInput": 1, "UnresolvedPath": 1 })
+        );
+    }
 }

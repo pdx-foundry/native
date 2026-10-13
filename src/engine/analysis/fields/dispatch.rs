@@ -1489,7 +1489,12 @@ fn follow_temporary(
             };
         }
         ("b", [target]) => state.pc = *indexes.get(&(number(target)? as u64))?,
-        ("ldp", [first, second, "[sp", amount]) if amount.ends_with(']') => {
+        // A restore that moves the stack pointer comes only after the merge, when no load of the
+        // temporary follows.
+        ("ldp", [first, second, address, ..])
+            if address.starts_with("[sp")
+                && (temporary.merged.is_some() || !moves_stack_pointer(&row.operands)) =>
+        {
             state.assign(first, None);
             state.assign(second, None);
         }
@@ -1510,6 +1515,11 @@ fn follow_temporary(
     }
 
     Some(TemporaryStep::Next)
+}
+
+/// Whether the pair access in `operands` writes its address back to the base register.
+fn moves_stack_pointer(operands: &str) -> bool {
+    operands.ends_with('!') || operands.contains("],")
 }
 
 /// The bytes that a load or store moves.
@@ -1989,7 +1999,10 @@ fn reject_default_cases(
     let mut changed = Vec::new();
     for &(index, case) in table_readers {
         let leaf = &leaves[index];
-        let joined = matches!(leaf.outcome, PathOutcome::Reader(ReaderJoin::Joined { .. }));
+        let joined = matches!(
+            leaf.outcome,
+            PathOutcome::Reader(ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. })
+        );
         let why = if default_code.contains(&case.address) {
             "its default case reaches a call other than the rejection"
         } else if !joined && default_may_be_unseen(case.guard) {

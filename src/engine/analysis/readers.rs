@@ -688,7 +688,11 @@ mod tests {
             "std::__1::enable_if<!(std::is_enum<TPdxRef<CShipDesign> >::value), void>::type CReader::ReadUniform<TPdxRef<CShipDesign> >(CPdxArray<TPdxRef<CShipDesign>, int>&)",
         ] {
             assert_eq!(classify_callee(callee), ReaderKind::Block, "{callee}");
-            assert_eq!(family_of_callee(callee), BlockFamily::NotApplicable, "{callee}");
+            assert_eq!(
+                family_of_callee(callee),
+                BlockFamily::NotApplicable,
+                "{callee}"
+            );
             let mut arguments = BTreeMap::from([
                 (
                     "x0".into(),
