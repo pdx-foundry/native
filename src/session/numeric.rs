@@ -29,6 +29,25 @@ enum Obstacle {
     ConversionPath,
 }
 
+impl Obstacle {
+    const ALL: [Self; 3] = [Self::Range, Self::Storage, Self::ConversionPath];
+
+    fn detail(self) -> &'static str {
+        match self {
+            Self::Range => UNKNOWN_RANGE,
+            Self::Storage => UNKNOWN_STORAGE,
+            Self::ConversionPath => UNKNOWN_CONVERSION_PATH,
+        }
+    }
+
+    /// The obstacle that an incomplete-conversion gap names.
+    fn of(gap: &Gap) -> Option<Self> {
+        Self::ALL.into_iter().find(|obstacle| {
+            gap.kind == GapKind::NumericConversion && gap.detail == obstacle.detail()
+        })
+    }
+}
+
 impl ReaderLimits {
     fn include(&mut self, other: Self) {
         self.incomplete = self.incomplete.max(other.incomplete);
@@ -249,20 +268,33 @@ pub(super) fn grammar(
         }
         for mut child_gap in child_gaps {
             child_gap.subject = Some(GapSubject::answer_item(name));
-            push_once(gaps, child_gap);
+            push_most_fundamental(gaps, child_gap);
         }
+    }
+}
+
+/// Add `gap` once. An incomplete-conversion gap keeps one gap per subject: the most fundamental
+/// obstacle replaces a lesser one, and a lesser one is dropped.
+fn push_most_fundamental(gaps: &mut Vec<Gap>, gap: Gap) {
+    let Some(obstacle) = Obstacle::of(&gap) else {
+        return push_once(gaps, gap);
+    };
+    let existing = gaps
+        .iter()
+        .position(|other| other.subject == gap.subject && Obstacle::of(other).is_some());
+    match existing {
+        None => gaps.push(gap),
+        Some(index) if Obstacle::of(&gaps[index]) < Some(obstacle) => gaps[index] = gap,
+        Some(_) => {}
     }
 }
 
 /// Add the public gaps of `limits` at `subject`, each once.
 pub(super) fn push_gaps(gaps: &mut Vec<Gap>, subject: GapSubject, limits: &ReaderLimits) {
-    let incomplete = limits.incomplete.map(|obstacle| match obstacle {
-        Obstacle::Range => UNKNOWN_RANGE,
-        Obstacle::Storage => UNKNOWN_STORAGE,
-        Obstacle::ConversionPath => UNKNOWN_CONVERSION_PATH,
-    });
     let details = [
-        incomplete.map(|detail| (GapKind::NumericConversion, detail)),
+        limits
+            .incomplete
+            .map(|obstacle| (GapKind::NumericConversion, obstacle.detail())),
         limits
             .unrepresentable_bounds
             .then_some((GapKind::NumericConversion, UNREPRESENTABLE_BOUNDS)),
@@ -911,6 +943,65 @@ mod tests {
             ));
         }
     }
+    #[test]
+    fn numeric_child_gaps_keep_the_most_fundamental_obstacle_at_the_parent() {
+        let reader = |callee: &str| {
+            let mut reader = integer_reader();
+            reader.id = Some(ReaderId::from_callee(callee));
+            reader
+        };
+        let field = |name: &str, callee: &str| {
+            let mut field = numeric_field(reader(callee));
+            field.name = name.into();
+            field
+        };
+        let block = Reader {
+            id: None,
+            kind: ReaderKind::Block,
+            family: crate::BlockFamily::Effect,
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+        };
+        for keys in [
+            [
+                ("range", "CReader::Read(int&)"),
+                ("path", "CReader::Read(float&)"),
+            ],
+            [
+                ("path", "CReader::Read(float&)"),
+                ("range", "CReader::Read(int&)"),
+            ],
+        ] {
+            let child = CommandGrammar {
+                reader: block.clone(),
+                forms: GrammarProperty::Known(vec![CommandForm::Block]),
+                targets: GrammarProperty::Known(vec![]),
+                child_scopes: GrammarProperty::Unresolved,
+                child_families: GrammarProperty::Known(vec![]),
+                fixed_keys: GrammarProperty::Known(
+                    keys.iter()
+                        .map(|(name, callee)| field(name, callee))
+                        .collect(),
+                ),
+                numeric_keys: GrammarProperty::Known(None),
+                ordering: GrammarProperty::Known(vec![]),
+                durations: GrammarProperty::Unresolved,
+            };
+            let mut parent = child.clone();
+            parent.fixed_keys = GrammarProperty::Known(vec![]);
+            parent.numeric_keys = GrammarProperty::Known(Some(Box::new(child)));
+            let mut gaps = Vec::new();
+
+            grammar(&mut parent, "parent", &range_and_path_facts(), &mut gaps);
+
+            assert_eq!(
+                numeric_details(&gaps),
+                [UNKNOWN_CONVERSION_PATH],
+                "{keys:?}"
+            );
+        }
+    }
+
     #[test]
     fn modifier_children_and_entries_use_the_shared_normalization_pass() {
         use crate::engine::analysis::fields::ReaderJoin;

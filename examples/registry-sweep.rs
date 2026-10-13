@@ -8,7 +8,8 @@
 //! `Native::from_recorded_answers` and writes the report, or only its comparison inputs.
 //!
 //! `registry-sweep --diff BEFORE AFTER` compares two reports or baselines and writes each
-//! registry and relationship whose statuses changed.
+//! registry and relationship whose statuses changed, and each registry whose open or accepted
+//! gaps changed.
 // The report shares only the baseline format and its reader.
 #[allow(dead_code)]
 #[path = "support/population.rs"]
@@ -1069,7 +1070,7 @@ fn read_report(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
     Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
 
-/// Each registry's statuses, from a baseline or a full report.
+/// Each registry's statuses and gaps by shape, from a baseline or a full report.
 fn comparison_inputs(report: &Value) -> population::ReportResult<BTreeMap<String, Value>> {
     if let Some(answers) = population::baseline_answers(report)? {
         return Ok(answers);
@@ -1084,7 +1085,8 @@ fn comparison_inputs(report: &Value) -> population::ReportResult<BTreeMap<String
         .collect())
 }
 
-/// Each registry and relationship whose statuses differ between two reports.
+/// Each registry and relationship whose statuses, or open or accepted gaps, differ between two
+/// reports.
 fn diff(before: &Value, after: &Value) -> population::ReportResult<Value> {
     let before = comparison_inputs(before).map_err(|error| format!("before report: {error}"))?;
     let after = comparison_inputs(after).map_err(|error| format!("after report: {error}"))?;
