@@ -46,6 +46,7 @@ pub(super) fn compose(
     let installation = installation.with_default_registries(operation.default_registries);
     let analysis = super::BoundAnalysis::new(
         recipe.declarations,
+        recipe.loader_reasons,
         recipe.registry_layout.map(groups::RegistryLayout::database),
         installation.clone(),
         invalidated,

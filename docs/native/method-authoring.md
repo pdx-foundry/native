@@ -343,14 +343,14 @@ For fields, use [`registry-field-sweep.rs`](../../examples/registry-field-sweep.
 ```sh
 mkdir -p .local/population
 cargo run --release --example registry-field-sweep -- "$STELLARIS_PATH" > .local/population/fields.json
-cargo run --release --example registry-field-sweep -- --diff tests/population/m452/registry-field-sweep.json .local/population/fields.json
+cargo run --release --example registry-field-sweep -- --diff tests/population/m452/registry-field-sweep .local/population/fields.json
 ```
 
 The tracked [population reports](../../tests/population/m452/) are the
 baseline. The diff compares normalized answers, ignoring method and Native version stamps but not
 build and basis, and reports once which absent members matched their serde defaults. It fails on a
 report that is of another kind, has no `cases` or `inventories` array, has a row without a name or
-repeats a subject, and on a compact baseline without its build; `tools/population/compare.py`
+repeats a subject, and on a baseline directory without the build in its `header.json`; `tools/population/compare.py`
 rejects the same inputs. An empty report still compares.
 
 For command grammars, run and compare the whole population. `command-population` reads
@@ -358,7 +358,7 @@ For command grammars, run and compare the whole population. `command-population`
 
 ```sh
 cargo run --release --example command-population > .local/population/commands.json
-cargo run --release --example command-population -- --diff tests/population/m452/command-population.json .local/population/commands.json
+cargo run --release --example command-population -- --diff tests/population/m452/command-population .local/population/commands.json
 ```
 
 A tracked baseline can be stale on `main`. To separate what your change did from what `main`
@@ -402,13 +402,30 @@ also deletes its build.
 Review changed answers, then update the affected baseline in the same PR as the method change:
 
 ```sh
-cargo run --release --example registry-field-sweep -- --baseline "$STELLARIS_PATH" > tests/population/m452/registry-field-sweep.json
-cargo run --release --example command-population -- --baseline > tests/population/m452/command-population.json
+cargo run --release --example registry-field-sweep -- --baseline tests/population/m452/registry-field-sweep "$STELLARIS_PATH"
+cargo run --release --example command-population -- --baseline tests/population/m452/command-population
 ```
 
-`--baseline` stores only comparison inputs (answers, errors, status, inventory uncertainty), one
-subject per line, with the exact build; use a separate directory for each supported build.
-Repeated baseline generation is byte-identical.
+`--baseline DIRECTORY` replaces the directory with only comparison inputs (answers, errors,
+status, inventory uncertainty): one `<subject>.json` file per subject, where each `/` in the subject
+is a directory, and `header.json` with the exact build and the report's totals (the field sweep's
+`summary`, the registry sweep's `relationships`). Use a separate directory for each supported
+build. An answer keeps its build and basis but not its method or Native version: a method revision
+would otherwise change every subject, and `--diff` ignores them. Repeated baseline generation is
+byte-identical. PRs that change answers of different subjects change different files, so they
+merge with at most a `header.json` conflict. Knowledge pages link to the header totals and do not
+restate them; a ticket's section states its own change.
+
+When a merge of `main` conflicts in a baseline, or to bring every baseline up to date at once,
+merge `origin/main` and regenerate all three baselines:
+
+```sh
+python3 tools/population/regenerate.py
+```
+
+It stops before it generates anything when a conflict is outside the three generated baselines.
+It stages the baselines and commits nothing; review the changed answers and totals, then commit.
+After you resolve a conflict that it reported, run it again to continue the same merge.
 
 To record every command grammar of an installation as recorded answers, then check the record
 against a new static run apart from `Basis`:
@@ -520,7 +537,7 @@ Record the inventory and the three registry questions, then report over the reco
 ```sh
 cargo run --release --example registry-sweep -- --record .local/population/sweep-answers "$STELLARIS_PATH"
 cargo run --release --example registry-sweep -- .local/population/sweep-answers > .local/population/sweep.json
-cargo run --release --example registry-sweep -- --diff tests/population/m452/registry-sweep.json .local/population/sweep.json
+cargo run --release --example registry-sweep -- --diff tests/population/m452/registry-sweep .local/population/sweep.json
 ```
 
 `--record` writes into a new directory; the report needs no installation. `--diff` takes full
@@ -528,10 +545,10 @@ reports or baselines and lists each registry and relationship whose statuses cha
 tracked baseline in the PR that changes the answers:
 
 ```sh
-cargo run --release --example registry-sweep -- --baseline .local/population/sweep-answers > tests/population/m452/registry-sweep.json
+cargo run --release --example registry-sweep -- --baseline tests/population/m452/registry-sweep .local/population/sweep-answers
 ```
 
-The baseline holds one line for each registry: its registry statuses, for each field relationship
+The baseline holds one file for each registry: its registry statuses, for each field relationship
 its counts by status and its rate, and its open and accepted gaps by shape (`open_gaps`,
 `accepted_gaps`). So `--diff` names a registry whose gaps move between open and accepted, or whose
 open shapes change, even when no status changes.

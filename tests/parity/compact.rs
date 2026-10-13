@@ -52,7 +52,12 @@ pub fn modifier_blocks(native: &Native) -> super::Result<Value> {
         let keys = |fields: &[Field]| {
             fields
                 .iter()
-                .map(|field| json!([field.name, field.reader.kind]))
+                .map(|field| match &field.members {
+                    FieldMembers::AnyKey { value_forms } => {
+                        json!([field.name, field.reader.kind, {"AnyKey": value_forms}])
+                    }
+                    _ => json!([field.name, field.reader.kind]),
+                })
                 .collect::<Vec<_>>()
         };
         let fixed_keys = match &block.fixed_keys {

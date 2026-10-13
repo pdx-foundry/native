@@ -1,0 +1,80 @@
+# A custom-description serializer's member reader up to its "Expected list start" report: the
+# two token routes, the list branch that requires `{`, the loop that ends at `}` or the end of
+# input and reads one stack entry serializer per entry into an appended array element, the base
+# fallback and the report for any other value. Cleanup after the report and the `@` statement
+# after the loop are not matched.
+sub sp,sp,#0x180
+stp xr0,xr1,[sp,#0x130]
+stp xr2,xr3,[sp,#0x140]
+stp xr4,xr5,[sp,#0x150]
+stp xr6,xr7,[sp,#0x160]
+stp x29,x30,[sp,#0x170]
+add x29,sp,#0x170
+mov xr7,x1
+mov xr6,x0
+mov wr8,#{list_token}
+cmp w2,wr8
+b.eq @+14
+mov wr8,#{text_token}
+cmp w2,wr8
+b.ne @+45
+ldr x1,[xr6,#{wrapped}]
+mov x0,xr7
+mov w2,#0x0
+ldp x29,x30,[sp,#0x170]
+ldp xr6,xr7,[sp,#0x160]
+ldp xr4,xr5,[sp,#0x150]
+ldp xr2,xr3,[sp,#0x140]
+ldp xr0,xr1,[sp,#0x130]
+add sp,sp,#0x180
+b CALL = CReader::Read(CString&, bool)
+ldr wr8,[xr7,#{value_token}]
+cmp wr8,#0x3
+b.ne @+41
+mov wr4,#0x13
+mov wr3,#0x1
+adrp xr2,PAGE
+add xr2,xr2,G = {entry_slot}
+ldr xr5,[xr7,#0x30]
+ldrb wr8,[xr5,#0x13c]
+cbnz wr8,@+9
+ldr xr8,[xr5]
+ldr xr8,[xr8,#0x10]
+mov x0,xr5
+blr xr8
+str w0,[xr5,#0x10]
+cbnz w0,@+2
+str wr4,[xr5,#0x18]
+strb wr3,[xr5,#0x13c]
+ldr wr8,[xr5,#0x18]
+cmp wr8,#0x4
+ccmp wr8,#0x13,#0x4,ne
+b.eq @+38
+ldr xr8,[xr6,#{wrapped}]
+add x0,xr8,#{array}
+ldr w1,[xr8,#{count}]
+bl CALL = CCustomDescription::SParam& CPdxArray<CCustomDescription::SParam, int>::InsertAtEmplace<>(int, &&)
+stp xr2,x0,[sp]
+mov x1,sp
+mov x0,xr7
+bl CALL = CReader::Read(CPersistent&)
+ldr xr5,[xr7,#0x30]
+ldrb wr8,[xr5,#0x13c]
+cbnz wr8,@-14
+b @-23
+mov x0,xr6
+mov x1,xr7
+ldp x29,x30,[sp,#0x170]
+ldp xr6,xr7,[sp,#0x160]
+ldp xr4,xr5,[sp,#0x150]
+ldp xr2,xr3,[sp,#0x140]
+ldp xr0,xr1,[sp,#0x130]
+add sp,sp,#0x180
+b CALL = CPersistent::ReadMember(CReader&, int)
+adrp x1,PAGE
+add x1,x1,G = "Expected list start"
+mov x0,sp
+bl CALL = CString::CString(char const*)
+mov x1,sp
+mov x0,xr7
+bl CALL = CReader::ReportUnexpected(CString const&)

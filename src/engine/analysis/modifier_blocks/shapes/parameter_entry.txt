@@ -1,0 +1,34 @@
+# A custom-description parameter's reader up to its copy of an accepted value: the key text,
+# then the value token's kind test. A kind above {floor} goes to the keyword tests; a kind up to
+# {bound} is accepted when its bit is set in both masks; any other kind is malformed.
+stp xr0,xr1,[sp,#-0x50]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp xr6,xr7,[sp,#0x30]
+stp x29,x30,[sp,#0x40]
+add x29,sp,#0x40
+sub sp,sp,#0x220
+mov xr7,x1
+mov xr6,x0
+mov x0,x1
+bl CALL = CReader::GetLineNumber() const
+mov xr5,x0
+mov x0,xr7
+bl CALL = CReader::ReadSimpleStatement()
+add x0,xr7,#0x38
+ldr x1,[xr6,#0x8]
+bl CALL = CToken::ReadValue(CString&) const
+ldr wr8,[xr7,#{value_token}]
+cmp wr8,#{floor}
+b.gt @+{keywords}
+cmp wr8,#{bound}
+mov wr9,#0x1
+lsl wr8,wr9,wr8
+and wr8,wr8,#{low_mask}
+and wr8,wr8,#{high_mask}
+ccmp wr8,#0x0,#0x4,ls
+b.eq @+{malformed}
+add x1,xr7,#{value_token}
+ldr xr8,[xr6,#0x8]
+add x0,xr8,#0x28
+bl CALL = CToken::operator=(CToken const&)

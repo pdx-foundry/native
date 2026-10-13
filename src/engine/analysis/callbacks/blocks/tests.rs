@@ -110,6 +110,7 @@ impl Program {
             method_of: Some(OWNER.into()),
             registers: BTreeMap::from([(0, OWNER.into())]),
             members: BTreeMap::new(),
+            scope_parameters: BTreeSet::new(),
         };
         self.pointing(pointers, lines)
     }
@@ -467,6 +468,133 @@ fn a_scope_parameter_with_no_caller_has_no_context() {
 
     assert!(contexts(&result, POTENTIAL).is_empty());
     assert_eq!(unresolved(&result, POTENTIAL), ["no-caller"]);
+}
+
+/// A method at 0x2000 that builds a country scope A, links `from_source` into A as its from and
+/// evaluates `potential` with A; its scope parameters are in `scope_parameters`.
+fn linking_method(
+    program: Program,
+    from_source: &'static str,
+    scope_parameters: &[usize],
+) -> Program {
+    let lines = [
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x21,x0"),
+        (0x2008, "mov", "x20,x1"),
+        (0x200c, "ldr", "x22,[x21,#0x10]"),
+        (0x2010, "add", "x0,sp,#0x100"),
+        (0x2014, "bl", "#0x8000"),
+        (0x2018, "add", "x0,sp,#0x100"),
+        (0x201c, "bl", "#0x8100"),
+        (0x2020, "str", from_source), // A.from
+        (0x2024, "add", "x0,x21,#0x40"),
+        (0x2028, "add", "x1,sp,#0x100"),
+        (0x202c, "bl", "#0x9400"),
+        (0x2030, "ret", ""),
+    ];
+    let pointers = TypePointers {
+        method_of: Some(OWNER.into()),
+        registers: BTreeMap::from([(0, OWNER.into())]),
+        members: BTreeMap::new(),
+        scope_parameters: scope_parameters.iter().copied().collect(),
+    };
+    program.pointing(pointers, &lines)
+}
+
+const FROM_PARAMETER: &str = "x20,[sp,#0x138]";
+
+/// The context that the linking method reads alone: its own country scope with an unread from.
+fn unread_from() -> Context {
+    Context {
+        from: vec![Slot::Unresolved],
+        ..fresh(COUNTRY)
+    }
+}
+
+#[test]
+fn a_scope_parameter_linked_into_the_entry_scope_is_read_at_the_callers() {
+    let program = Program::new().function(&caller(0x1000, LEADER_TYPE, "#0x2000"));
+    let result = linking_method(program, FROM_PARAMETER, &[1]).analyze();
+
+    assert_eq!(
+        contexts(&result, POTENTIAL),
+        [Context {
+            from: vec![LEADER, Slot::SelfLink],
+            ..fresh(COUNTRY)
+        }]
+    );
+    assert!(unresolved(&result, POTENTIAL).is_empty());
+}
+
+#[test]
+fn an_incomplete_retry_from_the_callers_keeps_the_entry_s_own_context() {
+    // No caller.
+    let result = linking_method(Program::new(), FROM_PARAMETER, &[1]).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [unread_from()]);
+
+    // The unread from is not the scope parameter.
+    let program = Program::new().function(&caller(0x1000, LEADER_TYPE, "#0x2000"));
+    let result = linking_method(program, "x22,[sp,#0x138]", &[1]).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [unread_from()]);
+
+    // The callers forward the scope past the caller depth; the climb's charge is dropped too.
+    let program = Program::new()
+        .function(&caller(0x1000, LEADER_TYPE, "#0x3100"))
+        .function(&forwards(0x3100, "#0x3000"))
+        .function(&forwards(0x3000, "#0x2000"));
+    let result = linking_method(program, FROM_PARAMETER, &[1]).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [unread_from()]);
+    assert!(unresolved(&result, POTENTIAL).is_empty());
+
+    // Two scope parameters do not say which one the link holds.
+    let program = Program::new().function(&caller(0x1000, LEADER_TYPE, "#0x2000"));
+    let result = linking_method(program, FROM_PARAMETER, &[1, 2]).analyze();
+    assert_eq!(contexts(&result, POTENTIAL), [unread_from()]);
+}
+
+/// A run from the entry at 0x1000 that reached `contexts` at the evaluation at 0x2000.
+fn run_reaching(contexts: &[Context]) -> EntryRun {
+    EntryRun {
+        function: 0x1000,
+        site: 0x1000,
+        wrapper: None,
+        blocks: BTreeSet::from([block(POTENTIAL)]),
+        reached: contexts
+            .iter()
+            .map(|context| (0x2000, block(POTENTIAL), context.clone()))
+            .collect(),
+        unresolved: Vec::new(),
+        bounded: Vec::new(),
+        contradicted: false,
+    }
+}
+
+#[test]
+fn a_retry_replaces_a_run_only_when_it_covers_every_context_that_the_run_read() {
+    let unread = |this| Context {
+        from: vec![Slot::Unresolved],
+        ..fresh(this)
+    };
+    let read = |this| Context {
+        from: vec![LEADER, Slot::SelfLink],
+        ..fresh(this)
+    };
+    let original = run_reaching(&[unread(COUNTRY), unread(LEADER)]);
+
+    let both = [run_reaching(&[read(COUNTRY), read(LEADER)])];
+    assert!(replaces(&both, &original));
+
+    // A bound kept the retry from the leader arrival; its country arrival does not cover it.
+    let one = [run_reaching(&[read(COUNTRY)])];
+    assert!(!replaces(&one, &original));
+
+    // A retried context covers no arrival whose read slot it changes.
+    let other_type = [run_reaching(&[read(LEADER), read(LEADER)])];
+    assert!(!replaces(&other_type, &original));
+
+    // An established arrival of the run must come back unchanged.
+    let with_known = run_reaching(&[unread(COUNTRY), fresh(LEADER)]);
+    assert!(!replaces(&[run_reaching(&[read(COUNTRY)])], &with_known));
 }
 
 /// A wrapper at 0x2000 that runs `before` on its scope in `x20` and then evaluates `potential`.
@@ -1822,6 +1950,7 @@ fn authored_selection(bytes: &[u8]) -> Program {
             method_of: Some(OWNER.into()),
             registers: BTreeMap::from([(0, OWNER.into())]),
             members: BTreeMap::new(),
+            scope_parameters: BTreeSet::new(),
         },
     );
     program

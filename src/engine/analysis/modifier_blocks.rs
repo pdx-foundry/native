@@ -2,6 +2,7 @@
 //! unresolved readers; the default domain must join one try-member before entry forms or
 //! inherited keys are added. No content name selects a path through this method.
 pub(crate) mod name;
+pub(crate) mod parameters;
 pub(crate) mod reference;
 pub(crate) mod triggered;
 
@@ -18,7 +19,7 @@ use super::{
     readers,
     stop::Unresolved,
 };
-use crate::{GrammarProperty, ReferenceTarget};
+use crate::{GrammarProperty, ReferenceTarget, ScalarForm};
 
 pub(crate) struct ModifierBlockInput {
     pub points: BTreeMap<u64, ConcreteReader>,
@@ -35,6 +36,8 @@ pub(crate) struct ModifierBlockInput {
     pub references: BTreeMap<String, Result<ReferenceTarget, Unresolved>>,
     /// The read-slot function of each class that the base member's name object can have.
     pub name_reads: Result<Vec<Function>, Unresolved>,
+    /// The parameter list route of each serializer member.
+    pub parameter_lists: Vec<parameters::ParameterList>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +53,9 @@ pub(crate) struct Variant {
     pub fixed_complete: bool,
     pub entries: GrammarProperty<Vec<Entry>>,
     pub stops: Vec<(Option<String>, Unresolved)>,
+    /// The written value forms of each key token read as a parameter list, or the stop of the
+    /// text lexer boundary that the forms rest on.
+    pub any_keys: BTreeMap<i64, Result<Vec<ScalarForm>, Unresolved>>,
 }
 
 #[derive(Default)]
@@ -87,9 +93,19 @@ fn variant(
     root: &str,
 ) -> Result<Variant, Unresolved> {
     let MemberLeaves {
-        paths: leaves,
+        paths: mut leaves,
         mut stops,
     } = member_leaves(dispatch, root)?;
+    let any_keys = parameters::join(&mut leaves, &input.parameter_lists)
+        .into_iter()
+        .map(|(token, list)| {
+            let forms = numeric
+                .lexer
+                .clone()
+                .map(|()| parameters::value_forms(&list.accepted));
+            (token, forms)
+        })
+        .collect();
     let member_complete = stops.is_empty();
     let mut paths: Vec<_> = leaves
         .iter()
@@ -117,6 +133,7 @@ fn variant(
         fixed_complete,
         entries,
         stops,
+        any_keys,
     })
 }
 
@@ -394,6 +411,7 @@ mod tests {
             },
             references: BTreeMap::new(),
             name_reads: Ok(vec![]),
+            parameter_lists: vec![],
         }
     }
 

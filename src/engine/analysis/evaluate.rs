@@ -17,7 +17,9 @@
 //! [`Machine::run_paths`] is for code that checks run-time state before its answer, such as a
 //! localization promotion that tests a database pointer. It follows both sides of a branch on an
 //! unknown value and reports every path's end, so the caller can require that the paths agree.
-//! It still chooses no path.
+//! It still chooses no path. A jump through a switch table whose index is unknown goes to every
+//! case when the compiler's guard proves the index bound ([`Machine::switch_cases`]); one path of
+//! [`Machine::run`] still stops there.
 //!
 //! [`Machine::run_paths_to`] follows only the paths that can still arrive at one instruction, and
 //! ends each path when it arrives there, before that instruction runs. A caller reads the
@@ -56,6 +58,14 @@ pub const LOOP_LIMIT: u32 = 4;
 /// The most times that the joined facts at one loop head of [`Machine::run_paths_joining`]
 /// become fewer.
 const JOIN_LIMIT: u32 = 16;
+
+/// The most instructions that [`Machine::switch_cases`] reads back from a table load to the
+/// guard's branch, and from the guard to the write that sets the index.
+const SWITCH_GUARD_ROWS: u64 = 16;
+
+/// The instructions that may run between a switch's guard and its table branch: none branches,
+/// calls or sets the flags.
+const SWITCH_RUN: &[&str] = &["mov", "adrp", "add", "sub", "adr", "ldr", "ldrb", "ldrh"];
 
 /// Every NZCV state.
 const ALL_FLAG_STATES: u16 = u16::MAX;
@@ -248,6 +258,19 @@ impl Code {
                 .rows
                 .range(entry..=address)
                 .all(|(_, operation)| operation.is_prologue_row())
+    }
+
+    /// Whether a direct branch of this code goes to an instruction after `after`, up to `through`,
+    /// other than by falling through to it. A branch through a register is not counted: it is
+    /// taken not to enter a switch's guard run.
+    fn is_entered_between(&self, after: u64, through: u64) -> bool {
+        self.rows.iter().any(|(&address, operation)| {
+            operation.successors(address).is_some_and(|successors| {
+                successors
+                    .into_iter()
+                    .any(|target| target > after && target <= through && target != address + 4)
+            })
+        })
     }
 
     /// Build code from rows that are already decoded.
@@ -901,7 +924,7 @@ impl<'a> Machine<'a> {
             match flow {
                 Flow::Next => pc += 4,
                 Flow::Jump(target) => pc = target,
-                Flow::Unknown { halt, .. } => {
+                Flow::Unknown { halt, .. } | Flow::Cases { halt, .. } => {
                     return Err(self.stop(pc, halt.reason, halt.obstacle));
                 }
                 Flow::IndirectCall(_) | Flow::Trap => {
@@ -1120,6 +1143,13 @@ impl<'a> Machine<'a> {
                     return Walk::Fork {
                         at: pc,
                         branches: vec![(None, target), (None, pc + 4)],
+                        steps,
+                    };
+                }
+                Flow::Cases { targets, .. } => {
+                    return Walk::Fork {
+                        at: pc,
+                        branches: targets.into_iter().map(|target| (None, target)).collect(),
                         steps,
                     };
                 }
@@ -1711,6 +1741,10 @@ impl<'a> Machine<'a> {
                 let value = u64::from(self.holds(*condition)?);
                 self.assign(destination, Some(value))?;
             }
+            ("csetm", [destination, Operand::Condition(condition)]) => {
+                let value = if self.holds(*condition)? { u64::MAX } else { 0 };
+                self.assign(destination, Some(truncate(value, destination.is_wide())))?;
+            }
             _ => return Ok(false),
         }
         Ok(true)
@@ -2185,6 +2219,162 @@ impl<'a> Machine<'a> {
         Ok(true)
     }
 
+    /// The case targets of the switch table that the `br` at `pc` jumps through when `branch` is
+    /// unknown, in table order. `None` unless the compiler's straight-line shape proves the index
+    /// bound:
+    ///
+    /// ```text
+    /// cmp   wJ, #K                ; the guard
+    /// b.hi  default
+    /// mov   wI, wJ                ; or no copy, when I is J and a 32-bit write sets it before the cmp
+    /// adrp  xTab, …; add xTab, xTab, #…
+    /// adr   xB, #base
+    /// ldrb  wE, [xTab, xI]        ; or ldrh wE, [xTab, xI, lsl #1]
+    /// add   xT, xB, xE, lsl #s
+    /// br    xT
+    /// ```
+    ///
+    /// Only [`SWITCH_RUN`] instructions run between the guard and the branch, the current frame
+    /// began before that run, and no direct branch enters it, so every path to the branch passed
+    /// the guard with an index of at most `K`.
+    fn switch_cases(&self, pc: u64, branch: &Operand) -> Option<Vec<u64>> {
+        let Operand::Register(branch) = branch else {
+            return None;
+        };
+        let (
+            "add",
+            [
+                Operand::Register(sum),
+                Operand::Register(base),
+                Operand::Register(entry),
+                Operand::Shift(Shift::Left, shift),
+            ],
+        ) = self.parsed(pc - 4)?
+        else {
+            return None;
+        };
+        let ("adr", [Operand::Register(adr), Operand::Immediate(base_address)]) =
+            self.parsed(pc - 12)?
+        else {
+            return None;
+        };
+        let (width, loaded, memory) = match self.parsed(pc - 8)? {
+            ("ldrb", [Operand::Register(loaded), Operand::Memory(memory)]) => (1, loaded, memory),
+            ("ldrh", [Operand::Register(loaded), Operand::Memory(memory)]) => (2, loaded, memory),
+            _ => return None,
+        };
+        let (index, scale) = memory.index.as_ref()?;
+        let scaled = matches!(
+            (width, scale.as_slice()),
+            (1, []) | (2, [Operand::Shift(Shift::Left, 1)])
+        );
+        // The adr and the load run after the guard run, so neither may write the index or the
+        // table register, and the load may not overwrite the adr's base before the add reads it.
+        let aliased =
+            base.name == index.name || base.name == memory.base.name || loaded.name == base.name;
+        if sum.name != branch.name
+            || adr.name != base.name
+            || loaded.name != entry.name
+            || !base.wide
+            || loaded.wide
+            || memory.offset != 0
+            || memory.write_back
+            || !scaled
+            || aliased
+        {
+            return None;
+        }
+
+        // The frame must have begun at or before the run, or the walk never passed the guard.
+        let (start, bound) = self.switch_guard(pc - 12, index.name)?;
+        if self.entered() > start || self.code.is_entered_between(start, pc) {
+            return None;
+        }
+
+        let table = self.read_register(memory.base)?;
+        let mut targets = Vec::new();
+        for case in 0..=bound {
+            let value = self.data.read(table.checked_add(case * width)?, width)?;
+            let target = (*base_address as u64).wrapping_add(value << shift);
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+        Some(targets)
+    }
+
+    /// The start of a switch's straight-line run and its bound `K`, read back from the row before
+    /// `before`: the guard `cmp wJ, #K; b.hi`, and the index register `index` holding `wJ`
+    /// zero-extended, copied from it once after the guard or set by a 32-bit write before it.
+    fn switch_guard(&self, before: u64, index: Name) -> Option<(u64, u64)> {
+        let mut copied_from = None;
+        for step in 1..=SWITCH_GUARD_ROWS {
+            let address = before.checked_sub(4 * step)?;
+            let (mnemonic, operands) = self.parsed(address)?;
+            if mnemonic == "b.hi" {
+                let ("cmp", [Operand::Register(compared), Operand::Immediate(bound)]) =
+                    self.parsed(address - 4)?
+                else {
+                    return None;
+                };
+                let bound = u64::try_from(*bound).ok().filter(|_| !compared.wide)?;
+                let guard = address - 4;
+                return match copied_from {
+                    Some(source) if source == compared.name => Some((guard, bound)),
+                    None if compared.name == index => {
+                        Some((self.narrow_write_before(guard, index)?, bound))
+                    }
+                    _ => None,
+                };
+            }
+
+            let written = switch_run_destination(mnemonic, operands)?;
+            match (written == index, copied_from) {
+                (true, None) => {
+                    let ("mov", [Operand::Register(copy), Operand::Register(source)]) =
+                        (mnemonic, operands)
+                    else {
+                        return None;
+                    };
+                    if copy.wide || source.wide {
+                        return None;
+                    }
+                    copied_from = Some(source.name);
+                }
+                (true, Some(_)) => return None,
+                (false, Some(source)) if written == source => return None,
+                (false, _) => {}
+            }
+        }
+        None
+    }
+
+    /// The address of the last write to `index` before `guard` when it is a 32-bit write in a
+    /// straight run of [`SWITCH_RUN`] instructions, which leaves the upper half zero.
+    fn narrow_write_before(&self, guard: u64, index: Name) -> Option<u64> {
+        for step in 1..=SWITCH_GUARD_ROWS {
+            let address = guard.checked_sub(4 * step)?;
+            let (mnemonic, operands) = self.parsed(address)?;
+            if switch_run_destination(mnemonic, operands)? != index {
+                continue;
+            }
+
+            let Some(Operand::Register(written)) = operands.first() else {
+                return None;
+            };
+            return (!written.wide).then_some(address);
+        }
+        None
+    }
+
+    /// The mnemonic and operands of the instruction at `address`, when it parsed.
+    fn parsed(&self, address: u64) -> Option<(&'a str, &'a [Operand])> {
+        match self.code.rows.get(&address)? {
+            Operation::Parsed { mnemonic, operands } => Some((mnemonic, operands)),
+            Operation::Unparsed => None,
+        }
+    }
+
     /// Run a branch, call, return or trap, or a `nop`. Every other instruction is unsupported.
     fn step_control(
         &mut self,
@@ -2238,10 +2428,14 @@ impl<'a> Machine<'a> {
                 }
             }
             (Branch::Register, [register]) => {
-                let target = self
-                    .operand(register)?
-                    .ok_or(Halt::unknown_register("branch-value", register))?;
-                return Ok(Flow::Jump(target));
+                return match self.operand(register)? {
+                    Some(target) => Ok(Flow::Jump(target)),
+                    None => {
+                        let halt = Halt::unknown_register("branch-value", register);
+                        let targets = self.switch_cases(pc, register).ok_or(halt)?;
+                        Ok(Flow::Cases { targets, halt })
+                    }
+                };
             }
             // A call puts its return address in the link register, so a `calls` closure can tell
             // call sites apart: the site is `x30 - 4`.
@@ -2520,10 +2714,32 @@ enum Flow {
         halt: Halt,
     },
     Call(u64),
+    /// A jump through a switch table whose index is unknown: to one of these case targets.
+    Cases {
+        targets: Vec<u64>,
+        halt: Halt,
+    },
     /// A call through a register, whose target may be unknown.
     IndirectCall(Option<u64>),
     Return,
     Trap,
+}
+
+/// The register that a [`SWITCH_RUN`] instruction writes, or `None` for any other instruction
+/// or a load that also writes its base.
+fn switch_run_destination(mnemonic: &str, operands: &[Operand]) -> Option<Name> {
+    if !SWITCH_RUN.contains(&mnemonic) {
+        return None;
+    }
+    // A pre-indexed load (`ldr x8,[x9,#8]!`) and a post-indexed one (`ldr x13,[x9],#4`, whose
+    // immediate follows the memory operand) also write their base register.
+    let writes_base = operands.iter().enumerate().any(|(position, operand)| {
+        matches!(operand, Operand::Memory(memory) if memory.write_back || position + 1 < operands.len())
+    });
+    match operands.first() {
+        Some(Operand::Register(written)) if !writes_base => Some(written.name),
+        _ => None,
+    }
 }
 
 /// Why one instruction could not run. The run adds where, to make an [`Unresolved`].
@@ -3502,6 +3718,18 @@ mod tests {
     }
 
     #[test]
+    fn conditional_set_mask_gives_all_ones_or_zero() {
+        let code = rows(&[
+            (0x100, "cmp", "w0,#0x7"),
+            (0x104, "csetm", "w0,eq"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        assert_eq!(returned(&code, &data, 7), Ok(Some(0xffff_ffff)));
+        assert_eq!(returned(&code, &data, 8), Ok(Some(0)));
+    }
+
+    #[test]
     fn rotate_right_wraps_within_the_register_width() {
         let code = rows(&[(0x100, "ror", "w0,w0,#3"), (0x104, "ret", "")]);
         let data = ReadOnlyData::default();
@@ -3524,6 +3752,189 @@ mod tests {
         let data = ReadOnlyData::default();
         assert_eq!(returned(&code, &data, 0x80006), Ok(Some(0x80000)));
         assert_eq!(returned(&code, &data, 0x2), Ok(Some(0b11)));
+    }
+
+    /// The value that each path returns in `x0` from 0x100, with every argument unknown.
+    fn path_returns(code: &Code, data: &ReadOnlyData) -> Vec<Result<Option<u64>, &'static str>> {
+        let paths = Machine::new(code, data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+        paths
+            .into_iter()
+            .map(|path| match path.end {
+                Ok(_) => Ok(path.machine.register(0)),
+                Err(unresolved) => Err(unresolved.reason),
+            })
+            .collect()
+    }
+
+    /// A byte switch table on `w0`, guarded by `cmp w0,#2`: cases 0 to 2 return 7, 9 and 9. Each of
+    /// `changes` replaces the row at its address, or adds one.
+    fn byte_switch(
+        copy: (&'static str, &'static str),
+        changes: &[(u64, &'static str, &'static str)],
+    ) -> Code {
+        let mut lines = vec![
+            (0x100, "cmp", "w0,#0x2"),
+            (0x104, "b.hi", "#0x13c"),
+            (0x108, copy.0, copy.1),
+            (0x10c, "adrp", "x10,#0x1000"),
+            (0x110, "add", "x10,x10,#0x10"),
+            (0x114, "adr", "x11,#0x124"),
+            (0x118, "ldrb", "w12,[x10,x9]"),
+            (0x11c, "add", "x11,x11,x12,lsl#2"),
+            (0x120, "br", "x11"),
+            (0x124, "mov", "x0,#7"),
+            (0x128, "ret", ""),
+            (0x12c, "mov", "x0,#9"),
+            (0x130, "ret", ""),
+            (0x13c, "mov", "x0,#1"),
+            (0x140, "ret", ""),
+        ];
+        for change in changes {
+            match lines.iter_mut().find(|line| line.0 == change.0) {
+                Some(line) => *line = *change,
+                None => lines.push(*change),
+            }
+        }
+        rows(&lines)
+    }
+
+    #[test]
+    fn a_guarded_switch_with_an_unknown_index_runs_each_case() {
+        let data = ReadOnlyData::new(vec![(0x1010, vec![0, 2, 2])]);
+        let code = byte_switch(("mov", "w9,w0"), &[]);
+        let returns = path_returns(&code, &data);
+        assert_eq!(returns, [Ok(Some(1)), Ok(Some(7)), Ok(Some(9))]);
+
+        // The single-path run still stops where the index is unknown.
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(1, 0);
+        let mut calls = |_, _: &mut Machine<'_>| Ok(Call::Return(None));
+        let ended = machine
+            .run(0x108, &mut calls)
+            .map_err(|unresolved| unresolved.reason);
+        assert_eq!(ended, Err("branch-value"));
+    }
+
+    #[test]
+    fn a_halfword_switch_whose_index_a_32_bit_write_sets_runs_each_case() {
+        let code = rows(&[
+            (0x100, "sub", "w8,w0,#0x1"),
+            (0x104, "cmp", "w8,#0x1"),
+            (0x108, "b.hi", "#0x138"),
+            (0x10c, "adrp", "x9,#0x1000"),
+            (0x110, "add", "x9,x9,#0x10"),
+            (0x114, "adr", "x10,#0x128"),
+            (0x118, "ldrh", "w11,[x9,x8,lsl#1]"),
+            (0x11c, "add", "x10,x10,x11,lsl#2"),
+            (0x120, "br", "x10"),
+            (0x128, "mov", "x0,#7"),
+            (0x12c, "ret", ""),
+            (0x130, "mov", "x0,#9"),
+            (0x134, "ret", ""),
+            (0x138, "mov", "x0,#1"),
+            (0x13c, "ret", ""),
+        ]);
+        let data = ReadOnlyData::new(vec![(0x1010, vec![0, 0, 2, 0])]);
+        assert_eq!(
+            path_returns(&code, &data),
+            [Ok(Some(1)), Ok(Some(7)), Ok(Some(9))]
+        );
+    }
+
+    #[test]
+    fn a_switch_whose_bound_is_not_proved_keeps_its_stop() {
+        let data = ReadOnlyData::new(vec![(0x1010, vec![0, 2, 2])]);
+        let stopped = [Ok(Some(1)), Err("branch-value")];
+
+        // The index is written again after its copy from the guarded register.
+        let overwritten = rows(&[
+            (0x100, "cmp", "w0,#0x2"),
+            (0x104, "b.hi", "#0x13c"),
+            (0x108, "mov", "w9,w0"),
+            (0x10c, "mov", "w9,w1"),
+            (0x110, "adrp", "x10,#0x1000"),
+            (0x114, "adr", "x11,#0x124"),
+            (0x118, "ldrb", "w12,[x10,x9]"),
+            (0x11c, "add", "x11,x11,x12,lsl#2"),
+            (0x120, "br", "x11"),
+            (0x124, "mov", "x0,#7"),
+            (0x128, "ret", ""),
+            (0x13c, "mov", "x0,#1"),
+            (0x140, "ret", ""),
+        ]);
+        assert_eq!(path_returns(&overwritten, &data), stopped);
+
+        // The copy reads a register other than the guarded one.
+        let unguarded = byte_switch(("mov", "w9,w1"), &[]);
+        assert_eq!(path_returns(&unguarded, &data), stopped);
+
+        // A 64-bit copy does not clear the upper half that the 32-bit guard does not test.
+        let wide_copy = byte_switch(("mov", "x9,x0"), &[]);
+        assert_eq!(path_returns(&wide_copy, &data), stopped);
+
+        // With no copy, a 64-bit write sets the guarded index before the guard.
+        let wide_write = rows(&[
+            (0x100, "mov", "x9,x1"),
+            (0x104, "cmp", "w9,#0x2"),
+            (0x108, "b.hi", "#0x13c"),
+            (0x10c, "adrp", "x10,#0x1000"),
+            (0x110, "add", "x10,x10,#0x10"),
+            (0x114, "adr", "x11,#0x124"),
+            (0x118, "ldrb", "w12,[x10,x9]"),
+            (0x11c, "add", "x11,x11,x12,lsl#2"),
+            (0x120, "br", "x11"),
+            (0x124, "mov", "x0,#7"),
+            (0x128, "ret", ""),
+            (0x13c, "mov", "x0,#1"),
+            (0x140, "ret", ""),
+        ]);
+        assert_eq!(path_returns(&wide_write, &data), stopped);
+
+        // A branch from elsewhere enters the run after the guard.
+        let entered = byte_switch(("mov", "w9,w0"), &[(0x144, "b", "#0x10c")]);
+        assert_eq!(path_returns(&entered, &data), stopped);
+
+        // A post-indexed load moves the copied index after the copy.
+        let moved = byte_switch(("mov", "w9,w0"), &[(0x110, "ldr", "x13,[x9],#4")]);
+        let at_page = ReadOnlyData::new(vec![(0x1000, vec![0, 2, 2])]);
+        assert_eq!(path_returns(&moved, &at_page), stopped);
+
+        // The adr overwrites the index before the load reads it.
+        let adr_on_index = byte_switch(
+            ("mov", "w9,w0"),
+            &[
+                (0x114, "adr", "x9,#0x124"),
+                (0x11c, "add", "x9,x9,x12,lsl#2"),
+                (0x120, "br", "x9"),
+            ],
+        );
+        assert_eq!(path_returns(&adr_on_index, &data), stopped);
+
+        // The load overwrites the adr's base before the add reads it.
+        let load_on_base = byte_switch(
+            ("mov", "w9,w0"),
+            &[
+                (0x118, "ldrb", "w11,[x10,x9]"),
+                (0x11c, "add", "x11,x11,x11,lsl#2"),
+            ],
+        );
+        assert_eq!(path_returns(&load_on_base, &data), stopped);
+
+        // A walk that begins after the guard never tested the index.
+        let guarded = byte_switch(("mov", "w9,w0"), &[]);
+        let mut machine = Machine::new(&guarded, &data);
+        machine.set_register(1, 0);
+        let paths = machine.run_paths(0x108, &mut |_, _| Ok(Call::Return(None)));
+        let ends: Vec<_> = paths
+            .into_iter()
+            .map(|path| path.end.map_err(|unresolved| unresolved.reason))
+            .collect();
+        assert_eq!(ends, [Err("branch-value")]);
+
+        // The table has fewer entries than the guard allows.
+        let short = ReadOnlyData::new(vec![(0x1010, vec![0, 2])]);
+        let code = byte_switch(("mov", "w9,w0"), &[]);
+        assert_eq!(path_returns(&code, &short), stopped);
     }
 
     #[test]

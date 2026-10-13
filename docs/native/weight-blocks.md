@@ -1,7 +1,7 @@
 # Shared weight-block grammar
 
-`registry_fields` attaches `FieldMembers::WeightBlock` to root fields whose constructor proves one
-weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
+`registry_fields` attaches `FieldMembers::WeightBlock` to root and nested fields whose owner's
+constructor proves one weight reader address point, and sets the field's `BlockFamily::Weight`. The block reports the bare
 value form, fixed keys, arithmetic operations, how a further operation key is stored, and what other
 keys are; a nested `modifier`, `scaled_modifier` or `complex_trigger_modifier` key carries its own
 `WeightBlock`. Source stamp `registry-fields/v31`. The method is

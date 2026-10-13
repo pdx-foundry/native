@@ -418,7 +418,34 @@
   "entry_contexts": [
    {
     "from": [
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "44b5e21fe5e593d7",
+      "name": "country"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      "SelfLink"
@@ -703,7 +730,40 @@
        "name": "country"
       }
      },
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      "SelfLink"
@@ -3317,7 +3377,7 @@
   "uses": []
  },
  {
-  "accepted_categories": "Unresolved",
+  "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
   "members": {
@@ -5796,7 +5856,13 @@
        "name": "country"
       }
      },
-     "Unresolved"
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
     ],
     "prev": [
      "SelfLink"

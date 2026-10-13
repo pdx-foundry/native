@@ -56,7 +56,7 @@ pub use field::{
     EmptyKey, FieldCondition, FieldDomain, FieldMembers, FieldReadAlternative, FieldReadOutcome,
     FieldReference, FieldShape, FieldUse, FieldUseId, KeyMatch, LookupStage, MissingResult,
     ModifierBlock, ModifierEntry, ModifierMembers, ReferenceLookup, ReferenceTarget,
-    RepeatBehavior, TriggeredModifierBlock, ValueShape, WeightBlock, WeightOperation,
+    RepeatBehavior, ScalarForm, TriggeredModifierBlock, ValueShape, WeightBlock, WeightOperation,
     WeightOtherKeys,
 };
 pub use fixture::{

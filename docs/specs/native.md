@@ -35,7 +35,7 @@ Native establishes what was read or observed. Atlas decides what that establishe
 | --- | --- | --- | --- |
 | `Native::open` | Implemented | Installation location | A pinned installation, or a precise `OpenError` |
 | `supports` | Implemented | An `Operation` | `Support::Supported`, or `Support::Unsupported` with a reason |
-| `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family, conditional read alternatives and reference lookups (target registry by content directory, stage, key match, missing-key result), and, for each root trigger and effect block, the contexts of `this`, `root`, the `from` chain and the `prev` chain that the engine's direct evaluation calls supply (a self-link stays `SelfLink`), with explicit unknowns. Where a custom loader builds its owner in a scope that the root key selects, as the events loader does, each accepted root key is a root field whose read scope is that scope (a known empty list for no scope) and whose members are the owner's fields |
+| `registries`, `registry_fields` | Implemented | A registry name for fields | Registries; fields with reader identity, broad kind, block family, conditional read alternatives and reference lookups (target registry by content directory, stage, key match, missing-key result), and, for each root trigger and effect block, the contexts of `this`, `root`, the `from` chain and the `prev` chain that the engine's direct evaluation calls supply (a self-link stays `SelfLink`), with explicit unknowns. Where a custom loader builds its owner in a scope that the root key selects, as the events loader does, each accepted root key is a root field whose read scope is that scope (a known empty list for no scope) and whose members are the owner's fields. Where a custom loader reserves one root key for another class, the registry's fields are those of the class that every other key builds, and the reserved key is one more root field: a root statement, not a member of an item, whose members are the other class's fields. `derived_names` and `modifier_families` answer the class of every other key, with an `OutsideMethod` gap that names the reserved key |
 | `start_game` | Implemented | Supervisor command, startup budget and optional fixture or loaded-modifier request | A `Game` paused at the internal boundary for its questions |
 | `Game::loaded_modifiers` | Implemented | `GameOptions::loaded_modifiers` before launch | The modifier table after all content loads, read where the engine documents its modifiers: each name with its loaded category tags, whether the executable declares it, and each `modifier_families` family and loaded item (or pair of items, for a family of two registries) that gives it; the loaded keys of each family registry; the loaded content. Unexplained names and unjoined generation sites are gaps. No config or log file is read. |
 | `Game::close` | Implemented | — | A disposal result; dropping the session or an active call also starts cleanup |
@@ -154,13 +154,20 @@ for contexts and scope types.
   never a `Complete` answer with silently unresolved properties. Reads validate the build identity,
   not the method revision.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
-- Constructor-bound root modifier fields expose `FieldMembers::ModifierBlock`: fixed keys with
+- Constructor-bound modifier fields expose `FieldMembers::ModifierBlock`, at the root and in the
+  `FieldMembers::Fields` of a collected or embedded object that the method walks as a nested owner: fixed keys with
   reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial
   or unresolved. Numeric entries share the ordinary conversion facts; scripted modifier names
   come from the registry's existing `modifier_families` answer. String reads do not establish
-  localisation-key existence. Runtime effects, deferred completion and nested modifier fields
-  remain outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
-- Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
+  localisation-key existence. A nested field keeps its nesting, its gaps name its full key path and
+  the conditions inside its grammar name the path from the registry's definition. Equal reader
+  identities give equal grammar at any depth. Runtime effects and deferred completion remain
+  outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
+- A fixed key that takes any key with one scalar value each, such as `description_parameters`,
+  exposes `FieldMembers::AnyKey`: no list limits the keys, and `value_forms` lists the written
+  value forms that the engine keeps (`Number`, `Text`, or a named `Keyword`). Its reader kind is
+  `Block`, with family `NotApplicable` and repeat `Accumulate`; it reads in no scope.
+- Constructor-bound weight fields, root or nested, have family `Weight` and expose `FieldMembers::WeightBlock`:
   the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
   operation accumulates or replaces, and whether other keys are rejected or read as trigger
   conditions. Nested `modifier`, `scaled_modifier` and `complex_trigger_modifier` entries carry
@@ -168,7 +175,7 @@ for contexts and scope types.
   `Enclosing`; the field's `read_scope` names that scope. When the readers of a key differ but all
   read one value kind, the key reports that kind with no reader identity. Weight evaluation and
   operation semantics remain outside this grammar. See [weight blocks](../native/weight-blocks.md).
-- Root fields whose collected objects have a triggered modifier clause reader have family
+- Root and nested fields whose collected objects have a triggered modifier clause reader have family
   `TriggeredModifier` and expose `FieldMembers::TriggeredModifier`: the clause's own fixed keys,
   and `other_keys`, the modifier block that reads every key the clause does not name. A `modifier`
   key carries `FieldMembers::ModifierBlock`; it and `other_keys` name the reader identity of the
@@ -182,8 +189,9 @@ for contexts and scope types.
   owner stores inline); an unknown argument, an unreached construction, disagreeing paths or
   destinations and a missing join are `Unresolved` with a gap, never every category. A key of a
   triggered modifier clause that reads into the clause's own container is `Enclosing`. A field with
-  an established non-modifier reader is `NotApplicable`; one whose reader family is unknown is
-  `Unresolved`. Atlas expands an entry's `category_tags` through `modifier_categories` and accepts
+  an established non-modifier reader is `NotApplicable`, as is a field that embeds an object of
+  another class whose generic reader names or rejects every key; any other field whose reader
+  family is unknown is `Unresolved`. Atlas expands an entry's `category_tags` through `modifier_categories` and accepts
   the entry when the sets meet. Where an accepted entry takes effect stays outside this answer.
   See [modifier masks](../native/modifier-masks.md#container-masks).
 - `DerivedName.name` uses `NamePart`; a `Field` part is a string field's path from the registry's

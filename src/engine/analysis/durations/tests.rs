@@ -1355,6 +1355,7 @@ fn scoped_byte_bounds_require_the_subtype_selection_and_literal_width() {
             },
         )]
         .into(),
+        lexer: Ok(()),
     };
     assert_eq!(scoped_storage(&facts, &numeric)[&0x9000], Ok(0x2c));
     numeric

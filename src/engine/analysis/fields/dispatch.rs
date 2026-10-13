@@ -696,7 +696,7 @@ fn apply(
             };
             state.assign(destination, Some(value));
         }
-        ("ldr" | "ldrb" | "ldrsw" | "ldur" | "str" | "strb", _) => {
+        ("ldr" | "ldrb" | "ldrsb" | "ldrsw" | "ldur" | "str" | "strb", _) => {
             let Some((operand, address)) = row.operands.split_once(',') else {
                 return Err(unsupported("memory-operands"));
             };
@@ -733,7 +733,7 @@ fn apply(
                 return Err(unsupported("compound-reader-overwrite"));
             }
             if row.operation.starts_with("ld") {
-                let width = if row.operation == "ldrb" {
+                let width = if matches!(row.operation.as_str(), "ldrb" | "ldrsb") {
                     1
                 } else if row.operation == "ldrsw" {
                     4
@@ -1355,6 +1355,10 @@ fn explore_member_with_wrapped_owner(
                 && let [tested, target] = args.as_slice()
             {
                 zero_test_branch(row, tested, target, &state, &indexes, entry)
+            } else if matches!(row.operation.as_str(), "tbz" | "tbnz")
+                && let [tested, _, target] = args.as_slice()
+            {
+                bit_test_branch(row, tested, target, &state, &indexes, entry)
             } else if row.operation == "br" {
                 table_jump(row, &state, &rows, &indexes, input.read_only_data, entry)
             } else {
@@ -1891,6 +1895,50 @@ fn zero_test_branch(
         });
         continued.push(next);
     }
+    Branching {
+        continued,
+        ..Branching::default()
+    }
+}
+
+/// Both paths of a bit test of a value that is not the token, each under a condition that no
+/// field states. A bit test of the token would split its domain by a bit, which the token
+/// intervals cannot hold, so it is a gap.
+fn bit_test_branch(
+    row: &Instruction,
+    tested: &str,
+    target: &str,
+    state: &State,
+    indexes: &BTreeMap<u64, usize>,
+    entry: u64,
+) -> Branching {
+    let Some(&target) = number(target).and_then(|a| indexes.get(&(a as u64))) else {
+        let outside = Unresolved::at("branch-target", row.address, entry, Obstacle::OutsideCode);
+        return Branching::gap(state, row.address, outside);
+    };
+    if matches!(
+        state.value(tested),
+        Some(Value::Token | Value::TokenWord(_))
+    ) {
+        let unsupported =
+            Unresolved::at("token-bit-test", row.address, entry, Obstacle::Unsupported);
+        return Branching::gap(state, row.address, unsupported);
+    }
+
+    let continued = [false, true]
+        .into_iter()
+        .map(|taken| {
+            let mut next = state.clone();
+            next.pc = if taken { target } else { state.pc };
+            next.conditions.push(Condition {
+                at: row.address,
+                value: None,
+                zero: taken == (row.operation == "tbz"),
+            });
+            next
+        })
+        .collect();
+
     Branching {
         continued,
         ..Branching::default()

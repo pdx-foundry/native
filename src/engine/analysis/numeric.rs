@@ -45,6 +45,9 @@ pub struct NumericFacts {
     pub readers: BTreeMap<String, NumericReader>,
     /// Token conversions used directly by constructed scoped numeric subtypes.
     pub token_readers: BTreeMap<String, NumericReader>,
+    /// The text lexer's token boundary, on which every mapping from token kinds to written text
+    /// rests.
+    pub lexer: Result<(), Unresolved>,
 }
 
 /// Independent facts and the remaining analysis obstructions for one shared reader.
@@ -108,6 +111,7 @@ pub(crate) fn analyze(input: &NumericInput) -> NumericFacts {
             .iter()
             .map(|(name, token)| (name.clone(), analyze_token(token, &lexer)))
             .collect(),
+        lexer,
     }
 }
 
@@ -117,6 +121,7 @@ impl Default for NumericFacts {
             readers: BTreeMap::new(),
             token_readers: BTreeMap::new(),
             modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
+            lexer: Err(Unresolved::new("numeric-lexer-not-analyzed")),
         }
     }
 }

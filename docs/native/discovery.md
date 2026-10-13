@@ -12,14 +12,14 @@ check a method in one task.
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
 | `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
-| `Native::registry_fields` | `registry-fields/v35` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
-| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v35`, `command-grammar/v19` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
-| `Reader.numeric` in fields and command grammar | `registry-fields/v35`, `command-grammar/v19` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
-| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v35`, `command-grammar/v19` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
-| `Field.entry_contexts` in `registry_fields` | `registry-fields/v35` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
-| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v35` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
-| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v35` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
-| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v35` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
+| `Native::registry_fields` | `registry-fields/v39` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
+| `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v39`, `command-grammar/v19` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
+| `Reader.numeric` in fields and command grammar | `registry-fields/v39`, `command-grammar/v19` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
+| `Reader.scoped_operand` in fields and command grammar | `registry-fields/v39`, `command-grammar/v19` | `scoped_numeric.rs`, `src/binding/binary/scoped_numeric.rs`, `src/session/scoped_numeric.rs` | [Scoped numeric](scoped-numeric.md) |
+| `Field.entry_contexts` in `registry_fields` | `registry-fields/v39` | `callbacks/blocks.rs`, `callbacks/climb.rs`, `callbacks/contexts.rs`, `src/binding/binary/callbacks.rs`, `src/binding/binary/type_pointers.rs`, `src/session/field_entries.rs` | [Block entry contexts](registry-fields.md#block-entry-contexts) |
+| `FieldMembers::ModifierBlock` in `registry_fields` | `registry-fields/v39` | `modifier_blocks.rs`, `modifier_blocks/name.rs`, `modifier_blocks/reference.rs`, `fields/member.rs`, `src/binding/binary/modifier_blocks.rs`, `src/session/modifier_blocks.rs` | [Modifier blocks](modifier-blocks.md) |
+| `FieldMembers::WeightBlock` in `registry_fields` | `registry-fields/v39` | `weight_blocks.rs`, `fields/persistent.rs`, `src/binding/binary/weight_blocks.rs`, `src/session/weight_blocks.rs` | [Weight blocks](weight-blocks.md) |
+| `FieldMembers::TriggeredModifier` in `registry_fields` | `registry-fields/v39` | `modifier_blocks/triggered.rs`, `fields/nested.rs`, `src/binding/binary/fields.rs`, `src/binding/binary/triggered_modifiers.rs`, `src/session/triggered_modifiers.rs` | [Triggered modifiers](triggered-modifiers.md) |
 | `CommandGrammar.durations` | `command-grammar/v19` | `durations.rs`, `src/binding/binary/durations.rs`, `src/session/durations.rs` | [Duration keys](durations.md) |
 | `Native::dynamic_names` | `dynamic-names/v3` | `dynamic_names.rs`, `dynamic_names/routes.rs`, `declarations/receiver.rs` | [Dynamic names](references.md#dynamic-names) |
 | `Native::command_grammar` | `command-grammar/v19` | `grammar.rs`, `grammar/coverage.rs`, `grammar/forms.rs`, `grammar/numeric.rs`, `grammar/ordering.rs`, `grammar/targets.rs`, `declarations/receiver.rs` | [Nested command grammar](command-grammar.md) |
@@ -29,15 +29,15 @@ check a method in one task.
 | `Native::scopes` | `scope-declarations/v1` | `scopes.rs` | [Scope types](engine-commands.md#scope-types) |
 | `Native::scope_links` | `scope-links/v2` | `scopes.rs` | [Scope links](engine-commands.md#scope-links) |
 | `Native::localization_declarations` | `localization-declarations/v1` | `localization.rs` | [Localization contexts, commands and links](engine-commands.md#localization-contexts-commands-and-links) |
-| `Native::on_actions`, `Native::game_rules` | `callbacks/v4` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
+| `Native::on_actions`, `Native::game_rules` | `callbacks/v5` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
 | `Native::modifier_families` | `modifier-families/v4` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
-| `Field.accepted_categories` in `registry_fields` | `registry-fields/v35` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
+| `Field.accepted_categories` in `registry_fields` | `registry-fields/v39` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
 | `Native::loader_rules` | `loader-rules/v5` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
-| `Native::derived_names` | `derived-names/v3` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
+| `Native::derived_names` | `derived-names/v4` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
 ## Registry sweep (SDK-553)
@@ -51,30 +51,24 @@ SDK-798). The recording stays on the capture host; its identity and the commands
 report are in the capture.
 
 The [sweep report](method-authoring.md#report-the-registry-sweep) over the recording gives the
-tracked baseline `tests/population/m452/registry-sweep.json` (each registry's statuses) and these
-rates, over 185 registries and 1,855 root fields. Every request has an answer, partial with typed
-gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
+tracked baseline `tests/population/m452/registry-sweep/`: each registry's statuses, and in its
+`header.json` the complete count, denominator and rate of each relationship (`relationships`).
+The baseline generates those totals, so this page does not restate them; each ticket below states
+its own change. Every request has an answer, partial with typed gaps, or `Unsupported`; none
+fails, is missing or names an unknown registry.
 
-| Relationship | Complete | Denominator | Rate |
-| --- | ---: | ---: | ---: |
-| Fields | 98 | 185 | 52.97% |
-| Reader kinds | 1,412 | 1,855 | 76.12% |
-| Shapes and conditions | 1,093 | 1,855 | 58.92% |
-| References | 24 | 417 | 5.76% |
-| Numerics | 216 | 598 | 36.12% |
-| Weights | 87 | 561 | 15.51% |
-| Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,152 | 1,855 | 62.10% |
-| **All units** | **4,082** | **7,511** | **54.35%** |
-
-No naming rule is complete because every `modifier_families` answer keeps one
-`UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
+Against the baseline before SDK-676 (4,483 of 7,268 units, 61.68%; 4,283 open gaps), SDK-676
+joined 19 root fields: nine weights complete their weight unit, and nine modifier fields, which an
+unknown family had left undetermined for weights, leave the weight denominator. It removed 43 of
+the 45 container gaps: 4,243 open gaps, and SDK-739 accepts 48 more weight-key ranges (687
+accepted in all). No naming rule is complete because every `modifier_families` answer keeps
+one `UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
 SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all units at 3,985
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
 ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
-[accepted limits](#accepted-limits-sdk-819), not open work.
+[accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
 | --- | ---: | ---: | --- |
@@ -87,9 +81,9 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
-| SDK-812 | 242 | 66 | Block entry-context stops |
-| SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader |
-| SDK-741 | 42 | 4 | `description_parameters` |
+| SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
+| SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
+| SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
 | SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
@@ -116,6 +110,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | SDK-739, [token value methods](numeric-conversion.md#token-value-methods) | 346 | 55 | The range of the weight keys `days`, `months`, `years` and `factor` |
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
+| SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
 | SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
 
 Before and after SDK-819, over the same recording:
@@ -156,18 +151,59 @@ Reader kinds went from 1,412 to 1,493 of 1,855 (76.12% to 80.49%), shapes and co
 numeric, reference and weight denominators lost 81 undetermined fields each, because those
 fields now have a reader kind. `--diff` against the tracked baseline names 50 registries.
 
+SDK-813 answered `common/planet_classes`, whose loader builds a planet class or, for the root key
+`random_list`, a random list ([root-key owners](registry-fields.md#root-key-owners-sdk-813)), and
+gave the other five `Unsupported` registries a narrower reason. Its root fields are the 70 fields
+of a planet class and `random_list`, whose members are the random list's fields. Over a new
+recording at its merge with `main` `a093883`, `--diff` against the tracked baseline names
+`common/planet_classes` and the four whose reason changed (`prescripted_countries` keeps its own):
+
+| Count | Before | After |
+| --- | ---: | ---: |
+| Fields: partial / unsupported | 74 / 6 | 75 / 5 |
+| Reader kinds | 1,512 / 1,855 | 1,574 / 1,926 |
+| Shapes and conditions | 1,349 / 1,855 | 1,376 / 1,926 |
+| References | 24 / 336 | 25 / 345 |
+| Numerics | 216 / 517 | 233 / 542 |
+| Weights | 96 / 471 | 96 / 480 |
+| Scope context | 1,247 / 1,855 | 1,309 / 1,926 |
+| **All units** | **4,549 / 7,259 (62.67%)** | **4,718 / 7,515 (62.78%)** |
+| Open gaps | 4,243 | 4,328 |
+| Accepted gaps | 687 | 695 |
+
+The 85 new open gaps and 8 accepted ones are the planet classes' own; one says that the read
+scope of `random_list` is not established. One composition site that was reached only from
+planet-class code is now joined, so every `modifier_families` answer counts 17 unjoined sites, not
+18.
+
+SDK-741 established `description_parameters` as `FieldMembers::AnyKey`
+([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)). Over a new recording at its
+merge with `main` `62f029e`, the open gaps went from 4,173 to 4,051: 88 `UnresolvedReader` stops
+(`instruction`, `reader-routing`) and 22 `read-scope: scope-argument` gaps at the key, and 12 at
+the triggered clauses' other keys, root and nested. `--diff` names 8 registries; only
+`common/ascension_perks` and `common/traditions` change a status (reader kinds 1,574 to 1,576).
+
 SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recording at `main`
-`be49f13`, the open gaps went from 4,283 to 4,263. The five clause fields have no other reader-kind
-gap, so their reader kinds become complete: 1,493 to 1,498 (80.49% to 80.75%), and all units
-4,483 to 4,488 of 7,268. `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
+`4ecbc7c`, the open gaps went from 4,051 to 4,031. The five clause fields have no other reader-kind
+gap, so their reader kinds become complete: 1,576 to 1,581 (81.83% to 82.09%), and all units
+4,734 to 4,739 of 7,515 (62.99% to 63.06%). `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
 so a loader-condition gap of another field stays open.
 
-Six registries are `Unsupported` for all three registry questions, because their loader builds
-no owner class or several (SDK-813; [custom-loader owners](registry-fields.md#custom-loader-owners)).
+SDK-812 (over a new recording at `77847bb` plus its repairs) repairs 15 of the 249 entry-context
+gaps, accepts 138 and leaves 96 open: 95 on fields with a `replace_scopes` claim, and the
+planet classes' unnamed-evaluation gap, which the limit does not list. Against the SDK-813 column
+above, open gaps go from 4,328 to 4,173 (two `derived_names` path gaps of districts and specimens
+also close with the new `csetm` and switch-table rules), accepted gaps from 695 to 833, scope
+context from 1,309 to 1,323 and all units from 4,718 to 4,732 (62.97%). `--diff` against the
+baseline names 49 registries: 7 change from the repairs and 46 move gaps to the limit.
+
+Five registries are `Unsupported` for all three registry questions, because their loader builds
+no item class or two databases load the directory; each has its reason ([root-key
+owners](registry-fields.md#root-key-owners-sdk-813)).
 The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
 the type-wide `event` block). The run proposes no manual exception.
 
@@ -345,7 +381,7 @@ which `InitPostRead` reports and replaces ([keyword domains](weight-blocks.md#ke
 ## Modifier fixed-key readers (SDK-675)
 
 The shared modifier walk reads `name`, `key` and `divide_over_pop_groups`
-([fixed-key readers](modifier-blocks.md#fixed-key-readers-sdk-675)). `description_parameters` is
+([fixed-key readers](modifier-blocks.md#fixed-key-readers-sdk-675)). `description_parameters` was
 split to SDK-741. Two of the repairs are in the shared dispatch walker, so other fields and
 commands change too: `CReader::Read(bool&)` joins a stack temporary, and `CReader::SkipToken()`
 joins with the reader alone. M452, `registry-fields/v31`:
@@ -376,9 +412,8 @@ command population, 11 effects gain Boolean keys (`add_trait.show_message`,
 fleet effects); `spawn_custom_debris` gains five named Boolean keys that it did not report before.
 No other field or command joins through the setter rule or `SkipToken`.
 
-The seven partial modifier fields are the CustomDescription variant (`1c2988588f7e8eaa`); each
-keeps the `description_parameters` gaps (14 `instruction`, 14 `reader-routing`). The triggered
-clauses stay partial for their read-scope gaps.
+The seven partial modifier fields were the CustomDescription variant (`1c2988588f7e8eaa`); each
+kept the `description_parameters` gaps (14 `instruction`, 14 `reader-routing`) until SDK-741. The triggered clauses stay partial for their read-scope gaps.
 
 ## Triggered modifier clauses (SDK-673)
 
@@ -402,7 +437,8 @@ identities `ba5f8cddeba0d833` and `1c2988588f7e8eaa`. Every field is partial for
 modifier-block reader and numeric gaps, the scoped-operand gaps of `mult` and `multiplier`, the
 read scopes (SDK-549); the Tooltip variant also lacks its embedded
 join (a branch-island base constructor). The nested `tradition_swap.triggered_modifier` uses in
-traditions and ascension perks are not joined (SDK-676).
+traditions and ascension perks join the CustomDesc clause ([nested
+owners](modifier-blocks.md#nested-owners-sdk-676)).
 
 The shared fixes change other answers on the same build:
 

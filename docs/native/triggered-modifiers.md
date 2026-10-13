@@ -104,11 +104,13 @@ Failure shapes, by field count:
 | Read scope of `potential` (stored scope) and of `modifier` and the field (scope argument) | 50 |
 | Tooltip: embedded point, scoped destination and delegate | 5 |
 
+**Nested clauses (SDK-676, M452).** `tradition_swap.triggered_modifier` in traditions and
+ascension perks is a clause of the [nested owner](modifier-blocks.md#nested-owners-sdk-676)
+`CTraditionSwap`. It has the CustomDesc identity, the same clause as the root `triggered_modifier`
+and the country mask; the sweep counts it as a nested field.
+
 **Not covered.** The sweep lists triggered-named fields with no clause reader:
 
-- `tradition_swap.triggered_modifier` in traditions and ascension perks. Collection discovery
-  does not run inside a nested owner; `nested.rs` builds a nested result with no collections.
-  SDK-676 carries the nested-owner path.
 - `common/federation_perks.triggered_modifier`, which the engine skips.
 - The four `common/economic_categories` triggered fields, which use a different reader.
 - Owners outside the population: `CTrait` (no registry), starbase buildings and modules (their

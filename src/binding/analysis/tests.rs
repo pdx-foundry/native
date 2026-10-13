@@ -71,6 +71,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let (installation, _) = Installation::open(&path).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation,
         Default::default(),
@@ -161,6 +162,7 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
     let (installation, _) = Installation::open(&path).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation.clone(),
         Default::default(),
@@ -269,6 +271,7 @@ fn field_input_refuses_an_owner_that_no_registry_has() {
                 "CLoaderDatabase".into(),
                 LoaderOwner::Owner("CLoaderItem".into()),
             )])),
+            loader_reasons: &[],
         })),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
@@ -283,6 +286,88 @@ fn field_input_refuses_an_owner_that_no_registry_has() {
 }
 
 #[test]
+fn a_root_key_owner_answers_for_the_other_class_and_names_the_keyed_class() {
+    use crate::engine::analysis::{directories::Directory, discovery::loader_owner::LoaderOwner};
+    use crate::{Answer, Basis, BuildId, Completeness, GapKind, Native, Source};
+
+    let (_image, analysis) = fixture();
+    let schedule = ScheduledDatabases {
+        inventory: ScheduleInventory {
+            rows: 1,
+            unjoined: vec!["CPlanetDatabase".into()],
+            unresolved: 0,
+        },
+        loader_directories: BTreeMap::from([(
+            "CPlanetDatabase".into(),
+            Directory::Named("common/planets".into()),
+        )]),
+        loader_owners: Ok(BTreeMap::from([(
+            "CPlanetDatabase".into(),
+            LoaderOwner::ByRootKey {
+                key: "random_list".into(),
+                keyed: "CRandomList".into(),
+                other: "CPlanet".into(),
+            },
+        )])),
+        loader_reasons: &[],
+    };
+    assert_eq!(
+        schedule
+            .loader_registry("common/planets")
+            .unwrap()
+            .unwrap()
+            .owner,
+        "CPlanet"
+    );
+    assert_eq!(
+        schedule.keyed_class("common/planets"),
+        Some(("random_list", "CRandomList"))
+    );
+
+    let catalog = Catalog {
+        candidates: Vec::new(),
+        symbols: Vec::new(),
+        strings: BTreeMap::new(),
+        pointers: BTreeMap::new(),
+        bound_slots: Default::default(),
+        imports: BTreeMap::new(),
+        symbol_index: OnceLock::new(),
+        field_input: OnceLock::new(),
+        schedule: OnceLock::from(Ok(schedule)),
+    };
+    assert!(analysis.catalog.set(Ok(catalog)).is_ok());
+    let native = Native::from_binding(crate::binding::Binding {
+        installation: analysis.installation.clone(),
+        invalidated: analysis.invalidated.clone(),
+        analysis: std::sync::Arc::new(analysis),
+        operation: None,
+    });
+    let mut answer = Answer {
+        value: (),
+        completeness: Completeness::Complete,
+        gaps: Vec::new(),
+        source: Source::new(BuildId("test".into()), "test", Basis::StaticAnalysis),
+    };
+
+    native
+        .add_keyed_class_gap(
+            crate::Operation::DerivedNames,
+            "common/planets",
+            &mut answer,
+        )
+        .unwrap();
+
+    let [gap] = &answer.gaps[..] else {
+        panic!("{:?}", answer.gaps);
+    };
+    assert_eq!(gap.kind, GapKind::OutsideMethod);
+    assert!(
+        gap.detail
+            .contains("`random_list` are items of another class")
+    );
+}
+
+#[test]
 fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
     use crate::engine::analysis::{
         directories::Directory,
@@ -293,6 +378,10 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
     let (_image, analysis) = fixture();
     let loader_directories = BTreeMap::from([
         ("COneDatabase".into(), Directory::Named("common/one".into())),
+        (
+            "CColorsDatabase".into(),
+            Directory::Named("common/colors".into()),
+        ),
         (
             "CLeftDatabase".into(),
             Directory::Named("common/pair".into()),
@@ -309,7 +398,7 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
     ]);
     let schedule = ScheduledDatabases {
         inventory: ScheduleInventory {
-            rows: 6,
+            rows: 7,
             unjoined: loader_directories.keys().cloned().collect(),
             unresolved: 0,
         },
@@ -321,7 +410,12 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
             ),
             ("CLeftDatabase".into(), LoaderOwner::Owner("CLeft".into())),
             ("CRightDatabase".into(), LoaderOwner::Owner("CRight".into())),
+            ("CColorsDatabase".into(), LoaderOwner::NoOwner),
         ])),
+        loader_reasons: &[crate::binding::groups::LoaderReason {
+            database: "CColorsDatabase",
+            reason: "the stated reason",
+        }],
     };
     let catalog = Catalog {
         candidates: vec![NamedCandidate {
@@ -353,13 +447,21 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
 
     let answer = native.registries().unwrap();
     let names: Vec<_> = answer.value.iter().map(|registry| &registry.name).collect();
-    assert_eq!(names, ["common/one", "common/pair", "common/traditions"]);
+    assert_eq!(
+        names,
+        [
+            "common/colors",
+            "common/one",
+            "common/pair",
+            "common/traditions"
+        ]
+    );
     let unnamed = answer
         .gaps
         .iter()
         .find(|gap| gap.kind == GapKind::UnnamedRegistries)
         .unwrap();
-    assert!(unnamed.detail.starts_with("2 of 6 scheduled databases"));
+    assert!(unnamed.detail.starts_with("2 of 7 scheduled databases"));
 
     let unsupported = |registry: &str| match native.registry_fields(registry) {
         Err(Error::Unsupported {
@@ -372,6 +474,8 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         unsupported("common/one"),
         "the loader builds several classes with a member reader: CFirst, CSecond"
     );
+    // A loader that the build's recipe states a reason for gives that reason.
+    assert_eq!(unsupported("common/colors"), "the stated reason");
     // Two databases load one directory; neither owner is selected.
     assert_eq!(
         unsupported("common/pair"),
@@ -829,6 +933,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     let (installation, _) = Installation::open(&hint).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation,
         Default::default(),
@@ -1326,9 +1431,10 @@ fn a_kept_registry_field_result_still_checks_executable_integrity() {
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let kept = Arc::new(RegistryFieldResult::default());
-    analysis
-        .kept_registry_fields()
-        .insert("common/traditions".into(), Arc::clone(&kept));
+    analysis.kept_registry_fields().insert(
+        ("common/traditions".into(), "CTraditionType".into()),
+        Arc::clone(&kept),
+    );
 
     let (owner, result) = analysis
         .registry_field_result("common/traditions")
@@ -1820,6 +1926,7 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         method_of: None,
         registers: Default::default(),
         members: [((register, offset), owner.into())].into(),
+        scope_parameters: Default::default(),
     };
     // CMission::Start: its mission type is the word at this + 0x18.
     assert_eq!(pointers(0x1009531d4), Some(member(0, 0x18, "CMissionType")));
@@ -1938,9 +2045,14 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
     ] {
         assert_eq!(owners[database], LoaderOwner::NoOwner, "{database}");
     }
+    // `random_list` builds the random list, inlined; every other key builds a planet class.
     assert_eq!(
         owners["CPlanetClassDatabase"],
-        LoaderOwner::Several(vec!["CPlanetClass".into(), "CPlanetClassRandomList".into()])
+        LoaderOwner::ByRootKey {
+            key: "random_list".into(),
+            keyed: "CPlanetClassRandomList".into(),
+            other: "CPlanetClass".into(),
+        }
     );
     assert_eq!(owners.len(), 22);
 }

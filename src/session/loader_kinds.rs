@@ -97,6 +97,71 @@ pub(super) fn root_fields(
     (fields, answer_gaps)
 }
 
+/// The root field for the root statements with the key `key`, which the loader reads into
+/// another class than the registry's owner, and the gaps of that field. `members` and `gaps` are
+/// the answer for that class's items.
+pub(super) fn reserved_key_field(
+    key: &str,
+    members: Vec<Field>,
+    gaps: Vec<Gap>,
+    registry: &str,
+) -> (Field, Vec<Gap>) {
+    let mut children = members;
+    for child in &mut children {
+        prefix_conditions(child, key);
+    }
+
+    // The class's registry-wide gaps are the key's; its scope statements repeat the owner's.
+    let mut field_gaps: Vec<Gap> = gaps
+        .into_iter()
+        .filter(|gap| gap.kind != GapKind::OutsideMethod)
+        .map(|mut gap| {
+            if member_subject(&gap).is_some() {
+                return under_key(gap, key);
+            }
+            if gap.subject == Some(GapSubject::registry(registry)) {
+                gap.subject = Some(GapSubject::field(key));
+            }
+
+            gap
+        })
+        .collect();
+    field_gaps.push(Gap {
+        kind: GapKind::UnresolvedPath,
+        subject: Some(GapSubject::field(key)),
+        detail: "The scope that the loader reads the root key's block in is not established."
+            .into(),
+    });
+    let reader = Reader {
+        numeric: GrammarProperty::Known(None),
+        scoped_operand: GrammarProperty::Known(None),
+        id: None,
+        kind: ReaderKind::Block,
+        family: crate::BlockFamily::Unknown,
+    };
+    let field = Field {
+        name: key.into(),
+        reader: reader.clone(),
+        shape: SHAPE,
+        read: vec![FieldReadAlternative {
+            condition: FieldCondition::Always,
+            outcome: FieldReadOutcome::Read {
+                reader,
+                shape: SHAPE,
+            },
+        }],
+        members: FieldMembers::Fields(children),
+        domain: FieldDomain::Unknown,
+        uses: Vec::new(),
+        reference: FieldReference::NotEstablished,
+        entry_contexts: Vec::new(),
+        read_scope: GrammarProperty::Unresolved,
+        accepted_categories: AcceptedCategories::NotApplicable,
+    };
+
+    (field, field_gaps)
+}
+
 /// The owner's own fields in `fields`, an answer of `result`: the members of each root key when
 /// the loader builds the owner, else the answer itself.
 pub(super) fn owner_fields<'a>(
@@ -363,6 +428,54 @@ mod tests {
             .filter(|gap| gap.detail == detail)
             .filter_map(|gap| gap.subject.clone())
             .collect()
+    }
+
+    #[test]
+    fn a_reserved_key_holds_its_class_fields_and_their_gaps() {
+        let gap = |kind, subject, detail: &str| Gap {
+            kind,
+            subject: Some(subject),
+            detail: detail.into(),
+        };
+        let gaps = vec![
+            gap(
+                GapKind::UnresolvedReader,
+                GapSubject::field("trigger"),
+                "member",
+            ),
+            gap(
+                GapKind::UnresolvedPath,
+                GapSubject::registry("planets"),
+                "path",
+            ),
+            gap(
+                GapKind::OutsideMethod,
+                GapSubject::registry("planets"),
+                "scope",
+            ),
+        ];
+
+        let (field, gaps) = reserved_key_field("random_list", vec![member()], gaps, "planets");
+
+        assert_eq!(field.name, "random_list");
+        assert_eq!(field.reader.kind, ReaderKind::Block);
+        let FieldMembers::Fields(children) = &field.members else {
+            panic!("{:?}", field.members);
+        };
+        assert_eq!(
+            children[0].uses[0].condition,
+            FieldCondition::FieldZero {
+                path: vec!["random_list".into(), "id".into()],
+                zero: true
+            }
+        );
+        assert_eq!(
+            subjects(&gaps, "member"),
+            [GapSubject::field("random_list.trigger")]
+        );
+        assert_eq!(subjects(&gaps, "path"), [GapSubject::field("random_list")]);
+        assert!(subjects(&gaps, "scope").is_empty());
+        assert_eq!(field.read_scope, GrammarProperty::Unresolved);
     }
 
     #[test]

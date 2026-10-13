@@ -7,13 +7,15 @@ use super::{declarations::Text, numeric::NUMERIC_MODIFIER_MEMBER, references::Im
 use crate::binding::{analysis::NamedCandidate, targets::DeclarationRecipe};
 use crate::engine::analysis::{
     declarations::Function,
-    decode::decode_arm64,
+    decode::{Instruction, decode_arm64},
     directories::Directory,
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{self, ConcreteReader},
     modifier_blocks::ModifierBlockInput,
+    modifier_blocks::parameters::{self, ParameterList},
     modifier_blocks::reference,
+    numeric::lexer::page_address,
     stop::Unresolved,
 };
 use crate::{AnalysisError, BlockFamily};
@@ -160,16 +162,27 @@ pub(in crate::binding) fn read(
         token_text_offset: recipe.persistent.token_text,
     };
     let reference = reference::analyze(&reference_input).map(|()| target);
-    let serializer_constructors = image
+    let mut serializer_constructors = BTreeMap::new();
+    let mut parameter_lists = Vec::new();
+    for symbol in image
         .symbols
         .iter()
         .filter(|symbol| symbol.name == recipe.modifier_serializer_constructor)
-        .filter_map(|symbol| {
-            let (address, code) = text.function(symbol.address).ok()?;
-            let rows = decode_arm64(code, address).ok()?;
-            Some((address, fields::serializer_owner_slot(&rows)?))
-        })
-        .collect();
+    {
+        let Ok((address, code)) = text.function(symbol.address) else {
+            continue;
+        };
+        let Ok(rows) = decode_arm64(code, address) else {
+            continue;
+        };
+        let Some(slot) = fields::serializer_owner_slot(&rows) else {
+            continue;
+        };
+        serializer_constructors.insert(address, slot);
+        parameter_lists.extend(parameter_list(
+            image, &text, &names, &tokens, recipe, &rows, slot,
+        ));
+    }
     Ok(ModifierBlockInput {
         points,
         functions,
@@ -184,6 +197,47 @@ pub(in crate::binding) fn read(
         base,
         references: BTreeMap::from([(recipe.modifier_reference_member.into(), reference)]),
         name_reads,
+        parameter_lists,
+    })
+}
+
+/// The parameter list of the serializer whose constructor is `constructor`: the member in its
+/// vtable's member slot, and the entry reader in the read slot of the vtable that the member's
+/// list route stores. `None` when the serializer has no member body to attach a result to.
+fn parameter_list(
+    image: &Image<'_>,
+    text: &Text<'_>,
+    names: &BTreeMap<u64, String>,
+    tokens: &BTreeMap<i64, fields::Token>,
+    recipe: &DeclarationRecipe,
+    constructor: &[Instruction],
+    wrapped: i64,
+) -> Option<ParameterList> {
+    let point = page_address(constructor.first()?, constructor.get(1)?)?;
+    let member = *image
+        .pointers
+        .get(&(point + recipe.persistent.member_slot))?;
+    let (member, code) = text.function(member).ok()?;
+    let rows = decode_arm64(code, member).ok()?;
+    let value_token = recipe.persistent.value_token;
+    let list = parameters::list_route(&rows, names, wrapped, value_token).and_then(|route| {
+        let entry = image
+            .pointers
+            .get(&(route.entry_point + recipe.persistent.read_slot))
+            .and_then(|&entry| text.function(entry).ok())
+            .and_then(|(entry, code)| decode_arm64(code, entry).ok())
+            .ok_or(Unresolved::new("parameter-entry-body"))?;
+        Ok(parameters::List {
+            token: route.token,
+            branch: route.branch,
+            reader: names.get(&member).cloned().unwrap_or_default(),
+            accepted: parameters::accepted_kinds(&entry, names, tokens, value_token)?,
+        })
+    });
+
+    Some(ParameterList {
+        body: member..member + code.len() as u64,
+        list,
     })
 }
 

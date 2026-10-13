@@ -3,7 +3,8 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
-        FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PointReader, has_owner_receiver,
+        FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput, PointReader,
+        has_owner_receiver,
     },
 };
 use crate::{AnalysisError, BlockFamily};
@@ -46,7 +47,7 @@ impl SharedFieldInput {
 }
 
 /// The function that reads each root statement of a custom loader's files.
-const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
+pub(super) const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
 
 /// The custom loader whose root switch the field input may read: its database class and the
 /// reader offset of a statement's token word.
@@ -101,12 +102,14 @@ pub(in crate::binding) fn read(
         });
     }
     let objects = collect_objects(
+        image,
         &text,
-        indexed,
-        pointers,
         &data,
+        Some(&shared.persistent),
         persistent_recipe,
+        &root,
         &mut functions,
+        &mut gaps,
     )?;
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
@@ -133,16 +136,7 @@ pub(in crate::binding) fn read(
         owner,
         persistent_recipe,
     )?;
-    // The member readers that the method may walk for the keys of an embedded object.
-    for reader in persistent
-        .readers
-        .values()
-        .filter(|reader| reader.family == BlockFamily::Unknown)
-    {
-        if let [symbol] = indexed.named(&reader.member).collect::<Vec<_>>()[..] {
-            push_function(&text, &mut functions, symbol);
-        }
-    }
+    push_embedded_readers(&text, indexed, &persistent, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
@@ -273,17 +267,42 @@ fn statement_reader(
         .then(|| (rows[*read].address + 4, source.to_owned()))
 }
 
-/// Follow direct constructor and factory calls only; a symbol alone does not attach a nested
-/// class to a field.
-fn collect_objects(
+/// The member readers that the method may walk for the keys of an embedded object.
+fn push_embedded_readers(
     text: &Text,
     symbols: IndexedSymbols<'_>,
-    pointers: &BTreeMap<u64, u64>,
-    data: &ReadOnlyData,
-    recipe: &PersistentRecipe,
+    persistent: &PersistentInput,
     functions: &mut Vec<Function>,
+) {
+    for reader in persistent
+        .readers
+        .values()
+        .filter(|reader| reader.family == BlockFamily::Unknown)
+    {
+        if let [symbol] = symbols.named(&reader.member).collect::<Vec<_>>()[..] {
+            push_function(text, functions, symbol);
+        }
+    }
+}
+
+/// The objects that the member reader `root` constructs and inserts. Follow direct constructor
+/// and factory calls only; a symbol alone does not attach a nested class to a field. With
+/// `nested`, an object whose reader has no block family is a nested owner: it gets its own
+/// constructor evidence and inserted objects, one level deep.
+#[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its two outputs.
+fn collect_objects(
+    image: &Image<'_>,
+    text: &Text,
+    data: &ReadOnlyData,
+    nested: Option<&SharedPersistent>,
+    recipe: &PersistentRecipe,
+    root: &str,
+    functions: &mut Vec<Function>,
+    gaps: &mut Vec<String>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
-    let Some(root) = functions.first() else {
+    let symbols = image.index.over(image.symbols);
+    let pointers = image.pointers;
+    let Some(root) = functions.iter().find(|function| function.name == root) else {
         return Ok(Vec::new());
     };
     let rows = crate::engine::analysis::decode::decode_arm64(&root.code, root.address)
@@ -372,6 +391,23 @@ fn collect_objects(
         .collect();
         let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
         let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
+        let owner_of_keys = reader
+            .as_ref()
+            .is_none_or(|bound| bound.reader.family == BlockFamily::Unknown);
+        let (persistent, nested_objects) = match nested.filter(|_| owner_of_keys) {
+            Some(shared) => nested_owner(
+                image,
+                text,
+                data,
+                shared,
+                recipe,
+                &class,
+                &member_name,
+                functions,
+                gaps,
+            )?,
+            None => (None, Vec::new()),
+        };
         objects.push(ObjectReader {
             data_offset,
             count_offset,
@@ -388,9 +424,45 @@ fn collect_objects(
             pointers: slots,
             read: *reads.first().unwrap(),
             reader,
+            persistent,
+            objects: nested_objects,
         });
     }
     Ok(objects)
+}
+
+/// The constructor evidence and inserted objects of the nested owner `class`, whose member reader
+/// is `member`. A constructor that the binding cannot read leaves the evidence out, with a gap.
+#[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its two outputs.
+fn nested_owner(
+    image: &Image<'_>,
+    text: &Text,
+    data: &ReadOnlyData,
+    shared: &SharedPersistent,
+    recipe: &PersistentRecipe,
+    class: &str,
+    member: &str,
+    functions: &mut Vec<Function>,
+    gaps: &mut Vec<String>,
+) -> Result<(Option<PersistentInput>, Vec<ObjectReader>), AnalysisError> {
+    let persistent = match super::receivers::persistent(image, text, data, shared, class, recipe) {
+        Ok(persistent) => {
+            push_embedded_readers(
+                text,
+                image.index.over(image.symbols),
+                &persistent,
+                functions,
+            );
+            Some(persistent)
+        }
+        Err(_) => {
+            gaps.push(format!("unreadable constructors of nested owner {class}"));
+            None
+        }
+    };
+    let objects = collect_objects(image, text, data, None, recipe, member, functions, gaps)?;
+
+    Ok((persistent, objects))
 }
 
 /// The class that a `PdxMakeScopedPtr<Class, …>` factory allocates and constructs.
