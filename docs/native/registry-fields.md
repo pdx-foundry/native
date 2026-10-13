@@ -4,8 +4,8 @@
 alternatives, nested object fields and local stored-value selections; `Native::registries()`
 gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
-ever established; Git `d8f9d8a`); SDK-627 owns enum domains and required fields, except the
-weight keyword domains, which the [weight blocks](weight-blocks.md) method establishes (SDK-725).
+ever established; Git `d8f9d8a`); SDK-828 owns enum domains, except the weight keyword domains, which the
+[weight blocks](weight-blocks.md) method establishes (SDK-725), and SDK-829 owns required fields.
 
 ## What complete means
 
@@ -128,7 +128,7 @@ belongs to one row.
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
-| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-627 keyword domains. |
+| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-828 keyword domains. |
 | Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
 | Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
 | Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |

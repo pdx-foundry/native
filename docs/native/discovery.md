@@ -94,7 +94,7 @@ that the read does not reset, and names the cause of every other unknown repeat.
 `bdc8110` its shape had 1,054 gaps in 116 registries; 916 remain in 109, and
 `shapes_and_conditions` rises from 1,376 to 1,481 of 1,926 fields (71.44% to 76.90%). Of the 916,
 764 wait for a field's shared reader (SDK-710's families) and 22 are event kinds, whose repeat
-belongs to the loader. Enum domains and required fields are not part of this change.
+belongs to the loader. Enum domains moved to SDK-828 and required fields to SDK-829.
 
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
 gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 300 other gaps in
