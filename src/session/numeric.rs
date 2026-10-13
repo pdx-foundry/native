@@ -11,8 +11,8 @@ use crate::{
 /// What the numeric facts of one or more readers add to an answer.
 #[derive(Default)]
 pub(super) struct ReaderLimits {
-    /// A limitation that makes the answer partial.
-    incomplete: bool,
+    /// The most fundamental obstacle that makes the answer partial.
+    incomplete: Option<Obstacle>,
     unrepresentable_bounds: bool,
     /// The platform scanner's own conversion, outside the method.
     scanner: bool,
@@ -20,9 +20,37 @@ pub(super) struct ReaderLimits {
     binary_input: bool,
 }
 
+/// What keeps a numeric conversion incomplete, from the least to the most fundamental. A
+/// conversion path that is not established leaves its storage and range unknown too.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Obstacle {
+    Range,
+    Storage,
+    ConversionPath,
+}
+
+impl Obstacle {
+    const ALL: [Self; 3] = [Self::Range, Self::Storage, Self::ConversionPath];
+
+    fn detail(self) -> &'static str {
+        match self {
+            Self::Range => UNKNOWN_RANGE,
+            Self::Storage => UNKNOWN_STORAGE,
+            Self::ConversionPath => UNKNOWN_CONVERSION_PATH,
+        }
+    }
+
+    /// The obstacle that an incomplete-conversion gap names.
+    fn of(gap: &Gap) -> Option<Self> {
+        Self::ALL.into_iter().find(|obstacle| {
+            gap.kind == GapKind::NumericConversion && gap.detail == obstacle.detail()
+        })
+    }
+}
+
 impl ReaderLimits {
     fn include(&mut self, other: Self) {
-        self.incomplete |= other.incomplete;
+        self.incomplete = self.incomplete.max(other.incomplete);
         self.unrepresentable_bounds |= other.unrepresentable_bounds;
         self.scanner |= other.scanner;
         self.binary_input |= other.binary_input;
@@ -30,18 +58,27 @@ impl ReaderLimits {
 }
 
 /// Classify one numeric fact. A typed reason, or a storage property or range that is not
-/// `Known`, makes it incomplete; a boundary reason never does.
+/// `Known`, makes it incomplete; a boundary reason never does. The float bound reason is a range
+/// fact with its own gap, so it is not a conversion-path obstacle.
 pub(super) fn limits(fact: &NumericReader) -> ReaderLimits {
-    let established = match &fact.conversion {
+    let path_gap = fact
+        .gaps
+        .iter()
+        .any(|gap| gap.reason != FLOAT_BOUND_REPRESENTATION_GAP);
+    let conversion_obstacle = match &fact.conversion {
         GrammarProperty::Known(Some(conversion)) | GrammarProperty::Partial(Some(conversion)) => {
-            storage_known(conversion)
+            obstacle(conversion)
         }
-        GrammarProperty::Known(None) => true,
-        _ => false,
+        GrammarProperty::Known(None) => None,
+        _ => Some(Obstacle::ConversionPath),
     };
 
     ReaderLimits {
-        incomplete: !established || !fact.gaps.is_empty(),
+        incomplete: if path_gap {
+            Some(Obstacle::ConversionPath)
+        } else {
+            conversion_obstacle
+        },
         unrepresentable_bounds: fact
             .gaps
             .iter()
@@ -57,13 +94,21 @@ pub(super) fn limits(fact: &NumericReader) -> ReaderLimits {
     }
 }
 
-/// Literal syntax stays partial by design, so it is not part of the storage that must be known.
-fn storage_known(conversion: &NumericConversion) -> bool {
-    matches!(conversion.representation, GrammarProperty::Known(_))
+/// The first storage property or the range that is not `Known`. Literal syntax stays partial by
+/// design, so it is not part of the storage that must be known.
+fn obstacle(conversion: &NumericConversion) -> Option<Obstacle> {
+    let storage_known = matches!(conversion.representation, GrammarProperty::Known(_))
         && matches!(conversion.width_bits, GrammarProperty::Known(_))
         && matches!(conversion.signedness, GrammarProperty::Known(_))
-        && matches!(conversion.scale, GrammarProperty::Known(_))
-        && matches!(conversion.accepted_range, GrammarProperty::Known(_))
+        && matches!(conversion.scale, GrammarProperty::Known(_));
+
+    if !storage_known {
+        Some(Obstacle::Storage)
+    } else if !matches!(conversion.accepted_range, GrammarProperty::Known(_)) {
+        Some(Obstacle::Range)
+    } else {
+        None
+    }
 }
 
 /// Attach conversion facts and retain the obstructions that need public gaps.
@@ -90,11 +135,12 @@ fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimit
         | ReaderKind::Block => GrammarProperty::Known(None),
         _ => GrammarProperty::Unresolved,
     };
+    let numeric = matches!(
+        reader.kind,
+        ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
+    );
     ReaderLimits {
-        incomplete: matches!(
-            reader.kind,
-            ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
-        ),
+        incomplete: numeric.then_some(Obstacle::ConversionPath),
         ..ReaderLimits::default()
     }
 }
@@ -108,7 +154,12 @@ pub(super) fn fields(
     for field in values {
         let mut path = prefix.to_vec();
         path.push(field.name.clone());
-        let mut limits = attach_reader_facts(&mut field.reader, facts);
+        let field_limits = attach_reader_facts(&mut field.reader, facts);
+        let mut limits = if alternatives_carry_the_readers(field) {
+            ReaderLimits::default()
+        } else {
+            field_limits
+        };
         for alternative in &mut field.read {
             if let FieldReadOutcome::Read { reader: value, .. } = &mut alternative.outcome {
                 limits.include(attach_reader_facts(value, facts));
@@ -121,6 +172,23 @@ pub(super) fn fields(
             _ => {}
         }
     }
+}
+
+/// A field whose alternatives read with different readers has no reader identity of its own.
+/// When every alternative is rejected or reads with an identified reader, those readers' facts are
+/// the field's facts, and the field reader adds no limit.
+fn alternatives_carry_the_readers(field: &Field) -> bool {
+    let identified = |alternative: &crate::FieldReadAlternative| match &alternative.outcome {
+        FieldReadOutcome::Read { reader, .. } => reader.id.is_some(),
+        FieldReadOutcome::Rejected => true,
+        FieldReadOutcome::Unresolved => false,
+    };
+    let reads = field
+        .read
+        .iter()
+        .any(|alternative| matches!(alternative.outcome, FieldReadOutcome::Read { .. }));
+
+    field.reader.id.is_none() && reads && field.read.iter().all(identified)
 }
 
 /// Attach numeric facts to the keys and numeric entries of the modifier block at `path`.
@@ -200,24 +268,42 @@ pub(super) fn grammar(
         }
         for mut child_gap in child_gaps {
             child_gap.subject = Some(GapSubject::answer_item(name));
-            push_once(gaps, child_gap);
+            push_most_fundamental(gaps, child_gap);
         }
+    }
+}
+
+/// Add `gap` once. An incomplete-conversion gap keeps one gap per subject: the most fundamental
+/// obstacle replaces a lesser one, and a lesser one is dropped.
+fn push_most_fundamental(gaps: &mut Vec<Gap>, gap: Gap) {
+    let Some(obstacle) = Obstacle::of(&gap) else {
+        return push_once(gaps, gap);
+    };
+    let existing = gaps
+        .iter()
+        .position(|other| other.subject == gap.subject && Obstacle::of(other).is_some());
+    match existing {
+        None => gaps.push(gap),
+        Some(index) if Obstacle::of(&gaps[index]) < Some(obstacle) => gaps[index] = gap,
+        Some(_) => {}
     }
 }
 
 /// Add the public gaps of `limits` at `subject`, each once.
 pub(super) fn push_gaps(gaps: &mut Vec<Gap>, subject: GapSubject, limits: &ReaderLimits) {
     let details = [
-        (limits.incomplete, GapKind::NumericConversion, INCOMPLETE),
-        (
-            limits.unrepresentable_bounds,
-            GapKind::NumericConversion,
-            UNREPRESENTABLE_BOUNDS,
-        ),
-        (limits.scanner, GapKind::OutsideMethod, SCANNER),
-        (limits.binary_input, GapKind::OutsideMethod, BINARY_INPUT),
+        limits
+            .incomplete
+            .map(|obstacle| (GapKind::NumericConversion, obstacle.detail())),
+        limits
+            .unrepresentable_bounds
+            .then_some((GapKind::NumericConversion, UNREPRESENTABLE_BOUNDS)),
+        limits.scanner.then_some((GapKind::OutsideMethod, SCANNER)),
+        limits
+            .binary_input
+            .then_some((GapKind::OutsideMethod, BINARY_INPUT)),
     ];
-    for (_, kind, detail) in details.into_iter().filter(|(present, ..)| *present) {
+    for (kind, detail) in details.into_iter().flatten() {
         let gap = Gap {
             kind,
             subject: Some(subject.clone()),
@@ -227,7 +313,13 @@ pub(super) fn push_gaps(gaps: &mut Vec<Gap>, subject: GapSubject, limits: &Reade
     }
 }
 
-const INCOMPLETE: &str = "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established.";
+const UNKNOWN_RANGE: &str =
+    "Numeric conversion is incomplete: the accepted range is not established.";
+
+const UNKNOWN_STORAGE: &str = "Numeric conversion is incomplete: a storage property (representation, width, signedness or scale) is not established.";
+
+const UNKNOWN_CONVERSION_PATH: &str =
+    "Numeric conversion is incomplete: the engine conversion path is not established.";
 
 const UNREPRESENTABLE_BOUNDS: &str =
     "Exact binary32 range endpoints cannot be represented by NumericBound.";
@@ -442,12 +534,13 @@ mod tests {
     }
 
     #[test]
-    fn only_typed_limits_make_a_numeric_answer_partial() {
-        use crate::Completeness::{Complete, Partial};
+    fn only_typed_limits_make_a_numeric_answer_partial_and_the_gap_names_the_obstacle() {
         let mut narrow = established();
         narrow.signedness = GrammarProperty::Unresolved;
         let mut mismatched_scale = established();
         mismatched_scale.scale = GrammarProperty::Unresolved;
+        let mut unknown_range = established();
+        unknown_range.accepted_range = GrammarProperty::Unresolved;
         let mut fixed_point_boundary = SCANNER_REASONS.to_vec();
         fixed_point_boundary.push(BINARY_INPUT_BOUNDARY);
 
@@ -457,35 +550,42 @@ mod tests {
                 established(),
                 vec![],
                 SCANNER_REASONS.to_vec(),
-                Complete,
+                None,
+            ),
+            (
+                "unknown range",
+                unknown_range,
+                vec![],
+                SCANNER_REASONS.to_vec(),
+                Some(UNKNOWN_RANGE),
             ),
             (
                 "narrow signedness",
                 narrow,
                 vec![],
                 SCANNER_REASONS.to_vec(),
-                Partial,
+                Some(UNKNOWN_STORAGE),
             ),
             (
                 "mismatched scale",
                 mismatched_scale,
                 vec![],
                 SCANNER_REASONS.to_vec(),
-                Partial,
+                Some(UNKNOWN_STORAGE),
             ),
             (
                 "binary input",
                 established(),
                 vec![],
                 fixed_point_boundary,
-                Complete,
+                None,
             ),
             (
                 "raw path not joined",
                 established(),
                 vec!["numeric-raw-value-mode"],
                 SCANNER_REASONS.to_vec(),
-                Partial,
+                Some(UNKNOWN_CONVERSION_PATH),
             ),
         ] {
             let facts = integer_facts(
@@ -497,7 +597,6 @@ mod tests {
             let mut gaps = Vec::new();
             fields(&mut values, &facts, &[], &mut gaps);
 
-            assert_eq!(crate::Completeness::from_gaps(&gaps), expected, "{case}");
             let has = |kind, detail: &str| {
                 gaps.iter()
                     .any(|gap| gap.kind == kind && gap.detail == detail)
@@ -508,11 +607,12 @@ mod tests {
                 boundary.contains(&BINARY_INPUT_BOUNDARY),
                 "{case}"
             );
-            assert_eq!(
-                has(GapKind::NumericConversion, INCOMPLETE),
-                expected == Partial,
-                "{case}"
-            );
+            let numeric: Vec<_> = gaps
+                .iter()
+                .filter(|gap| gap.kind == GapKind::NumericConversion)
+                .map(|gap| gap.detail.as_str())
+                .collect();
+            assert_eq!(numeric, Vec::from_iter(expected), "{case}");
         }
 
         let unmatched = integer_facts(GrammarProperty::Unresolved, &["numeric-token-shape"], &[]);
@@ -520,7 +620,130 @@ mod tests {
         let mut gaps = Vec::new();
         fields(&mut values, &unmatched, &[], &mut gaps);
         assert_eq!(values[0].reader.numeric, GrammarProperty::Unresolved);
-        assert_eq!(crate::Completeness::from_gaps(&gaps), Partial);
+        assert_eq!(gaps[0].detail, UNKNOWN_CONVERSION_PATH);
+    }
+
+    /// Facts for `CReader::Read(int&)` with an unknown range, and for `CReader::Read(float&)`
+    /// with a typed conversion-path reason on otherwise established storage.
+    fn range_and_path_facts() -> NumericFacts {
+        let mut unknown_range = established();
+        unknown_range.accepted_range = GrammarProperty::Unresolved;
+        let fact = |conversion: NumericConversion, gaps: Vec<Unresolved>| NumericReader {
+            conversion: GrammarProperty::Partial(Some(conversion)),
+            gaps,
+            boundary: Vec::new(),
+        };
+        NumericFacts {
+            readers: [
+                (
+                    "CReader::Read(int&)".into(),
+                    fact(unknown_range, Vec::new()),
+                ),
+                (
+                    "CReader::Read(float&)".into(),
+                    fact(
+                        established(),
+                        vec![Unresolved::new("numeric-raw-value-mode")],
+                    ),
+                ),
+            ]
+            .into(),
+            ..NumericFacts::default()
+        }
+    }
+
+    fn numeric_details(gaps: &[Gap]) -> Vec<&str> {
+        gaps.iter()
+            .filter(|gap| gap.kind == GapKind::NumericConversion)
+            .map(|gap| gap.detail.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn a_field_reports_the_conversion_path_of_any_reader_over_a_range() {
+        for (field_callee, alternative_callee) in [
+            ("CReader::Read(int&)", "CReader::Read(float&)"),
+            ("CReader::Read(float&)", "CReader::Read(int&)"),
+        ] {
+            let mut field = numeric_field(integer_reader());
+            field.reader.id = Some(ReaderId::from_callee(field_callee));
+            let FieldReadOutcome::Read { reader, .. } = &mut field.read[0].outcome else {
+                panic!()
+            };
+            reader.id = Some(ReaderId::from_callee(alternative_callee));
+            let mut gaps = Vec::new();
+
+            fields(
+                std::slice::from_mut(&mut field),
+                &range_and_path_facts(),
+                &[],
+                &mut gaps,
+            );
+
+            assert_eq!(
+                numeric_details(&gaps),
+                [UNKNOWN_CONVERSION_PATH],
+                "{field_callee}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_field_without_a_reader_identity_takes_the_limits_of_its_alternatives() {
+        let alternative = |callee: &str| {
+            let mut reader = integer_reader();
+            reader.id = Some(ReaderId::from_callee(callee));
+            FieldReadAlternative {
+                condition: FieldCondition::Always,
+                outcome: FieldReadOutcome::Read {
+                    reader,
+                    shape: FieldShape {
+                        value: ValueShape::Scalar,
+                        repeat: RepeatBehavior::Replace,
+                    },
+                },
+            }
+        };
+        let mut facts = range_and_path_facts();
+        let mut unknown_range = established();
+        unknown_range.accepted_range = GrammarProperty::Unresolved;
+        facts.readers.insert(
+            "CReader::Read(short&)".into(),
+            NumericReader {
+                conversion: GrammarProperty::Partial(Some(unknown_range)),
+                gaps: Vec::new(),
+                boundary: Vec::new(),
+            },
+        );
+        let unresolved = FieldReadAlternative {
+            condition: FieldCondition::Always,
+            outcome: FieldReadOutcome::Unresolved,
+        };
+
+        for (case, read, expected) in [
+            (
+                "identified readers",
+                vec![
+                    alternative("CReader::Read(int&)"),
+                    alternative("CReader::Read(short&)"),
+                ],
+                UNKNOWN_RANGE,
+            ),
+            (
+                "an unresolved alternative",
+                vec![alternative("CReader::Read(int&)"), unresolved.clone()],
+                UNKNOWN_CONVERSION_PATH,
+            ),
+        ] {
+            let mut field = numeric_field(integer_reader());
+            field.reader.id = None;
+            field.read = read;
+            let mut gaps = Vec::new();
+
+            fields(std::slice::from_mut(&mut field), &facts, &[], &mut gaps);
+
+            assert_eq!(numeric_details(&gaps), [expected], "{case}");
+        }
     }
 
     #[test]
@@ -657,7 +880,7 @@ mod tests {
                 storage_width_bits: 64,
             }),
         };
-        assert!(!attach_reader_facts(&mut block, &facts).incomplete);
+        assert!(attach_reader_facts(&mut block, &facts).incomplete.is_none());
         assert_eq!(block.numeric, GrammarProperty::Known(None));
     }
 
@@ -720,6 +943,65 @@ mod tests {
             ));
         }
     }
+    #[test]
+    fn numeric_child_gaps_keep_the_most_fundamental_obstacle_at_the_parent() {
+        let reader = |callee: &str| {
+            let mut reader = integer_reader();
+            reader.id = Some(ReaderId::from_callee(callee));
+            reader
+        };
+        let field = |name: &str, callee: &str| {
+            let mut field = numeric_field(reader(callee));
+            field.name = name.into();
+            field
+        };
+        let block = Reader {
+            id: None,
+            kind: ReaderKind::Block,
+            family: crate::BlockFamily::Effect,
+            numeric: GrammarProperty::Unresolved,
+            scoped_operand: GrammarProperty::Unresolved,
+        };
+        for keys in [
+            [
+                ("range", "CReader::Read(int&)"),
+                ("path", "CReader::Read(float&)"),
+            ],
+            [
+                ("path", "CReader::Read(float&)"),
+                ("range", "CReader::Read(int&)"),
+            ],
+        ] {
+            let child = CommandGrammar {
+                reader: block.clone(),
+                forms: GrammarProperty::Known(vec![CommandForm::Block]),
+                targets: GrammarProperty::Known(vec![]),
+                child_scopes: GrammarProperty::Unresolved,
+                child_families: GrammarProperty::Known(vec![]),
+                fixed_keys: GrammarProperty::Known(
+                    keys.iter()
+                        .map(|(name, callee)| field(name, callee))
+                        .collect(),
+                ),
+                numeric_keys: GrammarProperty::Known(None),
+                ordering: GrammarProperty::Known(vec![]),
+                durations: GrammarProperty::Unresolved,
+            };
+            let mut parent = child.clone();
+            parent.fixed_keys = GrammarProperty::Known(vec![]);
+            parent.numeric_keys = GrammarProperty::Known(Some(Box::new(child)));
+            let mut gaps = Vec::new();
+
+            grammar(&mut parent, "parent", &range_and_path_facts(), &mut gaps);
+
+            assert_eq!(
+                numeric_details(&gaps),
+                [UNKNOWN_CONVERSION_PATH],
+                "{keys:?}"
+            );
+        }
+    }
+
     #[test]
     fn modifier_children_and_entries_use_the_shared_normalization_pass() {
         use crate::engine::analysis::fields::ReaderJoin;

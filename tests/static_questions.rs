@@ -2661,7 +2661,7 @@ fn the_council_agenda_gate_accepts_only_the_ai_weight_entry_gap() {
     assert!(!is_accepted_ai_weight_gap(&gap(
         GapKind::NumericConversion,
         "agenda_cost",
-        "Numeric conversion is incomplete: a storage property, the accepted range or an engine conversion path is not established."
+        "Numeric conversion is incomplete: the accepted range is not established."
     )));
     assert!(!is_accepted_ai_weight_gap(&gap(
         GapKind::UnresolvedPath,
