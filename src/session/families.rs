@@ -159,6 +159,13 @@ fn normalized_families(
             }
             match &family.condition {
                 Condition::Always => {}
+                Condition::AfterAssumedText => gaps.push(registry_gap(
+                    GapKind::UnresolvedPath,
+                    subject,
+                    format!(
+                        "every path registers {template}, but some only after a name part that the method does not follow, so the path may not be the engine's"
+                    ),
+                )),
                 Condition::Unresolved => gaps.push(registry_gap(
                     GapKind::UnresolvedPath,
                     subject,
@@ -259,7 +266,9 @@ pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> Modi
     };
     let condition = match family.condition {
         Condition::Always => GenerationCondition::Always,
-        Condition::Unresolved | Condition::ItemRoot(_) => GenerationCondition::Unresolved,
+        Condition::AfterAssumedText | Condition::Unresolved | Condition::ItemRoot(_) => {
+            GenerationCondition::Unresolved
+        }
     };
 
     ModifierFamily {

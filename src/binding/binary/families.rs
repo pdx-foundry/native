@@ -22,6 +22,7 @@ use crate::engine::analysis::{
 
 use super::super::targets::DeclarationRecipe;
 use super::declarations::{Text, addresses, unique};
+use super::grammar::LOG_FILE_AND_LINE;
 use super::language::{GENERATE_MODIFIER, constant_data, generation_calls};
 
 /// Import stubs keep their raw name when it does not demangle.
@@ -130,14 +131,13 @@ pub(in crate::binding) fn index(
             .collect();
         let path = join.map(|join| join.path.clone()).unwrap_or_default();
         let callers = roots.iter().map(|root| root.function).collect();
-        let entered = entered(
-            &text,
-            &names,
-            &strings,
-            callers,
-            path,
-            &[registration].into(),
-        )?;
+        // A run must not enter the diagnostic constructor: its loop clears a large buffer byte by
+        // byte and spends a joined run's loop arrivals.
+        let recorded = addresses(symbols, LOG_FILE_AND_LINE)
+            .into_iter()
+            .chain([registration])
+            .collect();
+        let entered = entered(&text, &names, &strings, callers, path, &recorded)?;
         let constructors = constructors(symbols, registry.owner);
         let second_inputs = join
             .into_iter()
@@ -347,18 +347,12 @@ fn owns(registry: &NamedRegistry, class: &str) -> bool {
 fn roots(symbols: &[Symbol], registries: &[NamedRegistry]) -> BTreeMap<u64, RootOf> {
     let mut roots = BTreeMap::new();
     for registry in registries {
-        let loop_prefix = format!(
-            "TSingleObjectGameDatabase<{}, {}, ",
-            registry.database, registry.owner
-        );
         let item_prefix = format!("{}::InitPostRead(", registry.owner);
         let generator = format!("{}::GenerateModifiers()", registry.database);
 
         for symbol in symbols {
             let name = symbol.name.as_str();
-            let receiver = if name == generator
-                || (name.starts_with(&loop_prefix) && name.ends_with(">::PostReadInit()"))
-            {
+            let receiver = if name == generator || is_database_loop(name, registry) {
                 Receiver::Database
             } else if name.starts_with(&item_prefix) && !name.contains(".cold.") {
                 Receiver::Item
@@ -387,6 +381,15 @@ fn roots(symbols: &[Symbol], registries: &[NamedRegistry]) -> BTreeMap<u64, Root
     }
 
     roots
+}
+
+/// Whether `name` is the post-read loop of `registry`'s database over its items.
+fn is_database_loop(name: &str, registry: &NamedRegistry) -> bool {
+    let prefix = format!(
+        "TSingleObjectGameDatabase<{}, {}, ",
+        registry.database, registry.owner
+    );
+    name.starts_with(&prefix) && name.ends_with(">::PostReadInit()")
 }
 
 /// The class of a post-read function, when `name` is one. Thunks and cold parts are not.
@@ -471,6 +474,11 @@ pub(super) fn loading(
         .into_iter()
         .map(|address| function(address, &database_constructor))
         .collect();
+    let database_loops: Vec<Function> = symbols
+        .iter()
+        .filter(|symbol| is_database_loop(&symbol.name, registry))
+        .map(|symbol| function(symbol.address, &symbol.name))
+        .collect();
 
     let item_roots: BTreeSet<u64> = roots
         .iter()
@@ -518,12 +526,14 @@ pub(super) fn loading(
     let functions: Vec<u64> = loaders
         .iter()
         .chain(&database_constructors)
+        .chain(&database_loops)
         .map(|function| function.address)
         .chain(dispatch.iter().copied())
         .collect();
     Loading {
         loaders,
         database_constructors,
+        database_loops,
         elsewhere,
         inline_constructions,
         constructors,
