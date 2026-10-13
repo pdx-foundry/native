@@ -500,7 +500,16 @@ impl Native {
                 facts.blocks.scope_names.as_deref(),
             );
         }
-        storage_gaps(&value, None, &mut gaps);
+        if result.loader.is_some() {
+            for key in &value {
+                gaps.push(super::loader_kinds::repeat_gap(&key.name));
+                if let crate::FieldMembers::Fields(members) = &key.members {
+                    storage_gaps(members, Some(&key.name), &mut gaps);
+                }
+            }
+        } else {
+            storage_gaps(&value, None, &mut gaps);
+        }
         let answer = Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
@@ -965,20 +974,17 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
             Some(parent) => format!("{parent}.{}", field.name),
             None => field.name.clone(),
         };
-        let repeat_unresolved = field.shape.repeat == crate::RepeatBehavior::Unknown;
-        let members_unresolved = matches!(field.members, crate::FieldMembers::Unresolved)
-            && field.reader.family == crate::BlockFamily::Unknown;
-        let detail = match (repeat_unresolved, members_unresolved) {
-            (true, true) => Some("Repeat behavior and nested fields remain unresolved."),
-            (true, false) => Some("Repeat behavior remains unresolved."),
-            (false, true) => Some("Nested fields remain unresolved."),
-            (false, false) => None,
-        };
-        if let Some(detail) = detail {
+        let repeat = (field.shape.repeat == crate::RepeatBehavior::Unknown)
+            .then(|| super::fields::unknown_repeat_reason(&field.reader));
+        let members = (matches!(field.members, crate::FieldMembers::Unresolved)
+            && field.reader.family == crate::BlockFamily::Unknown)
+            .then_some("Nested fields remain unresolved.");
+        let detail: Vec<&str> = repeat.into_iter().chain(members).collect();
+        if !detail.is_empty() {
             gaps.push(Gap {
                 kind: GapKind::UnresolvedStorage,
                 subject: Some(GapSubject::field(&name)),
-                detail: detail.into(),
+                detail: detail.join(" "),
             });
         }
 
@@ -1236,6 +1242,7 @@ mod field_gap_tests {
             member: member.into(),
             family: crate::BlockFamily::Unknown,
             delegate: None,
+            post_read: [None, None],
         };
         let with_wide_path = |destination: i64| {
             let mut result = result(vec![]);
@@ -1429,6 +1436,14 @@ mod field_gap_tests {
                 RepeatBehavior::Accumulate,
             ),
         ];
+        let mut block = field(
+            "block",
+            BlockFamily::Unknown,
+            FieldMembers::Unresolved,
+            RepeatBehavior::Unknown,
+        );
+        block.reader.id = Some(crate::ReaderId::from_callee("Example::Read(CReader&)"));
+        let fields: Vec<_> = fields.into_iter().chain([block]).collect();
         let mut gaps = Vec::new();
         storage_gaps(&fields, None, &mut gaps);
         let found: Vec<_> = gaps
@@ -1439,7 +1454,15 @@ mod field_gap_tests {
             found,
             [
                 ("unclassified", "Nested fields remain unresolved."),
-                ("parent.child", "Repeat behavior remains unresolved."),
+                (
+                    "parent.child",
+                    "Repeat behavior waits for one shared reader."
+                ),
+                (
+                    "block",
+                    "Repeat behavior has no stated rule for this block reader, or the read is \
+                     not a tail call. Nested fields remain unresolved."
+                ),
             ]
         );
         assert!(

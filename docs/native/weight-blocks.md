@@ -304,7 +304,7 @@ before the reader runs. The test
 - `factor` keeps both of its readers with an unresolved condition. Both read a fixed-point value,
   so the key reports `FixedPoint` with no reader identity.
 - `calc` and `mode` are `Keyword` with `Listed` domains (SDK-725). Other keyword readers keep
-  `Unknown` (SDK-627).
+  `Unknown` (SDK-828).
 - The read scope of `limit` and `potential` stays unresolved: the engine reads them with scope mask
   0 and checks the scope later, when it validates the entry. The gap is `OutsideMethod` (D5a).
 - `parameters` is read by the trigger that `trigger` names (`OutsideMethod`, D3): a built-in

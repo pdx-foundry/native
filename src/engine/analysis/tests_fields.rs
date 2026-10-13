@@ -1340,6 +1340,7 @@ fn factory_fixture() -> FieldInput {
             member: "CChild::ReadMember(CReader&, int)".into(),
             family: crate::BlockFamily::TriggeredModifier,
             delegate: Some("CChild::ReadModifier(CReader&, int)".into()),
+            post_read: [None, None],
         },
     });
     input
@@ -1430,6 +1431,7 @@ fn modifier_binding(offset: u32) -> fields::PersistentInput {
                 member: "modifier member".into(),
                 family: crate::BlockFamily::Modifier,
                 delegate: None,
+                post_read: [None, None],
             },
         )]),
     }

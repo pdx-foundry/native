@@ -251,6 +251,7 @@ mod tests {
             member: "CStaticModifier::ReadMember(CReader&, int)".into(),
             family: BlockFamily::Modifier,
             delegate: None,
+            post_read: [None, None],
         };
         let paths = destinations
             .iter()

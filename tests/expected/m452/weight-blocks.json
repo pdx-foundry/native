@@ -8,7 +8,7 @@
           ["calc", "Keyword", "Replace", {"Known": []}, null, {"Listed": ["planet_distance_empire", "planets_in_country", "pop_amount", "pop_happiness"]}],
           ["mul", "FixedPoint", "Unknown", {"Known": []}, null, "Unknown"],
           ["div", "FixedPoint", "Unknown", {"Known": []}, null, "Unknown"],
-          ["limit", "Block", "Unknown", "Unresolved", "Unresolved", "Unknown"]
+          ["limit", "Block", "Merges", "Unresolved", "Unresolved", "Unknown"]
         ]
       },
       "operation_repeat": "Unknown",

@@ -455,6 +455,7 @@ fn input(read_name: &str, member_name: &str) -> WeightBlockInput {
                 member: member_name.into(),
                 family: crate::BlockFamily::Weight,
                 delegate: None,
+                post_read: [None, None],
             },
         )]),
         constructors: BTreeMap::new(),

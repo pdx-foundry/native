@@ -4,8 +4,8 @@
 alternatives, nested object fields and local stored-value selections; `Native::registries()`
 gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
-ever established; Git `d8f9d8a`); SDK-627 owns enum domains and required fields, except the
-weight keyword domains, which the [weight blocks](weight-blocks.md) method establishes (SDK-725).
+ever established; Git `d8f9d8a`); SDK-828 owns enum domains, except the weight keyword domains, which the
+[weight blocks](weight-blocks.md) method establishes (SDK-725), and SDK-829 owns required fields.
 
 ## What complete means
 
@@ -39,7 +39,10 @@ registries joined their reader once a delegating constructor's stack string no l
 constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against `v36`, SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the
 reserved key `random_list` ([root-key owners](#root-key-owners-sdk-813)). Against `v39`, SDK-808 read the 69
 triggered modifier clauses in their [construction scope](triggered-modifiers.md#read-scope-sdk-808)
-and renamed the other read-scope gaps by [obstacle](discovery.md#read-time-block-scopes-sdk-549). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+and renamed the other read-scope gaps by [obstacle](discovery.md#read-time-block-scopes-sdk-549). Against `v40`, SDK-627 stated
+the [repeat rules](#repeat-behavior) of five more readers: 131 registry answers change, four
+registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 registries to
+916 in 109. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -127,7 +130,7 @@ belongs to one row.
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
-| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-627 keyword domains. |
+| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-828 keyword domains. |
 | Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
 | Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
 | Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |
@@ -165,14 +168,33 @@ rule applies only to a tail call: a call with an unexamined continuation proves 
 | `CPreTriggers::ReadValue(CReader&, EPreTriggers)` | `Merges` | `0x1004d0008` logs `Pre-trigger "%s" is specified more than once` and still ORs the key's bit into the `yes` or `no` mask; no bit is cleared ([pre-trigger blocks](#pre-trigger-blocks)). |
 | `CReader::Read(CPersistent&)` of a modifier block | `Merges` | All four variants reach `CPdxModifier<…>::Read` (`0x100071fcc`). It deletes the child array and clears the entry counts at `+0x1c`, `+0x44` and `+0x9c`, then calls `CPersistent::Read`. Fixed keys are written only when present, so an omitted icon, tooltip or flag stays; `description_parameters` appends. |
 | `ReadKeyReferenceDeferred<D>` with an established lookup | `Replace` | Each occurrence registers its key and a lambda that writes the destination on a hit and on a miss. The resolver runs registrations in order ([references](references.md#reference-readers)), so the last occurrence's item is stored. |
+| `CTrigger::Read(CReader&, EScopeType)`, `CEffect::Read(CReader&, EScopeType)` | `Merges` | `0x100d07f98` and `0x100456ae4` clear nothing: they read each statement and add its child to the block they receive, so a second block's children join the first's. Contrast `ReadTrigger<T>`, which clears first. |
+| `CReader::ReadUniform<T>(CPdxArray<T, int>&)` ([uniform lists](#uniform-lists)) | `Accumulate` | Each value is appended at the array's count: `InsertAtEmplace(count)` for an object element, and a grow-and-copy that keeps the old elements for an enumeration or `int` element. No instantiation clears the array (`CString` `0x10004e608`, `EScopeType` `0x100cb7588` and six more read). |
+| `ReadKeyReferenceUniform<D, CPdxArray<…>>` | `Accumulate` | Each key is looked up and its item appended with `InsertAtEmplace(count)` (`CEthicDatabase` instantiation). The deferred list reader keeps `Unknown`. |
+| `CReader::Read(CPersistent&)` into an object whose read is `CPersistent::Read` or `CPersistentName::Read` and whose two post-read hooks are the base's | `Merges` | `CPersistent::Read` (`0x1025b43bc`) calls `ReadWithoutInitPostRead`, a statement loop into the virtual `ReadMember` (`+0x28`) that resets nothing, then `InitPostRead()` (`+0x30`) and `InitPostRead(CString const&, int, int)` (`+0x38`); the base hooks (`0x1025b4440`, `0x1025b4444`) are one `ret`. `CPersistentName::Read` (`0x100a1c0d8`) clears its key and variables but not `literal` (`+0x30`). |
 
 A Boolean read into a stack temporary gets `Replace` from the walk, not from a rule: the walk
 follows the temporary into its member bit ([bit fields](#bit-fields)).
 
-Every other reader keeps `Unknown`, including `CTrigger::Read`, `CEffect::Read`, a persistent
-block without a constructor-proven weight or modifier reader, an immediate reference reader,
-whose caller stores the result after the call returns, and the [uniform list
-reader](#uniform-lists).
+**Validated assumption of the persistent rule.** A member reader changes only the storage of the
+key that it reads. Checked on M452 by reading the member readers of `CPreTriggers`,
+`CPlacementRules`, `SCountryAISettings`, `CEspionageAssetAppearance`, `SProjectRequirements`,
+`CGraphicalCultureSelector` (it clears only its own weight member), `CEmpireFlag`,
+`CAIStarbaseDesign`, `SBeamFade`, `SFleetManagerSettings`, `SPersonalityBehaviour` and
+`CDustCloudType::SAmbientObject`: none resets the object. Change the rule for a member reader that
+does. An object whose hook is not the base's (`CLayeredIcon`, `CColonyShelterDatabase`,
+`CDustCloudType::STextures`, `CDustCloudType::SParameters`) keeps `Unknown`: the hook is not read.
+
+Every other reader keeps `Unknown`, and the storage gap names why:
+
+| Detail | Fields (M452) | Cause |
+| --- | ---: | --- |
+| "waits for one shared reader" | 764 | No shared reader ([fields with no shared reader](#fields-with-no-shared-reader)). |
+| "the read is not a tail call" | 49 | A primitive or scoped reader whose caller continues after it returns. |
+| "…or its lookup does not store every resolution" | 39 | An immediate reference reader, whose caller stores the result; a deferred reader without an established lookup. |
+| "no stated rule for this block reader, or the read is not a tail call" | 26 | A list or block read with a continuation, a weight block that is not a tail call, an overridden hook, an unexamined persistent read. |
+| "waits for the reader's value form" | 5 | `CReader::Read(CColor&)`, `CReader::Read(CVector2FixedPoint&)`. |
+| "belongs to the loader" | 22 | The [event kinds](#event-kinds): each statement builds a new `CEvent`, and the loader's duplicate handling decides which one is kept ([loader rules](loader-rules.md)). |
 
 **A recorded manual exception.** The rules are stated per reader, not derived: the method reads no
 reader or resolver body for storage. Conditions: the exact M452 build and a tail call. Obstacle:
@@ -180,13 +202,18 @@ fixtures decode no block or pointer storage, and no shape reads the clear-and-re
 order. Removal route: block and pointer storage decoders, or body shapes for those two facts. The
 checks are the disassembly above, the live scoped matrix, an M45-observe probe (repeated trigger
 and effect blocks change their child counts, a repeated graphical modifier resets its entries and
-keeps omitted metadata, two deferred keys resolve to the second), and `cargo live
+keeps omitted metadata, two deferred keys resolve to the second), `cargo live
 fixture_block_parsing`: a repeated `potential` logs `Duplicate trigger` on the second
-occurrence's line, and a repeated `ai_weight` reads twice with no diagnostic.
+occurrence's line, and a repeated `ai_weight` reads twice with no diagnostic, and `cargo live
+fixture_repeat_readers` (SDK-627): an edict's repeated `potential` and `effect` and a
+megastructure's repeated `upgrade_from`, `placement_rules`, `scripted_action` and `cycle_title`
+each read twice. The second `placement_rules` logs `Duplicate trigger` for its
+`planet_possible`, so the object kept the first block's trigger; no other line logs.
 
 **The storage check** runs on the assembled answer, after every grammar is attached. A field at
-any `FieldMembers::Fields` depth gets an `UnresolvedStorage` gap when its repeat is `Unknown`, or
-when its members are `Unresolved` and its reader family is `Unknown`. A trigger or effect family is
+any `FieldMembers::Fields` depth gets an `UnresolvedStorage` gap when its repeat is `Unknown`, with
+the cause above, or when its members are `Unresolved` and its reader family is `Unknown`. A
+loader's root key gets the loader's gap instead. A trigger or effect family is
 the members answer; a weight, modifier or triggered modifier family whose grammar did not attach
 already has the attach step's `UnresolvedReader` gap.
 
@@ -353,8 +380,9 @@ and both `enable_if` forms of the name are one shared reader shape (`readers.rs`
 `is_uniform_list`): `x0` the reader and `x1` an owner array, or a stack array that the loader
 converts after the call (17 fields on M452, such as `common/traits` `requires_traits`). The kind is
 `Block` and the family `NotApplicable`: the values are not commands, so no modifier container is
-read and the read scope is `Known([])`. The identity keeps the element type. Storage and repeat stay unknown; a stack array has no
-destination. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
+read and the read scope is `Known([])`. The identity keeps the element type. A tail call into
+an owner array is `Accumulate` ([repeat behavior](#repeat-behavior)); a stack array has no
+destination, and its repeat stays unknown. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
 grammar shares the reader rule: nested lists such as `create_species` `adjective.variables`
 join. 17 command answers change (`tests/population/m452/command-population/`): list and
 bit-field joins remove `reader-routing` gaps or give `Replace`, and `has_active_event` now stops

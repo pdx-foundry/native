@@ -184,6 +184,18 @@ const SHAPE: FieldShape = FieldShape {
     repeat: RepeatBehavior::Unknown,
 };
 
+/// The storage gap of the root key `key`: each statement builds a new item, and the loader's
+/// handling of a duplicate item decides which one is kept.
+pub(super) fn repeat_gap(key: &str) -> Gap {
+    Gap {
+        kind: GapKind::UnresolvedStorage,
+        subject: Some(GapSubject::field(key)),
+        detail: "Repeat behavior belongs to the loader: each statement builds a new item, and \
+                 the loader's handling of a duplicate item decides which one is kept."
+            .into(),
+    }
+}
+
 /// The reader of the constructed owner, read through its primary address point.
 fn item_reader(loader: &LoaderKeys) -> Reader {
     Reader {

@@ -65,14 +65,24 @@ pub(super) fn alternative_reader(
     let mut selected = reader(std::slice::from_ref(join));
     if matches!(join, ReaderJoin::Joined { callee, .. } if callee == readers::PERSISTENT_READ) {
         selected.id = None;
-        if let Some(concrete) =
-            readers::destination(join).and_then(|offset| persistent.get(&offset))
-        {
+        if let Some(concrete) = persistent_destination(join, persistent) {
             selected.id = Some(persistent_reader_id(concrete));
             selected.family = concrete.family;
         }
     }
     selected
+}
+
+/// The concrete reader of the object that a persistent read fills, when the join is one.
+fn persistent_destination<'a>(
+    join: &ReaderJoin,
+    persistent: &'a BTreeMap<i64, ConcreteReader>,
+) -> Option<&'a ConcreteReader> {
+    if !matches!(join, ReaderJoin::Joined { callee, .. } if callee == readers::PERSISTENT_READ) {
+        return None;
+    }
+
+    readers::destination(join).and_then(|offset| persistent.get(&offset))
 }
 
 fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>) -> Reader {
@@ -99,7 +109,12 @@ fn field_reader(joins: &[ReaderJoin], persistent: &BTreeMap<i64, ConcreteReader>
     joined
 }
 
-fn shape(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> FieldShape {
+fn shape(
+    join: &ReaderJoin,
+    reader: &Reader,
+    persistent: Option<&ConcreteReader>,
+    references: &ReferenceFacts,
+) -> FieldShape {
     let value = match reader.kind {
         ReaderKind::Unknown => ValueShape::Unknown,
         ReaderKind::Block => ValueShape::Block,
@@ -109,14 +124,20 @@ fn shape(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> Fie
 
     FieldShape {
         value,
-        repeat: repeat(join, reader, references),
+        repeat: repeat(join, reader, persistent, references),
     }
 }
 
 /// How a second occurrence read by `join` affects storage. Each rule is a stated fact about one
 /// shared reader on M452; the method reads no reader body for it. A call with an unexamined
-/// continuation proves no final storage, so only a tail call earns a rule.
-fn repeat(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> RepeatBehavior {
+/// continuation proves no final storage, so only a tail call earns a rule. `persistent` is the
+/// concrete reader of the object that a persistent read fills.
+fn repeat(
+    join: &ReaderJoin,
+    reader: &Reader,
+    persistent: Option<&ConcreteReader>,
+    references: &ReferenceFacts,
+) -> RepeatBehavior {
     let callee = match join {
         ReaderJoin::Stored { repeat, .. } => return *repeat,
         ReaderJoin::Joined {
@@ -137,9 +158,12 @@ fn repeat(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> Re
         | ReaderKind::Float
         | ReaderKind::String => RepeatBehavior::Replace,
         ReaderKind::Block if readers::clears_before_reading(callee) => RepeatBehavior::Replace,
+        ReaderKind::Block if readers::adds_children(callee) => RepeatBehavior::Merges,
+        ReaderKind::Block if readers::is_uniform_list(callee) => RepeatBehavior::Accumulate,
         ReaderKind::Reference if stores_last_deferred_key(callee, references) => {
             RepeatBehavior::Replace
         }
+        ReaderKind::Reference if appends_each_key(callee) => RepeatBehavior::Accumulate,
         // A literal replaces the literal slot; variable, trigger and script-value slots stay.
         ReaderKind::ScopedNumeric if callee == "CVariableValue::Read(CReader&, EScopeType)" => {
             RepeatBehavior::Merges
@@ -151,7 +175,67 @@ fn repeat(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> Re
         {
             RepeatBehavior::Merges
         }
+        ReaderKind::Block if persistent.is_some_and(keeps_persistent_object) => {
+            RepeatBehavior::Merges
+        }
         _ => RepeatBehavior::Unknown,
+    }
+}
+
+/// Whether the persistent read of `reader` keeps the object it reads into. `CPersistent::Read`
+/// runs the member reader for each statement, then the two post-read hooks; it resets nothing.
+/// `CPersistentName::Read` clears its key and variables but keeps `literal`. A hook other than
+/// the base's empty one is not read, so it keeps the rule from applying. A validated assumption
+/// stands behind the rule: a member reader changes only the storage of the key it reads.
+fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
+    const KEEPING_READS: [&str; 2] = [
+        "CPersistent::Read(CReader&)",
+        "CPersistentName::Read(CReader&)",
+    ];
+    const BASE_HOOKS: [&str; 2] = [
+        "CPersistent::InitPostRead()",
+        "CPersistent::InitPostRead(CString const&, int, int)",
+    ];
+    let base_hooks = reader
+        .post_read
+        .iter()
+        .zip(BASE_HOOKS)
+        .all(|(hook, base)| hook.as_deref() == Some(base));
+
+    KEEPING_READS.contains(&reader.read.as_str()) && base_hooks
+}
+
+/// Whether `callee` looks up each key of a list while it reads and appends the item to the
+/// array it receives, after the items of earlier occurrences.
+fn appends_each_key(callee: &str) -> bool {
+    references::reader(callee)
+        .is_some_and(|reader| reader.form == references::ReaderForm::ImmediateList)
+}
+
+/// Why a field whose reader is `reader` keeps an `Unknown` repeat behavior.
+pub(super) fn unknown_repeat_reason(reader: &Reader) -> &'static str {
+    if reader.id.is_none() {
+        return "Repeat behavior waits for one shared reader.";
+    }
+
+    match reader.kind {
+        ReaderKind::Boolean
+        | ReaderKind::Integer
+        | ReaderKind::FixedPoint
+        | ReaderKind::Float
+        | ReaderKind::String
+        | ReaderKind::ScopedNumeric => {
+            "Repeat behavior is not examined: the read is not a tail call."
+        }
+        ReaderKind::Reference => {
+            "Repeat behavior is not examined: the read is not a tail call, or its lookup does \
+             not store every resolution."
+        }
+        ReaderKind::Block => {
+            "Repeat behavior has no stated rule for this block reader, or the read is not a \
+             tail call."
+        }
+        _ => "Repeat behavior waits for the reader's value form.",
     }
 }
 
@@ -334,8 +418,9 @@ fn ordinary_field(
                     join @ (ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }),
                 ) => {
                     let reader = field_reader(std::slice::from_ref(join), persistent);
+                    let concrete = persistent_destination(join, persistent);
                     FieldReadOutcome::Read {
-                        shape: shape(join, &reader, references),
+                        shape: shape(join, &reader, concrete, references),
                         reader,
                     }
                 }
@@ -917,6 +1002,7 @@ mod tests {
     fn a_bound_delegate_tells_apart_readers_that_share_read_and_member() {
         let reader = |delegate: Option<&str>| ConcreteReader {
             read: "CPersistent::Read(CReader&)".into(),
+            post_read: [None, None],
             member: "Base::ReadMember(CReader&, int)".into(),
             family: BlockFamily::TriggeredModifier,
             delegate: delegate.map(Into::into),
@@ -1078,9 +1164,11 @@ mod tests {
             let mut reader = reader(std::slice::from_ref(&join));
             reader.family = family;
 
-            shape(&join, &reader, &references).repeat
+            shape(&join, &reader, None, &references).repeat
         };
         let persistent = "CReader::Read(CPersistent&)";
+        let strings = "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)";
+        let ethics = "void NParserUtil::ReadKeyReferenceUniform<CEthicDatabase, CPdxArray<CEthic const*, int> >(CReader&, CEthicDatabase const&, CPdxArray<CEthic const*, int>&)";
         let scoped = "CVariableValue::Read(CReader&, EScopeType)";
         let cases = [
             (
@@ -1106,7 +1194,37 @@ mod tests {
                 "CTrigger::Read(CReader&, EScopeType)",
                 true,
                 BlockFamily::Trigger,
+                RepeatBehavior::Merges,
+            ),
+            (
+                "CEffect::Read(CReader&, EScopeType)",
+                true,
+                BlockFamily::Effect,
+                RepeatBehavior::Merges,
+            ),
+            (
+                "CEffect::Read(CReader&, EScopeType)",
+                false,
+                BlockFamily::Effect,
                 RepeatBehavior::Unknown,
+            ),
+            (
+                strings,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Accumulate,
+            ),
+            (
+                strings,
+                false,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Unknown,
+            ),
+            (
+                ethics,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Accumulate,
             ),
             (
                 scoped,
@@ -1164,6 +1282,57 @@ mod tests {
                 "{callee} tail={tail} {family:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_persistent_read_merges_only_into_an_object_that_it_does_not_reset() {
+        let join = ReaderJoin::Joined {
+            callee: readers::PERSISTENT_READ.into(),
+            arguments: Default::default(),
+            tail: true,
+        };
+        let reader = reader(std::slice::from_ref(&join));
+        let concrete = |read: &str, post_read: [Option<&str>; 2]| ConcreteReader {
+            read: read.into(),
+            member: "Example::ReadMember(CReader&, int)".into(),
+            post_read: post_read.map(|hook| hook.map(Into::into)),
+            family: BlockFamily::Unknown,
+            delegate: None,
+        };
+        let base = [
+            Some("CPersistent::InitPostRead()"),
+            Some("CPersistent::InitPostRead(CString const&, int, int)"),
+        ];
+        let repeat_of = |concrete: &ConcreteReader| {
+            shape(&join, &reader, Some(concrete), &ReferenceFacts::default()).repeat
+        };
+
+        assert_eq!(
+            repeat_of(&concrete("CPersistent::Read(CReader&)", base)),
+            RepeatBehavior::Merges
+        );
+        assert_eq!(
+            repeat_of(&concrete("CPersistentName::Read(CReader&)", base)),
+            RepeatBehavior::Merges
+        );
+        assert_eq!(
+            repeat_of(&concrete(
+                "CPersistent::Read(CReader&)",
+                [Some("CLayeredIcon::InitPostRead()"), base[1]]
+            )),
+            RepeatBehavior::Unknown
+        );
+        assert_eq!(
+            repeat_of(&concrete("CPersistent::Read(CReader&)", [base[0], None])),
+            RepeatBehavior::Unknown
+        );
+        assert_eq!(
+            repeat_of(&concrete(
+                "CAnomalyType::COutcomeEffect::Read(CReader&)",
+                base
+            )),
+            RepeatBehavior::Unknown
+        );
     }
 
     #[test]

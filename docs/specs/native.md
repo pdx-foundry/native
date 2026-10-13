@@ -129,7 +129,8 @@ for contexts and scope types.
   stored parts and keeps others) or `Unknown`. It never gives a minimum or maximum count, and a
   repeat that the engine logs, such as `Duplicate trigger`, is still read. A field whose repeat is
   `Unknown`, or whose block members no block family or attached grammar answers, has an
-  `UnresolvedStorage` gap. See [registry fields](../native/registry-fields.md#repeat-behavior).
+  `UnresolvedStorage` gap whose detail names the cause. See
+  [registry fields](../native/registry-fields.md#repeat-behavior).
 - `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
   means equality with the parent's scope, never `Any`. A known empty list means that no scope is

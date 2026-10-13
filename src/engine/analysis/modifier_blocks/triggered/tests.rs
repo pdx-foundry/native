@@ -94,6 +94,7 @@ fn class(member: &str) -> PersistentInput {
                 member: member.into(),
                 family: crate::BlockFamily::Modifier,
                 delegate: None,
+                post_read: [None, None],
             },
         )]),
     }
@@ -122,6 +123,7 @@ fn input() -> TriggeredInput {
                 member: "Clause::ReadMember(CReader&, int)".into(),
                 family: crate::BlockFamily::TriggeredModifier,
                 delegate: Some("Clause::ReadModifier(CReader&, int)".into()),
+                post_read: [None, None],
             },
         )]),
         classes: BTreeMap::from([(POINT, Ok(class(MODIFIER_MEMBER)))]),
