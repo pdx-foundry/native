@@ -265,7 +265,7 @@ string reader stores that key.
 - Initializers of another shape, several lookups or another getter (the 91 above). Atlas reads a
   command key's lookup: on M452, 105 `String` keys of 68 commands have no lookup because their
   receiver's initializer is one of these, so Atlas reports a reference gap for each. The families
-  need semantics that the answer does not yet state, so SDK-635 keeps them as typed gaps:
+  need semantics that the answer does not yet state; SDK-827 owns them:
   - the 20 event effects (`country_event` …, key `id`): `CEventManager::GetEvent` selects by the
     event id that `GetIDInNameSpace` parses, not by the key's bytes, and returns a null pointer on
     a miss;

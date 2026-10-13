@@ -177,8 +177,9 @@ pub struct ReaderLookup {
     pub directory: Option<String>,
     /// The lookup, or why no shape established it.
     pub lookup: Result<Lookup, Unresolved>,
-    /// The typed null object global that a missing key yields; `Some` exactly when the lookup is
-    /// established.
+    /// The typed null object global that the search selects for a missing key; `Some` exactly
+    /// when the lookup is established. `lookup.on_missing` says whether the reader keeps it
+    /// (`NullObject`) or drops it (`Omitted`).
     pub null_object: Option<String>,
 }
 
@@ -425,15 +426,24 @@ impl Method<'_> {
         }
         let operator = lambda_operator(&registration["lambda"])
             .ok_or_else(|| Unresolved::new("reference-lambda"))?;
-        let instance = format!("TGameDatabase<{database}>::_pInstance");
-        let scan = self
+        let lambda = self
             .lines(&operator)
-            .and_then(|lambda| LAMBDA_FORWARD.matches(&lambda))
+            .ok_or_else(|| Unresolved::new("reference-lambda-body"))?;
+        let lambda_shape = || Unresolved::new("reference-lambda-shape");
+        let forward = LAMBDA_FORWARD
+            .matches(&lambda)
             .filter(|forward| forward["forwarded"].contains(&own_lambda))
-            .and_then(|forward| self.lines(&forward["forwarded"]))
-            .and_then(|forwarded| FORWARDED_LIST_SCAN.matches(&forwarded))
-            .filter(|scan| scan["database"] == instance && scan["null"] == registration["null"])
-            .ok_or_else(|| Unresolved::new("reference-lambda-shape"))?;
+            .ok_or_else(lambda_shape)?;
+        let forwarded = self.lines(&forward["forwarded"]).ok_or_else(lambda_shape)?;
+        let scan = FORWARDED_LIST_SCAN
+            .matches(&forwarded)
+            .ok_or_else(lambda_shape)?;
+        let searches_own_database = scan["database"]
+            == format!("TGameDatabase<{database}>::_pInstance")
+            && scan["null"] == registration["null"];
+        if !searches_own_database {
+            return Err(lambda_shape());
+        }
 
         let lookup = Lookup {
             stage: Stage::Deferred,
