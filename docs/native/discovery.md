@@ -40,6 +40,62 @@ check a method in one task.
 | `Native::derived_names` | `derived-names/v1` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
+## Registry sweep (SDK-553)
+
+The Milestone 5 sweep ran the method set unchanged over every listed registry: one live run on
+M452 at Native `ee01bf338872290eaaab2ca3c0503fc33244686e`, the commit that Atlas pinned. The
+stamps in the table above are that method set; Native stamps no commit on an answer. Atlas made
+the run with `record_answers_to` and owns the coverage and the config comparison
+([Atlas capture](https://github.com/pdx-foundry/atlas/blob/95e260b9266550994cda441b4939afdbb448cd45/docs/coverage/milestone-5.md),
+SDK-798). The recording stays on the capture host; its identity and the commands that repeat the
+report are in the capture.
+
+The [sweep report](method-authoring.md#report-the-registry-sweep) over the recording gives the
+tracked baseline `tests/population/m452/registry-sweep.json` (each registry's statuses) and these
+rates, over 185 registries and 1,855 root fields. Every request has an answer, partial with typed
+gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
+
+| Relationship | Complete | Denominator | Rate |
+| --- | ---: | ---: | ---: |
+| Fields | 98 | 185 | 52.97% |
+| Reader kinds | 1,412 | 1,855 | 76.12% |
+| Shapes and conditions | 1,093 | 1,855 | 58.92% |
+| References | 24 | 417 | 5.76% |
+| Numerics | 206 | 598 | 34.45% |
+| Weights | 0 | 561 | 0.00% |
+| Naming rules | 0 | 185 | 0.00% |
+| Scope context | 1,152 | 1,855 | 62.10% |
+| **All units** | **3,985** | **7,511** | **53.06%** |
+
+No naming rule is complete because every `modifier_families` answer keeps one
+`UnnamedDeclaration` gap; no weight field is complete because no `WeightBlock` is.
+
+**Failure shapes.** The 6,397 gaps that are not `OutsideMethod`, by the ticket that owns them.
+The sweep repaired none.
+
+| Owner | Gaps | Registries | Shapes |
+| --- | ---: | ---: | --- |
+| SDK-627 | 1,615 | 119 | Repeat behavior (`UnresolvedStorage`) |
+| SDK-808 | 1,110 | 121 | Read scope: scope argument, stored scope, zero mask |
+| SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
+| SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
+| SDK-809 | 387 | 59 | Numeric conversion |
+| SDK-707 | 328 | 116 | `derived_names` paths that stop |
+| SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
+| SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions |
+| SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`) |
+| SDK-812 | 242 | 66 | Block entry-context stops |
+| SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader |
+| SDK-741 | 42 | 4 | `description_parameters` |
+| SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
+| SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
+| SDK-635 | 11 | 6 | Reference lookups |
+
+Six registries are `Unsupported` for all three registry questions, because their loader builds
+no owner class or several (SDK-813; [custom-loader owners](registry-fields.md#custom-loader-owners)).
+The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
+the type-wide `event` block). The run proposes no manual exception.
+
 ## Read-time block scopes (SDK-549)
 
 `Field.read_scope` and `CommandGrammar.child_scopes` supply read-time `this`. Atlas uses them

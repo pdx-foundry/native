@@ -38,6 +38,12 @@ At the Milestone 4 gate, SDK-625's live snapshot on M452 with Native `573e35f` c
 58,032 claims (39.06%) on the same config revision; Atlas's [Milestone 4 capture](https://github.com/pdx-foundry/atlas/blob/baf003a8982db386f53b47b5d87b7ce9efe7d8d5/docs/coverage/milestone-4.md)
 gives the per-area figures.
 
+The Milestone 5 sweep (SDK-798) ran the method set unchanged at Native `ee01bf3` over 185
+registries: 3,985 of 7,511 relationship units (53.06%) are complete, and the 218 config types
+under `common/` and `events/` have 4,316 of 18,228 claims (23.68%) covered. Native's
+[record](native/discovery.md#registry-sweep-sdk-553) lists the rates and the ticket that owns
+each failure shape (SDK-808 to SDK-817 were filed for the shapes that had none).
+
 ## Ordering principle
 
 Coverage grows with each **shared method**, not with each file. The known risk is method transfer:
