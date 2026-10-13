@@ -1590,7 +1590,6 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
-        "common/planet_classes",
         "common/ship_behaviors",
         "gfx/worldgfx",
         "prescripted_countries",

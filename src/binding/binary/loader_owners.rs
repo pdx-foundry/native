@@ -50,7 +50,7 @@ pub(in crate::binding) fn loader_owners(
 
 /// Why the loader of `database` builds no class with a member reader, as read on M452. A database
 /// with no stated reason gets the general one. Each stated reason holds while its loader keeps
-/// that shape; the knowledge page (`registry-fields.md`, "Custom-loader owners") gives the
+/// that shape; the knowledge page (`registry-fields.md`, "Root-key owners") gives the
 /// functions and what would answer the registry.
 pub(in crate::binding) fn no_owner_reason(database: &str) -> &'static str {
     match database {

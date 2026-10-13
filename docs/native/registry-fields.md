@@ -484,7 +484,9 @@ template loader names its owner as a template argument. For a custom-loader regi
 database's own functions. The loader route is each of them that calls the file enumeration and
 each of them that the route calls directly. The owner is the one class with a member reader that
 the route builds: it calls the class's constructor or forms its primary vtable address point, as
-an inlined constructor does. None or several is `Unsupported` with the reason, never a choice.
+an inlined constructor does. Two built classes are owners [by root key](#root-key-owners-sdk-813)
+when one root key selects between them. None, or several in any other shape, is `Unsupported`
+with the reason, never a choice.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -516,8 +518,8 @@ an inlined constructor does. None or several is `Unsupported` with the reason, n
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 15 of the 21 names join an owner (sweep at `registry-fields/v31`; fields, then the
-answer):
+On M452, 16 of the 21 names join an owner (sweep at `registry-fields/v31`, and `v34` for
+`common/planet_classes`; fields, then the answer):
 
 | Registry | Owner | Fields | Answer |
 | --- | --- | --- | --- |
@@ -527,6 +529,7 @@ answer):
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
+| `common/planet_classes` | `CPlanetClass`, by root key | 70 | partial |
 | `common/special_projects` | `CSpecialProjectType` | 26 | partial |
 | `common/species_names` | `CSpeciesNames` | 5 | partial |
 | `common/start_screen_messages` | `CStartScreenMessage` | 3 | partial |
@@ -537,18 +540,51 @@ answer):
 | `events` | `CEvent` | 30 | partial |
 | `flags` | `SFlagColor` | 4 | partial |
 
-None is complete and none failed. Six are `Unsupported`: `common/colors`,
-`common/component_tags`, `common/ship_behaviors` and `gfx/worldgfx` build no class with a member
-reader on the route (`CWorldGfxDatabase` is itself the read object, and its `ReadMember` builds
-`CWorldGraphicalMapData` through a virtual read), `prescripted_countries` has two databases
-(`CEmpireDesign`, `CPrescriptedSpecies`), and the `common/planet_classes` route builds two classes
-with a member reader (`CPlanetClass`, `CPlanetClassRandomList`).
+None is complete and none failed. Six were `Unsupported`; SDK-813 answers `common/planet_classes`
+([root-key owners](#root-key-owners-sdk-813)) and states a narrower reason for the other five.
 
 - Pitfall: a constructor anywhere in the database's functions is not an owner.
   `CDiploPhraseDatabase::GetRandomValidPhrase` and `CTerraformDatabase::HasAvailableLinks` build a
   `CEventScope` (which has a `ReadMember`) on the stack to test triggers; they are off the route.
 - Pitfall: "any class whose method the loader calls" gives `CGameState`, `CEventScope` and
   `CScopeObjectReference` for `CEventManager`.
+
+### Root-key owners (SDK-813)
+
+`CPlanetClassDatabase::Init()` (`0x10115a26c`) builds two classes with a member reader. After
+each `CReader::ReadSimpleStatement()` (reader at `sp+0x70`) it loads the token at `sp+0xa8`
+(reader + `0x38`), compares it with `w23`, which holds `0x2714` (`random_list`), and branches
+`b.ne`. The equal side allocates `0x90` bytes, forms `vtable for CPlanetClassRandomList`+0x10 and
+calls `CPersistent::Read(CReader&)`. The other side builds `CPlanetClass(CString const&, int)` from
+the key, or finds the class of that key and reads into it again, and reads through slot `+0x20`.
+Both go back to the statement read.
+
+- **Rule.** `loader_owner` takes two built classes as owners by root key when a route function
+  has one statement read; the next three instructions load the word at the reader argument plus
+  the token offset, compare it with a constant (an immediate, or a register whose last write
+  before the read is a `mov` of one) that names a token, and branch on equality; and the code
+  from each side up to the next statement read builds exactly one of the two classes. Any other
+  shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
+  does not follow a path-dependent write of the constant.
+- **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), for
+  `registry_fields`, `derived_names` and `modifier_families`, each with one `OutsideMethod` gap
+  that names the reserved key. Both classes are loader owners, so `field_input` reads either.
+- **Accepted limit.** The `random_list` statements (`CPlanetClassRandomList`) have no answer.
+  Atlas's `type[planet_class_random_list]` has 12 claims, against 375 for `type[planet_class]`.
+  Removal route: a root field `random_list` whose members are the keyed class's fields, with a
+  spec rule that a reserved root key is a root statement in an otherwise ordinary answer, and the
+  matching Atlas selector (SDK-818).
+
+The other registries keep `Unsupported`, with the reason that `no_owner_reason`
+(`binding/binary/loader_owners.rs`) states for each loader. What would answer each:
+
+| Registry | Loader on M452 | Reason | What would answer it |
+| --- | --- | --- | --- |
+| `common/colors` | `CColorsDatabase::Init()` (`0x1012fb45c`) reads 7 fixed root keys (`0x2ec8`, `0x2b52`, `0x2c88`, `0x2e95`, `0x2ec9`, `0x3066`, `0x42f6`), each a block of `rgb`/`hsv` entries read with `CReader::Read(CColor&)` into the database | Fixed keys of unnamed colours; no item | An answer form for a block of unnamed values. Atlas's `type[country_color]` has 3 open claims |
+| `common/component_tags` | `CWeaponTagDatabase::InitInstance()` passes each token to `SComponentTag::RegisterTag` | Each token is a tag; no item | Nothing: Atlas reads it as `enum[component_tag]` |
+| `common/ship_behaviors` | `CShipBehaviorDatabase::ReadFile` (`0x1011b78b4`) takes `ship_behavior` (`0x311c`) and calls `CShipBehaviorReader::CreateAndRead(CReader&)` (`0x1011b79b4`), which builds `CShipBehavior` (no `ReadMember`), keeps it at `[x19]` and reads its own statements: token at `[x20,#0x38]`, compares and two byte jump tables | Own statement loop, no member reader | A field walk that starts after that statement read, with `[x19]` as the owner and a return to the loop as unresolved, not rejected. Only `Read(CString&)`, `Read(bool&)` and `Read(CFixedPoint&)` are shared readers there; the other keys use `CToken::GetFloat`, `CreateMovementPatternFromToken` on the value token or `ParseAdvancedStatement`, so most fields would stay unresolved. Atlas's `type[ship_behavior]` has 94 claims |
+| `gfx/worldgfx` | `CWorldGfxDatabase::ReadMember` builds `CWorldGraphicalMapData` on the stack and reads it with `CReader::Read(CPersistent&)` | The database is the read object | Milestone 6 |
+| `prescripted_countries` | Two databases enumerate it | "2 databases load this directory" | Milestone 6 |
 
 ### Owner vtables on M45-release
 
