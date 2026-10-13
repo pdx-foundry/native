@@ -83,7 +83,7 @@ The sweep repaired none.
 | SDK-707 | 328 | 116 | `derived_names` paths that stop |
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions |
-| SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`) |
+| SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): [accepted limit](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) |
 | SDK-812 | 242 | 66 | Block entry-context stops |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader |
 | SDK-741 | 42 | 4 | `description_parameters` |

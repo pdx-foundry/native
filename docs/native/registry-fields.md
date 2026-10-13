@@ -272,6 +272,36 @@ and transferred to AI attitudes; factories bind to inherited readers (six `creat
 three `add_district` fields); one shared numeric operand grammar serves agenda cost and the
 timed-flag units, while `agenda_cooldown` is a plain integer.
 
+### Unresolved loader conditions on M452 (SDK-811)
+
+An accepted limit. On M452 the sweep keeps 207 "loader condition remains unresolved" gaps: 132 on
+the six `CEvent` members of each of the 22 event kinds, and 75 root fields in 33 other registries.
+By the test that stops:
+
+| Tested value | Outcomes | Gaps | Registries | Examples |
+| --- | --- | ---: | ---: | --- |
+| Owner word with no established named-field destination (pointer members, unnamed bytes) | Every one unresolved | 107 | 8 | `events` `desc`, `mean_time_to_happen`; `common/governments/civics` `potential` |
+| Reader input (token kind or reader state) | Every one unresolved | 88 | 30 | `events` `picture`; `common/colony_automation` `buildings` |
+| Owner word with no established named-field destination | Some unresolved | 5 | 1 | `common/special_projects` `on_start` |
+| Reader input | Some unresolved | 4 | 4 | `common/traits` `icon`; `common/ship_sizes` `graphical_culture` |
+| Reader input: block token or scalar | Established, unequal destinations | 2 | 2 | `common/ship_sizes` `hero_ship`; `common/pop_categories` `can_change_category` |
+| Global load and reader input | Every one unresolved | 1 | 1 | `common/traits` `leader_class` |
+
+No tested owner offset matches an established float or fixed-point destination, so the presence
+word limit of [read conditions](#read-conditions-and-use-time-inheritance) has no member here. A reader-input test chooses a value form; `FieldCondition` states
+stored values only. Atlas credits a field's value form and repeat only when `read` is exactly
+`[Always]`, and reads no `FieldCondition` term, so naming a condition credits no claim. A branch
+collapses to `Always` only when complementary tests reach equal complete outcomes; no gapped field
+has them. The other 205 gaps have at least one unresolved outcome: reader paths that SDK-710 owns.
+The 45 use-time gaps also stay: Native's `Field::uses` publishes the selections, and Atlas credits
+no claim from them.
+
+Revisit the 205 when SDK-710 gives complementary paths equal complete outcomes (rerun the sweep:
+the existing collapse removes those gaps), or when Atlas consumes condition terms, for example to
+select a config subtype (SDK-716). The two block-or-scalar fields already have complete, unequal
+outcomes, so neither trigger changes them: revisit them when Atlas needs a value form that depends
+on the input token, and decide then how an answer states a reader-input condition.
+
 ## Registry scheduling and owner joins
 
 From the SDK-489 prototype on M45-observe (`atlas-ownership/prototype/registry-ownership/`):
