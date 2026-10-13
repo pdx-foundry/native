@@ -85,7 +85,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
 | SDK-707 | 328 | 116 | `derived_names` paths that stop |
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization |
-| SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions |
+| SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
 | SDK-812 | 242 | 66 | Block entry-context stops |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader |
@@ -127,6 +127,14 @@ and `UnresolvedStorage`); no status changed (`--diff` against the tracked baseli
 registry).
 `registry-sweep --diff` from the before report names 179 registries: each gains its gaps by shape,
 55 change their weight counts and 4 their numeric counts.
+
+SDK-713 repaired the every-item question that `modifier_families` and `derived_names` share, and
+the conditions of 13 families that config templates use. Over a new recording at its merge with
+`main` `09e2321`, the open gaps went from 4,750 to 4,699: `modifier_families` `UnresolvedPath`
+from 74 to 61 and `derived_names` `UnresolvedCondition` from 326 to 288 (the every-item gap from 36
+registries to 4, and six name conditions that it blocked). No relationship status or rate changed;
+`--diff` against the tracked baseline names the 36 registries whose gaps changed
+([modifier families](modifier-families.md#conditions)).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
