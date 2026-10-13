@@ -23,8 +23,13 @@ proc-macro2 = "1"
 dynasm = "5.1"
 dynasmrt = "5.1"
 
+# Line tables keep backtraces and halve the objects that each rebuild leaves in target/.
+# See docs/native/performance.md.
+[profile.dev]
+debug = "line-tables-only"
+
 # Executable hashing and C++ symbol decoding dominate unoptimized static queries.
-# Keep Native itself debuggable; see docs/native/performance.md for measurements.
+# Keep Native itself unoptimized; see docs/native/performance.md for measurements.
 [profile.dev.package.sha2]
 opt-level = 3
 
