@@ -158,23 +158,22 @@ fields now have a reader kind. `--diff` against the tracked baseline names 50 re
 SDK-813 answered `common/planet_classes`, whose loader builds a planet class or, for the root key
 `random_list`, a random list ([root-key owners](registry-fields.md#root-key-owners-sdk-813)), and
 gave the other five `Unsupported` registries a narrower reason. Over a new recording at its merge
-with `main` `1f876e4`, `--diff` against the tracked baseline names those six registries:
+with `main` `be49f13`, `--diff` against the tracked baseline names those six registries:
 
 | Count | Before | After |
 | --- | ---: | ---: |
 | Fields: partial / unsupported | 81 / 6 | 82 / 5 |
-| Root fields | 1,855 | 1,925 |
-| Reader kinds | 1,412 / 1,855 | 1,473 / 1,925 |
-| Shapes and conditions | 1,093 / 1,855 | 1,120 / 1,925 |
-| References | 24 / 417 | 25 / 427 |
-| Numerics | 216 / 598 | 233 / 624 |
-| Weights | 87 / 561 | 87 / 570 |
-| Scope context | 1,152 / 1,855 | 1,213 / 1,925 |
-| **All units** | **4,082 / 7,511 (54.35%)** | **4,249 / 7,766 (54.71%)** |
-| Open gaps | 4,729 | 4,804 |
+| Reader kinds | 1,493 / 1,855 | 1,555 / 1,925 |
+| Shapes and conditions | 1,331 / 1,855 | 1,358 / 1,925 |
+| References | 24 / 336 | 25 / 345 |
+| Numerics | 216 / 517 | 233 / 542 |
+| Weights | 87 / 480 | 87 / 488 |
+| Scope context | 1,234 / 1,855 | 1,296 / 1,925 |
+| **All units** | **4,483 / 7,268 (61.68%)** | **4,652 / 7,520 (61.86%)** |
+| Open gaps | 4,283 | 4,356 |
 | Accepted gaps | 639 | 647 |
 
-The 75 new open gaps and 8 accepted ones are the planet classes' own. One composition site that
+The 73 new open gaps and 8 accepted ones are the planet classes' own. One composition site that
 was reached only from planet-class code is now joined, so every `modifier_families` answer counts
 17 unjoined sites, not 18.
 

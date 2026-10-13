@@ -675,9 +675,10 @@ Both go back to the statement read.
 - **Rule.** `loader_owner` takes two built classes as owners by root key when a route function
   has one statement read; the next three instructions load the word at the reader argument plus
   the token offset, compare it with a constant (an immediate, or a register whose last write
-  before the read is a `mov` of one) that names a token, and branch on equality; and the code
-  from each side up to the next statement read builds exactly one of the two classes. Any other
-  shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
+  before the comparison, in code order, is a `mov` of one; a call replaces a caller-saved
+  register) that names a token, and branch on equality; and the code from each side up to the
+  next statement read builds exactly one of the two classes, a different one on each side. Any
+  other shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
   does not follow a path-dependent write of the constant.
 - **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), for
   `registry_fields`, `derived_names` and `modifier_families`, each with one `OutsideMethod` gap

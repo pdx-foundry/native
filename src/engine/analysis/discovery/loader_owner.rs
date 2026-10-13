@@ -95,7 +95,9 @@ pub fn loader_owner(
             .find_map(|start| {
                 root_key_owners(&functions[start], &addresses[start], reads, builders)
             })
-            .filter(|(_, keyed, other)| built.contains(keyed) && built.contains(other))
+            .filter(|(_, keyed, other)| {
+                keyed != other && built.contains(keyed) && built.contains(other)
+            })
             .map_or(LoaderOwner::Several(built), |(key, keyed, other)| {
                 LoaderOwner::ByRootKey { key, keyed, other }
             }),
@@ -141,7 +143,7 @@ fn root_key_owners(
     }
     let constant = match number(operand) {
         Some(constant) => constant,
-        None => constant_before(&rows[..read], operand)?,
+        None => constant_before(&rows[..read + 2], operand)?,
     };
     let key = reads.token_names.get(&(constant & 0xffff_ffff))?;
 
@@ -189,7 +191,8 @@ fn loaded_word(row: &Instruction) -> Option<(&str, (&str, u64))> {
         .then_some((destination, (base, number(offset)?)))
 }
 
-/// The immediate that the last write to `register` in `rows` moves into it, in code order.
+/// The immediate that the last write to `register` in `rows` moves into it, in code order. A call
+/// writes the caller-saved registers, so a constant that a call replaces has none.
 fn constant_before(rows: &[Instruction], register: &str) -> Option<u64> {
     let number_of = general_register(register)?;
     let writer = rows
@@ -197,9 +200,11 @@ fn constant_before(rows: &[Instruction], register: &str) -> Option<u64> {
         .rev()
         .find(|row| written_registers(&row.operation, &row.operands).contains(&number_of))?;
     let (destination, value) = writer.operands.split_once(',')?;
+    if writer.operation != "mov" || general_register(destination) != Some(number_of) {
+        return None;
+    }
 
-    (writer.operation == "mov" && general_register(destination) == Some(number_of))
-        .then(|| number(value))?
+    number(value)
 }
 
 /// The call targets and formed addresses of the code that runs from `start` until it returns,
@@ -436,6 +441,44 @@ mod tests {
                 root_switch(0xa0, builds_owner, builds_other)
             ]),
             several
+        );
+    }
+
+    #[test]
+    fn one_class_on_both_sides_of_the_switch_is_no_root_key() {
+        let mut query = Arm64::at(QUERY);
+        builds_other(&mut query);
+        arm64!(query; ret);
+        let mut first = Arm64::at(LOADER);
+        first.call(ENUMERATE).call(READ_FILE).call(QUERY);
+        arm64!(first; ret);
+
+        assert_eq!(
+            owner([
+                decoded(first, LOADER),
+                root_switch(0xa8, builds_owner, builds_owner),
+                decoded(query, QUERY),
+            ]),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
+        );
+    }
+
+    #[test]
+    fn a_constant_that_the_statement_read_replaces_selects_no_root_key() {
+        let mut code = Arm64::at(READ_FILE);
+        arm64!(code; mov w9, #0x2714); // token 0x2714: random_list, in a caller-saved register
+        let statement = code.here();
+        arm64!(code; add x0, sp, #0x70);
+        code.call(READ_STATEMENT);
+        arm64!(code; ldr w8, [sp, #0xa8]; cmp w8, w9; b.ne >other);
+        builds_owner(&mut code);
+        arm64!(code; b extern statement as usize; other:);
+        builds_other(&mut code);
+        arm64!(code; b extern statement as usize);
+
+        assert_eq!(
+            owner([loader(READ_FILE), decoded(code, READ_FILE)]),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
         );
     }
 
