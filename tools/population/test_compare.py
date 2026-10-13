@@ -6,7 +6,8 @@ import sys
 import tempfile
 import unittest
 
-from compare import compare, regressions
+from compare import compare, read_report, regressions
+from regenerate import is_generated
 
 
 def scoped(reader):
@@ -244,6 +245,29 @@ class ComparisonTests(unittest.TestCase):
             new_path.write_text("{")
             result = subprocess.run([sys.executable, str(Path(__file__).with_name("compare.py")), str(old_path), str(new_path)], capture_output=True)
             self.assertEqual(result.returncode, 2)
+
+    def test_a_baseline_directory_reads_as_a_compact_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Effect/command").mkdir(parents=True)
+            (root / "header.json").write_text('{"build": "build"}\n')
+            (root / "Effect/inventory.json").write_text('{"gaps": []}\n')
+            (root / "Effect/command/a.json").write_text('{"status": "complete"}\n')
+            self.assertEqual(read_report(root), {"build": "build", "answers": {
+                "Effect/command/a": {"status": "complete"}, "Effect/inventory": {"gaps": []}}})
+
+
+class RegenerateTest(unittest.TestCase):
+    def test_only_generated_baselines_may_be_left_to_regeneration(self):
+        for path in ["tests/population/m452/registry-field-sweep.json",
+                     "tests/population/m452/registry-sweep/common/a.json",
+                     "tests/population/m452/command-population/header.json"]:
+            self.assertTrue(is_generated(path), path)
+        for path in ["tests/population/m452/README.md",
+                     "tests/population/m452/command-fixture-sample.json",
+                     "tests/population/m452/registry-sweep-notes.md",
+                     "docs/native/discovery.md"]:
+            self.assertFalse(is_generated(path), path)
 
 
 if __name__ == "__main__":

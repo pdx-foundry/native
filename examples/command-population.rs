@@ -14,33 +14,33 @@ use pdx_native::{
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let output = match args.as_slice() {
-        [flag, before, after] if flag == "--diff" => {
-            let before = serde_json::from_slice(&std::fs::read(before)?)?;
-            let after = serde_json::from_slice(&std::fs::read(after)?)?;
-            diff(&before, &after)?
+        [flag, before, after] if flag == "--diff" => diff(
+            &population::read_report(Path::new(before))?,
+            &population::read_report(Path::new(after))?,
+        )?,
+        [flag, directory] if flag == "--baseline" => {
+            let output = population()?;
+            return population::write_baseline(
+                Path::new(directory),
+                &json!({ "build": output["build"] }),
+                &normalized(&output)?,
+            );
         }
         [] => population()?,
-        [flag] if flag == "--baseline" => population()?,
         [flag] if flag == "--trace" => trace_causes(population)?,
         _ => {
             return Err(
-                "usage: command-population [--baseline | --trace] | --diff BEFORE AFTER \
+                "usage: command-population [--trace] | --baseline DIRECTORY | --diff BEFORE AFTER \
                  (set STELLARIS_PATH)"
                     .into(),
             );
         }
     };
-    if args.first().is_some_and(|flag| flag == "--baseline") {
-        println!(
-            "{}",
-            population::format_baseline(&output["build"], &normalized(&output)?)?
-        );
-        return Ok(());
-    }
     if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
         && !members.is_empty()
     {
@@ -690,10 +690,14 @@ mod tests {
         let full = report(vec![
             json!({"name": "sample", "status": "partial", "answer": answer(Completeness::Partial, false)}),
         ]);
-        let text =
-            population::format_baseline(&json!("build"), &normalized(&full).unwrap()).unwrap();
-        let baseline: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(normalized(&full).unwrap(), normalized(&baseline).unwrap());
+        let root = tempfile::tempdir().unwrap();
+        population::write_baseline(
+            root.path(),
+            &json!({"build": "build"}),
+            &normalized(&full).unwrap(),
+        )
+        .unwrap();
+        let baseline = population::read_report(root.path()).unwrap();
         assert_eq!(diff(&baseline, &full).unwrap()["changed"], 0);
         let mut changed = baseline.clone();
         let answers = changed["answers"].as_object_mut().unwrap();

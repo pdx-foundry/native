@@ -9,7 +9,7 @@ compare a metadata stamp (below). Before that change each public query hashed ag
 about 1.2 s on M452-release; `record-command-grammars` over all 2,178 commands took about 43
 minutes, and now takes 170 s.
 
-The dev profile therefore optimizes two dependencies; Native's own code stays debuggable:
+The dev profile therefore optimizes two dependencies; Native's own code stays unoptimized:
 
 ```toml
 [profile.dev.package.sha2]
@@ -249,6 +249,31 @@ on the host above, each run alone:
 A suite run on the code of `13c94ba` took 3,514 s for 66 cases and about 88 launches: about 1,080 s in 12
 windows through validation, about 1,900 s in the other launches, about 140 s in script checks
 and the rest in static analysis and fault cases that end early.
+
+## Debug info and target size
+
+The dev profile (and so `cargo test`) uses `debug = "line-tables-only"`. Panics and backtraces keep
+function names, files and lines; a debugger does not see local variables or types.
+
+On macOS, debug info stays in the `.rcgu.o` files beside each binary in `target/debug/deps` and
+`target/debug/examples`, and the binary points to them. Each incremental rebuild writes new
+objects under new names, and Cargo does not remove the old ones. On 2026-10-13 one SDK-710
+worktree held 8.4 GB in `debug/deps`, of which the current test binaries used about 950 MB.
+
+Measured on 2026-10-13 with `cargo test --no-run` from a clean target:
+
+| Profile | Clean build | Objects in `debug/deps` | Added by one rebuild after a `src/lib.rs` edit |
+|---|---|---|---|
+| `debug = true` (before) | 3.6 GB | 873 MB | not measured |
+| `debug = "line-tables-only"` | 2.8 GB | 460 MB | 0.9 GB |
+| line tables and `split-debuginfo = "packed"` | 4.0 GB | none (8 `.dSYM`) | 0.9 GB |
+
+`packed` keeps no objects beside the binaries, but the `.dSYM` bundles and the incremental cache
+grow by the same amount, so it does not help.
+
+- **Accepted limit:** a long session still grows by about 0.9 GB for each rebuild of Native.
+  `cargo clean` removes it. Look again if Cargo or rustc starts to remove stale objects.
+- For a debugging session that needs locals, build with `cargo --config 'profile.dev.debug=true'`.
 
 ## Measure
 

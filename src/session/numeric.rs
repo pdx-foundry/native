@@ -396,6 +396,7 @@ mod tests {
                 ..NumericConversion::default()
             }));
             let facts = NumericFacts {
+                lexer: Ok(()),
                 token_readers: Default::default(),
                 modifier_entry: Err(Unresolved::new("modifier-numeric-not-analyzed")),
                 readers: [(
@@ -864,6 +865,7 @@ mod tests {
         };
         let callee = "CReader::Read(CFixedPoint&)";
         let facts = NumericFacts {
+            lexer: Ok(()),
             token_readers: Default::default(),
             readers: [(
                 callee.into(),

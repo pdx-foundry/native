@@ -4,10 +4,11 @@
 //! `registry-sweep --record DIRECTORY INSTALLATION` records `registries`, and `registry_fields`,
 //! `derived_names` and `modifier_families` for each listed registry, into a new directory.
 //!
-//! `registry-sweep [--baseline] DIRECTORY` reads that directory through
-//! `Native::from_recorded_answers` and writes the report, or only its comparison inputs.
+//! `registry-sweep DIRECTORY` reads that directory through `Native::from_recorded_answers` and
+//! writes the report. `registry-sweep --baseline BASELINE DIRECTORY` replaces the baseline
+//! directory with the report's comparison inputs, one file per registry.
 //!
-//! `registry-sweep --diff BEFORE AFTER` compares two reports or baselines and writes each
+//! `registry-sweep --diff BEFORE AFTER` compares two reports or baseline directories and writes each
 //! registry and relationship whose statuses changed, and each registry whose open or accepted
 //! gaps changed.
 // The report shares only the baseline format and its reader.
@@ -27,7 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Instant;
 
-const USAGE: &str = "usage: registry-sweep --record DIRECTORY INSTALLATION | registry-sweep [--baseline] DIRECTORY | registry-sweep --diff BEFORE AFTER";
+const USAGE: &str = "usage: registry-sweep --record DIRECTORY INSTALLATION | registry-sweep [--baseline BASELINE] DIRECTORY | registry-sweep --diff BEFORE AFTER";
 
 const FIELDS: &str = "fields";
 const READER_KINDS: &str = "reader_kinds";
@@ -225,6 +226,8 @@ enum LimitSubjects {
     WeightKeys(&'static [&'static str]),
     /// These fields, by registry and field name.
     Fields(&'static [(&'static str, &'static str)]),
+    /// A gap of these registries' answers whose subject is the registry.
+    Registries(&'static [&'static str]),
 }
 
 impl AcceptedLimit {
@@ -239,6 +242,9 @@ impl AcceptedLimit {
             (LimitSubjects::Fields(listed), Some(GapSubject::Field { name })) => listed
                 .iter()
                 .any(|(listed_registry, field)| *listed_registry == registry && field == name),
+            (LimitSubjects::Registries(listed), Some(GapSubject::Registry { .. })) => {
+                listed.contains(&registry)
+            }
             _ => false,
         };
 
@@ -286,7 +292,7 @@ const UNREPRESENTABLE_BOUNDS: &str =
     "Exact binary32 range endpoints cannot be represented by NumericBound.";
 
 /// Each accepted limit once. The first that covers a gap accepts it.
-const ACCEPTED_LIMITS: [AcceptedLimit; 4] = [
+const ACCEPTED_LIMITS: [AcceptedLimit; 6] = [
     AcceptedLimit {
         decision: "SDK-739: docs/native/numeric-conversion.md#token-value-methods",
         kind: GapKind::NumericConversion,
@@ -311,6 +317,152 @@ const ACCEPTED_LIMITS: [AcceptedLimit; 4] = [
         details: &[USE_TIME_SELECTIONS, USE_TIME_CONTEXT],
         subjects: LimitSubjects::Any,
     },
+    AcceptedLimit {
+        decision: SDK_812,
+        kind: GapKind::UnresolvedPath,
+        details: &ENTRY_CONTEXT_STOPS,
+        subjects: LimitSubjects::Fields(&ENTRY_CONTEXTS_WITHOUT_CLAIM),
+    },
+    AcceptedLimit {
+        decision: SDK_812,
+        kind: GapKind::UnresolvedPath,
+        details: &UNNAMED_EVALUATIONS,
+        subjects: LimitSubjects::Registries(&UNNAMED_EVALUATION_REGISTRIES),
+    },
+];
+
+const SDK_812: &str =
+    "SDK-812: docs/native/registry-fields.md#block-entry-context-stops-on-m452-sdk-812";
+
+/// The entry-context details of `src/session/field_entries.rs` and `src/session/callbacks.rs`.
+const ENTRY_CONTEXT_STOPS: [&str; 9] = [
+    "no evaluation that the method attributes evaluates this block",
+    "only tooltip calls name this block; the method established no evaluation of it",
+    "some entry scopes of a call site could not be established",
+    "a call site has more paths than the method follows (path-limit)",
+    "a path to a call site goes around a loop more often than the method follows (loop-limit)",
+    "a path to a call site could not be followed (instruction)",
+    "the scope comes from a caller, and no direct call to the function was found (no-caller)",
+    "the scope comes from more callers than the method follows (caller-depth)",
+    "a path does not show which of several candidate blocks the call evaluates (selected-block-identity)",
+];
+
+/// The M452 registry gaps of direct evaluations whose block the method cannot name. No field, so
+/// no `replace_scopes` claim, has them.
+const UNNAMED_EVALUATIONS: [&str; 2] = [
+    "1 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
+    "2 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
+];
+
+/// The registries of the M452 unnamed-evaluation gaps. Such a gap of another registry stays open.
+const UNNAMED_EVALUATION_REGISTRIES: [&str; 9] = [
+    "common/colony_automation",
+    "common/governments/civics",
+    "common/map_modes",
+    "common/on_actions",
+    "common/ship_sizes",
+    "common/special_projects",
+    "common/starbase_buildings",
+    "common/starbase_modules",
+    "events",
+];
+
+/// The M452 trigger, effect and weight fields with an entry-context gap and no field-level
+/// `replace_scopes` claim in the config. An entry-context gap of another field stays open.
+const ENTRY_CONTEXTS_WITHOUT_CLAIM: [(&str, &str); 93] = [
+    ("common/agreement_term_values", "resource_max"),
+    ("common/agreement_term_values", "resource_min"),
+    ("common/ai_budget", "desired_max"),
+    ("common/ai_budget", "desired_min"),
+    ("common/ai_budget", "potential"),
+    ("common/ai_budget", "weight"),
+    ("common/armies", "ai_weight"),
+    ("common/armies", "show_tech_unlock_if"),
+    ("common/ascension_perks", "on_disabled"),
+    ("common/bombardment_stances", "kill_pop_chance"),
+    ("common/buildings", "custom_storm_ai_weight"),
+    ("common/buildings", "on_queued"),
+    ("common/buildings", "on_unqueued"),
+    ("common/buildings", "potential"),
+    ("common/colony_automation", "available"),
+    ("common/colony_types", "potential"),
+    ("common/colony_types", "weight_modifier"),
+    ("common/council_agendas", "ai_weight"),
+    ("common/crisis_levels", "on_unlock"),
+    ("common/crisis_objectives", "reward"),
+    ("common/decisions", "abort_effect"),
+    ("common/decisions", "abort_trigger"),
+    ("common/decisions", "ai_weight"),
+    ("common/decisions", "allow"),
+    ("common/decisions", "custom_tooltip"),
+    ("common/decisions", "effect"),
+    ("common/decisions", "on_queued"),
+    ("common/decisions", "on_unqueued"),
+    ("common/decisions", "potential"),
+    ("common/deposits", "ai_weight"),
+    ("common/deposits", "can_be_cleared"),
+    ("common/deposits", "can_be_cleared_potential"),
+    ("common/deposits", "drop_weight"),
+    ("common/deposits", "on_cleared"),
+    ("common/diplo_phrases", "trigger"),
+    ("common/dynamic_text", "available"),
+    ("common/espionage_assets", "possible"),
+    ("common/espionage_assets", "potential"),
+    ("common/espionage_operation_types", "on_create"),
+    ("common/espionage_operation_types", "on_roll_failed"),
+    ("common/federation_laws", "required_centralization"),
+    ("common/first_contact", "on_abort"),
+    ("common/first_contact", "on_create"),
+    ("common/first_contact", "on_roll_failed"),
+    ("common/governments/councilors", "ai_priority"),
+    ("common/greeting_overlay_sounds", "possible"),
+    ("common/greeting_overlay_sounds", "weight"),
+    ("common/lawsuits", "effect"),
+    ("common/missions/missions", "on_accept"),
+    ("common/missions/missions", "on_fail"),
+    ("common/missions/missions", "on_issue"),
+    ("common/observation_station_missions", "ai_weight"),
+    ("common/personalities", "weight_modifier"),
+    ("common/pop_categories", "weight"),
+    ("common/pop_faction_types", "attraction"),
+    ("common/pop_faction_types", "is_potential"),
+    ("common/pop_faction_types", "leader"),
+    ("common/pop_faction_types", "on_create"),
+    ("common/pop_faction_types", "on_set_leader"),
+    ("common/pop_faction_types", "valid"),
+    ("common/pop_jobs", "possible"),
+    ("common/pop_jobs", "weight"),
+    ("common/resolutions", "ai_weight"),
+    ("common/situations", "monthly_progress"),
+    ("common/situations", "on_abort"),
+    ("common/situations", "total_progress"),
+    ("common/special_projects", "AI_wait_days"),
+    ("common/special_projects", "abort_trigger"),
+    ("common/special_projects", "fail_trigger"),
+    ("common/special_projects", "on_cancel"),
+    ("common/special_projects", "on_fail"),
+    ("common/strategic_resources", "ai_wants"),
+    ("common/strategic_resources", "ai_weight"),
+    ("common/strategic_resources", "dynamic_capacity"),
+    ("common/system_tooltips", "custom_tooltip"),
+    ("common/technology", "cost"),
+    ("common/tradable_actions", "ai_acceptance"),
+    ("common/traditions", "on_disabled"),
+    ("common/traits", "allowed_planet_classes_override"),
+    ("common/traits", "archetype_override"),
+    ("common/traits", "assembly_score"),
+    ("common/traits", "leader_potential_add"),
+    ("common/traits", "on_gained_effect"),
+    ("common/traits", "selectable_weight"),
+    ("common/traits", "species_class_override"),
+    ("common/traits", "species_possible_add"),
+    ("common/traits", "species_possible_merge_add"),
+    ("common/traits", "species_possible_merge_remove"),
+    ("common/traits", "species_possible_remove"),
+    ("common/traits", "species_potential_add"),
+    ("common/traits", "trade_acceptance_weight"),
+    ("gfx/portraits/sprite_configurations", "trigger"),
+    ("sound/advisor_voice_types", "weight"),
 ];
 
 const SDK_811: &str =
@@ -999,17 +1151,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match arguments.as_slice() {
         [flag, directory, installation] if flag == "--record" => record(directory, installation),
         [flag, before, after] if flag == "--diff" => {
-            let report = diff(&read_report(before)?, &read_report(after)?)?;
+            let report = diff(
+                &population::read_report(Path::new(before))?,
+                &population::read_report(Path::new(after))?,
+            )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
-        [flag, directory] if flag == "--baseline" => {
+        [flag, baseline, directory] if flag == "--baseline" => {
             let report = sweep(Path::new(directory))?;
-            println!(
-                "{}",
-                population::format_baseline(&report["build"], &comparison_inputs(&report)?)?
-            );
-            Ok(())
+            population::write_baseline(
+                Path::new(baseline),
+                &json!({ "build": report["build"], "relationships": report["relationships"] }),
+                &comparison_inputs(&report)?,
+            )
         }
         [directory] => {
             let report = sweep(Path::new(directory))?;
@@ -1064,10 +1219,6 @@ fn sweep(directory: &Path) -> Result<Value, Box<dyn std::error::Error>> {
         );
     }
     Ok(sweep.report(json!(native.build()), serde_json::to_value(&registries)?))
-}
-
-fn read_report(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
 
 /// Each registry's statuses and gaps by shape, from a baseline or a full report.
@@ -1441,16 +1592,65 @@ mod tests {
     }
 
     #[test]
+    fn only_an_entry_context_stop_of_a_field_without_a_claim_is_accepted() {
+        let (registry, field) = ENTRY_CONTEXTS_WITHOUT_CLAIM[0];
+        let gap = |name: &str, detail: &str| Gap {
+            kind: GapKind::UnresolvedPath,
+            subject: Some(GapSubject::Field { name: name.into() }),
+            detail: detail.into(),
+        };
+        let decision = |gap: &Gap, registry: &str| {
+            accepted_limit(gap, registry, &[]).map(|limit| limit.decision)
+        };
+        let path_limit = ENTRY_CONTEXT_STOPS[3];
+
+        assert_eq!(decision(&gap(field, path_limit), registry), Some(SDK_812));
+        assert_eq!(
+            decision(
+                &gap("tooltip_system_score", path_limit),
+                "common/megastructures"
+            ),
+            None,
+            "a block that a replace_scopes claim compares stays open"
+        );
+        assert_eq!(
+            decision(&gap(field, "read-scope: scope-argument"), registry),
+            None,
+            "another obstacle of a listed field stays open"
+        );
+
+        let unnamed = Gap {
+            kind: GapKind::UnresolvedPath,
+            subject: Some(GapSubject::Registry {
+                name: UNNAMED_EVALUATION_REGISTRIES[0].into(),
+            }),
+            detail: UNNAMED_EVALUATIONS[0].into(),
+        };
+        assert_eq!(
+            decision(&unnamed, UNNAMED_EVALUATION_REGISTRIES[0]),
+            Some(SDK_812)
+        );
+        assert_eq!(
+            decision(&unnamed, "common/unlisted"),
+            None,
+            "a new unnamed evaluation stays open"
+        );
+    }
+
+    #[test]
     fn the_diff_names_a_registry_whose_open_or_accepted_gaps_change() {
         let root = tempfile::tempdir().unwrap();
         let path_gap = numeric_gap(field("path_value"), UNKNOWN_CONVERSION_PATH);
         write_limits(root.path(), json!([path_gap]));
         let before = sweep(root.path()).unwrap();
-        let baseline: Value = serde_json::from_str(
-            &population::format_baseline(&before["build"], &comparison_inputs(&before).unwrap())
-                .unwrap(),
+        let baseline_root = tempfile::tempdir().unwrap();
+        population::write_baseline(
+            baseline_root.path(),
+            &json!({ "build": before["build"] }),
+            &comparison_inputs(&before).unwrap(),
         )
         .unwrap();
+        let baseline = population::read_report(baseline_root.path()).unwrap();
 
         write_limits(
             root.path(),
@@ -1493,13 +1693,19 @@ mod tests {
     fn the_baseline_is_stable_and_the_diff_names_each_changed_relationship() {
         let root = recording();
         let report = sweep(root.path()).unwrap();
+        let baseline_root = tempfile::tempdir().unwrap();
         let baseline = |report: &Value| {
-            population::format_baseline(&report["build"], &comparison_inputs(report).unwrap())
-                .unwrap()
+            population::write_baseline(
+                baseline_root.path(),
+                &json!({ "build": report["build"] }),
+                &comparison_inputs(report).unwrap(),
+            )
+            .unwrap();
+            fs::read(baseline_root.path().join("common/empty.json")).unwrap()
         };
-        let text = baseline(&report);
-        assert_eq!(text, baseline(&sweep(root.path()).unwrap()));
-        let parsed: Value = serde_json::from_str(&text).unwrap();
+        let bytes = baseline(&report);
+        assert_eq!(bytes, baseline(&sweep(root.path()).unwrap()));
+        let parsed = population::read_report(baseline_root.path()).unwrap();
         assert_eq!(diff(&parsed, &report).unwrap()["changed_registries"], 0);
 
         fs::remove_file(root.path().join("modifier_families/common/empty.json")).unwrap();

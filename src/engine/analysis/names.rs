@@ -42,12 +42,21 @@
 //! after that point establish no condition and no miss behavior, and a search path that goes on
 //! after it is incomplete.
 //!
-//! Outside the method: names that other code composes, such as interface code; the run-time
-//! choice behind a selection (which collection element, its validity); field states that template
-//! runs do not explore; the meaning of fields that the engine sets itself.
+//! A getter is a `const` member that reaches no sink and returns a string with the key or a field
+//! in it, by reference in `x0` or by value in the `x8` object. Each of its direct callers runs from
+//! just after the call to each later lookup or sprite call, with the getter's name as a key text,
+//! and gives how it composes the name; the getter's own runs then use each returned name through
+//! each composition. A sprite call is a call through the sprite slot of a GUI element's own
+//! vtable, where the element came from an element call. A caller's own branches are not explored,
+//! so its names are never `Always`.
+//!
+//! Outside the method: names that other code composes without a getter, or after passing the
+//! getter's name on; the run-time choice behind a selection (which collection element, its
+//! validity); field states that template runs do not explore; the meaning of fields that the
+//! engine sets itself.
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::evaluate::{Call, Code, Machine, Path};
+use super::evaluate::{Call, Code, Exit, Machine, Path};
 use super::families::{
     Ending, FamilyInput, ITEM_SPAN, KeyConstructor, KeyForm, Loading, NotEstablished, ending,
     every_returned_path, key_storage, loading, write_source,
@@ -64,7 +73,7 @@ use crate::NameLookup;
 mod tests;
 
 /// Name and revision of the derived-name method.
-pub const METHOD: &str = "derived-names/v2";
+pub const METHOD: &str = "derived-names/v4";
 
 /// The most names whose outcome one root's runs enumerate.
 const CHECK_BOUND: usize = 4;
@@ -78,6 +87,14 @@ const RESULT_SPAN: u64 = 0x100;
 /// The label of the number of events that a path has recorded. The label of each event's index
 /// follows it. Every scratch and stack address is below it.
 const EVENT_COUNT: u64 = 1 << 62;
+
+/// The label of a caller path on which the getter's name went into a call that the run does not
+/// follow, so that a later unresolved name may hold it. Every text address is below it.
+const LOST_NAME: u64 = u64::MAX - 2;
+
+/// A target that no code has: the word at the sprite slot of an element object's vtable, so that
+/// a call through that slot is known by its target.
+const SPRITE_CALL: u64 = 0xfeed_0000_0000_0000;
 
 /// The lookup and check functions, and the functions that write a diagnostic.
 #[derive(Debug, Clone, Default)]
@@ -108,7 +125,7 @@ pub struct ResultView {
 }
 
 /// Whether a sink only tests that a name exists, or looks it up for use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     /// Returns whether the name exists in `w0`.
     Check,
@@ -147,8 +164,56 @@ pub struct RegistryInput {
     pub constructors: Vec<KeyConstructor>,
     /// The code that makes the registry's items, when a root is post-read initialization.
     pub loading: Option<Loading>,
-    /// Every root, entered function and constructor body.
+    /// The `const` members that reach no sink and that other code calls before a use site.
+    pub getters: Vec<Getter>,
+    /// The functions that a getter's run enters: those of `entered`, and the members and composers
+    /// that the getters call. A root's run does not enter the getters' members, which reach no
+    /// sink.
+    pub getter_entered: BTreeSet<u64>,
+    /// The calls in the getters' callers that return a GUI element whose sprite slot looks a
+    /// string up.
+    pub element_calls: BTreeSet<u64>,
+    /// The vtable displacement of those elements' `ChangeSprite(CString const&)`, which looks the
+    /// string up in sprites.
+    pub sprite_slot: Option<u64>,
+    /// Every root, entered function, constructor body, getter and getter caller.
     pub code: Code,
+}
+
+/// A `const` member of the item class that reaches no sink, with its calls from functions outside
+/// the class.
+pub struct Getter {
+    pub function: u64,
+    /// The demangled name, which joins the getter to its storage selections.
+    pub name: String,
+    pub calls: Vec<GetterCall>,
+}
+
+/// One direct call of a getter, and the use sites that its return reaches.
+pub struct GetterCall {
+    pub address: u64,
+    /// The stack offset of the object that the call receives in `x8`, where a getter returns a
+    /// string by value, when the caller sets `x8` to the stack pointer plus a constant.
+    pub result: Option<u64>,
+    pub uses: Vec<UseSite>,
+}
+
+/// A call after a getter call that may receive the getter's name.
+pub struct UseSite {
+    pub address: u64,
+    pub call: UseCall,
+    /// The element calls of the caller from whose return both the getter call and this site are
+    /// reachable: the element can be fetched before the getter is called.
+    pub element_starts: Vec<u64>,
+}
+
+/// What a use site calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UseCall {
+    /// A direct call to the sink at this address.
+    Sink(u64),
+    /// A call through this register, which may be an element's sprite call.
+    Register(usize),
 }
 
 /// A function of the item class that composes names.
@@ -368,16 +433,153 @@ pub fn analyze(
         storage,
         key_offset,
     };
+    let mut failures = Vec::new();
     for root in &registry.roots {
         let every_item = root.stage == Stage::WhenUsed || result.not_established.is_none();
-        let (names, failures) = analysis.root_names(root, every_item);
+        let (names, root_failures) = analysis.root_names(root, every_item, &[]);
         result.names.extend(names);
-        for reason in failures {
-            *result.failures.entry(reason).or_default() += 1;
+        failures.extend(root_failures);
+    }
+    for getter in &registry.getters {
+        let root = Root {
+            function: getter.function,
+            name: getter.name.clone(),
+            stage: Stage::WhenUsed,
+            sites: BTreeSet::new(),
+        };
+        let returned = match analysis.returned_name(&root) {
+            Ok(Some(returned)) => returned,
+            Ok(None) => continue,
+            Err(reason) => {
+                failures.push(reason);
+                continue;
+            }
+        };
+
+        let (continuations, caller_failures) = analysis.continuations(getter, returned);
+        failures.extend(caller_failures);
+        if continuations.is_empty() {
+            continue;
         }
+
+        let (names, root_failures) = analysis.root_names(&root, true, &continuations);
+        result.names.extend(names);
+        failures.extend(root_failures);
+    }
+    for reason in failures {
+        *result.failures.entry(reason).or_default() += 1;
     }
     result.names = merged(result.names);
     result
+}
+
+/// How a caller uses the name that a getter returns: the parts that it adds before and after it,
+/// and the lookup that receives the composed name.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Continuation {
+    before: Vec<Part>,
+    after: Vec<Part>,
+    target: NameLookup,
+    role: Role,
+    /// The use site, which identifies the use in the events of a getter run.
+    site: u64,
+}
+
+/// How a getter returns a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Returned {
+    /// A pointer to a string object in `x0`.
+    Reference,
+    /// In the result object that `x8` points at.
+    ByValue,
+}
+
+/// What a caller run holds in `x0` when it starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Seed {
+    /// The getter's returned string, just after the getter call.
+    Name,
+    /// A GUI element, just after the element call.
+    Element,
+}
+
+/// The objects that one caller run plants.
+struct CallerObjects {
+    /// The string object that the getter returns: the item key's text, so that the model names
+    /// the getter's name as the key.
+    name: u64,
+    /// The node of the getter's name. Unlike the item key's own node, a call that the run does not
+    /// follow makes it unresolved, since the caller may change the string.
+    node: u64,
+    /// The vtable of every element object, whose sprite slot holds [`SPRITE_CALL`], when the
+    /// executable has a sprite slot.
+    vtable: Option<u64>,
+}
+
+impl CallerObjects {
+    fn plant(
+        machine: &mut Machine,
+        arena: &mut Arena,
+        layout: StringLayout,
+        sprite_slot: Option<u64>,
+    ) -> Self {
+        let node = arena.add(Node {
+            parts: vec![Part::ItemKey],
+            limit: None,
+        });
+        let name = machine.reserve(ITEM_SPAN);
+        write_source(
+            machine,
+            layout,
+            name,
+            KeyForm::Long.text(),
+            KeyForm::Long,
+            node,
+        );
+        let vtable = sprite_slot.map(|slot| {
+            let vtable = machine.allocate(slot + 8);
+            machine.write(vtable + slot, 8, SPRITE_CALL);
+            machine.protect(vtable, slot + 8);
+            vtable
+        });
+        Self { name, node, vtable }
+    }
+
+    /// Write the getter's name into the string object at `object`.
+    fn write_name(&self, machine: &mut Machine, layout: StringLayout, object: u64) {
+        write_source(
+            machine,
+            layout,
+            object,
+            KeyForm::Long.text(),
+            KeyForm::Long,
+            self.node,
+        );
+    }
+
+    /// A new element object, whose vtable is unknown when the executable has no sprite slot.
+    fn element(&self, machine: &mut Machine) -> u64 {
+        let element = machine.allocate(8);
+        if let Some(vtable) = self.vtable {
+            machine.write(element, 8, vtable);
+            machine.protect(element, 8);
+        }
+        element
+    }
+
+    fn is_element(&self, machine: &Machine, address: Option<u64>) -> bool {
+        self.vtable.is_some() && address.and_then(|address| machine.read(address, 8)) == self.vtable
+    }
+}
+
+/// What one path of a caller run gives at its use site.
+enum CallerUse {
+    /// The caller composes the returned name with literal parts and looks it up.
+    Continuation(Continuation),
+    /// The name at the site has a part that the method could not follow.
+    Unresolved,
+    /// The site does not receive the returned name.
+    Other,
 }
 
 /// Drop exact duplicates, and the conditional duplicates of a name that some root always uses
@@ -455,6 +657,9 @@ struct PathRecord {
     events: Vec<usize>,
     /// The path assumed text at some point.
     assumed: bool,
+    /// A getter's path returned its result object holding a string with a source part: a name
+    /// returned by value.
+    by_value: bool,
 }
 
 /// What one run recorded.
@@ -515,9 +720,238 @@ struct Analysis<'a> {
 }
 
 impl Analysis<'_> {
+    /// How one run of the getter returns a string with the key or a field in it, if it does, so
+    /// that its callers are worth following. The run plants the fields when the registry has any.
+    /// When no path of the run returns, whether the getter returns a name is not established.
+    fn returned_name(&self, root: &Root) -> Result<Option<Returned>, &'static str> {
+        let kind = *self.kinds().last().unwrap_or(&Kind::Search);
+        let plan = Plan {
+            kind,
+            form: KeyForm::Long,
+            flags: Vec::new(),
+            misses: BTreeSet::new(),
+        };
+        let probe = Continuation {
+            before: Vec::new(),
+            after: Vec::new(),
+            target: NameLookup::Localization,
+            role: Role::Lookup,
+            site: 0,
+        };
+        let run = self.run(root, plan, std::slice::from_ref(&probe));
+        let returns = run.events.iter().any(|event| {
+            matches!(event.kind, EventKind::Use { .. }) && event.chain == [probe.site]
+        });
+        let by_value = run.paths.iter().any(|path| path.by_value);
+        let stopped = run.paths.iter().all(|path| path.failure.is_some());
+        match (returns, by_value) {
+            (false, _) if stopped => Err("getter-path"),
+            (false, _) => Ok(None),
+            (true, false) => Ok(Some(Returned::Reference)),
+            (true, true) => Ok(Some(Returned::ByValue)),
+        }
+    }
+
+    /// How the callers of `getter` use its returned name, and the reason of each call or use site
+    /// that could not be followed. Each use site runs from just after the getter call, and a
+    /// sprite call also from just after each element call before it. A call of a getter that
+    /// returns by value is followed only when its result object is a known stack slot.
+    fn continuations(
+        &self,
+        getter: &Getter,
+        returned: Returned,
+    ) -> (Vec<Continuation>, Vec<&'static str>) {
+        let mut continuations = BTreeSet::new();
+        let mut failures = Vec::new();
+        for call in &getter.calls {
+            let result = match (returned, call.result) {
+                (Returned::Reference, _) => None,
+                (Returned::ByValue, Some(offset)) => Some(offset),
+                (Returned::ByValue, None) => {
+                    failures.push("getter-result");
+                    continue;
+                }
+            };
+            for site in &call.uses {
+                let starts = std::iter::once((call.address + 4, Seed::Name)).chain(
+                    site.element_starts
+                        .iter()
+                        .map(|&element| (element + 4, Seed::Element)),
+                );
+                let mut unresolved = false;
+                let mut stopped = false;
+                for (start, seed) in starts {
+                    for used in self.caller_run(getter.function, result, site, start, seed) {
+                        match used {
+                            Ok(CallerUse::Continuation(continuation)) => {
+                                continuations.insert(continuation);
+                            }
+                            Ok(CallerUse::Unresolved) => unresolved = true,
+                            Ok(CallerUse::Other) => {}
+                            Err(()) => stopped = true,
+                        }
+                    }
+                }
+                if unresolved {
+                    failures.push("caller-name");
+                }
+                if stopped {
+                    failures.push("caller-path");
+                }
+            }
+        }
+        (continuations.into_iter().collect(), failures)
+    }
+
+    /// Run a caller from `start` to the use site, with the getter's name or an element in `x0`.
+    /// A getter that returns by value writes its name into its result object: at stack offset
+    /// `result` of a run that starts after the call, and at `x8` when the run makes the call.
+    /// Each path gives its use at the site, or `Err` when it could not be followed.
+    fn caller_run(
+        &self,
+        getter: u64,
+        result: Option<u64>,
+        site: &UseSite,
+        start: u64,
+        seed: Seed,
+    ) -> Vec<Result<CallerUse, ()>> {
+        let layout = self.shared.layout;
+        let mut machine = Machine::new(&self.registry.code, &self.shared.data);
+        let mut arena = Arena::default();
+        let objects =
+            CallerObjects::plant(&mut machine, &mut arena, layout, self.registry.sprite_slot);
+        let seeded = match (seed, result) {
+            (Seed::Name, None) => objects.name,
+            (Seed::Name, Some(offset)) => {
+                let object = machine.stack_pointer() + offset;
+                objects.write_name(&mut machine, layout, object);
+                object
+            }
+            (Seed::Element, _) => objects.element(&mut machine),
+        };
+        machine.set_register(0, seeded);
+
+        let model = Model {
+            functions: &self.shared.strings,
+            layout,
+            data: &self.shared.data,
+            sources: Sources::key_only(KeyForm::Long.text()),
+        };
+        let element_calls = &self.registry.element_calls;
+        let functions = &self.shared.strings;
+        let mut calls = |target: Option<u64>, machine: &mut Machine| {
+            if target == Some(getter) {
+                let returned = match (result, machine.register(8)) {
+                    (None, _) => Some(objects.name),
+                    (Some(_), Some(object)) => {
+                        objects.write_name(machine, layout, object);
+                        Some(object)
+                    }
+                    (Some(_), None) => None,
+                };
+                return Ok(Call::Return(returned));
+            }
+            if element_calls.contains(&machine.pc()) {
+                return Ok(Call::Return(Some(objects.element(machine))));
+            }
+
+            let receives_name = receives_derived_text(machine, &arena);
+            let modelled = target.is_some_and(|target| {
+                functions.follows(target) || functions.never_return.contains(&target)
+            });
+            if receives_name && !modelled {
+                forget_derived_texts(machine, &mut arena);
+                machine.label(LOST_NAME, 1);
+            }
+            // A string function on an object that the run does not know, such as a member of the
+            // caller's own object, cannot change a string that the run follows.
+            match model.call(target, machine, &mut arena) {
+                Ok(Effect::Followed(call)) => Ok(call),
+                Ok(Effect::Other) => Ok(Call::Return(None)),
+                Err(unknown) if unknown.reason == "string-object" => {
+                    if receives_name {
+                        machine.label(LOST_NAME, 1);
+                    }
+                    Ok(Call::Return(None))
+                }
+                Err(unresolved) => Err(unresolved),
+            }
+        };
+        let paths = machine.run_paths_to(start, site.address, &mut calls);
+
+        paths
+            .iter()
+            .filter_map(|path| match path.end {
+                Ok(Exit::Reached) => Some(Ok(self.site_use(
+                    &model,
+                    &objects,
+                    site,
+                    &path.machine,
+                    &mut arena,
+                ))),
+                Ok(_) => None,
+                Err(_) => Some(Err(())),
+            })
+            .collect()
+    }
+
+    /// The use of the getter's name at the site, on a path that arrived there.
+    fn site_use(
+        &self,
+        model: &Model,
+        objects: &CallerObjects,
+        site: &UseSite,
+        machine: &Machine,
+        arena: &mut Arena,
+    ) -> CallerUse {
+        let (node, target, role) = match site.call {
+            UseCall::Sink(address) => {
+                let Some(sink) = self.input.sinks.get(&address) else {
+                    return CallerUse::Other;
+                };
+                let node = name_node(model, sink.argument, machine, arena);
+                (node, sink.target, sink.role)
+            }
+            UseCall::Register(register) => {
+                let sprite_call = machine.register(register) == Some(SPRITE_CALL)
+                    && objects.is_element(machine, machine.register(0));
+                if !sprite_call {
+                    return CallerUse::Other;
+                }
+                let node = model.object_node(machine, machine.register(1), arena);
+                (node, NameLookup::Sprite, Role::Lookup)
+            }
+        };
+
+        let node = arena.node(node);
+        match composition(node) {
+            Composition::Around(before, after) => CallerUse::Continuation(Continuation {
+                before,
+                after,
+                target,
+                role,
+                site: site.address,
+            }),
+            // An unresolved name is a use of the getter's name only when it still holds it, or
+            // when the name went into a call that the run did not follow.
+            Composition::Unresolved
+                if has_source(node) || machine.labelled(LOST_NAME).is_some() =>
+            {
+                CallerUse::Unresolved
+            }
+            Composition::Unresolved | Composition::Other => CallerUse::Other,
+        }
+    }
+
     /// The names of one root, and the reason of each path, site or bound that could not be
-    /// followed. `every_item` says whether the engine runs the root for every item.
-    fn root_names(&self, root: &Root, every_item: bool) -> (Vec<Name>, Vec<&'static str>) {
+    /// followed. `every_item` says whether the engine runs the root for every item. A getter root
+    /// has the continuations of its callers, and uses each name that it returns through each.
+    fn root_names(
+        &self,
+        root: &Root,
+        every_item: bool,
+        continuations: &[Continuation],
+    ) -> (Vec<Name>, Vec<&'static str>) {
         let flags = self.tested_flags(root);
         if flags.len() > FLAG_BOUND {
             return (Vec::new(), vec!["flag-bound"]);
@@ -531,7 +965,7 @@ impl Analysis<'_> {
                 .filter(|flag| kind == Kind::Template || flag.element.is_none())
                 .collect();
             for form in KeyForm::BOTH {
-                match self.enumerated_runs(root, kind, form, &kind_flags) {
+                match self.enumerated_runs(root, kind, form, &kind_flags, continuations) {
                     Some(enumerated) => runs.extend(enumerated),
                     None => return (Vec::new(), vec!["check-bound"]),
                 }
@@ -539,7 +973,8 @@ impl Analysis<'_> {
         }
 
         let failures = failures(root, &runs);
-        let names = self.names(root, every_item, &flags, &runs);
+        let from_callers = !continuations.is_empty();
+        let names = self.names(root, every_item, from_callers, &flags, &runs);
         (names, failures)
     }
 
@@ -576,6 +1011,7 @@ impl Analysis<'_> {
         kind: Kind,
         form: KeyForm,
         flags: &[&'s StoredField],
+        continuations: &[Continuation],
     ) -> Option<Vec<RunRecord<'s>>> {
         let mut checked: BTreeSet<NameKey> = BTreeSet::new();
         loop {
@@ -591,6 +1027,7 @@ impl Analysis<'_> {
                             flags,
                             misses,
                         },
+                        continuations,
                     )
                 })
                 .collect();
@@ -608,8 +1045,14 @@ impl Analysis<'_> {
         }
     }
 
-    /// Run the root once with `plan`'s inputs.
-    fn run<'s>(&self, root: &Root, plan: Plan<'s>) -> RunRecord<'s> {
+    /// Run the root once with `plan`'s inputs. A getter root uses the name that each returned
+    /// path gives through each of `continuations`.
+    fn run<'s>(
+        &self,
+        root: &Root,
+        plan: Plan<'s>,
+        continuations: &[Continuation],
+    ) -> RunRecord<'s> {
         let mut machine = Machine::new(&self.registry.code, &self.shared.data);
         let mut arena = Arena::default();
         let fields = self.prepare(&mut machine, &mut arena, &plan);
@@ -634,7 +1077,12 @@ impl Analysis<'_> {
             unresolved: BTreeSet::new(),
             bounded: BTreeSet::new(),
         };
-        let entered = &self.registry.entered;
+        let result = machine.register(8);
+        let entered = if continuations.is_empty() {
+            &self.registry.entered
+        } else {
+            &self.registry.getter_entered
+        };
         let mut calls = |target, machine: &mut Machine| recorder.call(target, entered, machine);
         // A template run's collections hold one element, so its loops end, and joining at a loop
         // head would merge the installed element with the other values a path holds there.
@@ -642,10 +1090,17 @@ impl Analysis<'_> {
             Kind::Search => machine.run_paths_joining(root.function, &mut calls),
             Kind::Template => machine.run_paths(root.function, &mut calls),
         };
-        let paths = paths
+        let mut records: Vec<PathRecord> = paths
             .iter()
             .map(|path| path_record(&self.shared.strings, path))
             .collect();
+        if !continuations.is_empty() {
+            for (path, record) in paths.iter().zip(&mut records) {
+                if path.end == Ok(Exit::Returned) {
+                    recorder.returned(&path.machine, record, result, root, continuations);
+                }
+            }
+        }
 
         let Recorder {
             events,
@@ -659,7 +1114,7 @@ impl Analysis<'_> {
             plan,
             fields,
             events,
-            paths,
+            paths: records,
             checked,
             sites,
             unresolved,
@@ -714,6 +1169,7 @@ impl Analysis<'_> {
         &self,
         root: &Root,
         every_item: bool,
+        from_callers: bool,
         flags: &[&StoredField],
         runs: &[RunRecord],
     ) -> Vec<Name> {
@@ -730,6 +1186,12 @@ impl Analysis<'_> {
                     // A template run plants one state for every string field, so a miss path
                     // that depends on another field's state is never explored.
                     Kind::Template => (field_condition(&name, &kind_runs, flags), Miss::Unresolved),
+                };
+                // A caller's own branches decide whether it reaches its use, and the getter's
+                // runs do not see them.
+                let condition = match condition {
+                    Condition::Always if from_callers => Condition::Unresolved,
+                    condition => condition,
                 };
                 names.push(Name {
                     on_missing,
@@ -761,6 +1223,7 @@ fn path_record(strings: &StringFunctions, path: &Path) -> PathRecord {
             .map(|index| index as usize)
             .collect(),
         assumed: path.machine.labelled(ASSUMED_TEXT).is_some(),
+        by_value: false,
     }
 }
 
@@ -891,6 +1354,49 @@ impl Recorder<'_> {
         })
     }
 
+    /// Record a getter's use of the name that a path returns in `x0`: one use through each
+    /// continuation, with the caller's parts around the name. A path that returns its result
+    /// object returned the name by value.
+    fn returned(
+        &mut self,
+        machine: &Machine,
+        record: &mut PathRecord,
+        result: Option<u64>,
+        root: &Root,
+        continuations: &[Continuation],
+    ) {
+        let returned = machine.register(0);
+        let node = self.model.object_node(machine, returned, &mut self.arena);
+        let node = self.arena.node(node).clone();
+        if !has_source(&node) {
+            return;
+        }
+        record.by_value = returned.is_some() && returned == result;
+        if node.limit.is_some() || node.text(&self.model.sources).is_none() {
+            self.unresolved.insert(vec![root.function]);
+            return;
+        }
+
+        for continuation in continuations {
+            let parts = [&continuation.before, &node.parts, &continuation.after]
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect();
+            self.events.push(Event {
+                kind: EventKind::Use {
+                    role: continuation.role,
+                    target: continuation.target,
+                    name: Node { parts, limit: None },
+                    unchecked_miss: None,
+                },
+                chain: vec![continuation.site],
+                assumed: record.assumed,
+            });
+            record.events.push(self.events.len() - 1);
+        }
+    }
+
     /// Record the name at a sink call, and give a check the run's outcome for it.
     fn sink(&mut self, sink: &Sink, machine: &mut Machine) -> Call {
         let outcome = self.record_sink(sink, machine);
@@ -904,7 +1410,7 @@ impl Recorder<'_> {
     fn record_sink(&mut self, sink: &Sink, machine: &mut Machine) -> Option<u64> {
         let chain = chain(machine);
         self.sites.insert(chain.clone());
-        let node = self.name(sink.argument, machine);
+        let node = name_node(self.model, sink.argument, machine, &mut self.arena);
         let node = self.arena.node(node).clone();
         if node.limit.is_some() {
             self.bounded.insert(chain.clone());
@@ -957,24 +1463,6 @@ impl Recorder<'_> {
         });
         machine.label(empty, unresolved);
         machine.label(ASSUMED_TEXT, 1);
-    }
-
-    fn name(&mut self, argument: NameArgument, machine: &Machine) -> u64 {
-        let model = self.model;
-        match argument {
-            NameArgument::View { text, length } => model.view(
-                machine,
-                machine.register(text),
-                machine.register(length),
-                &mut self.arena,
-            ),
-            NameArgument::Object(register) => {
-                model.object_node(machine, machine.register(register), &mut self.arena)
-            }
-            NameArgument::Text(register) => {
-                model.text_node(machine, machine.register(register), &mut self.arena)
-            }
-        }
     }
 
     /// Record a diagnostic that receives a derived text.
@@ -1085,6 +1573,95 @@ fn unresolved_outcome(sink: &Sink, machine: &Machine) -> Option<u64> {
 /// The calls that the path is inside, then the present call.
 fn chain(machine: &Machine) -> Vec<u64> {
     machine.entered_calls().chain([machine.pc()]).collect()
+}
+
+/// Whether an argument register of a call holds a text, or a string object with a text, that has
+/// a source part.
+fn receives_derived_text(machine: &Machine, arena: &Arena) -> bool {
+    (0..8).any(|register| {
+        let Some(address) = machine.register(register) else {
+            return false;
+        };
+        let object = machine
+            .read(address, 8)
+            .and_then(|buffer| machine.labelled(buffer));
+        machine
+            .labelled(address)
+            .into_iter()
+            .chain(object)
+            .any(|node| has_source(arena.node(node)))
+    })
+}
+
+/// Make each text with a source part that an argument register holds, or that a string object in
+/// one holds, unresolved: a call that the run does not follow may change it. The string model
+/// forgets only the first three arguments.
+fn forget_derived_texts(machine: &mut Machine, arena: &mut Arena) {
+    for register in 0..8 {
+        let Some(address) = machine.register(register) else {
+            continue;
+        };
+        let buffer = machine.read(address, 8);
+        for text in [Some(address), buffer].into_iter().flatten() {
+            if machine
+                .labelled(text)
+                .is_some_and(|node| has_source(arena.node(node)))
+            {
+                let unresolved = arena.add(Node {
+                    parts: vec![Part::Unresolved],
+                    limit: None,
+                });
+                machine.label(text, unresolved);
+            }
+        }
+    }
+}
+
+/// The node of the name that a sink call receives in `argument`.
+fn name_node(model: &Model, argument: NameArgument, machine: &Machine, arena: &mut Arena) -> u64 {
+    match argument {
+        NameArgument::View { text, length } => model.view(
+            machine,
+            machine.register(text),
+            machine.register(length),
+            arena,
+        ),
+        NameArgument::Object(register) => {
+            model.object_node(machine, machine.register(register), arena)
+        }
+        NameArgument::Text(register) => model.text_node(machine, machine.register(register), arena),
+    }
+}
+
+/// How a caller's name holds the getter's name, which a caller run gives as the item key.
+enum Composition {
+    /// Once, between these literal parts.
+    Around(Vec<Part>, Vec<Part>),
+    /// With a part that the method could not follow, or bounded by a buffer.
+    Unresolved,
+    /// Not at all.
+    Other,
+}
+
+fn composition(node: &Node) -> Composition {
+    let followed = node.limit.is_none()
+        && node
+            .parts
+            .iter()
+            .all(|part| matches!(part, Part::Literal(_) | Part::ItemKey));
+    let keys: Vec<usize> = node
+        .parts
+        .iter()
+        .enumerate()
+        .filter(|(_, part)| **part == Part::ItemKey)
+        .map(|(index, _)| index)
+        .collect();
+    match keys.as_slice() {
+        _ if !followed => Composition::Unresolved,
+        [] => Composition::Other,
+        [key] => Composition::Around(node.parts[..*key].to_vec(), node.parts[key + 1..].to_vec()),
+        _ => Composition::Unresolved,
+    }
 }
 
 fn has_source(node: &Node) -> bool {

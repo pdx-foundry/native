@@ -265,6 +265,26 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
+    /// Two shapes of custom loader give root statements instead of item fields. Where the loader
+    /// selects a scope by the root key, as the events loader does, every root field is a root
+    /// statement whose members are the item's fields. Where the loader reserves one root key for
+    /// another class, the root fields are the items of every other key, and one more root field
+    /// named for the reserved key is a root statement whose members are the other class's
+    /// fields.
+    ///
+    /// ```no_run
+    /// # fn example(native: &pdx_native::Native) -> Result<(), pdx_native::Error> {
+    /// let answer = native.registry_fields("common/planet_classes")?;
+    /// // `random_list = { … }` is a root statement, not a field of a planet class.
+    /// let random_list = answer.value.iter().find(|field| field.name == "random_list");
+    /// if let Some(pdx_native::FieldMembers::Fields(fields)) = random_list.map(|f| &f.members) {
+    ///     let names: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
+    ///     assert!(names.contains(&"planets"));
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
     /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
     /// [`Error::UnknownRegistry`].
@@ -292,7 +312,26 @@ impl Native {
             blocks: self.block_facts()?,
             categories: modifiers::category_names(self.category_input()?, []),
         };
-        let (answer, entry_gaps) = self.registry_field_answer(registry, &owner, &result, &facts);
+        let (mut answer, entry_gaps) =
+            self.registry_field_answer(registry, &owner, &result, &facts);
+        let keyed = self
+            .bound()
+            .analysis
+            .keyed_field_result(registry)
+            .map_err(|failure| error(Operation::RegistryFields, failure))?;
+        if let Some((key, class, keyed_result)) = keyed {
+            let (members, _) = self.registry_field_answer(registry, &class, &keyed_result, &facts);
+            let (field, gaps) = super::loader_kinds::reserved_key_field(
+                &key,
+                members.value,
+                members.gaps,
+                registry,
+            );
+            answer.value.push(field);
+            answer.gaps.extend(gaps);
+            answer.completeness = Completeness::from_gaps(&answer.gaps);
+        }
+
         Ok(RegistryFieldRun {
             answer,
             result,
@@ -383,30 +422,40 @@ impl Native {
         let references = facts.references;
         let mut value = normalized_fields(result, references);
         let mut gaps = normalized_gaps(result, registry, references, &value);
-        super::modifier_blocks::attach(
-            &mut value,
-            result,
-            facts.modifiers,
-            references,
-            facts.blocks.scope_names.as_deref(),
-            &mut gaps,
-        );
+        let scope_names = facts.blocks.scope_names.as_deref();
         let clauses = super::triggered_modifiers::ClauseFacts {
             clauses: facts.triggered,
             modifiers: facts.modifiers,
             references,
             numeric: facts.numeric,
             scoped: facts.scoped,
-            scope_names: facts.blocks.scope_names.as_deref(),
+            scope_names,
         };
-        super::triggered_modifiers::attach(&mut value, result, &clauses, &mut gaps);
-        super::container_masks::attach(
+        attach_at_every_depth(
             &mut value,
             result,
-            facts.triggered,
-            &facts.categories,
+            &[],
             &mut gaps,
+            &mut |values, result, gaps| {
+                super::modifier_blocks::attach(
+                    values,
+                    result,
+                    facts.modifiers,
+                    references,
+                    scope_names,
+                    gaps,
+                );
+                super::triggered_modifiers::attach(values, result, &clauses, gaps);
+                super::container_masks::attach(
+                    values,
+                    result,
+                    facts.triggered,
+                    &facts.categories,
+                    gaps,
+                );
+            },
         );
+        super::container_masks::state_unresolved(&value, &mut gaps);
         super::numeric::fields(&mut value, facts.numeric, &[], &mut gaps);
         super::scoped_numeric::fields(&mut value, result, facts.scoped, facts.numeric, &mut gaps);
         let weights = super::weight_blocks::WeightFacts {
@@ -414,9 +463,17 @@ impl Native {
             references,
             numeric: facts.numeric,
             scoped: facts.scoped,
-            scope_names: facts.blocks.scope_names.as_deref(),
+            scope_names,
         };
-        super::weight_blocks::attach(&mut value, result, &weights, &mut gaps);
+        attach_at_every_depth(
+            &mut value,
+            result,
+            &[],
+            &mut gaps,
+            &mut |values, result, gaps| {
+                super::weight_blocks::attach(values, result, &weights, gaps);
+            },
+        );
         super::read_scope::registry_fields(
             &mut value,
             result,
@@ -464,6 +521,40 @@ impl Native {
             .registry_field_result(registry.trim_end_matches('/'))
             .map_err(|e| error(Operation::RegistryFields, e))?
             .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
+    }
+
+    /// Add to `answer`, an answer for `registry`'s owner, a gap for the root statements that the
+    /// registry's loader reads into another class. The gap is outside the method: the answer
+    /// covers the owner's items, and those statements are not its items.
+    pub(crate) fn add_keyed_class_gap<T>(
+        &self,
+        operation: Operation,
+        registry: &str,
+        answer: &mut Answer<T>,
+    ) -> Result<(), Error> {
+        let verified = self
+            .bound()
+            .analysis
+            .verified()
+            .map_err(|failure| error(operation, failure))?;
+        let Some((key, _)) = verified
+            .database_schedule()
+            .ok()
+            .and_then(|schedule| schedule.keyed_class(registry))
+        else {
+            return Ok(());
+        };
+
+        answer.gaps.push(Gap {
+            kind: GapKind::OutsideMethod,
+            subject: Some(GapSubject::registry(registry)),
+            detail: format!(
+                "Root statements with the key `{key}` are items of another class, which this \
+                 answer does not cover."
+            ),
+        });
+
+        Ok(())
     }
 
     /// The error for a registry that the operation does not read. A registry that
@@ -537,6 +628,76 @@ struct RegistryFieldFacts<'a> {
     blocks: &'a crate::binding::BlockFacts,
     /// The name of each single category, which container masks are listed by.
     categories: CategoryNames,
+}
+
+/// Run `attach` on `values`, the fields at `parent`, and on the children of each field that
+/// collects or embeds an object, with that object's own result. The gaps that `attach` gives and
+/// the conditions of the grammar that it attaches name the full path from the root.
+fn attach_at_every_depth(
+    values: &mut [Field],
+    result: &RegistryFieldResult,
+    parent: &[String],
+    gaps: &mut Vec<Gap>,
+    attach: &mut impl FnMut(&mut [Field], &RegistryFieldResult, &mut Vec<Gap>),
+) {
+    let unattached: Vec<bool> = values
+        .iter()
+        .map(|value| value.members == crate::FieldMembers::Unresolved)
+        .collect();
+    let mut level_gaps = Vec::new();
+
+    attach(values, result, &mut level_gaps);
+    gaps.extend(level_gaps.into_iter().map(|gap| below(gap, parent)));
+
+    for (value, unattached) in values.iter_mut().zip(unattached) {
+        if unattached && value.members != crate::FieldMembers::Unresolved {
+            for name in parent.iter().rev() {
+                super::fields::prefix_member_conditions(value, name);
+            }
+        }
+    }
+
+    for value in values.iter_mut() {
+        let crate::FieldMembers::Fields(children) = &mut value.members else {
+            continue;
+        };
+        let Some(nested) = result
+            .fields
+            .iter()
+            .find(|root| root.name == value.name)
+            .and_then(|root| result.nested(root.token))
+        else {
+            continue;
+        };
+        let mut path = parent.to_vec();
+        path.push(value.name.clone());
+
+        attach_at_every_depth(children, nested, &path, gaps, attach);
+    }
+}
+
+/// `gap` with a field or key path subject moved below `parent`.
+fn below(mut gap: Gap, parent: &[String]) -> Gap {
+    if parent.is_empty() {
+        return gap;
+    }
+
+    let relative = match gap.subject.take() {
+        Some(GapSubject::Field { name }) => Some(vec![name]),
+        Some(GapSubject::KeyPath { path }) => Some(path),
+        other => {
+            gap.subject = other;
+            None
+        }
+    };
+
+    if let Some(relative) = relative {
+        let mut path = parent.to_vec();
+        path.extend(relative);
+        gap.subject = Some(GapSubject::path(&path));
+    }
+
+    gap
 }
 
 pub(crate) fn normalized_fields(
@@ -1332,5 +1493,116 @@ mod field_gap_tests {
         }]);
 
         assert_eq!(public, located);
+    }
+}
+
+#[cfg(test)]
+mod nested_attach_tests {
+    use super::*;
+    use crate::engine::analysis::fields::{CollectionField, ReaderJoin, RootField};
+    use crate::{FieldCondition, FieldMembers, FieldReadAlternative, FieldReadOutcome};
+
+    fn root(name: &str, token: i64) -> RootField {
+        RootField {
+            name: name.into(),
+            token,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: "CReader::Read(bool&)".into(),
+                arguments: Default::default(),
+                tail: true,
+            }],
+        }
+    }
+
+    /// `swap`, which collects objects whose own field is `modifier`.
+    fn registry() -> RegistryFieldResult {
+        let child = RegistryFieldResult {
+            fields: vec![root("modifier", 3)],
+            ..Default::default()
+        };
+
+        RegistryFieldResult {
+            fields: vec![root("swap", 5)],
+            collections: vec![CollectionField {
+                token: 5,
+                offset: 0x20,
+                data_offset: None,
+                count_offset: None,
+                container_mask: None,
+                class: "CSwap".into(),
+                reader: None,
+                fields: Box::new(child),
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Give `modifier` a block whose key `flag` is read when `modifier.flag` is set, and a gap
+    /// on that key.
+    fn attach_block(values: &mut [Field], _: &RegistryFieldResult, gaps: &mut Vec<Gap>) {
+        for value in values.iter_mut().filter(|value| value.name == "modifier") {
+            let mut key = value.clone();
+            key.name = "flag".into();
+            key.read = vec![FieldReadAlternative {
+                condition: FieldCondition::FieldZero {
+                    path: vec!["modifier".into(), "flag".into()],
+                    zero: false,
+                },
+                outcome: FieldReadOutcome::Rejected,
+            }];
+            value.members = FieldMembers::ModifierBlock(crate::ModifierBlock {
+                fixed_keys: crate::GrammarProperty::Known(vec![key]),
+                entries: crate::GrammarProperty::Known(vec![]),
+            });
+            gaps.push(Gap {
+                kind: GapKind::UnresolvedReader,
+                subject: Some(GapSubject::key_path(vec!["modifier".into(), "flag".into()])),
+                detail: "key".into(),
+            });
+        }
+    }
+
+    #[test]
+    fn a_grammar_attached_below_a_parent_names_the_full_path_once() {
+        let result = registry();
+        let mut values = normalized_fields(&result, &Default::default());
+        let FieldMembers::Fields(children) = &mut values[0].members else {
+            panic!("{:?}", values[0].members);
+        };
+        children[0].members = FieldMembers::Unresolved;
+        let mut gaps = Vec::new();
+
+        attach_at_every_depth(&mut values, &result, &[], &mut gaps, &mut attach_block);
+        // A later pass that attaches nothing leaves the earlier grammar's conditions alone.
+        attach_at_every_depth(&mut values, &result, &[], &mut gaps, &mut |_, _, _| {});
+
+        let FieldMembers::Fields(children) = &values[0].members else {
+            unreachable!()
+        };
+        let FieldMembers::ModifierBlock(block) = &children[0].members else {
+            panic!("{:?}", children[0].members);
+        };
+        let crate::GrammarProperty::Known(keys) = &block.fixed_keys else {
+            unreachable!()
+        };
+        assert_eq!(
+            keys[0].read[0].condition,
+            FieldCondition::FieldZero {
+                path: vec!["swap".into(), "modifier".into(), "flag".into()],
+                zero: false,
+            }
+        );
+        assert_eq!(
+            gaps.iter()
+                .map(|gap| gap.subject.clone())
+                .collect::<Vec<_>>(),
+            [Some(GapSubject::key_path(vec![
+                "swap".into(),
+                "modifier".into(),
+                "flag".into()
+            ]))]
+        );
     }
 }

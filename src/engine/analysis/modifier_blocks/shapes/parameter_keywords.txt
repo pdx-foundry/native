@@ -1,0 +1,15 @@
+# The keyword tests of a custom-description parameter's reader: three keyword kinds go back to
+# the copy of an accepted value; any other kind reaches the malformed report.
+cmp wr8,#{first}
+b.eq @-{first_back}
+cmp wr8,#{second}
+b.eq @-{second_back}
+cmp wr8,#{third}
+b.eq @-{third_back}
+adrp x1,PAGE
+add x1,x1,G = "Unexpected value type for custom description modifier parameter"
+add x0,sp,#0x100
+bl CALL = CString::CString(char const*)
+add x1,sp,#0x100
+mov x0,xr7
+bl CALL = CReader::ReportMalformed(CString const&)

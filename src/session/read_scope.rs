@@ -75,8 +75,12 @@ fn fields(
         if matches!(field.members, crate::FieldMembers::WeightBlock(_)) {
             continue;
         }
-        // A modifier block's reader takes no scope, and its entries are not read in one.
-        if matches!(field.members, crate::FieldMembers::ModifierBlock(_)) {
+        // A modifier block's or a parameter list's reader takes no scope, and its entries are
+        // not read in one.
+        if matches!(
+            field.members,
+            crate::FieldMembers::ModifierBlock(_) | crate::FieldMembers::AnyKey { .. }
+        ) {
             field.read_scope = GrammarProperty::Known(vec![]);
             continue;
         }
@@ -102,8 +106,11 @@ fn fields(
             match outcome {
                 PathOutcome::Rejected => {}
                 PathOutcome::Reader(join) => {
-                    let kind = readers::classify(std::slice::from_ref(&join)).kind;
-                    if matches!(kind, ReaderKind::Block | ReaderKind::Unknown) {
+                    let reader = readers::classify(std::slice::from_ref(&join));
+                    // A block of values, with no command family, is read in no scope.
+                    if matches!(reader.kind, ReaderKind::Block | ReaderKind::Unknown)
+                        && reader.family != crate::BlockFamily::NotApplicable
+                    {
                         arguments.push(argument(&join));
                     } else {
                         scalar = true;

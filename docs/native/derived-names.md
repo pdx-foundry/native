@@ -1,7 +1,9 @@
 # Derived names
 
-`Native::derived_names(registry)` (`derived-names/v2`) gives the names that a registry's own code
-composes from an item key or a string field, and then checks or looks up: the parts of each name,
+`Native::derived_names(registry)` (`derived-names/v4`) gives the names that a registry's own code
+composes from an item key or a string field, and then checks or looks up, and the names that the
+direct callers of an item getter compose from the key or field that it returns
+([interface callers](#interface-callers-of-name-getters-m452)): the parts of each name,
 what it is looked up in (localisation, sprites, files), the stage, the field condition, and what a
 missing name gives. Atlas matches the names to the config's `localisation` and `images` lines and
 decides what `## optional` means.
@@ -82,7 +84,8 @@ writes no diagnostic. The binding states this beside `PdxLocalizeAndReplaceView`
   (`0x100cdd6bc`, `0x100cdd714`) into one string, which is checked at `0x100cdd758` and looked up
   at `0x100cdd7a4`. A miss there gives `CString::_NullString` and no diagnostic.
 - `GetIconKey` (`0x100cdf7f0`) returns the key or the swap name with no lookup; interface code
-  adds `GFX_`. It is outside the method.
+  adds `GFX_`. The method follows those callers: see
+  [interface callers](#interface-callers-of-name-getters-m452).
 - `PostReadInit()` (`0x100cdc994`) tests the length of `custom_tooltip` and
   `custom_tooltip_with_modifiers` (`+0x1c0`, `+0x1e8`; on swaps `+0x120`, `+0x148`), checks each
   nonempty one with `HasLocalizeKey`, and on a miss writes "Missing localization %s for tradition
@@ -118,6 +121,91 @@ template run plants one state for every string field, so a miss path that depend
 field's state, such as one that logs only when another field is empty, is never explored. The
 method gives a miss behavior only from search runs, whose names hold the key alone.
 
+## Interface callers of name getters (M452)
+
+Executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`, read with
+`examples/inspect`.
+
+A **name getter** is a direct `const` member of the item class that reaches no sink, has a direct
+`bl` (not a tail `b`) from a function outside the class, and returns a string with the key or a
+field in it. The binding keeps a candidate only when a sink call or a candidate sprite call
+follows one of its calls (`Code::reaching`). The method then probes it with one run: a returned
+string object in `x0` is a reference return; `x0` equal to the entry result object of `x8` is a
+by-value return. For each call it runs the caller from the return address to each use site
+(`Machine::run_paths_to`), with the getter's name as a placeholder key text, and reads the name at
+the site. The getter's own runs (search and template) then use each returned name through each
+caller's composition, so the getter's flag and field terms stay (`inherit_icon` zero for the swap
+name). A caller name is never `Always`, since the caller's own branches decide whether it reaches
+its use, and its miss is `Unresolved`.
+
+- `CTraditionType::GetIconKey(CCountry const*) const` (`0x100ce10b8`) selects a swap like `GetName`
+  and returns in `x0` the swap's `name` (`+0xf8`) when the swap is valid and `inherit_icon`
+  (`+0x4f2`) is zero, otherwise the key (`+0x10`).
+- `CColonyType::GetDesc() const` is `add x0, x0, #0x48; ret`: an offset getter.
+- By value: `CCouncilAgenda::GetSpriteKey`, `CWarGoalType::GetIcon`, `CSpecimen::GetDesc*Key` and
+  the `CPatronType` background and icon keys compose the name into the `x8` object. A caller
+  that sets `x8` to `sp` plus a constant just before the call is followed with the name in that
+  slot. `CCardinalPatronPanelEntry::Update` uses `sub x8, x29, #0x98`, a frame-pointer slot,
+  which gives a `getter-result` gap.
+
+### The sprite rule
+
+A survey of all 15,293 primary vtables shows that displacement `0x2e8` holds unrelated methods in
+other classes (`CPlanet`, `CContainerWindow::MoveToGuiFront`, `CScrollbar::HideSlider`, …), so a
+displacement alone is no lookup. The rule includes the receiver's class:
+
+- **Element classes**: `T` of `T* CContainerWindow::GetGuiObject<T>(CString const&) const` whose
+  primary vtable holds a `ChangeSprite(CString const&)` that calls
+  `CGuiGraphics::GetSpriteType` directly: `CButtonStandard` and `CIcon`, both at `0x2e8` (the
+  sprite slot). `CButton::ChangeSprite` and `TButton::ChangeSprite` are a bare `ret`, so a class
+  that holds one of them is not an element class.
+- **Element calls** in a caller: a direct call to a `GetGuiObject<T>` or to a function whose first
+  instruction branches to one (`CContainerWindow::GetButton`, `GetIcon`), or a `blr` whose
+  register's last straight-line write is `ldr xN, [xM, #D]` with `D` the displacement at which
+  `CContainerWindow`'s primary vtable holds such a function (`GetButton` `0xe0`, `GetIcon`
+  `0x100`).
+- In a caller run, an element call returns an element object whose first word points at a
+  synthetic vtable, whose word at the sprite slot is a marker. At a `blr` use site, the target
+  register holds the marker only when the function pointer came from the sprite slot of an
+  element's own vtable; with an element in `x0`, the call looks the string object in `x1` up in
+  sprites.
+
+**Assumption:** the receiver of a call through an element getter's displacement is a
+`CContainerWindow`. The method does not type the container. Three checks:
+
+1. `CEffectButton`, `CCallbackButtonStandard`, `CMultiSpriteButton` and `CNullButtonStandard` hold
+   `CButtonStandard::ChangeSprite` at `0x2e8`, and `CNullIcon` holds `CIcon::ChangeSprite` there;
+   both pass the argument to `GetSpriteType`. `GetGuiObject<CButtonStandard>` calls
+   `GetGuiObjectByString<CButtonStandard>`, which searches the container's array of
+   `CButtonStandard*` by name.
+2. `CContainerWindow`'s vtable (address point `0x103276408`) holds `GetButton` at `0xe0` and
+   `GetIcon` at `0x100`; each is a branch to its `GetGuiObject<T>`.
+3. The `GetIconKey` callers: `CTraditionCategoryGridEntry::SetupTraditions` gets the container
+   from `CreateContainerWindow`, calls `GetButton` through `0xe0` at `0x101b49024`, and calls the
+   sprite slot at `0x101b49084` with `GFX_` and the returned name in `x1`. The
+   `CAscensionPerkEntry` constructor reads its container at `[x19, #8]` and calls `GetIcon` through
+   `0x100` at `0x10126613c`. `CTraditionsView::UpdateAscensionPerks` passes the composed string
+   to `UpdateAscensionPerk`, a callee the method does not follow, so it gives no name.
+
+The assumption fails only for an unrelated object whose method at `0xe0` or `0x100` returns an
+object whose own vtable then holds, at `0x2e8`, a call that receives a string made from the
+getter's name. Type the container, from its own source, when such a case appears.
+
+### What the callers give
+
+`common/traditions` and `common/ascension_perks`: `GFX_{key}` (sprite, condition `Unresolved`) and
+`GFX_{tradition_swap/name}` (sprite, `inherit_icon` zero and a nonempty swap name);
+`common/council_agendas`: `GFX_council_agenda_icon_{key}` when used, from `GetSpriteKey` by
+value; `common/governments/civics`: `{picture}` from `GetPicture`.
+
+Gaps: a use site with a caller path that stops before it (`caller-path`), a name at the site that
+has an unfollowed part while it holds the getter's name or after the name went into an unfollowed
+call on that path (`caller-name`), a by-value call whose result object is not a stack slot
+(`getter-result`), and a getter whose probe has no path to its return (`getter-path`, such as
+`CTechnology::GetCost`). An unresolved name with no trace of the getter's name is not a use of it.
+A getter's runs enter the members and composers that the getters call; a root's runs do not, since
+those members reach no sink.
+
 ## Result on M451-hotfix
 
 `tests/expected/m452/derived-names-traditions.json` and `derived-names-tradition_categories.json`
@@ -132,7 +220,9 @@ engine facts above.
   fields `custom_tooltip`, `custom_tooltip_with_modifiers` and the swap's two fields are looked up
   in `PostReadInit` and when used; the swap's use carries `inherit_effects` zero. Every name with a
   field part has an `Unresolved` miss; the hand-read fallback and diagnostics are in
-  [what the answer does not publish](#what-the-answer-does-not-publish).
+  [what the answer does not publish](#what-the-answer-does-not-publish). The interface callers of
+  `GetIconKey` give the sprite names `GFX_{key}` and `GFX_{tradition_swap/name}`, the latter under
+  `inherit_icon` zero; three of their use sites keep a `caller-path` gap.
   `common/ascension_perks` uses the same class and gives the same names.
 - **Tradition categories** (partial). `{key}` is `Always` and shows the key. `{key}_desc` shows the
   key; its condition is `Unresolved` (the count of the `description` block).
@@ -153,11 +243,13 @@ cargo run --release --example derived-name-population -- "$STELLARIS_PATH"
 
 | Inventory | Total | Complete | Partial | Unsupported | Failed |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Registries | 185 | 62 | 117 | 6 | 0 |
+| Registries | 185 | 61 | 118 | 6 | 0 |
 
-Eighty-five registries return names, and all of them are partial. The 62 complete answers return
-no name: no own method of theirs reaches a lookup or check. Twenty-three of the 32 partial answers
-with no name have no established key place.
+Eighty-seven registries return names, and all of them are partial. The 61 complete answers
+return no name: no own method of theirs reaches a lookup or check, and no getter of theirs has a
+caller with one. Twenty-one of the 31 partial answers with no name have no established key place;
+`common/starbase_levels` is partial only for its `getter-path` gap
+(`CStarbaseLevelType::GetTooltip`).
 
 The 21 registries that a database's own loader names
 ([custom-loader names](registry-fields.md#custom-loader-names)) are read through the owner that
@@ -178,29 +270,35 @@ Gap shapes, by registry (the answer-item shapes also give their gap count):
 
 | Shape | Registries | Gaps |
 | --- | ---: | ---: |
-| Paths go on after assumed text (`assumed-text`) | 92 | |
-| A lookup or check receives a name with an unfollowed part (`unresolved-name`) | 49 | |
+| Paths go on after assumed text (`assumed-text`) | 94 | |
+| A lookup or check receives a name with an unfollowed part (`unresolved-name`) | 50 | |
 | Paths stop at the path bound (`path-limit`) | 47 | |
-| Paths stop at an unmodelled string object (`string-object`) | 44 | |
-| Lookup or check calls that no run reaches (`unreached`) | 41 | |
+| Paths stop at an unmodelled string object (`string-object`) | 45 | |
+| Lookup or check calls that no run reaches (`unreached`) | 42 | |
 | Paths stop at the loop bound (`loop-limit`) | 14 | |
-| Paths stop at an unsupported instruction (`instruction`) | 7 | |
+| Caller paths stop before a use site (`caller-path`) | 12 | |
+| Paths stop at an unsupported instruction (`instruction`) | 5 | |
 | Paths stop at an unknown branch value (`branch-value`) | 5 | |
 | A fixed-size buffer bounds the name (`name-limit`) | 5 | |
-| No established key place (`constructor` 19, `key-storage` 4) | 23 | |
-| Every-item initialization not established | 36 | |
+| A caller's name has an unfollowed part after the getter's name went into it (`caller-name`) | 2 | |
+| A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
+| No path of a getter's probe returns (`getter-path`) | 3 | |
+| No established key place (`constructor` 17, `key-storage` 4) | 21 | |
+| Every-item initialization not established | 4 | |
 | Field values of a name not established | 47 | 112 |
-| What a missing name gives not established | 38 | 111 |
-| Field-derived name with unexplored field states | 25 | 64 |
+| What a missing name gives not established | 38 | 117 |
+| Field-derived name with unexplored field states | 25 | 67 |
 
-The 36 every-item gaps are: a database path keeps an item without its post-read code (25), a
-function forms an item's vtable address without its constructor (6), another function constructs
-items (5).
+The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
+(18 gaps); the other `UnresolvedPath` rows are unchanged.
 
-The 293 entries: 270 localisation, 18 file and 5 sprite; 214 when used and 79 at owner
-initialization. On a miss, 153 show the key, 111 are unresolved, 15 are silent and 14 are
-diagnostics; no entry is a fallback. The 64 names with a field part are all unresolved on a miss.
-Conditions: 117 `Always`, 64 with field terms, 112 `Unresolved`.
+The four every-item gaps (36 before SDK-713) are listed in [gaps](#gaps).
+
+The 303 entries: 274 localisation, 18 file and 11 sprite; 224 when used and 79 at owner
+initialization. On a miss, 156 show the key, 117 are unresolved, 16 are silent and 14 are
+diagnostics; no entry is a fallback. The 67 names with a field part are all unresolved on a miss.
+Conditions: 124 `Always`, 67 with field terms, 112 `Unresolved`. The interface callers give six of
+the sprite entries ([what the callers give](#what-the-callers-give)).
 
 Findings of the run:
 
@@ -215,10 +313,8 @@ Findings of the run:
 - **Sprite checks** are rare: `GFX_{key}_bg` and `GFX_{key}_box_icon_rectangle` of districts,
   `GFX_{icon}` and `GFX_{map_counter_icon}` of ship sizes, and the council agenda icon, whose miss
   is unresolved as the engine facts above say.
-- **Run time.** The run takes about 400 s: 2.2 to 6.1 s per registry, of which about 2.2 s is the
-  read and hash of the executable that every static query does
-  ([performance](performance.md#the-static-query-invariant)). `common/agreement_presets` is the
-  slowest.
+- **Run time.** The run takes about 90 s on one process, about 65 s without the interface
+  callers. `common/agreement_presets` is the slowest, at about 7 s.
 
 ### Config agreement
 
@@ -234,22 +330,50 @@ with a field part has an `Unresolved` miss in the answer; the hand-read miss is 
 | `tradition` `name = "$"` | `{key}`, shows key, `Always` | Agrees |
 | `tradition` `## optional flavor = "$_delayed"` | `{key}_delayed`, silent | Agrees |
 | `tradition` `## optional effects = "$_desc"` | `{key}_desc`, silent | Agrees. The engine looks up one of the two suffixes, chosen by the type at `+0x40`; the config lists both |
-| `tradition` `icon = "GFX_$"` | None | Outside the method: `GetIconKey` returns the key, and interface code adds `GFX_` |
+| `tradition` `icon = "GFX_$"` | `GFX_{key}`, sprite, when used, condition `Unresolved` | Agrees on name and lookup. The interface caller decides when; miss not in the answer |
 | `tradition` `custom_tooltip = localisation` | `{custom_tooltip}` at owner initialization and when used, miss unresolved | Miss not in the answer. By hand, a miss in `PostReadInit` is a diagnostic, which agrees |
 | `tradition` `custom_tooltip_with_modifiers = localisation` | `{custom_tooltip_with_modifiers}`, the same | As `custom_tooltip` |
 | `swapped_tradition` `subtype[not_inheriting_name]` `name = "$"` | `{tradition_swap/name}`, miss unresolved, `inherit_name` zero | Condition agrees: `inherit_name = yes` with cardinality `0..0` is `inherit_name` zero. Miss not in the answer |
 | `swapped_tradition` `subtype[not_inheriting_name]` `## optional flavor = "$_delayed"` | `{tradition_swap/name}_delayed`, miss unresolved | Miss not in the answer. By hand it falls back to `{key}_delayed`, which agrees with optional. Condition differs: `GetDesc` (`0x100cdd3c8`–`0x100cdd7a4`) reads no inheritance flag, so it checks the name of an inheriting swap too. Only the swap's validity, a vtable call outside the method, could depend on one |
 | `swapped_tradition` `subtype[not_inheriting_effects]` `## optional effects = "$_desc"` | `{tradition_swap/name}_desc`, miss unresolved | Miss not in the answer. By hand it falls back to `{key}_desc`, which agrees. Condition differs: `GetDesc` does not test `inherit_effects` |
-| `swapped_tradition` `subtype[not_inheriting_icon]` `icon = "GFX_$"` | None | Outside the method, as the tradition icon |
+| `swapped_tradition` `subtype[not_inheriting_icon]` `icon = "GFX_$"` | `GFX_{tradition_swap/name}`, sprite, `inherit_icon` zero | Condition agrees: `inherit_icon = yes` with cardinality `0..0` is `inherit_icon` zero. Atlas joins no naming line of a nested type |
 | `tradition_swap` `name = localisation` or `name = scalar` | `{tradition_swap/name}` only under `inherit_name` zero | Agrees: an inheriting swap's name is not looked up, so it can be any scalar |
 | `tradition_swap` `custom_tooltip`, `custom_tooltip_with_modifiers` | `{tradition_swap/…}` at owner initialization and when used, miss unresolved | Miss not in the answer. By hand, a miss in `PostReadInit` is a diagnostic, which agrees. The use also carries `inherit_effects` zero, which the config does not state |
 | `tradition_category` `name = "$"` | `{key}`, shows key, `Always` | Agrees |
 | `tradition_category` `desc = "$_desc"` | `{key}_desc`, shows key, condition `Unresolved` | Miss agrees. The engine looks it up only when the `desc` block is empty; the config requires it always |
 
+## String fields with a lookup claim
+
+The SDK-626 triage named 62 string fields (M451-hotfix) whose config claim is a localisation key,
+file or sprite and that no derived name reaches. On M452, against the Atlas coverage at Native
+`b2b3969` and before the interface callers, there are 118. Each now has one of these causes; a
+field is "outside" only with a caller found. The inputs were a run that listed each registry's
+planted string fields and probed every getter that other code calls, not only the getters with a
+use site.
+
+| Cause | Fields | Examples |
+| --- | ---: | --- |
+| A getter returns it to callers whose use the method does not reach | 7 | `agreement_presets.icon` (`GetIcon`, `GetLargeIcon`: caller paths stop), `governments/councilors.icon`, `specialist_subject_types.icon` and `icon_large`, `game_concepts.texture`, `economic_categories.scaled_value_key` and `megastructures.build_megastructure_no_cost_localization_key` (no lookup after the call: the caller passes the text on) |
+| No key place, so no root runs | 9 | `ambient_objects`, `game_concept_categories`, `precursor_civilizations`, `special_projects`, `start_screen_messages` |
+| The registry's own paths stop (`path-limit`, `string-object`, `unreached`, `unresolved-name`, …) | 69 | `country_types.colonizing_title`, `bypass.galactic_map_tooltip_header`, `buildings.custom_tooltip`, the eleven `situations` fields |
+| The registry's own paths only go on after assumed text | 10 | `colony_types.custom_tooltip`, `megastructure_overclock_types.custom_tooltip` |
+| No stop in the owner's code, and no getter of it has a caller with a lookup | 23 | `country_focus/card_categories` (5), `resolution_categories.icon`, `map/galaxy` (3), the two `pop_tooltip` fields |
+
+Every field of the last two rows is planted in template runs, so its text is followed wherever an
+owner method reads it: those fields reach no lookup in the owner's code. Interface code that reads
+the field directly, without a getter, is the likely reader; the method does not show it. This
+change repairs no internal shape: the 69 fields sit in 32 registries with mixed stop reasons, and
+each keeps the registry-wide gap that names its shape. The interface callers
+reach no further field of the 118; they add the tradition and agenda icons and civics `picture`,
+whose claims are naming lines or not in the list.
+
 ## Gaps
 
-- **Outside the method:** names that interface code composes or looks up, such as the tradition
-  icon (`GFX_` + `GetIconKey`); the run-time choice behind a selection (which swap, its validity);
+- **Outside the method:** names that interface code composes or looks up without calling a name
+  getter of the item, or after passing the getter's name to another function (such as
+  `UpdateAscensionPerk`); callers of callers; a sprite call on an element that the caller keeps in
+  a member instead of fetching it (the patron views); the run-time choice behind a selection
+  (which swap, its validity);
   localisation-file existence; sprite file paths; the meaning of engine-set fields such as the
   tradition type at `+0x40` and the agenda word at `+0x2fc`.
 - **Not followed:** the localisation wrappers `PdxLocalizeView<…>` and `InternalPdxLocalizeView<…>`
@@ -266,6 +390,22 @@ with a field part has an `Unresolved` miss in the answer; the hand-read miss is 
   the method does not run and which calls `CEconomicCategory::PostReadInit()` by no direct call.
 
 ## Pitfalls
+
+- **A vtable displacement is not a method.** Displacement `0x2e8` is `ChangeSprite` only in the GUI
+  element classes; other classes hold unrelated methods there. Recognize the sprite call by the
+  receiver's own vtable (the synthetic vtable of an element object), not by the displacement.
+- **Probe a getter before following its callers.** Most `const` members with outside callers
+  return no name (`GetCost`, `IsVisibleForCountry`); running their callers first spent most of
+  the run on path bounds. Probe with one run, and count only the returned string: other events,
+  such as an unfollowed call that receives the key, are not a returned name.
+- **A string function on an unknown object is not a stop in a caller.** Callers build strings in
+  members of their own objects; the root runs' `string-object` stop made thousands of caller paths
+  fail with no relation to the getter's name.
+- **Give the caller's placeholder its own key node.** The item key's node survives every
+  unfollowed call, since a root's item key does not change. A caller may change the string that
+  a getter returned, so its placeholder needs a node that an unfollowed call makes unresolved.
+- **An unresolved name at a use site is not a use of the getter's name.** Count it only when it
+  still holds the name, or when the name went into an unfollowed call on that path.
 
 - **Do not trace outward from the lookup.** `PdxLocalizeAndReplaceView` has about 7,144 direct
   callers. Start from the registry's own methods.

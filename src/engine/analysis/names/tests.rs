@@ -37,6 +37,7 @@ const MISSING: u64 = 0x5030;
 const PREFIX: u64 = 0x5040;
 const FORMATTED: u64 = 0x5050;
 const NOTICE: u64 = 0x5060;
+const GFX: u64 = 0x5070;
 
 /// The item's layout in these runs: the key object, a string field, a Boolean field, a byte that
 /// no field names, a pointer to an unnamed string, and a collection of element pointers.
@@ -72,6 +73,7 @@ fn data() -> ReadOnlyData {
         (PREFIX, "prefix_"),
         (FORMATTED, "%s_name"),
         (NOTICE, "Notice"),
+        (GFX, "GFX_"),
     ] {
         let start = (address - EMPTY) as usize;
         bytes[start..start + text.len()].copy_from_slice(text.as_bytes());
@@ -212,6 +214,13 @@ fn family_input() -> FamilyInput {
 /// Run the method over `roots`, each used each time the engine uses an item, with `helpers`
 /// entered.
 fn analyze_roots(roots: Vec<Arm64>, helpers: Vec<Arm64>, storage: &Storage) -> NameResult {
+    let registry = registry_input(roots, helpers, Vec::new());
+    analyze(&family_input(), &input(), &registry, storage)
+}
+
+/// The registry's code: `roots`, each used each time the engine uses an item, `helpers` entered,
+/// and `other` code that runs reach by other means, such as getters and their callers.
+fn registry_input(roots: Vec<Arm64>, helpers: Vec<Arm64>, other: Vec<Arm64>) -> RegistryInput {
     let entered: BTreeSet<u64> = [VIEW]
         .into_iter()
         .chain(helpers.iter().map(Arm64::start))
@@ -221,13 +230,14 @@ fn analyze_roots(roots: Vec<Arm64>, helpers: Vec<Arm64>, storage: &Storage) -> N
         .into_iter()
         .chain(roots)
         .chain(helpers)
+        .chain(other)
         .map(|code| (code.start(), code.bytes()))
         .collect();
     let ranges: Vec<(u64, &[u8])> = functions
         .iter()
         .map(|(start, bytes)| (*start, bytes.as_slice()))
         .collect();
-    let registry = RegistryInput {
+    RegistryInput {
         roots: starts
             .into_iter()
             .enumerate()
@@ -244,9 +254,12 @@ fn analyze_roots(roots: Vec<Arm64>, helpers: Vec<Arm64>, storage: &Storage) -> N
             key_register: 2,
         }],
         loading: None,
+        getters: Vec::new(),
+        getter_entered: BTreeSet::new(),
+        element_calls: BTreeSet::new(),
+        sprite_slot: None,
         code: Code::decode(&ranges).expect("authored code decodes"),
-    };
-    analyze(&family_input(), &input(), &registry, storage)
+    }
 }
 
 fn analyze_root(code: Arm64, storage: &Storage) -> NameResult {
@@ -1049,4 +1062,406 @@ fn a_root_that_tests_too_many_flags_is_a_gap() {
 
     assert!(result.names.is_empty());
     assert_eq!(result.failures.get("flag-bound"), Some(&1));
+}
+
+/// A getter that returns the item's key object, and its callers. The element getter and the
+/// unfollowed function are targets with no code.
+const GETTER: u64 = 0x8000;
+const CALLER: u64 = 0x9000;
+const SECOND_CALLER: u64 = 0xa000;
+const ELEMENT_GETTER: u64 = 0x9b4;
+const UNFOLLOWED: u64 = 0x9b8;
+const SPRITE_SLOT: u32 = 0x2e8;
+
+fn key_getter() -> Arm64 {
+    let mut code = Arm64::at(GETTER);
+    arm64!(code; add x0, x0, #KEY; ret);
+    code
+}
+
+/// The calls of a caller that the binding gives the method.
+struct CallerSites {
+    element: u64,
+    getter: u64,
+    site: u64,
+}
+
+/// Which object a sprite caller's last call goes to, and whose vtable gives its target.
+#[derive(Clone, Copy)]
+struct SpriteCall {
+    receiver: u8,
+    vtable_of: u8,
+}
+
+/// The element saved in `x20`, and an object that no element call returned in `x22`.
+const ELEMENT_CALL: SpriteCall = SpriteCall {
+    receiver: 20,
+    vtable_of: 20,
+};
+
+/// Fetches an element, calls the getter, composes `GFX_` with the returned name at `sp + 0x20`,
+/// and calls through the sprite slot of `call.vtable_of`'s vtable on `call.receiver`.
+// dynasm converts a register from a variable with `.into()`, even from `u8`.
+#[allow(clippy::useless_conversion)]
+fn sprite_caller(start: u64, call: SpriteCall) -> (Arm64, CallerSites) {
+    let mut code = Arm64::at(start);
+    arm64!(code; sub sp, sp, #0x100);
+    let element = code.here();
+    code.call(ELEMENT_GETTER);
+    arm64!(code; mov x20, x0);
+    let getter = code.here();
+    code.call(GETTER);
+    arm64!(code; mov x21, x0; add x0, sp, #0x20);
+    code.address(1, GFX).call(FROM_TEXT);
+    arm64!(code; add x0, sp, #0x20; mov x1, x21);
+    code.call(APPEND_STRING);
+    arm64!(code;
+        ldr x8, [XSP(call.vtable_of)];
+        ldr x8, [x8, #SPRITE_SLOT];
+        mov x0, X(call.receiver);
+        add x1, sp, #0x20
+    );
+    let site = code.here();
+    arm64!(code; blr x8; ret);
+    (
+        code,
+        CallerSites {
+            element,
+            getter,
+            site,
+        },
+    )
+}
+
+/// Calls the getter, composes the returned name with `_desc` at `sp + 0x20`, runs `between`, and
+/// looks the composed text up.
+fn lookup_caller(start: u64, between: impl FnOnce(&mut Arm64)) -> (Arm64, CallerSites) {
+    let mut code = Arm64::at(start);
+    arm64!(code; sub sp, sp, #0x100);
+    let getter = code.here();
+    code.call(GETTER);
+    arm64!(code; mov x21, x0; add x0, sp, #0x20);
+    code.address(1, EMPTY).call(FROM_TEXT);
+    arm64!(code; add x0, sp, #0x20; mov x1, x21);
+    code.call(APPEND_STRING);
+    arm64!(code; add x0, sp, #0x20);
+    code.address(1, DESC).call(APPEND_TEXT);
+    between(&mut code);
+    arm64!(code; add x9, sp, #0x20; ldr x0, [x9]; ldr x1, [x9, #8]);
+    let site = code.here();
+    code.call(LOOKUP);
+    arm64!(code; ret);
+    (
+        code,
+        CallerSites {
+            element: 0,
+            getter,
+            site,
+        },
+    )
+}
+
+fn sprite_use(sites: &CallerSites) -> GetterCall {
+    GetterCall {
+        address: sites.getter,
+        result: None,
+        uses: vec![UseSite {
+            address: sites.site,
+            call: UseCall::Register(8),
+            element_starts: vec![sites.element],
+        }],
+    }
+}
+
+fn lookup_use(sites: &CallerSites) -> GetterCall {
+    GetterCall {
+        address: sites.getter,
+        result: None,
+        uses: vec![UseSite {
+            address: sites.site,
+            call: UseCall::Sink(LOOKUP),
+            element_starts: Vec::new(),
+        }],
+    }
+}
+
+/// Run the method over `getter` and its callers, which make the calls of `getter_calls`.
+fn analyze_getter(
+    getter: Arm64,
+    callers: Vec<Arm64>,
+    getter_calls: Vec<GetterCall>,
+    element_calls: &[u64],
+) -> NameResult {
+    let function = getter.start();
+    let mut registry = registry_input(
+        Vec::new(),
+        Vec::new(),
+        [getter].into_iter().chain(callers).collect(),
+    );
+    registry.getters = vec![Getter {
+        function,
+        name: "CItem::GetIconKey() const".into(),
+        calls: getter_calls,
+    }];
+    registry.element_calls = element_calls.iter().copied().collect();
+    registry.sprite_slot = Some(SPRITE_SLOT.into());
+    analyze(&family_input(), &input(), &registry, &Storage::default())
+}
+
+fn caller_name(parts: Vec<Part>, target: NameLookup) -> Name {
+    Name {
+        parts,
+        target,
+        stage: Stage::WhenUsed,
+        on_missing: Miss::Unresolved,
+        condition: Condition::Unresolved,
+    }
+}
+
+#[test]
+fn a_caller_that_changes_an_elements_sprite_to_gfx_and_the_returned_key_gives_a_sprite_name() {
+    let (caller, sites) = sprite_caller(CALLER, ELEMENT_CALL);
+
+    let result = analyze_getter(
+        key_getter(),
+        vec![caller],
+        vec![sprite_use(&sites)],
+        &[sites.element],
+    );
+
+    assert_eq!(
+        result.names,
+        [caller_name(
+            vec![literal("GFX_"), Part::ItemKey],
+            NameLookup::Sprite
+        )]
+    );
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+#[test]
+fn a_sprite_slot_call_gives_no_name_unless_an_element_receives_it_through_its_own_vtable() {
+    let unrelated_receiver = SpriteCall {
+        receiver: 22,
+        vtable_of: 20,
+    };
+    let unrelated_vtable = SpriteCall {
+        receiver: 20,
+        vtable_of: 22,
+    };
+
+    for call in [unrelated_receiver, unrelated_vtable] {
+        let (caller, sites) = sprite_caller(CALLER, call);
+        let result = analyze_getter(
+            key_getter(),
+            vec![caller],
+            vec![sprite_use(&sites)],
+            &[sites.element],
+        );
+
+        assert!(result.names.is_empty(), "{:#?}", result.names);
+        assert!(result.failures.is_empty(), "{:?}", result.failures);
+    }
+}
+
+#[test]
+fn two_callers_that_compose_the_returned_key_differently_give_two_names_never_always_used() {
+    let (sprite, sprite_sites) = sprite_caller(CALLER, ELEMENT_CALL);
+    let (lookup, lookup_sites) = lookup_caller(SECOND_CALLER, |_| {});
+
+    let result = analyze_getter(
+        key_getter(),
+        vec![sprite, lookup],
+        vec![sprite_use(&sprite_sites), lookup_use(&lookup_sites)],
+        &[sprite_sites.element],
+    );
+
+    assert_eq!(
+        result.names,
+        [
+            caller_name(vec![literal("GFX_"), Part::ItemKey], NameLookup::Sprite),
+            caller_name(key_desc(), NameLookup::Localization),
+        ]
+    );
+}
+
+#[test]
+fn a_caller_path_that_stops_before_the_use_keeps_a_gap_beside_the_name_of_the_others() {
+    let (caller, sites) = lookup_caller(CALLER, |code| {
+        arm64!(code; cbz x23, ->joined; br x24; ->joined:);
+    });
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert_eq!(
+        result.names,
+        [caller_name(key_desc(), NameLookup::Localization)]
+    );
+    assert_eq!(result.failures, BTreeMap::from([("caller-path", 1)]));
+}
+
+#[test]
+fn a_returned_name_that_goes_into_an_unfollowed_call_before_the_use_is_a_gap() {
+    let (caller, sites) = lookup_caller(CALLER, |code| {
+        arm64!(code; add x0, sp, #0x20);
+        code.call(UNFOLLOWED);
+    });
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}
+
+#[test]
+fn an_unresolved_name_with_no_trace_of_the_returned_name_is_not_its_use() {
+    let mut caller = Arm64::at(CALLER);
+    let getter = caller.here();
+    caller.call(GETTER);
+    arm64!(caller; ldr x0, [x25]; ldr x1, [x25, #8]);
+    let site = caller.here();
+    caller.call(LOOKUP);
+    arm64!(caller; ret);
+    let sites = CallerSites {
+        element: 0,
+        getter,
+        site,
+    };
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+/// Composes `GFX_` and the key in the result object that `x8` points at, and returns it.
+fn by_value_getter() -> Arm64 {
+    let mut getter = Arm64::at(GETTER);
+    arm64!(getter; mov x19, x0; mov x20, x8; mov x0, x20);
+    getter.address(1, GFX).call(FROM_TEXT);
+    arm64!(getter; mov x0, x20; add x1, x19, #KEY);
+    getter.call(APPEND_STRING);
+    arm64!(getter; mov x0, x20; ret);
+    getter
+}
+
+/// Fetches an element, calls the getter with `x8` at `sp + 0x40` or at an unknown address, and
+/// gives the result object to the element's sprite call.
+fn by_value_caller(stack_result: bool) -> (Arm64, CallerSites) {
+    let mut code = Arm64::at(CALLER);
+    arm64!(code; sub sp, sp, #0x100);
+    let element = code.here();
+    code.call(ELEMENT_GETTER);
+    arm64!(code; mov x20, x0);
+    if stack_result {
+        arm64!(code; add x8, sp, #0x40);
+    } else {
+        arm64!(code; mov x8, x25);
+    }
+    let getter = code.here();
+    code.call(GETTER);
+    arm64!(code;
+        ldr x8, [x20];
+        ldr x8, [x8, #SPRITE_SLOT];
+        mov x0, x20;
+        add x1, sp, #0x40
+    );
+    let site = code.here();
+    arm64!(code; blr x8; ret);
+    (
+        code,
+        CallerSites {
+            element,
+            getter,
+            site,
+        },
+    )
+}
+
+#[test]
+fn a_name_returned_by_value_into_a_stack_slot_of_the_caller_is_followed() {
+    let (caller, sites) = by_value_caller(true);
+    let call = GetterCall {
+        result: Some(0x40),
+        ..sprite_use(&sites)
+    };
+
+    let result = analyze_getter(
+        by_value_getter(),
+        vec![caller],
+        vec![call],
+        &[sites.element],
+    );
+
+    assert_eq!(
+        result.names,
+        [caller_name(
+            vec![literal("GFX_"), Part::ItemKey],
+            NameLookup::Sprite
+        )]
+    );
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+#[test]
+fn a_name_returned_by_value_into_an_unknown_object_is_a_gap() {
+    let (caller, sites) = by_value_caller(false);
+
+    let result = analyze_getter(
+        by_value_getter(),
+        vec![caller],
+        vec![sprite_use(&sites)],
+        &[sites.element],
+    );
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("getter-result", 1)]));
+}
+
+#[test]
+fn a_returned_object_that_an_unfollowed_call_receives_may_have_changed() {
+    let mut caller = Arm64::at(CALLER);
+    let getter = caller.here();
+    caller.call(GETTER);
+    arm64!(caller; mov x21, x0);
+    caller.call(UNFOLLOWED);
+    arm64!(caller; ldr x0, [x21]; ldr x1, [x21, #8]);
+    let site = caller.here();
+    caller.call(LOOKUP);
+    arm64!(caller; ret);
+    let sites = CallerSites {
+        element: 0,
+        getter,
+        site,
+    };
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}
+
+#[test]
+fn a_composed_name_in_a_later_argument_of_an_unfollowed_call_may_have_changed() {
+    let (caller, sites) = lookup_caller(CALLER, |code| {
+        arm64!(code; add x3, sp, #0x20);
+        code.call(UNFOLLOWED);
+    });
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("caller-name", 1)]));
+}
+
+#[test]
+fn a_getter_with_no_path_to_its_return_is_a_gap() {
+    let mut getter = Arm64::at(GETTER);
+    arm64!(getter; br x9);
+    let (caller, sites) = lookup_caller(CALLER, |_| {});
+
+    let result = analyze_getter(getter, vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures, BTreeMap::from([("getter-path", 1)]));
 }

@@ -97,6 +97,37 @@ pub(super) const M452_LOADER_DATABASES: &[LoaderDatabase] = &[LoaderDatabase {
     },
 }];
 
+/// Why the loader of one database builds no class with a member reader, as read on the exact
+/// build. A database with no stated reason gets the general one.
+#[derive(Debug)]
+pub(super) struct LoaderReason {
+    pub database: &'static str,
+    pub reason: &'static str,
+}
+
+// Exact M452 disassembly; `docs/native/registry-fields.md`, "Root-key owners", gives each loader's
+// functions and what would answer its registry.
+pub(super) const M452_LOADER_REASONS: &[LoaderReason] = &[
+    LoaderReason {
+        database: "CColorsDatabase",
+        reason: "the loader reads fixed root keys of unnamed colours into its database and builds \
+                 no item",
+    },
+    LoaderReason {
+        database: "CWeaponTagDatabase",
+        reason: "the loader registers each token of its files as a tag and builds no item",
+    },
+    LoaderReason {
+        database: "CShipBehaviorDatabase",
+        reason: "the loader reads each item in its own statement loop, not through a member reader",
+    },
+    LoaderReason {
+        database: "CWorldGfxDatabase",
+        reason: "the loader reads the database itself, whose member reader builds and reads each \
+                 item",
+    },
+];
+
 /// The engine locations that `modifier_table_binding` joins with the layouts.
 pub(super) struct ModifierTableSymbols {
     pub documentation_entry: u64,
