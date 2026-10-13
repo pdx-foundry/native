@@ -33,13 +33,54 @@ use std::time::Instant;
 
 const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
-/// Whether a gap's subject is `field`, or a key path that starts at it.
-fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
+/// Whether a gap's subject is the field at `path`, or a key path that starts at it. A nested
+/// field's own gaps name it by its dotted path.
+fn applies(subject: &Option<GapSubject>, path: &[String]) -> bool {
     match subject {
-        Some(GapSubject::Field { name }) => name == field,
-        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
+        Some(GapSubject::Field { name }) => *name == path.join("."),
+        Some(GapSubject::KeyPath { path: key_path }) => key_path.starts_with(path),
         _ => false,
     }
+}
+
+/// Field counts by status, separately for root fields and the fields in `nested`.
+fn by_depth<'a>(
+    fields: impl Iterator<Item = (&'a String, &'static str)>,
+    nested: &BTreeSet<String>,
+) -> BTreeMap<&'static str, BTreeMap<&'static str, usize>> {
+    let mut counts = BTreeMap::<&str, BTreeMap<&str, usize>>::new();
+
+    for (name, status) in fields {
+        let depth = if nested.contains(name) {
+            "nested"
+        } else {
+            "root"
+        };
+
+        *counts.entry(depth).or_default().entry(status).or_default() += 1;
+    }
+
+    counts
+}
+
+/// Every field at any `FieldMembers::Fields` depth, with its path from the root.
+fn flattened(fields: &[Field]) -> Vec<(Vec<String>, &Field)> {
+    let mut flat = Vec::new();
+
+    for field in fields {
+        let path = vec![field.name.clone()];
+
+        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+            for (mut child_path, child) in flattened(children) {
+                child_path.insert(0, field.name.clone());
+                flat.push((child_path, child));
+            }
+        }
+
+        flat.push((path, field));
+    }
+
+    flat
 }
 
 struct ReaderFields {
@@ -431,8 +472,8 @@ impl SweepReport {
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
                 "entry_contexts": "Root fields whose reader family is trigger, effect or weight. statuses_by_family: the three context statuses by reader family. A block's gaps are the gaps that entry contexts add with its field as subject. several_known_this: more than one context whose this is established; typed_from and typed_prev: a context whose chain holds a scope type; with_unresolved_slot: a context with an unresolved scope. unnamed_evaluations: by registry, the evaluator calls in the owner's methods whose block the method cannot name.",
-                "weight_blocks": "Root fields whose constructor-proven reader is a weight reader, grouped by reader identity. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
-                "triggered_modifiers": "Fields whose collected object has a triggered modifier clause reader, grouped by reader identity. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
+                "weight_blocks": "Root and nested fields whose constructor-proven reader is a weight reader, grouped by reader identity; fields_by_depth separates root and nested fields. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
+                "triggered_modifiers": "Root and nested fields whose collected object has a triggered modifier clause reader, grouped by reader identity; fields_by_depth separates root and nested fields. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
                 "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
             },
             "cases": self.cases,

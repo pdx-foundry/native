@@ -339,6 +339,11 @@ pub struct ObjectReader {
     pub count_offset: Option<u64>,
     /// The persistent reader at the object's primary address point.
     pub reader: Option<PointReader>,
+    /// Constructor evidence for the persistent members of an object whose reader has no block
+    /// family, which the method walks as a nested owner.
+    pub persistent: Option<PersistentInput>,
+    /// The objects that such a nested owner's member reader inserts.
+    pub objects: Vec<ObjectReader>,
 }
 
 /// A root field that reads constructed objects into an owner collection.
@@ -370,6 +375,8 @@ pub struct CollectionField {
 pub struct EmbeddedField {
     /// Root loader token whose every path reads the object.
     pub token: i64,
+    /// The object's reader, which hands its keys to the member reader.
+    pub read: String,
     /// The object's member reader.
     pub member: String,
     /// Loader fields and gaps of the member reader. Its keys are derived to depth one.

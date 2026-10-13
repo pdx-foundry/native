@@ -7,9 +7,7 @@
 //! argument that the code loads through either is known. It labels the category mask of a
 //! modifier container's construction, which gives the collection's container mask.
 use super::containers::{self, PathMasks};
-use super::{
-    CollectionField, FieldInput, RegistryFieldResult, RootField, dispatch, inventory, tokens,
-};
+use super::{CollectionField, FieldInput, Owner, RootField, tokens};
 use crate::engine::analysis::discovery::SymbolIndex;
 use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use crate::engine::analysis::receivers::ConstructorImage;
@@ -27,13 +25,15 @@ const SPAN: u64 = 0x10000;
 pub(super) fn discover(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
+    owner: &Owner<'_>,
     fields: &[RootField],
     names: &BTreeMap<i64, tokens::Token>,
 ) -> Vec<CollectionField> {
-    if input.objects.is_empty() {
+    let objects = owner.objects;
+    if objects.is_empty() {
         return Vec::new();
     }
-    let root_name = format!("{}::ReadMember(CReader&, int)", input.owner);
+    let root_name = format!("{}::ReadMember(CReader&, int)", owner.class);
     let Some(root) = input
         .functions
         .iter()
@@ -45,8 +45,7 @@ pub(super) fn discover(
         .functions
         .iter()
         .filter(|function| {
-            input
-                .objects
+            objects
                 .iter()
                 .any(|object| object.factories.contains(&function.address))
         })
@@ -104,14 +103,13 @@ pub(super) fn discover(
                 machine.label(ALLOCATED | at, 1);
                 return Ok(Call::Return(Some(at)));
             }
-            if input
-                .objects
+            if objects
                 .iter()
                 .any(|object| object.factories.contains(&target))
             {
                 return Ok(Call::Enter);
             }
-            for (index, object) in input.objects.iter().enumerate() {
+            for (index, object) in objects.iter().enumerate() {
                 if object.constructors.contains(&target) {
                     let at = machine.known_register(0, "constructed-object")?;
                     if machine.labelled(ALLOCATED | at) != Some(1) {
@@ -198,18 +196,24 @@ pub(super) fn discover(
 
             masks.agreed()
         });
-        let object = &input.objects[first.0 as usize];
+        let object = &objects[first.0 as usize];
         let reader = object
             .reader
             .clone()
             .filter(|bound| bound.reader.family != crate::BlockFamily::Unknown);
-        let (paths, mut gaps) = match reader {
+        let fields = match reader {
             Some(_) => Default::default(),
-            None => dispatch::explore_owner(input, symbol_index, &object.class),
+            None => super::owner_result(
+                input,
+                symbol_index,
+                &Owner {
+                    class: &object.class,
+                    objects: &object.objects,
+                    persistent: object.persistent.as_ref(),
+                },
+                names,
+            ),
         };
-        let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
-        gaps.extend(field_gaps);
-        let partition_accounted = inventory::partition_accounted(&paths);
         collections.push(CollectionField {
             token: field.token,
             offset: first.1,
@@ -217,21 +221,7 @@ pub(super) fn discover(
             count_offset: object.count_offset,
             class: object.class.clone(),
             reader,
-            fields: Box::new(RegistryFieldResult {
-                persistent: Default::default(),
-                persistent_points: Default::default(),
-                scoped_destinations: Default::default(),
-                stored_words: Default::default(),
-                container_masks: Default::default(),
-                uses: Vec::new(),
-                fields,
-                paths,
-                gaps,
-                partition_accounted,
-                collections: Vec::new(),
-                embedded: Vec::new(),
-                loader: None,
-            }),
+            fields: Box::new(fields),
             container_mask,
         });
     }

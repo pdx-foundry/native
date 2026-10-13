@@ -4,15 +4,21 @@ pub mod comparison;
 mod layout;
 
 /// The accepted categories of each modifier container field, and of each modifier key of a
-/// triggered modifier clause as `field.key`.
+/// triggered modifier clause as `field.key`. A nested field is named by its dotted path.
 fn container_categories(fields: &[Field]) -> BTreeMap<String, AcceptedCategories> {
     let mut containers = BTreeMap::new();
-    for field in fields.iter().filter(|field| {
-        matches!(
+    for field in fields {
+        if let FieldMembers::Fields(children) = &field.members {
+            for (name, categories) in container_categories(children) {
+                containers.insert(format!("{}.{name}", field.name), categories);
+            }
+        }
+        if !matches!(
             field.reader.family,
             BlockFamily::Modifier | BlockFamily::TriggeredModifier
-        )
-    }) {
+        ) {
+            continue;
+        }
         containers.insert(field.name.clone(), field.accepted_categories.clone());
         let FieldMembers::TriggeredModifier(block) = &field.members else {
             continue;

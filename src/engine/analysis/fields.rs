@@ -74,7 +74,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v34";
+pub const METHOD: &str = "registry-fields/v35";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -101,24 +101,30 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     let (tokens, token_gaps) = tokens::recover(input);
     gaps.extend(token_gaps);
     let symbol_index = SymbolIndex::new(&input.symbols);
-    let (paths, table_gaps) = dispatch::explore_owner(input, &symbol_index, &input.owner);
-    gaps.extend(table_gaps);
-    let (fields, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
-    gaps.extend(path_gaps);
-    let partition_accounted = inventory::partition_accounted(&paths);
-    if !partition_accounted {
+    let owner = Owner {
+        class: &input.owner,
+        objects: &input.objects,
+        persistent: input.persistent.as_ref(),
+    };
+    let mut result = owner_result(input, &symbol_index, &owner, &tokens);
+    gaps.append(&mut result.gaps);
+    if !result.partition_accounted {
         gaps.push(FieldGap::new(
             FieldGapKind::TokenPartition,
             "token intervals are missing or overlap",
         ));
     }
-    let collections = nested::discover(input, &symbol_index, &fields, &tokens);
-    let uses = uses::discover(input, &fields, &collections, partition_accounted);
-    if !collections.is_empty() {
+    result.uses = uses::discover(
+        input,
+        &result.fields,
+        &result.collections,
+        result.partition_accounted,
+    );
+    if !result.collections.is_empty() {
         gaps.push(FieldGap::new(FieldGapKind::RuntimeSelection,
             "Local Boolean selections only: enclosing reachability, loop winner, callees, indirect callers, unsupported transfers and method bounds remain unresolved."));
     }
-    let loader = input.loader_root.as_ref().map(|root| {
+    result.loader = input.loader_root.as_ref().map(|root| {
         let (paths, mut gaps) = dispatch::explore_loader(input, &symbol_index, root);
         let (keys, path_gaps) = inventory::fields_and_gaps(&paths, &tokens);
         gaps.extend(path_gaps);
@@ -129,29 +135,54 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
             item_reader: root.item_reader.clone(),
         }
     });
-    let persistent = persistent::discover(input, &fields);
+    result.gaps = gaps;
+    Ok(result)
+}
+
+/// A class whose `ReadMember(CReader&, int)` the method walks, with the objects that it inserts
+/// and the constructor evidence of its persistent members.
+pub(super) struct Owner<'a> {
+    pub class: &'a str,
+    pub objects: &'a [ObjectReader],
+    pub persistent: Option<&'a PersistentInput>,
+}
+
+/// The fields of `owner` and what they read: dispatch paths, persistent members, embedded keys
+/// and inserted objects. Root and nested owners share it.
+fn owner_result(
+    input: &FieldInput,
+    symbol_index: &SymbolIndex,
+    owner: &Owner<'_>,
+    tokens: &std::collections::BTreeMap<i64, Token>,
+) -> RegistryFieldResult {
+    let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, owner.class);
+    let (fields, path_gaps) = inventory::fields_and_gaps(&paths, tokens);
+    gaps.extend(path_gaps);
+    let partition_accounted = inventory::partition_accounted(&paths);
+    let collections = nested::discover(input, symbol_index, owner, &fields, tokens);
+    let persistent = persistent::discover(owner.persistent, &input.read_only_data, &fields);
     gaps.extend(persistent.gaps);
     let embedded = persistent::embedded(
         input,
-        &symbol_index,
+        symbol_index,
         &fields,
         &paths,
         &persistent.readers,
-        &tokens,
+        tokens,
     );
-    Ok(RegistryFieldResult {
+
+    RegistryFieldResult {
         persistent: persistent.readers,
         persistent_points: persistent.points,
         scoped_destinations: persistent.scoped,
         stored_words: persistent.words,
         container_masks: persistent.containers,
-        uses,
         collections,
         embedded,
         fields,
         paths,
         gaps,
         partition_accounted,
-        loader,
-    })
+        ..RegistryFieldResult::default()
+    }
 }
