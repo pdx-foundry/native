@@ -477,8 +477,8 @@ struct RunRecord<'s> {
 impl RunRecord<'_> {
     fn sources(&self) -> Sources<'_> {
         Sources {
-            key: self.plan.form.text(),
             fields: &self.fields,
+            ..Sources::key_only(self.plan.form.text())
         }
     }
 
@@ -619,8 +619,8 @@ impl Analysis<'_> {
             layout: self.shared.layout,
             data: &self.shared.data,
             sources: Sources {
-                key: plan.form.text(),
                 fields: &fields,
+                ..Sources::key_only(plan.form.text())
             },
         };
         let mut recorder = Recorder {

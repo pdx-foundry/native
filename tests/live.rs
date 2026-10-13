@@ -2932,6 +2932,23 @@ async fn loaded_modifiers(native: &Native) -> Outcome {
                 return Err(format!("{name}: {modifier:?}").into());
             }
         }
+        // SDK-794: a family that combines an economic category's key with a strategic resource's.
+        let matrix = by_name
+            .get("country_minerals_produces_mult")
+            .ok_or("no economic category matrix name")?;
+        let combines = |generated: &pdx_native::GeneratedName| {
+            generated.registry == "common/economic_categories"
+                && generated.item == "country"
+                && generated.second_item.as_deref() == Some("minerals")
+                && generated
+                    .template
+                    .contains(&pdx_native::NamePart::RegistryKey(
+                        STRATEGIC_RESOURCES.into(),
+                    ))
+        };
+        if !matrix.generated_by.iter().any(combines) {
+            return Err(format!("economic category matrix: {matrix:?}").into());
+        }
         engine_log_agrees(loaded, &earlier_work)?;
         let generated = loaded
             .iter()

@@ -11,8 +11,8 @@ use crate::engine::analysis::{
     evaluate::{Code, ReadOnlyData},
     families::{
         DatabaseLayout, Definitions, FamilyInput, KeyConstructor, KeyStorageInput, Receiver,
-        RegistryInput, Root,
-        joins::{self, DEPTH, GenerationSite, Graph, Joins, RootOf},
+        RegistryInput, Root, SecondInput,
+        joins::{self, DEPTH, GenerationSite, Graph, InputJoin, Joins, RootOf},
         loading::{Function, Loading},
     },
     modifier_table::Layout,
@@ -115,8 +115,9 @@ pub(in crate::binding) fn index(
     let joins = joins::join(&graph);
     let data = constant_data(bytes, facts.pointers, facts.bound_slots)?;
 
+    let named: Vec<NamedRegistry> = templates.iter().chain(loaders).copied().collect();
     let mut inputs = BTreeMap::new();
-    for registry in templates.iter().chain(loaders) {
+    for registry in &named {
         let join = joins.registries.get(registry.name);
         let roots: Vec<Root> = join
             .into_iter()
@@ -138,6 +139,11 @@ pub(in crate::binding) fn index(
             &[registration].into(),
         )?;
         let constructors = constructors(symbols, registry.owner);
+        let second_inputs = join
+            .into_iter()
+            .flat_map(|join| &join.inputs)
+            .filter_map(|(&function, join)| second_input(symbols, &names, &named, function, join))
+            .collect::<Vec<_>>();
         let loading = roots
             .iter()
             .any(|root| root.receiver == Receiver::Item)
@@ -148,6 +154,12 @@ pub(in crate::binding) fn index(
             .map(|root| root.function)
             .chain(entered.iter().copied())
             .chain(constructors.iter().map(|constructor| constructor.address))
+            .chain(
+                second_inputs
+                    .iter()
+                    .flat_map(|second| &second.constructors)
+                    .map(|constructor| constructor.address),
+            )
             .collect();
         inputs.insert(
             registry.name.to_owned(),
@@ -156,6 +168,7 @@ pub(in crate::binding) fn index(
                 entered,
                 constructors,
                 loading,
+                inputs: second_inputs,
                 code: decoded(&text, &functions),
             },
         );
@@ -186,6 +199,32 @@ pub(in crate::binding) fn index(
         },
         joins,
         registries: inputs,
+    })
+}
+
+/// The input of the joined `function` that takes an item of another registry: the register of
+/// that parameter and the other registry's key constructors. `None` when no name of `function`
+/// has a parameter of the other registry's item class.
+fn second_input(
+    symbols: &[Symbol],
+    names: &Names,
+    registries: &[NamedRegistry],
+    function: u64,
+    join: &InputJoin,
+) -> Option<SecondInput> {
+    let registry = registries
+        .iter()
+        .find(|registry| registry.name == join.registry)?;
+    let register = names
+        .of(function)
+        .find_map(|name| class_argument(name, registry.owner))?;
+
+    Some(SecondInput {
+        function,
+        register,
+        registry: join.registry.clone(),
+        sites: join.sites.clone(),
+        constructors: constructors(symbols, registry.owner),
     })
 }
 
@@ -249,7 +288,11 @@ fn graph(
         .filter_map(|function| {
             let taken: BTreeSet<Option<&str>> = classes
                 .iter()
-                .filter(|(class, _)| names.of(function).any(|name| takes(name, class)))
+                .filter(|(class, _)| {
+                    names
+                        .of(function)
+                        .any(|name| class_argument(name, class).is_some())
+                })
                 .map(|(_, registry)| *registry)
                 .collect();
             let own = match Vec::from_iter(taken)[..] {
@@ -354,18 +397,6 @@ fn post_read_class(name: &str) -> Option<&str> {
     POST_READ
         .iter()
         .find_map(|suffix| name.find(suffix).map(|end| &name[..end]))
-}
-
-/// Whether the parameters of the function `name` take an object of `class`.
-fn takes(name: &str, class: &str) -> bool {
-    let Some(parameters) = name.find('(').map(|start| &name[start..]) else {
-        return false;
-    };
-    ["(", ", "].iter().any(|before| {
-        [" const&", "&", " const*", "*"]
-            .iter()
-            .any(|after| parameters.contains(&format!("{before}{class}{after}")))
-    })
 }
 
 /// The functions that a run enters: the functions on `path` between its `roots` and the calls
@@ -698,6 +729,27 @@ fn is_cold_part(cold: &str, name: &str) -> bool {
 /// The argument registers of the demangled member function `name` that hold a pointer or a
 /// reference. `x0` holds `this`, so the parameters start at `x1`.
 fn pointer_arguments(name: &str) -> Vec<usize> {
+    parameters(name)
+        .iter()
+        .enumerate()
+        .filter(|(_, part)| part.ends_with('&') || part.ends_with('*'))
+        .map(|(index, _)| index + 1)
+        .collect()
+}
+
+/// The argument register of the demangled member function `name` whose parameter is a pointer or
+/// a reference to an object of `class`. `x0` holds `this`, so the parameters start at `x1`.
+fn class_argument(name: &str, class: &str) -> Option<usize> {
+    let shapes = [" const&", "&", " const*", "*"].map(|after| format!("{class}{after}"));
+    parameters(name)
+        .iter()
+        .position(|part| shapes.contains(part))
+        .map(|index| index + 1)
+}
+
+/// The parameters of the demangled function `name`, split at the commas outside templates and
+/// parentheses.
+fn parameters(name: &str) -> Vec<String> {
     let Some(parameters) = name
         .find('(')
         .zip(name.rfind(')'))
@@ -721,11 +773,8 @@ fn pointer_arguments(name: &str) -> Vec<usize> {
     }
     parts
         .iter()
-        .map(|part| part.trim())
+        .map(|part| part.trim().to_owned())
         .filter(|part| !part.is_empty())
-        .enumerate()
-        .filter(|(_, part)| part.ends_with('&') || part.ends_with('*'))
-        .map(|(index, _)| index + 1)
         .collect()
 }
 
@@ -1289,14 +1338,26 @@ mod tests {
     }
 
     #[test]
-    fn a_second_input_is_a_parameter_of_its_class() {
+    fn a_second_input_is_the_register_of_its_classs_parameter() {
         let class = "CStrategicResource";
-        assert!(takes(
-            "CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, int&) const",
-            class
-        ));
-        assert!(takes("f(int, CStrategicResource*)", class));
-        assert!(!takes("f(CStrategicResourceGroup const&)", class));
-        assert!(!takes("CStrategicResource::InitPostRead()", class));
+        assert_eq!(
+            class_argument(
+                "CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, CTable<CTable<int, int>, int>&) const",
+                class
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            class_argument("f(CTable<int, int>, CStrategicResource*)", class),
+            Some(2)
+        );
+        assert_eq!(
+            class_argument("f(CStrategicResourceGroup const&)", class),
+            None
+        );
+        assert_eq!(
+            class_argument("CStrategicResource::InitPostRead()", class),
+            None
+        );
     }
 }

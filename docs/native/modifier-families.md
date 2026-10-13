@@ -56,12 +56,17 @@ A root is a function that the engine runs for the items of one content database.
   stays an `UnnamedContent` gap and the registry is `Unsupported`. A join needs an owner rule that
   selects the class that the loader keys by the file's top-level statements.
 - `CEconomicCategory::FillResourceModifierMatrix(CStrategicResource const&, …)` takes a second
-  content object. Its names combine two registries' keys. A function is a second input when it
-  takes an object of a class whose post-read code no template registry owns, except on the
-  contexts of that class's own loader registry. So naming `common/strategic_resources` keeps the
-  matrix out of `common/economic_categories`. A function that takes an item of another template
-  registry is not a second input; none generates on M452. Make the rule uniform when such a
-  function appears.
+  content object. A function is a second input when it takes an object of a class whose post-read
+  code no template registry owns, except on the contexts of that class's own loader registry.
+  When the class is the item class of one named registry, the first such function on a context is
+  that registry's input: `CEconomicCategory::GenerateModifiers` loops over
+  `CStrategicResourceDatabase::_pInstance` and calls `FillResourceModifierMatrix` for each
+  resource, which composes `{category}_` and the resource key (`+0x20`) before
+  `FillModifierMatrix<false>` → `FillModifierTable<false>`. The input runs on its own (below), and
+  the root run does not enter it. A second input of a class with no named registry, or one context
+  through items of two other registries, stays a `SecondInput` gap. A function that takes an item
+  of another template registry is not a second input; none generates on M452. Make the rule
+  uniform when such a function appears.
 - The reload path (`ReadExistingEntry`) and the non-virtual thunks hold copies of
   `InitPostRead`. A chain of calls that reaches a copy but no root is not a context.
 
@@ -120,6 +125,26 @@ to its top-level source keys.
 The engine branches on the key's form: a long key is in a buffer, and a short key is in place in
 the string object. Constructors and generators copy string objects through `q` registers from
 temporaries that are not fully written, so a copied flag byte can be unknown.
+
+### Inputs from another registry
+
+An input runs as its own entry, not inside its root's run. The economic-category item root
+exceeds the path limit in the loops after `GenerateModifiers`; a root run that enters the matrix
+spends its paths there and does not reach the matrix registration, also with a limit of 1,024
+paths. The input run starts at the input function with `x0` the item and the input's
+register (`x1` for the matrix) a new item of the other registry, whose key is at the place that
+the other registry's key constructor establishes (`+0x20` for `CStrategicResource`). It runs once
+for each pair of the two keys' forms. Its families are never `Always`: the root may skip the call.
+On M452 it gives eight families, `{key}_{common/strategic_resources key}_{produces,upkeep,cost,logistics}_{add,mult}`.
+
+`FillModifierTable<false>` is also reached from `CTriggeredModifierTable::CSerializer<N>::InitPostRead`,
+so its site stays unjoined with the reason `UnnamedContent`: joining the matrix moved one site from
+the second-input count to the unnamed-content count, and the total stays 18.
+
+The live case `loaded_modifiers` checks that `country_minerals_produces_mult` is attributed to
+the `country` economic category and the `minerals` strategic resource. On M452 the eight
+families explain 6,059 loaded names (table below); the session's 45,583 names have 11,700 that a
+family explains and 33,314 unexplained.
 
 ### Standard-string move assignment
 
@@ -206,6 +231,7 @@ items, and how many of the names that the template gives for them are loaded.
 | `common/districts` | `planet_{key}_build_speed_mult` | database | Always | 147 | 147 |
 | `common/districts` | `{key}_max_add`, `{key}_max_mult` | item | Unresolved | 147 | 147 each |
 | `common/economic_categories` | `{key}_produces_mult`, `_upkeep_mult`, `_cost_mult`, `_logistics_mult` (tags unresolved) | item | Unresolved | 269 | 46, 53, 35, 1 |
+| `common/economic_categories` (M452) | `{key}_{common/strategic_resources key}_produces_add`/`_mult`, `_upkeep_add`/`_mult`, `_cost_add`/`_mult`, `_logistics_add`/`_mult` (tags unresolved) | input | Unresolved | 270 × 26 | `_add`/`_mult`: produces 1,794/1,196, upkeep 858/1,326, cost 0/859, logistics 0/26 |
 | `common/espionage_operation_types` | `{key}_speed_mult`, `_skill_add`/`_mult`, `_difficulty_add`/`_mult`, `hostile_{key}_difficulty_add`/`_mult` | item | Unresolved | 27 | 27 each |
 | `common/ethics` | `pop_{key}_attraction_mult` | item | Unresolved | 17 | 17 |
 | `common/governments/councilors` | `{key}_exp_gain` | database loop | Unresolved | 179 | 179 |
@@ -223,7 +249,8 @@ items, and how many of the names that the template gives for them are loaded.
 
 `common/leader_classes`, `common/ship_sizes` and `common/espionage_operation_categories` return no
 family (see the gaps below). On M452 `common/strategic_resources` adds eight families (23 registries
-in `tests/expected/m452/modifier-families.json`); the other 14 custom-loader registries with one
+in `tests/expected/m452/modifier-families.json`), and `common/economic_categories` adds the eight
+two-key families of its input; the other 14 custom-loader registries with one
 owner answer partial with no family (see [Roots](#roots)), and the six without one owner are
 `Unsupported` with the reason of the owner join. The five build-speed and
 windup templates of buildings, districts and bypass also equal all 680 registrations that the
@@ -268,8 +295,7 @@ registry:
 | Reason | Sites | Code |
 | --- | ---: | --- |
 | Inside the registration function | 1 | The `AddDefinition` in `CModifier::TryAddDynamicModifier` |
-| Second matrix input | 1 | `CEconomicCategory::FillModifierTable<false>` (economic category × strategic resource) |
-| Unnamed content | 3 | `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` (also from the triggered-table serializers) |
+| Unnamed content | 4 | `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` and `<false>` (also from the triggered-table serializers) |
 | No root | 13 | Ten `AddDefinition` calls in `CShipClassModifierHelper::Init` (from `CModifier::InitDefinitions`: the engine's ship-class enum, before content), `CWeaponTagModifierHelper::CreateModifierType` (from `CWeaponTagDatabase::InitInstance`), two in `CLeaderClass::CreateStartingAgeModifiers` (no direct caller) |
 
 Gaps in joined registries:
@@ -286,8 +312,9 @@ Gaps in joined registries:
   counts them by reason.
 
 Outside the methods: modifiers that the engine adds after the documentation point; where a
-modifier takes effect; the tags of a declared modifier after content registers it again; a key
-part from a second named registry (none on M45-release); joining states in the item-root runs,
+modifier takes effect; the tags of a declared modifier after content registers it again; a second
+input of a class with no named registry, or items of two other registries on one context; joining
+states in the item-root runs,
 which would remove their path-limit failures; inline item construction; the family run of a
 copied thunk.
 
@@ -334,7 +361,8 @@ Each of these gave a wrong answer once. Each now has an authored test with a neg
 - New memory of a loader must not have the address of memory that the database constructor
   reserved.
 
-**Assumptions** (not established): the null object is not an item of the database; an item's key
+**Assumptions** (not established): an input function is a member function, so the other item
+is in the register after `this` for its parameter; the null object is not an item of the database; an item's key
 does not change after its constructor; a store to an unknown address or a call that the run does not
 follow changes neither the key, the held definition masks, the database's fields other than its item
 array, nor an item's vtable pointers; a thunk runs its root, also when it holds a copy of the root's

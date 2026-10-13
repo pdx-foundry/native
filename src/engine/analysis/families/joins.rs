@@ -6,11 +6,11 @@
 //! [`DEPTH`] calls. The search climbs from the function that contains the call through its
 //! callers and ends at the first root on each chain; a chain that meets no root is not a context.
 //!
-//! A context is joined when its root belongs to a named registry and no function on it takes a
-//! second content object (the second input of a matrix): one that no template registry owns and
-//! that is no item of the root's own registry. A generation call is joined only when every
-//! context is joined. Every other call keeps one reason, so each is
-//! accounted for.
+//! A context is joined when its root belongs to a named registry and every function on it that
+//! takes a second content object (the second input of a matrix) takes an item of one other named
+//! registry. A second content object is one that no template registry owns and that is no item of
+//! the root's own registry. A generation call is joined only when every context is joined. Every
+//! other call keeps one reason, so each is accounted for.
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The most calls between a root and a generation call.
@@ -76,8 +76,22 @@ pub struct RegistryJoin {
     pub roots: BTreeMap<u64, (Receiver, BTreeSet<u64>)>,
     /// The functions between a root and a generation call on the joined contexts.
     pub path: BTreeSet<u64>,
-    /// A context of this registry takes a second content object.
+    /// Each function on the joined contexts that takes an item of another named registry, by
+    /// address.
+    pub inputs: BTreeMap<u64, InputJoin>,
+    /// A context of this registry takes a second content object that is no item of one named
+    /// registry.
     pub second_input: bool,
+}
+
+/// A function that takes an item of another named registry: the first such function on a joined
+/// context, so it receives the root's item and that registry's item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputJoin {
+    /// The other registry.
+    pub registry: String,
+    /// The generation calls that it reaches by direct calls.
+    pub sites: BTreeSet<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +105,7 @@ pub enum SiteJoin {
 pub enum Reason {
     /// The call is inside the registration function.
     RegistrationFunction,
-    /// A context also takes a second content object.
+    /// A context also takes a second content object that is no item of one other named registry.
     SecondInput,
     /// A context starts at a content object that is not an item of a named registry.
     UnnamedContent,
@@ -142,25 +156,37 @@ pub fn join(graph: &Graph) -> Joins {
                 reasons.push(Reason::UnnamedContent);
                 continue;
             };
-            let through_second_input = context.path.iter().any(|function| {
-                graph
-                    .second_inputs
-                    .get(function)
-                    .is_some_and(|own| own.as_ref() != Some(registry))
-            });
+            let takes = takes(graph, registry, &context.path);
             let registry = joins.registries.entry(registry.clone()).or_default();
-            if through_second_input {
-                registry.second_input = true;
-                reasons.push(Reason::SecondInput);
-                continue;
+            match takes {
+                Takes::RootItems => {
+                    registry
+                        .roots
+                        .entry(context.root)
+                        .or_insert_with(|| (*receiver, BTreeSet::new()))
+                        .1
+                        .insert(site.call);
+                }
+                Takes::Input {
+                    function,
+                    registry: other,
+                } => {
+                    registry
+                        .inputs
+                        .entry(function)
+                        .or_insert_with(|| InputJoin {
+                            registry: other,
+                            sites: BTreeSet::new(),
+                        })
+                        .sites
+                        .insert(site.call);
+                }
+                Takes::Unnamed => {
+                    registry.second_input = true;
+                    reasons.push(Reason::SecondInput);
+                    continue;
+                }
             }
-
-            registry
-                .roots
-                .entry(context.root)
-                .or_insert_with(|| (*receiver, BTreeSet::new()))
-                .1
-                .insert(site.call);
             registry.path.extend(context.path);
         }
 
@@ -173,6 +199,37 @@ pub fn join(graph: &Graph) -> Joins {
     }
 
     joins
+}
+
+/// The content objects that one context takes.
+enum Takes {
+    /// Only the items of the root's registry.
+    RootItems,
+    /// Also an item of one other named registry, first through `function`.
+    Input { function: u64, registry: String },
+    /// A second content object of no named registry, or items of more than one other registry.
+    Unnamed,
+}
+
+/// The content objects that the functions on `path` take, with a root of `registry`.
+fn takes(graph: &Graph, registry: &str, path: &[u64]) -> Takes {
+    let mut takes = Takes::RootItems;
+    for function in path {
+        match (graph.second_inputs.get(function), &takes) {
+            (None, _) => {}
+            (Some(Some(own)), _) if own == registry => {}
+            (Some(Some(other)), Takes::RootItems) => {
+                takes = Takes::Input {
+                    function: *function,
+                    registry: other.clone(),
+                };
+            }
+            (Some(Some(other)), Takes::Input { registry, .. }) if other == registry => {}
+            (Some(_), _) => return Takes::Unnamed,
+        }
+    }
+
+    takes
 }
 
 /// Every chain from a root down to `function`.
@@ -313,16 +370,36 @@ mod tests {
     }
 
     #[test]
-    fn the_items_of_a_contexts_own_registry_are_no_second_input() {
+    fn an_item_of_another_named_registry_joins_as_an_input() {
         let mut graph = graph();
         graph.second_inputs.insert(0x100, Some("common/b".into()));
         let joins = join(&graph);
 
-        assert_eq!(joins.sites[&0x104], SiteJoin::Unjoined(Reason::SecondInput));
-        assert!(joins.registries["common/a"].second_input);
+        assert_eq!(joins.sites[&0x104], SiteJoin::Joined);
+        let a = &joins.registries["common/a"];
+        assert!(!a.second_input);
+        let input = InputJoin {
+            registry: "common/b".into(),
+            sites: BTreeSet::from([0x104]),
+        };
+        assert_eq!(a.inputs, BTreeMap::from([(0x100, input)]));
+        assert_eq!(a.roots[&0x1000].1, BTreeSet::from([0x204]));
         let b = &joins.registries["common/b"];
-        assert!(!b.second_input);
+        assert!(b.inputs.is_empty());
         assert_eq!(b.roots[&0x2000].1, BTreeSet::from([0x104]));
+    }
+
+    #[test]
+    fn items_of_two_other_registries_on_one_context_stay_unjoined() {
+        let mut graph = graph();
+        graph.second_inputs.insert(0x200, Some("common/b".into()));
+        graph.second_inputs.insert(0x210, Some("common/c".into()));
+        let joins = join(&graph);
+
+        assert_eq!(joins.sites[&0x204], SiteJoin::Unjoined(Reason::SecondInput));
+        let a = &joins.registries["common/a"];
+        assert!(a.second_input);
+        assert!(a.inputs.is_empty());
     }
 
     #[test]

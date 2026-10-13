@@ -244,6 +244,7 @@ pub(super) fn public_parts(parts: &[Part]) -> Vec<NamePart> {
         .filter_map(|part| match part {
             Part::Literal(text) => Some(NamePart::Literal(text.clone())),
             Part::ItemKey => Some(NamePart::ItemKey),
+            Part::RegistryKey(registry) => Some(NamePart::RegistryKey(registry.clone())),
             Part::Field(path) => Some(NamePart::Field(path.clone())),
             Part::Unresolved => None,
         })
@@ -269,13 +270,15 @@ pub(super) fn public_family(family: &Family, categories: &CategoryNames) -> Modi
     }
 }
 
-/// The name with `{key}` for the item key and `{path}` for a field, such as
-/// `planet_{key}_build_speed_mult` or `{tradition_swap/name}_desc`.
+/// The name with `{key}` for the item key, `{registry key}` for the key of an item of another
+/// registry, and `{path}` for a field, such as `planet_{key}_build_speed_mult`,
+/// `{key}_{common/strategic_resources key}_produces_mult` or `{tradition_swap/name}_desc`.
 pub(super) fn template(name: &[NamePart]) -> String {
     name.iter()
         .map(|part| match part {
             NamePart::Literal(text) => text.clone(),
             NamePart::ItemKey => "{key}".into(),
+            NamePart::RegistryKey(registry) => format!("{{{registry} key}}"),
             NamePart::Field(path) => format!("{{{}}}", path.join("/")),
         })
         .collect()

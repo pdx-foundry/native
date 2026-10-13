@@ -5,8 +5,9 @@
 //! database generator. This module joins each entry with two static authorities of the same
 //! build: the names that `Native::modifiers` declares, and the families that
 //! `Native::modifier_families` gives for each of those registries, applied to the registry's
-//! loaded keys. A family explains a name only when its template gives exactly that name for a
-//! loaded key; nothing is matched by similarity. Tags follow the rule of `Native::modifiers` for
+//! loaded keys, and for a family of two registries to each pair of the two registries' loaded
+//! keys. A family explains a name only when its template gives exactly that name for loaded keys;
+//! nothing is matched by similarity. Tags follow the rule of `Native::modifiers` for
 //! the loaded mask.
 //!
 //! The static side is prepared before the game starts, so that a static failure starts no game.
@@ -167,7 +168,7 @@ impl Native {
 impl ModifierJoin {
     /// The registries whose loaded item keys the join needs.
     pub(crate) fn registries(&self) -> Vec<String> {
-        self.tables.families.keys().cloned().collect()
+        self.tables.registries()
     }
 
     /// Join the observed table with the static side.
@@ -183,6 +184,19 @@ impl ModifierJoin {
 }
 
 impl JoinTables {
+    /// Each registry with a family, and the second registry of each family of two registries.
+    fn registries(&self) -> Vec<String> {
+        let second = self
+            .families
+            .values()
+            .flatten()
+            .filter_map(ModifierFamily::second_registry)
+            .map(str::to_owned);
+        let registries: BTreeSet<String> = self.families.keys().cloned().chain(second).collect();
+
+        registries.into_iter().collect()
+    }
+
     fn join(
         &self,
         observed: &ObservedModifiers,
@@ -193,35 +207,60 @@ impl JoinTables {
 
         let mut generated: BTreeMap<String, Vec<GeneratedName>> = BTreeMap::new();
         let mut registry_items = BTreeMap::new();
+        for registry in self.registries() {
+            match observed.registries.get(&registry) {
+                Some(RegistryKeys::Keys(keys)) => {
+                    registry_items.insert(registry, keys.clone());
+                }
+                Some(RegistryKeys::Unavailable(reason)) => gaps.push(registry_gap(
+                    GapKind::IncompleteObservation,
+                    Some(&registry),
+                    format!(
+                        "the registry's loaded item keys could not be read ({reason}); its families, and the families that combine its keys, explain no name"
+                    ),
+                )),
+                None => gaps.push(registry_gap(
+                    GapKind::IncompleteObservation,
+                    Some(&registry),
+                    "the registry's loaded item keys were not read; its families, and the families that combine its keys, explain no name",
+                )),
+            }
+        }
+
         for (registry, families) in &self.families {
-            let keys = match observed.registries.get(registry) {
-                Some(RegistryKeys::Keys(keys)) => keys,
-                Some(RegistryKeys::Unavailable(reason)) => {
-                    gaps.push(registry_gap(
-                        GapKind::IncompleteObservation,
-                        Some(registry),
-                        format!(
-                            "the registry's loaded item keys could not be read ({reason}); its families explain no name"
-                        ),
-                    ));
-                    continue;
-                }
-                None => {
-                    gaps.push(registry_gap(
-                        GapKind::IncompleteObservation,
-                        Some(registry),
-                        "the registry's loaded item keys were not read; its families explain no name",
-                    ));
-                    continue;
-                }
+            let Some(keys) = registry_items.get(registry) else {
+                continue;
             };
-            registry_items.insert(registry.clone(), keys.clone());
-            for key in keys {
-                for family in families {
-                    if let Some(name) = family.name_for(key) {
+            for family in families {
+                let second_keys = match family.second_registry() {
+                    None => None,
+                    Some(second) => match registry_items.get(second) {
+                        Some(second_keys) => Some(second_keys),
+                        None => continue,
+                    },
+                };
+
+                for key in keys {
+                    let names: Vec<(String, Option<&String>)> = match second_keys {
+                        None => family
+                            .name_for(key)
+                            .map(|name| (name, None))
+                            .into_iter()
+                            .collect(),
+                        Some(second_keys) => second_keys
+                            .iter()
+                            .filter_map(|second| {
+                                family
+                                    .name_for_keys(key, second)
+                                    .map(|name| (name, Some(second)))
+                            })
+                            .collect(),
+                    };
+                    for (name, second_item) in names {
                         generated.entry(name).or_default().push(GeneratedName {
                             registry: registry.clone(),
                             item: key.clone(),
+                            second_item: second_item.cloned(),
                             template: family.name.clone(),
                         });
                     }
@@ -515,5 +554,70 @@ mod tests {
                 .all(|gap| gap.kind == GapKind::OutsideMethod)
         );
         assert_eq!(answer.value.content, LoadedContent::Installation);
+    }
+
+    #[test]
+    fn a_family_of_two_registries_explains_names_for_each_pair_of_loaded_keys() {
+        let matrix = ModifierFamily {
+            name: vec![
+                NamePart::ItemKey,
+                NamePart::Literal("_".into()),
+                NamePart::RegistryKey("common/strategic_resources".into()),
+                NamePart::Literal("_produces_mult".into()),
+            ],
+            category_tags: DeclaredTags::Unresolved,
+            condition: GenerationCondition::Unresolved,
+            name_limit: None,
+        };
+        let tables = JoinTables {
+            families: BTreeMap::from([("common/economic_categories".into(), vec![matrix])]),
+            ..tables()
+        };
+        assert_eq!(
+            tables.registries(),
+            ["common/economic_categories", "common/strategic_resources"]
+        );
+
+        let mut observed = ObservedModifiers {
+            entries: vec![
+                entry("jobs_rare_crystals_produces_mult", COLONY),
+                entry("jobs_produces_mult", COLONY),
+            ],
+            registries: BTreeMap::from([
+                (
+                    "common/economic_categories".into(),
+                    RegistryKeys::Keys(vec!["jobs".into()]),
+                ),
+                (
+                    "common/strategic_resources".into(),
+                    RegistryKeys::Keys(vec!["gases".into(), "rare_crystals".into()]),
+                ),
+            ]),
+        };
+        let join = |observed: &ObservedModifiers| {
+            tables.join(observed, &categories(), BuildId("test".into()))
+        };
+
+        let answer = join(&observed);
+        let generated = &named(&answer, "jobs_rare_crystals_produces_mult").generated_by;
+        assert_eq!(generated.len(), 1);
+        assert_eq!(generated[0].registry, "common/economic_categories");
+        assert_eq!(generated[0].item, "jobs");
+        assert_eq!(generated[0].second_item.as_deref(), Some("rare_crystals"));
+        // Negative control: the family never gives a name for one key.
+        assert!(named(&answer, "jobs_produces_mult").generated_by.is_empty());
+
+        observed.registries.remove("common/strategic_resources");
+        let answer = join(&observed);
+        assert!(
+            named(&answer, "jobs_rare_crystals_produces_mult")
+                .generated_by
+                .is_empty()
+        );
+        assert!(answer.gaps.iter().any(|gap| {
+            gap.kind == GapKind::IncompleteObservation
+                && gap.subject.as_ref().map(|subject| subject.name())
+                    == Some("common/strategic_resources")
+        }));
     }
 }

@@ -13,9 +13,17 @@
 //! buffer pointer in the item. The place is the same for a short key, whose text the object holds
 //! in place.
 //!
+//! A function on a joined context that takes an item of another named registry (an input,
+//! `joins`) runs on its own, as an entry beside the roots: it receives the item and a new item of
+//! that registry whose key is a second labelled source, at the key place of that registry's item
+//! constructor. Its names have both keys, and are never `Always`, since the root may skip the
+//! call. A root run does not enter an input. The function is taken to be a member function, so
+//! the other item is in the register after `this` for its parameter.
+//!
 //! Each root runs twice: with a long key and with a short key, since the engine branches on the
-//! key's form. A family is one name that one chain of calls registers. Both runs must give it
-//! the same names at that chain, and every path must give it one mask. A family is `Always`
+//! key's form. An input runs four times, once for each pair of the two keys' forms. A family is
+//! one name that one chain of calls registers. Every run must give it the same names at that
+//! chain, and every path must give it one mask. A family is `Always`
 //! generated only for a root that loops over every item, when no path fails, some path returns,
 //! and every returned path registers it. A branch on an unknown item field makes a path that
 //! skips the call, so such a family is never `Always`. Paths that end in a function that never
@@ -60,6 +68,12 @@ const LONG_KEY: &str = "generatedmodifierfamilyitemkey01";
 
 /// The short key: the engine stores its text in the string object.
 const SHORT_KEY: &str = "itemkey1";
+
+/// The long key of an item of another registry, as long as [`LONG_KEY`].
+const LONG_REGISTRY_KEY: &str = "generatedmodifierfamilyinputkey1";
+
+/// The short key of an item of another registry.
+const SHORT_REGISTRY_KEY: &str = "inputky1";
 
 /// Bytes of item memory that the method gives the constructor and the roots.
 pub(super) const ITEM_SPAN: u64 = 0x4000;
@@ -108,8 +122,24 @@ pub struct RegistryInput {
     pub constructors: Vec<KeyConstructor>,
     /// The code that makes the registry's items, when it has an item root.
     pub loading: Option<Loading>,
-    /// Every root, entered function and constructor body, and the loading code.
+    /// The entered functions that take an item of another named registry.
+    pub inputs: Vec<SecondInput>,
+    /// Every root, entered function and constructor body (also of the inputs' registries), and
+    /// the loading code.
     pub code: Code,
+}
+
+/// An entered function that takes an item of another named registry.
+pub struct SecondInput {
+    pub function: u64,
+    /// The argument register that holds the item.
+    pub register: usize,
+    /// The other registry's content directory.
+    pub registry: String,
+    /// The generation calls that it reaches by direct calls.
+    pub sites: BTreeSet<u64>,
+    /// Every body of the other registry's item constructor that takes the key.
+    pub constructors: Vec<KeyConstructor>,
 }
 
 /// A function that the engine runs for a registry's items.
@@ -256,16 +286,39 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
         None => Some(NotEstablished::NoLoader),
     };
 
-    let mut families: BTreeMap<Template, Condition> = BTreeMap::new();
     let mut failures = BTreeMap::new();
-    for root in &registry.roots {
-        let runs: Vec<Vec<PathSummary>> = KeyForm::BOTH
+    let mut entries: Vec<Entry> = registry.roots.iter().map(Entry::Root).collect();
+    for second in &registry.inputs {
+        let place = key_storage(
+            &registry.code,
+            &input.data,
+            &input.strings,
+            input.layout,
+            &second.constructors,
+        );
+        match place {
+            Ok(place) => entries.push(Entry::Input { second, place }),
+            Err(unresolved) => *failures.entry(unresolved.reason).or_default() += 1,
+        }
+    }
+
+    let mut families: BTreeMap<Template, Condition> = BTreeMap::new();
+    for entry in &entries {
+        let runs: Vec<Vec<PathSummary>> = entry
+            .key_forms()
             .into_iter()
-            .map(|form| root_paths(input, registry, root, offset, form))
+            .map(|forms| entry_paths(input, registry, entry, offset, forms))
             .collect();
 
-        let (root_families, root_failures) = root_families(root, not_established.as_ref(), &runs);
-        for family in root_families {
+        let (entry_families, entry_failures) = match entry {
+            Entry::Root(root) => run_families(&root.sites, &runs, |calls, name| {
+                condition(root, not_established.as_ref(), &runs, calls, name)
+            }),
+            Entry::Input { second, .. } => {
+                run_families(&second.sites, &runs, |_, _| Condition::Unresolved)
+            }
+        };
+        for family in entry_families {
             let condition = families
                 .entry((family.parts, family.limit, family.mask))
                 .or_insert_with(|| family.condition.clone());
@@ -273,7 +326,7 @@ pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyRe
                 *condition = family.condition;
             }
         }
-        for reason in root_failures {
+        for reason in entry_failures {
             *failures.entry(reason).or_default() += 1;
         }
     }
@@ -311,6 +364,59 @@ impl KeyForm {
             Self::Long => LONG_KEY,
             Self::Short => SHORT_KEY,
         }
+    }
+
+    /// The key text of an item of another registry in this form.
+    fn registry_key_text(self) -> &'static str {
+        match self {
+            Self::Long => LONG_REGISTRY_KEY,
+            Self::Short => SHORT_REGISTRY_KEY,
+        }
+    }
+}
+
+/// The key forms of one run: of the item key, and of the key of each item of another registry.
+#[derive(Debug, Clone, Copy)]
+struct KeyForms {
+    item: KeyForm,
+    registry_key: KeyForm,
+}
+
+/// Where a run starts.
+enum Entry<'a> {
+    Root(&'a Root),
+    /// An entered function that takes an item of another registry, with the key place of that
+    /// registry's item. It runs on its own for the item and one item of the other registry.
+    Input {
+        second: &'a SecondInput,
+        place: u64,
+    },
+}
+
+impl Entry<'_> {
+    fn function(&self) -> u64 {
+        match self {
+            Self::Root(root) => root.function,
+            Self::Input { second, .. } => second.function,
+        }
+    }
+
+    /// The key forms of each run: one run for each form of the item key, and for an input each
+    /// pair of forms, since the engine branches on each key's form.
+    fn key_forms(&self) -> Vec<KeyForms> {
+        let registry_keys = |item| match self {
+            Self::Root(_) => vec![item],
+            Self::Input { .. } => KeyForm::BOTH.to_vec(),
+        };
+
+        KeyForm::BOTH
+            .into_iter()
+            .flat_map(|item| {
+                registry_keys(item)
+                    .into_iter()
+                    .map(move |registry_key| KeyForms { item, registry_key })
+            })
+            .collect()
     }
 }
 
@@ -428,12 +534,19 @@ fn stored_key(machine: &Machine, item: u64) -> Option<u64> {
         .next()
 }
 
-fn model(input: &FamilyInput, form: KeyForm) -> Model<'_> {
+fn model<'a>(
+    input: &'a FamilyInput,
+    form: KeyForm,
+    registry_keys: &'a BTreeMap<String, String>,
+) -> Model<'a> {
     Model {
         functions: &input.strings,
         layout: input.layout,
         data: &input.data,
-        sources: Sources::key_only(form.text()),
+        sources: Sources {
+            registry_keys,
+            ..Sources::key_only(form.text())
+        },
     }
 }
 
@@ -518,14 +631,17 @@ struct Registration {
     assumed_text: bool,
 }
 
-/// Run the root over one item whose key has `form`, and summarize each path.
-fn root_paths(
+/// Run `entry` over one item whose key has the item form of `forms`, and summarize each path. An
+/// input entry also receives one item of the other registry, whose key has the other form. A root
+/// run does not enter an input: the input runs on its own.
+fn entry_paths(
     input: &FamilyInput,
     registry: &RegistryInput,
-    root: &Root,
+    entry: &Entry,
     key_offset: u64,
-    form: KeyForm,
+    forms: KeyForms,
 ) -> Vec<PathSummary> {
+    let form = forms.item;
     let mut machine = Machine::new(&registry.code, &input.data);
     let table = input
         .definitions
@@ -533,23 +649,52 @@ fn root_paths(
         .map(|definitions| DefinitionTable::install(&mut machine, definitions));
     let item = machine.reserve(ITEM_SPAN);
     write_key(&mut machine, input.layout, item + key_offset, form);
-    let receiver = match root.receiver {
-        Receiver::Item => item,
-        Receiver::Database => {
-            let database = machine.allocate(DATABASE_SPAN);
-            let items = machine.allocate(8);
-            machine.write(database + input.database.items_offset, 8, items);
-            machine.write(database + input.database.count_offset, 4, 1);
-            machine.write(items, 8, item);
-            database
+
+    let mut arena = Arena::default();
+    let mut registry_keys = BTreeMap::new();
+    let receiver = match entry {
+        Entry::Root(root) => match root.receiver {
+            Receiver::Item => item,
+            Receiver::Database => {
+                let database = machine.allocate(DATABASE_SPAN);
+                let items = machine.allocate(8);
+                machine.write(database + input.database.items_offset, 8, items);
+                machine.write(database + input.database.count_offset, 4, 1);
+                machine.write(items, 8, item);
+                database
+            }
+        },
+        Entry::Input { second, place } => {
+            let node = arena.add(Node {
+                parts: vec![Part::RegistryKey(second.registry.clone())],
+                limit: None,
+            });
+            let other = machine.reserve(ITEM_SPAN);
+            let text = forms.registry_key.registry_key_text();
+            write_source(
+                &mut machine,
+                input.layout,
+                other + place,
+                text,
+                forms.registry_key,
+                node,
+            );
+            machine.set_register(second.register, other);
+            registry_keys.insert(second.registry.clone(), text.to_owned());
+            item
         }
     };
     machine.set_register(0, receiver);
 
-    let model = model(input, form);
-    let mut arena = Arena::default();
+    let model = model(input, form, &registry_keys);
     let mut records: Vec<Registration> = Vec::new();
-    let paths = machine.run_paths(root.function, &mut |target, machine| match target {
+    let is_input = |target| {
+        registry
+            .inputs
+            .iter()
+            .any(|second| second.function == target)
+    };
+    let paths = machine.run_paths(entry.function(), &mut |target, machine| match target {
         Some(target) if target == input.registration => {
             let site = machine.known_register(30, "call-site")? - 4;
             let mut calls: Vec<u64> = machine.entered_calls().collect();
@@ -573,7 +718,7 @@ fn root_paths(
             machine.label(RECORD_COUNT, count + 1);
             Ok(Call::Return(Some(1)))
         }
-        Some(target) if registry.entered.contains(&target) => Ok(Call::Enter),
+        Some(target) if registry.entered.contains(&target) && !is_input(target) => Ok(Call::Enter),
         _ => follow(&model, target, machine, &mut arena),
     });
 
@@ -667,14 +812,13 @@ impl<'a> DefinitionTable<'a> {
     }
 }
 
-/// The families of one root from its runs with each key form, and the reason of each name or
-/// generation call that could not be followed.
-/// `not_established` says why the engine's call of an item root for every item is not
-/// established.
-fn root_families(
-    root: &Root,
-    not_established: Option<&NotEstablished>,
+/// The families of one entry from its runs with each key form, and the reason of each name or
+/// generation call that could not be followed. Each of `sites` must be reached. `condition` gives
+/// a family's condition from its chain of calls and its name.
+fn run_families(
+    sites: &BTreeSet<u64>,
     runs: &[Vec<PathSummary>],
+    condition: impl Fn(&[u64], &Node) -> Condition,
 ) -> (Vec<Family>, Vec<&'static str>) {
     let mut failures = Vec::new();
 
@@ -689,7 +833,7 @@ fn root_families(
         }
     }
 
-    for &site in &root.sites {
+    for &site in sites {
         if !chains.keys().any(|calls| calls.contains(&site)) {
             failures.push("unreached");
         }
@@ -713,7 +857,7 @@ fn root_families(
                     parts,
                     limit,
                     mask,
-                    condition: condition(root, not_established, runs, calls, name),
+                    condition: condition(calls, name),
                 }),
                 Err(Unresolved { reason, .. }) => failures.push(reason),
             }
@@ -831,8 +975,14 @@ mod tests {
 
     /// A constructor that copies the key from the argument `key` into the item at `offset`.
     fn constructor_with_key_in(offset: u64, key: &str) -> Rows {
+        constructor_at(CONSTRUCTOR, offset, key)
+    }
+
+    /// A constructor at `address` that copies the key from the argument `key` into the item at
+    /// `offset`.
+    fn constructor_at(address: u64, offset: u64, key: &str) -> Rows {
         rows(
-            CONSTRUCTOR,
+            address,
             &[
                 ("sub", "sp,sp,#0x40"),
                 ("mov", "x20,x0"),
@@ -1098,6 +1248,7 @@ mod tests {
                 entered: entered.iter().copied().collect(),
                 constructors: constructor.into_iter().map(template_constructor).collect(),
                 loading: None,
+                inputs: Vec::new(),
                 code: code(parts),
             },
         }
@@ -1904,5 +2055,149 @@ mod tests {
 
         assert_eq!(item_key_offset(&key(1)), Ok(0x30));
         assert!(item_key_offset(&key(2)).is_err());
+    }
+
+    /// The constructor of the other registry's item, with the key first and stored at `+0x30`.
+    const OTHER_CONSTRUCTOR: u64 = 0xd00;
+    /// A function of the item's class that takes an item of the other registry in `x1`.
+    const MATRIX: u64 = 0xc00;
+    const OTHER_REGISTRY: &str = "common/other";
+
+    /// An item root that calls [`MATRIX`] with an item of the other registry that it does not
+    /// know.
+    fn matrix_root() -> Rows {
+        rows(
+            ITEM_ROOT,
+            &[
+                ("sub", "sp,sp,#0x10"),
+                ("bl", &format!("#{MATRIX:#x}")),
+                ("add", "sp,sp,#0x10"),
+                ("ret", ""),
+            ],
+        )
+    }
+
+    /// `{key}_{other key}_build_speed_mult`, like `CEconomicCategory::FillResourceModifierMatrix`,
+    /// and the address of its generation call. With `mixed`, the name ends in `max_add` instead
+    /// when exactly one of the two keys is short.
+    fn matrix(mixed: bool) -> (Rows, u64) {
+        let mut lines: Vec<(&str, String)> = vec![
+            ("sub", "sp,sp,#0x80".into()),
+            ("mov", "x19,x0".into()),
+            ("mov", "x20,x1".into()),
+            ("stp", "xzr,xzr,[sp,#0x28]".into()),
+            ("stp", "xzr,xzr,[sp,#0x38]".into()),
+            ("add", "x0,sp,#0x28".into()),
+            ("add", "x1,x19,#0x10".into()),
+            ("bl", format!("#{APPEND_STRING:#x}")),
+            ("add", "x0,sp,#0x28".into()),
+            ("mov", "w1,#0x5f".into()),
+            ("bl", format!("#{APPEND_CHARACTER:#x}")),
+            ("add", "x0,sp,#0x28".into()),
+            ("add", "x1,x20,#0x30".into()),
+            ("bl", format!("#{APPEND_STRING:#x}")),
+            ("adrp", "x1,#0x5000".into()),
+            ("add", "x1,x1,#0x10".into()),
+        ];
+        if mixed {
+            let after = MATRIX + 4 * (lines.len() as u64 + 5);
+            lines.extend([
+                ("ldrb", "w8,[x19,#0x27]".into()),
+                ("ldrb", "w9,[x20,#0x47]".into()),
+                ("eor", "w8,w8,w9".into()),
+                ("tbz", format!("w8,#7,#{after:#x}")),
+                // `max_add` at 0x5070.
+                ("add", "x1,x1,#0x60".into()),
+            ]);
+        }
+        lines.extend([
+            ("add", "x0,sp,#0x28".into()),
+            ("bl", format!("#{APPEND_TEXT:#x}")),
+            ("mov", "w8,#0x100".into()),
+            ("str", "w8,[sp]".into()),
+            ("add", "x1,sp,#0x28".into()),
+        ]);
+        let site = MATRIX + 4 * lines.len() as u64;
+        lines.extend([
+            ("bl", format!("#{REGISTER:#x}")),
+            ("add", "sp,sp,#0x80".into()),
+            ("ret", String::new()),
+        ]);
+
+        let lines: Vec<(&str, &str)> = lines
+            .iter()
+            .map(|(operation, operands)| (*operation, operands.as_str()))
+            .collect();
+        (rows(MATRIX, &lines), site)
+    }
+
+    /// A registry whose item root reaches [`MATRIX`], which takes an item of [`OTHER_REGISTRY`].
+    fn matrix_fixture(mixed: bool, other_constructor: bool) -> Fixture {
+        let (matrix, site) = matrix(mixed);
+        let mut fixture = fixture(
+            &[
+                constructor(0x10),
+                constructor_at(OTHER_CONSTRUCTOR, 0x30, "x1"),
+                matrix_root(),
+                matrix,
+            ],
+            vec![Root {
+                function: ITEM_ROOT,
+                receiver: Receiver::Item,
+                sites: BTreeSet::new(),
+            }],
+            &[MATRIX],
+            Some(CONSTRUCTOR),
+        );
+        let constructors = other_constructor.then_some(KeyConstructor {
+            address: OTHER_CONSTRUCTOR,
+            key_register: 1,
+        });
+        fixture.registry.inputs = vec![SecondInput {
+            function: MATRIX,
+            register: 1,
+            registry: OTHER_REGISTRY.into(),
+            sites: BTreeSet::from([site]),
+            constructors: constructors.into_iter().collect(),
+        }];
+        fixture
+    }
+
+    #[test]
+    fn a_function_that_takes_another_registrys_item_names_both_keys() {
+        assert_eq!(
+            matrix_fixture(false, true).only_family(),
+            Ok(Family {
+                parts: vec![
+                    Part::ItemKey,
+                    literal("_"),
+                    Part::RegistryKey(OTHER_REGISTRY.into()),
+                    literal("_build_speed_mult"),
+                ],
+                limit: None,
+                mask: Some(0x100),
+                condition: Condition::Unresolved,
+            })
+        );
+    }
+
+    /// Negative control: without the other registry's key place, the input does not run, and
+    /// the root run, which does not enter it, gives no one-key name.
+    #[test]
+    fn an_input_without_the_other_key_place_gives_no_name() {
+        assert_eq!(
+            matrix_fixture(false, false).only_family(),
+            Err(Unresolved::new("constructor"))
+        );
+    }
+
+    /// Negative control: the two keys' forms vary on their own, so a name that only a long key
+    /// with a short key changes disagrees.
+    #[test]
+    fn an_input_runs_each_pair_of_key_forms() {
+        assert_eq!(
+            matrix_fixture(true, true).only_family(),
+            Err(Unresolved::new("key-forms-disagree"))
+        );
     }
 }

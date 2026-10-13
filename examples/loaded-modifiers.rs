@@ -1,6 +1,7 @@
 //! Report the loaded modifier inventory of a supervised game: how many loaded modifiers the
 //! executable declares, how many a family explains, and how many stay unexplained, with each
-//! family's match rate over the registry's loaded items. The game starts, pauses after all
+//! family's match rate over the registry's loaded items, or over each pair of loaded items for a
+//! family of two registries. The game starts, pauses after all
 //! content loads, and is closed at the end.
 //!
 //! usage: loaded-modifiers <installation>
@@ -78,14 +79,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .name
                     .iter()
                     .map(|part| match part {
-                        NamePart::Literal(text) => text.as_str(),
-                        _ => "{key}",
+                        NamePart::Literal(text) => text.clone(),
+                        NamePart::RegistryKey(registry) => format!("{{{registry} key}}"),
+                        _ => "{key}".into(),
                     })
                     .collect();
-                let applied: Vec<String> = items
-                    .iter()
-                    .filter_map(|item| family.name_for(item))
-                    .collect();
+                let second_items = family
+                    .second_registry()
+                    .map(|second| answer.value.registry_items.get(second));
+                let applied: Vec<String> = match second_items {
+                    None => items
+                        .iter()
+                        .filter_map(|item| family.name_for(item))
+                        .collect(),
+                    Some(second_items) => items
+                        .iter()
+                        .flat_map(|item| {
+                            second_items.into_iter().flatten().filter_map(|second| {
+                                family.name_for_keys(item, second)
+                            })
+                        })
+                        .collect(),
+                };
                 let present = applied
                     .iter()
                     .filter(|name| names.contains(name.as_str()))

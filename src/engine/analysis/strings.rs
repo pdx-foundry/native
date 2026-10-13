@@ -4,8 +4,8 @@
 //! The model keeps, for each path, a label from a text address to a node of the shared arena. A
 //! text address is a long string's buffer, a short string's object (its text is in place), or a
 //! formatter's buffer. A node is the ordered parts of the text: literals from read-only data, a
-//! labelled source, or an unresolved part. A source is the item key, or a string field whose
-//! text a run planted with real bytes; each source has its own text in the run. Moves and copies of a string object carry its buffer pointer,
+//! labelled source, or an unresolved part. A source is the item key, the key of an item of
+//! another named registry, or a string field whose text a run planted with real bytes; each source has its own text in the run. Moves and copies of a string object carry its buffer pointer,
 //! so the model reads a string by its labels and never needs the object's flag byte: vector copies
 //! of partly unwritten temporaries leave that byte unknown.
 //!
@@ -116,6 +116,8 @@ impl StringLayout {
 pub enum Part {
     Literal(String),
     ItemKey,
+    /// The key of an item of another named registry, by its content directory.
+    RegistryKey(String),
     /// The text of a string field, by its path from the registry's definition.
     Field(Vec<String>),
     Unresolved,
@@ -177,7 +179,7 @@ impl Node {
             .iter()
             .map(|part| match part {
                 Part::Literal(text) => Some(text.as_str()),
-                Part::ItemKey | Part::Field(_) | Part::Unresolved => None,
+                Part::ItemKey | Part::RegistryKey(_) | Part::Field(_) | Part::Unresolved => None,
             })
             .collect()
     }
@@ -190,6 +192,9 @@ impl Node {
             .map(|part| match part {
                 Part::Literal(text) => Some(text.as_str()),
                 Part::ItemKey => Some(sources.key),
+                Part::RegistryKey(registry) => {
+                    sources.registry_keys.get(registry).map(String::as_str)
+                }
                 Part::Field(path) => sources.fields.get(path).map(String::as_str),
                 Part::Unresolved => None,
             })
@@ -239,10 +244,15 @@ pub struct Sources<'a> {
     pub key: &'a str,
     /// The text of each string field that the run planted, by its path.
     pub fields: &'a BTreeMap<Vec<String>, String>,
+    /// The text of the planted item key of each other named registry, by its content directory.
+    pub registry_keys: &'a BTreeMap<String, String>,
 }
 
 /// No planted string field: a run whose only source is the item key.
 static NO_FIELDS: BTreeMap<Vec<String>, String> = BTreeMap::new();
+
+/// No planted key of another registry.
+static NO_REGISTRY_KEYS: BTreeMap<String, String> = BTreeMap::new();
 
 impl<'a> Sources<'a> {
     /// The sources of a run whose only source is the item key, with the text `key`.
@@ -250,6 +260,7 @@ impl<'a> Sources<'a> {
         Self {
             key,
             fields: &NO_FIELDS,
+            registry_keys: &NO_REGISTRY_KEYS,
         }
     }
 }
