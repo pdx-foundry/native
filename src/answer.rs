@@ -888,7 +888,7 @@ impl ModifierFamily {
 
     /// The modifier name that a family of two registries gives the item named `key` and the item
     /// named `registry_key` of [`ModifierFamily::second_registry`], or `None` for a family of one
-    /// registry, and in the cases of [`ModifierFamily::name_for`].
+    /// registry, when a part is a field, or when the name would be longer than `name_limit`.
     ///
     /// # Example
     ///

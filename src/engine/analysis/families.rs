@@ -251,9 +251,9 @@ pub enum Condition {
     ItemRoot(NotEstablished),
 }
 
-/// Follow every root of the registry. `None` when it has no root.
+/// Follow every root and input of the registry. `None` when it has neither.
 pub fn analyze(input: &FamilyInput, registry: &RegistryInput) -> Option<FamilyResult> {
-    if registry.roots.is_empty() {
+    if registry.roots.is_empty() && registry.inputs.is_empty() {
         return None;
     }
 
@@ -2165,8 +2165,16 @@ mod tests {
 
     #[test]
     fn a_function_that_takes_another_registrys_item_names_both_keys() {
+        let mut without_roots = matrix_fixture(false, true);
+        without_roots.registry.roots.clear();
+        for fixture in [matrix_fixture(false, true), without_roots] {
+            assert_two_key_family(&fixture);
+        }
+    }
+
+    fn assert_two_key_family(fixture: &Fixture) {
         assert_eq!(
-            matrix_fixture(false, true).only_family(),
+            fixture.only_family(),
             Ok(Family {
                 parts: vec![
                     Part::ItemKey,

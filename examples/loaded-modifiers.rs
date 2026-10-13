@@ -95,9 +95,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(second_items) => items
                         .iter()
                         .flat_map(|item| {
-                            second_items.into_iter().flatten().filter_map(|second| {
-                                family.name_for_keys(item, second)
-                            })
+                            second_items
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|second| family.name_for_keys(item, second))
                         })
                         .collect(),
                 };
