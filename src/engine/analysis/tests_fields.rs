@@ -2880,24 +2880,17 @@ fn boolean_temporary(merge: Vec<u8>) -> fields::RegistryFieldResult {
         b.eq extern 0x1010;
         add x0, x0, #0x38;
         b extern 0x5000; // CPersistent::ReadMember
+        mov x20, x1; // the reader
         mov x19, x0; // the owner
-        ldr w8, [x19, #0x40];
         ubfx w8, w8, #3, #1;
         strb w8, [sp, #0x10];
         add x1, sp, #0x10; // a temporary, not the member
         ldrb w21, [sp, #0x10]; // the old value, kept across the call
-        mov x0, x20; // the reader, which this test keeps in x20
+        mov x0, x20;
         bl extern 0x4000 // CReader::Read(bool&)
     );
     code.extend(merge);
     input.functions[0].code = code;
-    // The reader enters in x1; keep it in x20 for the call.
-    input.functions[0]
-        .code
-        .splice(16..20, arm64!(at 0x1010; mov x20, x1));
-    input.functions[0]
-        .code
-        .splice(20..24, arm64!(at 0x1014; mov x19, x0));
     derive(input)
 }
 
