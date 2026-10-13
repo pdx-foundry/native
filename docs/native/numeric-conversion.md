@@ -96,6 +96,29 @@ enough, and a known range does not close `numeric-overflow`.
 Scoped literals inherit these ranges only when their concrete storage is established; see
 [scoped numeric](scoped-numeric.md#engine-facts-and-method).
 
+### Accepted limit: the sweep's numeric gaps (SDK-809)
+
+The [registry sweep](discovery.md#registry-sweep-sdk-553) has 387 typed `NumericConversion` gaps
+in 59 registries. Each gap's obstacle is a storage property or the range, never a conversion path:
+
+| Readers | Gaps | Registries | Obstacle |
+| --- | ---: | ---: | --- |
+| Weight keys `days`, `months`, `years` (`CToken::GetInt()`) | 261 | 55 | `accepted_range`: no live fixture reaches a weight key |
+| Weight key `factor` (its `CToken::GetFloat()` alternative) | 85 | 54 | `accepted_range`: the same |
+| `float` fields (`dust_clouds` parameters, `star_classes`, `storm_types`) | 17 | 3 | `accepted_range`: no exact binary32 `NumericBound`; each field also has the bound gap (17 more) |
+| `short` and `unsigned short` fields (`astral_actions`, `sector_types`) | 7 | 2 | Signedness and `accepted_range` |
+
+Atlas needs none of these facts. It credits a numeric claim only as the value form `int` or
+`float`, from `reader.kind`, and reads no `accepted_range` or signedness. Config ranges such as
+`int[0..100]` are content limits, not faithful storage, so a known range would not credit them.
+The weight-key range was already accepted for the council agenda gate (SDK-739). So the gaps stay
+open, with no live endpoint run, no binary32 bound and no signedness proof.
+
+Change this when Atlas adds a claim that needs a numeric range or storage property. To count the
+gaps by reader again, join each gap's subject to its field's `reader.numeric` and its read
+alternatives in a sweep recording. On M452 at `15d230a` the counts above are unchanged from the
+SDK-553 run, and `registry-sweep --diff` against the tracked baseline changes no registry.
+
 ## Engine boundary facts
 
 These facts are for M451-hotfix.
