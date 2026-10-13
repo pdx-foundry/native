@@ -2021,8 +2021,9 @@ fn pre_trigger_blocks_share_one_key_table() {
     let jobs = &actual["common/pop_jobs"]["possible_pre_triggers"];
     let factions = &actual["common/pop_faction_types"]["can_join_pre_triggers"];
     assert_eq!(jobs, factions);
-    // Independent expectation: every key of the config's colony, pop and country sets
-    // (cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8, pre_triggers.cwt).
+    // Independent expectation: every key of the config's colony, pop and country sets is a
+    // Boolean (`= bool`; cwtools-stellaris-config 85747602a614ad7daa8cc66453777ecb023463a8,
+    // pre_triggers.cwt).
     for key in [
         "has_owner",
         "is_homeworld",
@@ -2038,10 +2039,7 @@ fn pre_trigger_blocks_share_one_key_table() {
         "is_sapient",
         "is_robotic",
     ] {
-        assert!(
-            jobs["keys"].get(key).is_some(),
-            "{key} is a pre-trigger key"
-        );
+        assert_eq!(jobs["keys"][key]["reader"], "Boolean", "{key}");
     }
 
     // The config's three event kinds with `pre_triggers` (events.cwt) read the same table.
@@ -2080,6 +2078,22 @@ fn every_event_kind_reads_the_pre_trigger_table() {
             "{}",
             kind.name
         );
+        for key in keys {
+            assert_eq!(
+                key.reader.kind,
+                pdx_native::ReaderKind::Boolean,
+                "{}.{}",
+                kind.name,
+                key.name
+            );
+            assert_eq!(
+                key.shape.repeat,
+                pdx_native::RepeatBehavior::Merges,
+                "{}.{}",
+                kind.name,
+                key.name
+            );
+        }
     }
 }
 
