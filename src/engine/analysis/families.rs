@@ -41,8 +41,8 @@
 //! A cache field is an item word where a returned path of the name runs stores a modifier type
 //! that its own registration created. The engine keeps the item's type there and registers only
 //! while the field holds the value that the item's constructor leaves. The condition runs start
-//! with each cache field at that value, when every returned path of every constructor body leaves
-//! the same one.
+//! with each cache field at that value, when every returned path of every constructor body, with
+//! the key in either form, leaves the same one.
 //!
 //! A helper can read the category mask of a declared modifier type from the engine's definition
 //! table (`CModifierGeneratorBase::GenerateFrom`). The run holds a table with the mask of each
@@ -560,9 +560,9 @@ fn stored_key(machine: &Machine, item: u64) -> Option<u64> {
         .next()
 }
 
-/// The value that every returned path of every body of the item constructor leaves in each of the
-/// 4-byte item words at `fields`. A word has none when a path fails, no path returns, or the paths
-/// disagree. The constructor's int argument stays unknown.
+/// The value that every returned path of every body of the item constructor, with the key in
+/// either form, leaves in each of the 4-byte item words at `fields`. A word has none when a path
+/// fails, no path returns, or the paths disagree. The constructor's int argument stays unknown.
 fn constructor_defaults(
     input: &FamilyInput,
     registry: &RegistryInput,
@@ -570,44 +570,46 @@ fn constructor_defaults(
 ) -> BTreeMap<u64, u64> {
     let mut defaults: Option<BTreeMap<u64, Option<u64>>> = None;
     for &constructor in &registry.constructors {
-        let mut machine = Machine::new(&registry.code, &input.data);
-        let item = machine.reserve(ITEM_SPAN);
-        let key = machine.allocate(input.layout.flag_byte + 1);
-        write_key(&mut machine, input.layout, key, KeyForm::Long);
-        machine.set_register(0, item);
-        machine.set_register(constructor.key_register, key);
+        for form in KeyForm::BOTH {
+            let mut machine = Machine::new(&registry.code, &input.data);
+            let item = machine.reserve(ITEM_SPAN);
+            let key = machine.allocate(input.layout.flag_byte + 1);
+            write_key(&mut machine, input.layout, key, form);
+            machine.set_register(0, item);
+            machine.set_register(constructor.key_register, key);
 
-        let model = Model {
-            functions: &input.strings,
-            layout: input.layout,
-            data: &input.data,
-            sources: Sources::key_only(LONG_KEY),
-        };
-        let mut arena = Arena::default();
-        let paths = machine.run_paths(constructor.address, &mut |target, machine| {
-            follow(&model, target, machine, &mut arena)
-        });
+            let model = Model {
+                functions: &input.strings,
+                layout: input.layout,
+                data: &input.data,
+                sources: Sources::key_only(form.text()),
+            };
+            let mut arena = Arena::default();
+            let paths = machine.run_paths(constructor.address, &mut |target, machine| {
+                follow(&model, target, machine, &mut arena)
+            });
 
-        let mut returned = false;
-        for path in &paths {
-            match ending(&input.strings, &path.end) {
-                Ending::Returned => returned = true,
-                Ending::Ignored => continue,
-                Ending::Failed => return BTreeMap::new(),
-            }
-            let left: BTreeMap<u64, Option<u64>> = fields
-                .iter()
-                .map(|&field| (field, path.machine.read(item + field, 4)))
-                .collect();
-            let agreed = defaults.get_or_insert_with(|| left.clone());
-            for (field, value) in agreed.iter_mut() {
-                if *value != left[field] {
-                    *value = None;
+            let mut returned = false;
+            for path in &paths {
+                match ending(&input.strings, &path.end) {
+                    Ending::Returned => returned = true,
+                    Ending::Ignored => continue,
+                    Ending::Failed => return BTreeMap::new(),
+                }
+                let left: BTreeMap<u64, Option<u64>> = fields
+                    .iter()
+                    .map(|&field| (field, path.machine.read(item + field, 4)))
+                    .collect();
+                let agreed = defaults.get_or_insert_with(|| left.clone());
+                for (field, value) in agreed.iter_mut() {
+                    if *value != left[field] {
+                        *value = None;
+                    }
                 }
             }
-        }
-        if !returned {
-            return BTreeMap::new();
+            if !returned {
+                return BTreeMap::new();
+            }
         }
     }
 
@@ -2602,6 +2604,15 @@ mod tests {
             ("str", "w9,[x20,#0x300]"),
         ];
         assert_eq!(unresolved(&overwritten), Condition::Unresolved);
+
+        // `x22` holds the key's text, whose first byte is `g` in the long form and `i` in the short
+        // form: the word is zero only for a long key.
+        let by_key_form = [
+            ("ldrb", "w9,[x22]"),
+            ("sub", "w9,w9,#0x67"),
+            ("str", "w9,[x20,#0x300]"),
+        ];
+        assert_eq!(unresolved(&by_key_form), Condition::Unresolved);
 
         let failing = [("str", "wzr,[x20,#0x300]"), ("br", "x15")];
         assert_eq!(unresolved(&failing), Condition::Unresolved);
