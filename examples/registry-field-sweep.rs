@@ -6,8 +6,12 @@
 //! twice: by public gap detail, and by the method's internal stop (instruction kind and obstacle,
 //! then function). Addresses in the stop groups are for development only.
 //!
-//! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports and
-//! writes the registries whose answer changed. Two runs on the same build give an empty diff.
+//! `registry-field-sweep --baseline DIRECTORY INSTALLATION` replaces the baseline directory with
+//! the normalized answers, one file per registry.
+//!
+//! `registry-field-sweep --diff BEFORE AFTER` compares the normalized answers of two reports or
+//! baseline directories and writes the registries whose answer changed. Two runs on the same build
+//! give an empty diff.
 #[path = "support/entry_contexts.rs"]
 mod entry_contexts;
 #[path = "support/identity_stops.rs"]
@@ -31,9 +35,10 @@ use pdx_native::{
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::time::Instant;
 
-const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
+const USAGE: &str = "usage: registry-field-sweep INSTALLATION | registry-field-sweep --baseline DIRECTORY INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
 /// Whether a gap's subject is the field at `path`, or a key path that starts at it. A nested
 /// field's own gaps name it by its dotted path.
@@ -104,20 +109,21 @@ struct StopCase {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments: Vec<_> = std::env::args().skip(1).collect();
     let output = match arguments.as_slice() {
-        [flag, before, after] if flag == "--diff" => {
-            diff(&read_report(before)?, &read_report(after)?)?
+        [flag, before, after] if flag == "--diff" => diff(
+            &population::read_report(Path::new(before))?,
+            &population::read_report(Path::new(after))?,
+        )?,
+        [flag, directory, installation] if flag == "--baseline" => {
+            let output = sweep(installation)?;
+            return population::write_baseline(
+                Path::new(directory),
+                &output["build"],
+                &normalized_cases(&output)?,
+            );
         }
         [installation] => sweep(installation)?,
-        [flag, installation] if flag == "--baseline" => sweep(installation)?,
         _ => return Err(USAGE.into()),
     };
-    if arguments.first().is_some_and(|flag| flag == "--baseline") {
-        println!(
-            "{}",
-            population::format_baseline(&output["build"], &normalized_cases(&output)?)?
-        );
-        return Ok(());
-    }
     if let Some(members) = output.get("defaulted_members").and_then(Value::as_array)
         && !members.is_empty()
     {
@@ -132,10 +138,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
-}
-
-fn read_report(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
 
 fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
@@ -816,9 +818,14 @@ mod tests {
     #[test]
     fn compact_baseline_and_full_report_have_the_same_comparison_inputs() {
         let full = report(json!([case("common/a", &["x"], "r1", "complete")]));
-        let text = population::format_baseline(&json!("build"), &normalized_cases(&full).unwrap())
-            .unwrap();
-        let baseline: Value = serde_json::from_str(&text).unwrap();
+        let root = tempfile::tempdir().unwrap();
+        population::write_baseline(
+            root.path(),
+            &json!("build"),
+            &normalized_cases(&full).unwrap(),
+        )
+        .unwrap();
+        let baseline = population::read_report(root.path()).unwrap();
         assert_eq!(
             normalized_cases(&full).unwrap(),
             normalized_cases(&baseline).unwrap()

@@ -51,7 +51,7 @@ SDK-798). The recording stays on the capture host; its identity and the commands
 report are in the capture.
 
 The [sweep report](method-authoring.md#report-the-registry-sweep) over the recording gives the
-tracked baseline `tests/population/m452/registry-sweep.json` (each registry's statuses) and these
+tracked baseline `tests/population/m452/registry-sweep/` (each registry's statuses) and these
 rates, over 185 registries and 1,855 root fields. Every request has an answer, partial with typed
 gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
 

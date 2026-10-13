@@ -1,7 +1,13 @@
 //! Shared comparison of serialized answers across additive serde defaults.
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::Value;
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+/// The file of a baseline directory that names its build.
+const BUILD_FILE: &str = "build.json";
 
 /// Remove only defaulted members absent in the other answer. Deserialization supplies the
 /// actual type defaults; unknown JSON members stay visible and required omissions stay changes.
@@ -93,28 +99,6 @@ fn prune_defaults(
     }
 }
 
-/// Format only comparison inputs, with one subject per line so changes stay local in Git.
-pub fn format_baseline(
-    build: &Value,
-    answers: &BTreeMap<String, Value>,
-) -> serde_json::Result<String> {
-    let rows: Result<Vec<_>, _> = answers
-        .iter()
-        .map(|(subject, answer)| {
-            Ok(format!(
-                "    {}: {}",
-                serde_json::to_string(subject)?,
-                serde_json::to_string(answer)?
-            ))
-        })
-        .collect::<serde_json::Result<_>>();
-    Ok(format!(
-        "{{\n  \"build\": {},\n  \"answers\": {{\n{}\n  }}\n}}",
-        serde_json::to_string(build)?,
-        rows?.join(",\n")
-    ))
-}
-
 /// The result of reading a population report. An error means that the report is malformed or of
 /// another kind, which is not the same as an empty report.
 pub type ReportResult<T> = Result<T, Box<dyn std::error::Error>>;
@@ -149,6 +133,142 @@ pub fn insert_unique(
         }
         Entry::Occupied(slot) => Err(format!("duplicate subject: {}", slot.key()).into()),
     }
+}
+
+/// Replace the baseline at `directory` with one file per subject, so that changes to different
+/// subjects touch different files in Git. `<subject>.json` holds the subject's comparison inputs
+/// on one line, and each `/` in a subject is a directory. `build.json` names the build. The same
+/// answers always give the same bytes.
+///
+/// Refuses a subject that cannot be a relative file name, two subjects that differ only in case,
+/// and an existing directory that is not empty and holds no `build.json`.
+pub fn write_baseline(
+    directory: &Path,
+    build: &Value,
+    answers: &BTreeMap<String, Value>,
+) -> ReportResult<()> {
+    let files = baseline_files(build, answers)?;
+    remove_baseline(directory)?;
+
+    for (path, contents) in files {
+        let path = directory.join(path);
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(path, contents)?;
+    }
+
+    Ok(())
+}
+
+/// The relative path and contents of each file of a baseline.
+fn baseline_files(
+    build: &Value,
+    answers: &BTreeMap<String, Value>,
+) -> ReportResult<Vec<(PathBuf, String)>> {
+    let mut files = vec![(PathBuf::from(BUILD_FILE), line(build)?)];
+    let mut names = BTreeSet::from([BUILD_FILE.to_owned()]);
+
+    for (subject, answer) in answers {
+        let path = subject_file(subject)?;
+
+        // Case-insensitive file systems, the default on macOS, would let one file overwrite another.
+        if !names.insert(path.to_string_lossy().to_lowercase()) {
+            return Err(format!("subject names the same file as another: {subject}").into());
+        }
+
+        files.push((path, line(answer)?));
+    }
+
+    Ok(files)
+}
+
+/// The file of `subject`, relative to its baseline directory.
+fn subject_file(subject: &str) -> ReportResult<PathBuf> {
+    let relative = subject.split('/').all(|component| {
+        !component.is_empty() && component != "." && component != ".." && !component.contains('\\')
+    });
+
+    if !relative {
+        return Err(format!("subject cannot name a baseline file: {subject:?}").into());
+    }
+
+    Ok(PathBuf::from(format!("{subject}.json")))
+}
+
+fn line(value: &Value) -> serde_json::Result<String> {
+    Ok(serde_json::to_string(value)? + "\n")
+}
+
+/// Remove an earlier baseline, so that a subject that no longer exists leaves no file.
+fn remove_baseline(directory: &Path) -> ReportResult<()> {
+    let mut entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    if entries.next().is_some() && !directory.join(BUILD_FILE).is_file() {
+        return Err(format!(
+            "{} is not a baseline: it is not empty and has no {BUILD_FILE}",
+            directory.display()
+        )
+        .into());
+    }
+
+    fs::remove_dir_all(directory)?;
+
+    Ok(())
+}
+
+/// Read a population report file, or a baseline directory as `{"build": ..., "answers": {...}}`.
+pub fn read_report(path: &Path) -> ReportResult<Value> {
+    if !path.is_dir() {
+        return Ok(serde_json::from_slice(&fs::read(path)?)?);
+    }
+
+    let build: Value = serde_json::from_slice(&fs::read(path.join(BUILD_FILE))?)?;
+    let mut answers = Map::new();
+    read_subjects(path, "", &mut answers)?;
+
+    Ok(json!({ "build": build, "answers": answers }))
+}
+
+/// Add the subject of each `.json` file under `directory`, whose subjects start with `prefix`.
+fn read_subjects(
+    directory: &Path,
+    prefix: &str,
+    answers: &mut Map<String, Value>,
+) -> ReportResult<()> {
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("not a subject file: {}", path.display()))?;
+
+        if path.is_dir() {
+            read_subjects(&path, &format!("{prefix}{name}/"), answers)?;
+            continue;
+        }
+
+        let Some(stem) = name.strip_suffix(".json") else {
+            continue;
+        };
+
+        if prefix.is_empty() && name == BUILD_FILE {
+            continue;
+        }
+
+        answers.insert(
+            format!("{prefix}{stem}"),
+            serde_json::from_slice(&fs::read(&path)?)?,
+        );
+    }
+
+    Ok(())
 }
 
 /// Read comparison inputs from a compact baseline, which names its build. `None` for a full
@@ -286,20 +406,58 @@ mod tests {
     }
 
     #[test]
-    fn baseline_round_trip_keeps_each_subject_on_one_line() {
+    fn a_baseline_directory_round_trips_with_one_line_per_subject_file() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("baseline");
         let answers = BTreeMap::from([
             (
-                "a\"quoted".into(),
+                "common/a".into(),
                 json!({"answer": {"value": [1, 2], "gaps": []}}),
             ),
-            ("z".into(), json!({"error": "failed\nwith detail"})),
+            (
+                "common/a/nested".into(),
+                json!({"error": "failed\nwith detail"}),
+            ),
+            ("events".into(), json!({"status": "complete"})),
         ]);
-        let text = format_baseline(&json!("build"), &answers).unwrap();
-        assert_eq!(text.lines().count(), answers.len() + 5);
-        let parsed: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(parsed["build"], "build");
-        assert_eq!(baseline_answers(&parsed).unwrap().unwrap(), answers);
-        assert_eq!(baseline_answers(&json!({"cases": []})).unwrap(), None);
+        write_baseline(&directory, &json!("build"), &answers).unwrap();
+        let file = fs::read_to_string(directory.join("common/a/nested.json")).unwrap();
+        assert_eq!(file, "{\"error\":\"failed\\nwith detail\"}\n");
+
+        let report = read_report(&directory).unwrap();
+        assert_eq!(report["build"], "build");
+        assert_eq!(baseline_answers(&report).unwrap().unwrap(), answers);
+
+        let fewer = BTreeMap::from([("events".into(), json!({"status": "partial"}))]);
+        write_baseline(&directory, &json!("build"), &fewer).unwrap();
+        assert_eq!(
+            baseline_answers(&read_report(&directory).unwrap())
+                .unwrap()
+                .unwrap(),
+            fewer
+        );
+        assert!(!directory.join("common").exists());
+    }
+
+    #[test]
+    fn a_baseline_refuses_subjects_outside_its_directory_and_other_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("baseline");
+        for subject in ["", "../escape", "common//a", "common/./a", "a\\b", "BUILD"] {
+            let answers = BTreeMap::from([(subject.into(), json!(1))]);
+            assert!(
+                write_baseline(&directory, &json!("build"), &answers).is_err(),
+                "{subject}"
+            );
+        }
+        let answers =
+            BTreeMap::from([("Common/a".into(), json!(1)), ("common/a".into(), json!(2))]);
+        assert!(write_baseline(&directory, &json!("build"), &answers).is_err());
+        assert!(!directory.exists());
+
+        fs::write(root.path().join("keep.txt"), "").unwrap();
+        assert!(write_baseline(root.path(), &json!("build"), &BTreeMap::new()).is_err());
+        assert!(root.path().join("keep.txt").exists());
     }
 
     #[test]

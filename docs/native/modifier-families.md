@@ -307,7 +307,7 @@ their constructor default.
 families are now `Always`, and six `pop_jobs` gaps name the assumed text. The `derived_names` gaps
 went from 654 to 616: the every-item gap from 36 registries to 4, and six name conditions that it
 blocked are now established. No registry's sweep status changed (`registry-sweep --diff` against
-`tests/population/m452/registry-sweep.json`): every family answer keeps the `UnnamedDeclaration`
+`tests/population/m452/registry-sweep/`): every family answer keeps the `UnnamedDeclaration`
 gap of the unjoined sites.
 
 ### Why a condition stays `Unresolved`

@@ -4,10 +4,11 @@
 //! `registry-sweep --record DIRECTORY INSTALLATION` records `registries`, and `registry_fields`,
 //! `derived_names` and `modifier_families` for each listed registry, into a new directory.
 //!
-//! `registry-sweep [--baseline] DIRECTORY` reads that directory through
-//! `Native::from_recorded_answers` and writes the report, or only its comparison inputs.
+//! `registry-sweep DIRECTORY` reads that directory through `Native::from_recorded_answers` and
+//! writes the report. `registry-sweep --baseline BASELINE DIRECTORY` replaces the baseline
+//! directory with the report's comparison inputs, one file per registry.
 //!
-//! `registry-sweep --diff BEFORE AFTER` compares two reports or baselines and writes each
+//! `registry-sweep --diff BEFORE AFTER` compares two reports or baseline directories and writes each
 //! registry and relationship whose statuses changed, and each registry whose open or accepted
 //! gaps changed.
 // The report shares only the baseline format and its reader.
@@ -27,7 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::Instant;
 
-const USAGE: &str = "usage: registry-sweep --record DIRECTORY INSTALLATION | registry-sweep [--baseline] DIRECTORY | registry-sweep --diff BEFORE AFTER";
+const USAGE: &str = "usage: registry-sweep --record DIRECTORY INSTALLATION | registry-sweep [--baseline BASELINE] DIRECTORY | registry-sweep --diff BEFORE AFTER";
 
 const FIELDS: &str = "fields";
 const READER_KINDS: &str = "reader_kinds";
@@ -1150,17 +1151,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match arguments.as_slice() {
         [flag, directory, installation] if flag == "--record" => record(directory, installation),
         [flag, before, after] if flag == "--diff" => {
-            let report = diff(&read_report(before)?, &read_report(after)?)?;
+            let report = diff(
+                &population::read_report(Path::new(before))?,
+                &population::read_report(Path::new(after))?,
+            )?;
             println!("{}", serde_json::to_string_pretty(&report)?);
             Ok(())
         }
-        [flag, directory] if flag == "--baseline" => {
+        [flag, baseline, directory] if flag == "--baseline" => {
             let report = sweep(Path::new(directory))?;
-            println!(
-                "{}",
-                population::format_baseline(&report["build"], &comparison_inputs(&report)?)?
-            );
-            Ok(())
+            population::write_baseline(
+                Path::new(baseline),
+                &report["build"],
+                &comparison_inputs(&report)?,
+            )
         }
         [directory] => {
             let report = sweep(Path::new(directory))?;
@@ -1215,10 +1219,6 @@ fn sweep(directory: &Path) -> Result<Value, Box<dyn std::error::Error>> {
         );
     }
     Ok(sweep.report(json!(native.build()), serde_json::to_value(&registries)?))
-}
-
-fn read_report(path: &str) -> Result<Value, Box<dyn std::error::Error>> {
-    Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
 }
 
 /// Each registry's statuses and gaps by shape, from a baseline or a full report.
@@ -1643,11 +1643,14 @@ mod tests {
         let path_gap = numeric_gap(field("path_value"), UNKNOWN_CONVERSION_PATH);
         write_limits(root.path(), json!([path_gap]));
         let before = sweep(root.path()).unwrap();
-        let baseline: Value = serde_json::from_str(
-            &population::format_baseline(&before["build"], &comparison_inputs(&before).unwrap())
-                .unwrap(),
+        let baseline_root = tempfile::tempdir().unwrap();
+        population::write_baseline(
+            baseline_root.path(),
+            &before["build"],
+            &comparison_inputs(&before).unwrap(),
         )
         .unwrap();
+        let baseline = population::read_report(baseline_root.path()).unwrap();
 
         write_limits(
             root.path(),
@@ -1690,13 +1693,19 @@ mod tests {
     fn the_baseline_is_stable_and_the_diff_names_each_changed_relationship() {
         let root = recording();
         let report = sweep(root.path()).unwrap();
+        let baseline_root = tempfile::tempdir().unwrap();
         let baseline = |report: &Value| {
-            population::format_baseline(&report["build"], &comparison_inputs(report).unwrap())
-                .unwrap()
+            population::write_baseline(
+                baseline_root.path(),
+                &report["build"],
+                &comparison_inputs(report).unwrap(),
+            )
+            .unwrap();
+            fs::read(baseline_root.path().join("common/empty.json")).unwrap()
         };
-        let text = baseline(&report);
-        assert_eq!(text, baseline(&sweep(root.path()).unwrap()));
-        let parsed: Value = serde_json::from_str(&text).unwrap();
+        let bytes = baseline(&report);
+        assert_eq!(bytes, baseline(&sweep(root.path()).unwrap()));
+        let parsed = population::read_report(baseline_root.path()).unwrap();
         assert_eq!(diff(&parsed, &report).unwrap()["changed_registries"], 0);
 
         fs::remove_file(root.path().join("modifier_families/common/empty.json")).unwrap();

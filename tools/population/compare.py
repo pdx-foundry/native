@@ -308,13 +308,22 @@ def compare(before, after):
             "counts": {"before": old_counts, "after": new_counts}}
 
 
+def read_report(path):
+    """Read a report file, or a baseline directory with one `<subject>.json` file per subject."""
+    if not path.is_dir():
+        return json.loads(path.read_text())
+    answers = {file.relative_to(path).with_suffix("").as_posix(): json.loads(file.read_text())
+               for file in sorted(path.rglob("*.json")) if file != path / "build.json"}
+    return {"build": json.loads((path / "build.json").read_text()), "answers": answers}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("before", type=Path)
     parser.add_argument("after", type=Path)
     args = parser.parse_args()
     try:
-        report = compare(json.loads(args.before.read_text()), json.loads(args.after.read_text()))
+        report = compare(read_report(args.before), read_report(args.after))
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         parser.exit(2, f"invalid population input: {error}\n")
     print(json.dumps(report, indent=2))
