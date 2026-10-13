@@ -204,8 +204,9 @@ baseline names 49 registries: 7 change from the repairs and 46 move gaps to the 
 Five registries are `Unsupported` for all three registry questions, because their loader builds
 no item class or two databases load the directory; each has its reason ([root-key
 owners](registry-fields.md#root-key-owners-sdk-813)).
-The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
-the type-wide `event` block). The run proposes no manual exception.
+The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`, an [accepted
+limit](registry-fields.md#the-events-loader-on-m452)) and SDK-815 (Atlas: the type-wide `event`
+block). The run proposes no manual exception.
 
 ## Read-time block scopes (SDK-549)
 
