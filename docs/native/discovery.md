@@ -67,7 +67,7 @@ SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all un
 (53.06%).
 
 **Failure shapes.** The 6,397 gaps of the SDK-553 run that are not `OutsideMethod`, by the
-ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
+ticket that owns them. The sweep repaired none. SDK-809, SDK-811 and SDK-817 are now
 [accepted limits](#accepted-limits-sdk-819), not open work, and so is part of SDK-812.
 
 | Owner | Gaps | Registries | Shapes |
@@ -84,7 +84,7 @@ ticket that owns them. The sweep repaired none. SDK-809 and SDK-811 are now
 | SDK-812 | 242 | 66 | Block entry-context stops: of the 249 on `main` `77847bb`, 15 repaired, 138 accepted, 96 open ([record](registry-fields.md#block-entry-context-stops-on-m452-sdk-812)) |
 | SDK-676 | 45 | 14 | Modifier containers of fields with no modifier reader: 2 remain ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)) |
 | SDK-741 | 42 | 4 | `description_parameters`: [repaired](modifier-blocks.md#fixed-key-readers-sdk-675) |
-| SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs` |
+| SDK-817 | 20 | 1 | Tooltip triggered modifiers of `common/pop_jobs`: accepted |
 | SDK-816 | 14 | 1 | Container masks that no construction reaches (`common/traits`) |
 | SDK-635 | 11 | 6 | Reference lookups |
 
@@ -111,6 +111,7 @@ table and the rates. On M452 at `main` `34bd898`:
 | SDK-809, [numeric accepted limit](numeric-conversion.md#accepted-limit-the-sweeps-numeric-gaps-sdk-809) | 41 | 5 | The range and binary32 bounds of `float` fields; the storage of `short` fields |
 | SDK-811, [loader conditions](registry-fields.md#unresolved-loader-conditions-on-m452-sdk-811) | 252 | 45 | 207 loader conditions of listed fields; 45 use-time selections |
 | SDK-812, [entry-context stops](registry-fields.md#block-entry-context-stops-on-m452-sdk-812) | 138 | 46 | Entry-context stops of the 93 listed fields with no `replace_scopes` claim; 9 unnamed direct evaluations |
+| SDK-817, [tooltip clauses](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817) | 20 | 1 | The embedded point, delegate and `mult`/`multiplier` destination of the five `common/pop_jobs` clause fields |
 
 Before and after SDK-819, over the same recording:
 
@@ -181,6 +182,11 @@ merge with `main` `62f029e`, the open gaps went from 4,173 to 4,051: 88 `Unresol
 (`instruction`, `reader-routing`) and 22 `read-scope: scope-argument` gaps at the key, and 12 at
 the triggered clauses' other keys, root and nested. `--diff` names 8 registries; only
 `common/ascension_perks` and `common/traditions` change a status (reader kinds 1,574 to 1,576).
+
+SDK-817 accepts the 20 Tooltip clause gaps of `common/pop_jobs`. Over a recording at `main`
+`4ecbc7c`, the open gaps went from 4,051 to 4,031. The five clause fields have no other reader-kind
+gap, so their reader kinds become complete: 1,576 to 1,581 (81.83% to 82.09%), and all units
+4,734 to 4,739 of 7,515 (62.99% to 63.06%). `--diff` names only `common/pop_jobs` ([triggered modifiers](triggered-modifiers.md#accepted-limit-tooltip-clauses-sdk-817)).
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A

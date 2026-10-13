@@ -21,11 +21,11 @@
       "undetermined": 309
     },
     "reader_kinds": {
-      "complete": 1576,
+      "complete": 1581,
       "denominator": 1926,
       "failed": 304,
-      "partial": 46,
-      "rate": 0.8183
+      "partial": 41,
+      "rate": 0.8209
     },
     "references": {
       "complete": 25,
