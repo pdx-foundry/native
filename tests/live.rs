@@ -62,6 +62,8 @@ mod scoped_numeric;
 
 #[path = "live/expansions.rs"]
 mod expansions;
+#[path = "live/loader_rules.rs"]
+mod loader_rules;
 #[path = "live/numeric.rs"]
 mod numeric_conversion;
 #[path = "live/script.rs"]
@@ -183,6 +185,7 @@ enum Case {
     ScriptDeepNesting,
     ScriptAccessFailure,
     LoaderFixture,
+    LoaderRule(loader_rules::Shape),
     LoadedModifierKeyLayouts,
     Fixture(Fault),
     FixtureTimeout,
@@ -317,6 +320,22 @@ fn cases() -> Vec<(String, Case)> {
             Case::ScriptAccessFailure,
         ),
         ("loader_fixture".to_owned(), Case::LoaderFixture),
+        (
+            "loader_rule_last_wins".to_owned(),
+            Case::LoaderRule(loader_rules::Shape::LAST_WINS),
+        ),
+        (
+            "loader_rule_merges".to_owned(),
+            Case::LoaderRule(loader_rules::Shape::MERGES),
+        ),
+        (
+            "loader_rule_file_order".to_owned(),
+            Case::LoaderRule(loader_rules::Shape::FILE_ORDER),
+        ),
+        (
+            "loader_rule_field_name".to_owned(),
+            Case::LoaderRule(loader_rules::Shape::FIELD_NAME),
+        ),
         ("fixture_read_scope".to_owned(), Case::FixtureReadScope),
         (
             "fixture_modifier_category".to_owned(),
@@ -774,6 +793,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::ScriptDeepNesting => script_checks::deep_nesting(native).await,
         Case::ScriptAccessFailure => script_checks::access_failure(native).await,
         Case::LoaderFixture => loader_fixture(native).await,
+        Case::LoaderRule(shape) => loader_rules::control(shape).await,
         Case::LoadedModifierKeyLayouts => loaded_modifier_key_layouts(native).await,
         Case::LoadedModifiers => loaded_modifiers(native).await,
         Case::LoadedModifiersWorkerLoss => loaded_modifiers_worker_loss(native).await,
