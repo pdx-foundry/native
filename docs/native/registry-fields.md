@@ -409,7 +409,10 @@ has them. The other 205 gaps have at least one unresolved outcome: reader paths 
 The 45 use-time gaps also stay: Native's `Field::uses` publishes the selections, and Atlas credits
 no claim from them.
 
-Revisit the 205 when SDK-710 gives complementary paths equal complete outcomes (rerun the sweep:
+`ACCEPTED_LIMITS` in `examples/registry-sweep.rs` lists the 207 fields by registry, and accepts
+the use-time gaps by their details, so the sweep counts them apart from open work (SDK-819); a
+loader-condition gap of another field stays open. Remove a field from the list when its reopen
+condition holds. Revisit the 205 when SDK-710 gives complementary paths equal complete outcomes (rerun the sweep:
 the existing collapse removes those gaps), or when Atlas consumes condition terms, for example to
 select a config subtype (SDK-716). The two block-or-scalar fields already have complete, unequal
 outcomes, so neither trigger changes them: revisit them when Atlas needs a value form that depends
