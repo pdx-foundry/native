@@ -551,7 +551,18 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "f9fb8c8f5f2ca714",
    "kind": "Block",
@@ -1281,7 +1292,18 @@
        }
       }
      ],
-     "read_scope": "Unresolved",
+     "read_scope": {
+      "Known": [
+       {
+        "Types": [
+         {
+          "id": "44b5e21fe5e593d7",
+          "name": "country"
+         }
+        ]
+       }
+      ]
+     },
      "reader": {
       "id": "f9fb8c8f5f2ca714",
       "kind": "Block",

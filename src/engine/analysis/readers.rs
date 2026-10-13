@@ -104,10 +104,18 @@ pub(crate) fn scope_argument<'a>(
     callee: &str,
     arguments: &'a std::collections::BTreeMap<String, crate::engine::analysis::fields::Value>,
 ) -> Option<&'a crate::engine::analysis::fields::Value> {
-    if !callee.ends_with(", EScopeType)") {
-        return None;
-    }
-    arguments.get(if is_member(callee) { "x3" } else { "x2" })
+    arguments.get(scope_register(callee)?)
+}
+
+/// The register of the scope in the established scoped-reader ABI: after the reader and
+/// destination, or after the token for a member reader.
+pub(crate) fn scope_register(callee: &str) -> Option<&'static str> {
+    takes_scope(callee).then_some(if is_member(callee) { "x3" } else { "x2" })
+}
+
+/// Whether a reader takes a scope in the established scoped-reader ABI.
+pub(crate) fn takes_scope(callee: &str) -> bool {
+    callee.ends_with(", EScopeType)")
 }
 
 /// Broad facts about an established reader entry, independent of routing provenance.

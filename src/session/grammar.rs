@@ -1012,7 +1012,7 @@ mod tests {
             answer
                 .gaps
                 .iter()
-                .any(|gap| gap.detail == "read-scope: scope-argument")
+                .any(|gap| gap.detail == "read-scope: reader-path")
         );
     }
 

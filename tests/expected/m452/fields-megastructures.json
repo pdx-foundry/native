@@ -4078,7 +4078,18 @@
     }
    }
   ],
-  "read_scope": "Unresolved",
+  "read_scope": {
+   "Known": [
+    {
+     "Types": [
+      {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     ]
+    }
+   ]
+  },
   "reader": {
    "id": "88f77b58ddf77488",
    "kind": "Block",

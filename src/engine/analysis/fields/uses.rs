@@ -754,6 +754,7 @@ mod tests {
             data_offset: Some(8),
             count_offset: Some(0x14),
             container_mask: None,
+            construction_scopes: Vec::new(),
             class: "CChild".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {
