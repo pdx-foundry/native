@@ -93,6 +93,11 @@ pub enum Value {
     EqualsAny(Box<Value>, Vec<i64>),
     /// The original field token plus a constant, as a zero-extended 32-bit word.
     TokenWord(i64),
+    /// A loaded word with one bit cleared: the load and the bit.
+    ClearedBit(Box<Value>, u8),
+    /// A loaded word whose cleared bit now holds the low bit of a stack byte: the load and the
+    /// bit.
+    InsertedBit(Box<Value>, u8),
     /// A jump-table entry that the token selects.
     TableEntry(TableEntry),
     /// A code address formed from a jump-table entry: `base + (entry << shift)`.
@@ -339,6 +344,11 @@ pub struct ObjectReader {
     pub count_offset: Option<u64>,
     /// The persistent reader at the object's primary address point.
     pub reader: Option<PointReader>,
+    /// Constructor evidence for the persistent members of an object whose reader has no block
+    /// family, which the method walks as a nested owner.
+    pub persistent: Option<PersistentInput>,
+    /// The objects that such a nested owner's member reader inserts.
+    pub objects: Vec<ObjectReader>,
 }
 
 /// A root field that reads constructed objects into an owner collection.
@@ -370,6 +380,8 @@ pub struct CollectionField {
 pub struct EmbeddedField {
     /// Root loader token whose every path reads the object.
     pub token: i64,
+    /// The object's reader, which hands its keys to the member reader.
+    pub read: String,
     /// The object's member reader.
     pub member: String,
     /// Loader fields and gaps of the member reader. Its keys are derived to depth one.

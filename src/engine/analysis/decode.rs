@@ -295,7 +295,7 @@ fn reads_register(operation: &str, operands: &str, register: usize) -> bool {
 
 /// `b`, `b.cond`, `br`, `cbz`, `cbnz`, `tbz`, `tbnz`, `ret` and their pointer-authenticated
 /// forms. `bl` and `blr` are calls.
-fn is_branch(operation: &str) -> bool {
+pub(crate) fn is_branch(operation: &str) -> bool {
     operation == "b"
         || operation.starts_with("b.")
         || operation.starts_with("br")

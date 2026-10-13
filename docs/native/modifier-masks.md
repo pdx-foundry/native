@@ -219,13 +219,31 @@ The engine part is `src/engine/analysis/fields/containers.rs` (the rule), `persi
 - **Answer.** A field of family `Modifier` or `TriggeredModifier` is `Listed` or `Unresolved` with
   an `UnresolvedPath` gap. A `modifier` key of a clause whose destination is the clause's
   `other_keys` object (the embedded `T` at +0x238) is `Enclosing`. A field of unknown family is
-  `Unresolved`; the pass adds a gap only when no gap names it or a field that encloses it. Any other
-  family is `NotApplicable`. The categories are single categories, so they compare with expanded
-  `modifier_categories` names.
+  `Unresolved`; the pass adds a gap only when no gap names it or a field that encloses it, as a key
+  path or as the dotted name of a nested field. Any other family is `NotApplicable`. The categories
+  are single categories, so they compare with expanded `modifier_categories` names.
+- **Objects of another class (SDK-676).** A field that embeds an object read by the generic
+  `CPersistent::Read`, whose member reader names or rejects every key (the walk accounts for every
+  token, and every reader path and gap belongs to a named key), is `NotApplicable`, though the
+  object's family is unknown. A named key answers for its own container. A field whose object has
+  its own `Read`, or whose member reader leaves a key unnamed, stays `Unresolved`.
+- **Nested owners (SDK-676).** A collected object whose reader has no block family is walked with
+  its own constructor evidence, so its `modifier` and clause fields get categories by the same
+  rules ([nested owners](modifier-blocks.md#nested-owners-sdk-676)).
 
 Stated assumptions, true for M451-hotfix by the scans above: no code writes a container's mask
 between its construction and the check, and the galactic-object initializer runs before any parse.
 Extend the walk when a new build shows another writer.
+
+**Stated rule (SDK-676), checked on M452.** The engine checks an entry's category only in the
+modifier `TryReadMember` (vtable slot +0x40). Every vtable slot in the image that holds a modifier
+`TryReadMember` (90 of 90) has `CPdxModifier<…>::Read` in its read slot (+0x20), the recipe's
+`Modifier` family anchor. So an object of another class reaches a container only through a key
+that its member reader hands on. Checks: attitudes `behaviour` (`SBehaviour`), `CPreTriggers` (22
+event kinds, pop factions, pop jobs) and dust cloud `textures` name or reject every key; anomalies
+`on_success` (`COutcomeEffect::Read`) and `graphical_culture_for_random_empire` (keys are culture
+names, not tokens) stay `Unresolved`. Re-run the scan in `.local/sdk-676/` on a new build; a
+modifier `TryReadMember` under another `Read` breaks the rule.
 
 ### Container result
 
@@ -243,9 +261,16 @@ Limits, all gaps:
 - **Unjoined members:** the pop category members (`mvni.2s` halt in `CPopCategory::CPopCategory`)
   and the buildings modifier members (read through a `CModifierWithTooltipData::CSerializer` on the
   stack) have unknown family, so they are `Unresolved` with their reader gaps.
-- **Nested owners** (SDK-676): `tradition_swap`, `advanced_authority_swap`, situation `stages` and
-  `approach`, psionic `intensity_level`, patron `covenant` and `passive_accord`. Their fields have no
-  reader family, so they are `Unresolved`; the registry field sweep gained 15 such gaps.
+- **Undiscovered nested owners:** civics `swap_type`, situation `stages` and `approach`, psionic
+  `intensity_level`, patron `covenant` and `passive_accord` stop before their collection is
+  proven, so their members are unresolved (SDK-551). The discovered owners `tradition_swap` and
+  `advanced_authority_swap` have their containers: `tradition_swap.modifier` every category,
+  `tradition_swap.triggered_modifier` the country mask, `advanced_authority_swap.modifier` every
+  category.
+- **Unjoined modifier members:** civics and star class `modifier` have no constructor-agreed
+  reader (SDK-710; [unjoined persistent fields](modifier-blocks.md#unjoined-persistent-fields-sdk-676)).
+- **Objects that may read a container:** anomalies `on_success` and country customization
+  `graphical_culture_for_random_empire` (see the stated rule above).
 - **Tooltip clauses** (pop jobs): the `modifier` key has no join, so it is `Unresolved`; the clause
   itself has its mask.
 - **No field:** districts and zones (no root fields), starbase components and species rights (base

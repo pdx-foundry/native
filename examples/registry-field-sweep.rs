@@ -10,6 +10,8 @@
 //! writes the registries whose answer changed. Two runs on the same build give an empty diff.
 #[path = "support/entry_contexts.rs"]
 mod entry_contexts;
+#[path = "support/identity_stops.rs"]
+mod identity_stops;
 #[path = "support/modifier_blocks.rs"]
 mod modifier_blocks;
 #[path = "support/population.rs"]
@@ -33,13 +35,54 @@ use std::time::Instant;
 
 const USAGE: &str = "usage: registry-field-sweep [--baseline] INSTALLATION | registry-field-sweep --diff BEFORE AFTER";
 
-/// Whether a gap's subject is `field`, or a key path that starts at it.
-fn applies(subject: &Option<GapSubject>, field: &str) -> bool {
+/// Whether a gap's subject is the field at `path`, or a key path that starts at it. A nested
+/// field's own gaps name it by its dotted path.
+fn applies(subject: &Option<GapSubject>, path: &[String]) -> bool {
     match subject {
-        Some(GapSubject::Field { name }) => name == field,
-        Some(GapSubject::KeyPath { path }) => path.first().is_some_and(|name| name == field),
+        Some(GapSubject::Field { name }) => *name == path.join("."),
+        Some(GapSubject::KeyPath { path: key_path }) => key_path.starts_with(path),
         _ => false,
     }
+}
+
+/// Field counts by status, separately for root fields and the fields in `nested`.
+fn by_depth<'a>(
+    fields: impl Iterator<Item = (&'a String, &'static str)>,
+    nested: &BTreeSet<String>,
+) -> BTreeMap<&'static str, BTreeMap<&'static str, usize>> {
+    let mut counts = BTreeMap::<&str, BTreeMap<&str, usize>>::new();
+
+    for (name, status) in fields {
+        let depth = if nested.contains(name) {
+            "nested"
+        } else {
+            "root"
+        };
+
+        *counts.entry(depth).or_default().entry(status).or_default() += 1;
+    }
+
+    counts
+}
+
+/// Every field at any `FieldMembers::Fields` depth, with its path from the root.
+fn flattened(fields: &[Field]) -> Vec<(Vec<String>, &Field)> {
+    let mut flat = Vec::new();
+
+    for field in fields {
+        let path = vec![field.name.clone()];
+
+        if let pdx_native::FieldMembers::Fields(children) = &field.members {
+            for (mut child_path, child) in flattened(children) {
+                child_path.insert(0, field.name.clone());
+                flat.push((child_path, child));
+            }
+        }
+
+        flat.push((path, field));
+    }
+
+    flat
 }
 
 struct ReaderFields {
@@ -122,6 +165,9 @@ fn sweep(installation: &str) -> Result<Value, Box<dyn std::error::Error>> {
                     .add(&registry.name, &answer, &result)?;
                 report.weight_blocks.add(&registry.name, &answer)?;
                 report.triggered_modifiers.add(&registry.name, &answer)?;
+                report
+                    .identity_stops
+                    .add(&image, &registry.name, &answer.value, &result);
                 let stops = place_gaps(&image, &registry.name, result.gaps);
                 report.add_answer(&registry.name, answer, stops, elapsed_ms)?;
             }
@@ -243,6 +289,7 @@ struct SweepReport {
     modifier_blocks: modifier_blocks::Tally,
     weight_blocks: weight_blocks::Tally,
     triggered_modifiers: triggered_modifiers::Tally,
+    identity_stops: identity_stops::Tally,
     stop_cases: Vec<StopCase>,
     cases: Vec<Value>,
 }
@@ -426,13 +473,17 @@ impl SweepReport {
             "weight_blocks": self.weight_blocks.report(),
             "triggered_modifiers": self.triggered_modifiers.report(),
             "stop_shapes": stop_shapes(&self.stop_cases),
+            "reader_identity_stops": self.identity_stops.report(),
+            "registries_by_root_gap": registries_by_root_gap(&self.cases),
             "report_limits": {
                 "failure_shapes": "Grouped by public gap detail.",
+                "reader_identity_stops": "Root fields, and nested fields of FieldMembers::Fields, without a reader identity (the fields that carry the UnresolvedReader gap; keys of attached modifier, weight and triggered-modifier grammars are outside it), by the distinct shapes of their read alternatives: a stopped alternative names its reason and the callee or mnemonic where it stopped; joined alternatives name why they share no identity. registries counts distinct registries.",
+                "registries_by_root_gap": "Registries whose answer has a registry-subject gap of each kind: an unfollowed root path, unnamed keys or unreadable input. Their internal stops are in stop_shapes.",
                 "stop_shapes": "Every internal gap of the registry field method. A gap with a stop is grouped by the stop instruction's mnemonic, the method's reason and the obstacle, then by the function that holds the instruction; one without a stop by its kind and reason. One stopped path can also leave an unresolved-token-path gap without a stop.",
                 "reader_registry_answers": "Completeness of registry answers containing this reader, not completeness of the reader's full semantics. Failed queries cannot be assigned to a reader.",
                 "entry_contexts": "Root fields whose reader family is trigger, effect or weight. statuses_by_family: the three context statuses by reader family. A block's gaps are the gaps that entry contexts add with its field as subject. several_known_this: more than one context whose this is established; typed_from and typed_prev: a context whose chain holds a scope type; with_unresolved_slot: a context with an unresolved scope. unnamed_evaluations: by registry, the evaluator calls in the owner's methods whose block the method cannot name.",
-                "weight_blocks": "Root fields whose constructor-proven reader is a weight reader, grouped by reader identity. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
-                "triggered_modifiers": "Fields whose collected object has a triggered modifier clause reader, grouped by reader identity. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
+                "weight_blocks": "Root and nested fields whose constructor-proven reader is a weight reader, grouped by reader identity; fields_by_depth separates root and nested fields. Complete: every property of the block and of each nested entry is known and the field has no gap. Failed: no weight grammar was attached. Weight-like fields without a constructor-proven reader are in modifier_blocks.failed_persistent_fields.",
+                "triggered_modifiers": "Root and nested fields whose collected object has a triggered modifier clause reader, grouped by reader identity; fields_by_depth separates root and nested fields. Complete: the clause keys, its other keys and each embedded modifier block are known and the field has no gap. Failed: no clause grammar was attached. unbound_triggered_named_fields lists fields named like a clause that no clause reader is bound to; it is an investigation list, not a count of clauses.",
                 "references": "Root and nested fields with a read alternative whose reader is a reference reader. Complete: every lookup names a registry and every lookup property is established. Failed: no lookup names a registry. Readers counts every reference reader in the executable, joined or not.",
             },
             "cases": self.cases,
@@ -587,6 +638,26 @@ fn status(completeness: Option<Completeness>) -> &'static str {
     }
 }
 
+/// The number of registries whose answer has a registry-subject gap of each kind that makes a
+/// root search partial.
+fn registries_by_root_gap(cases: &[Value]) -> Value {
+    let mut registries: BTreeMap<&str, usize> = BTreeMap::new();
+    for kind in ["UnresolvedPath", "UnnamedField", "UnreadableInput"] {
+        let holding = cases
+            .iter()
+            .filter(|case| {
+                case["answer"]["gaps"].as_array().is_some_and(|gaps| {
+                    gaps.iter()
+                        .any(|gap| gap["kind"] == kind && gap["subject"]["kind"] == "registry")
+                })
+            })
+            .count();
+        registries.insert(kind, holding);
+    }
+
+    json!(registries)
+}
+
 /// Group internal gaps by the stop's instruction kind and obstacle, then by function.
 fn stop_shapes(cases: &[StopCase]) -> Value {
     let mut shapes: BTreeMap<String, BTreeMap<String, Vec<Value>>> = BTreeMap::new();
@@ -627,7 +698,16 @@ fn stop_shapes(cases: &[StopCase]) -> Value {
         .into_iter()
         .map(|(shape, functions)| {
             let count: usize = functions.values().map(Vec::len).sum();
-            (shape, json!({ "count": count, "functions": functions }))
+            let registries: BTreeSet<_> = functions
+                .values()
+                .flatten()
+                .filter_map(|case| case["registry"].as_str())
+                .collect();
+            let registries = registries.len();
+            (
+                shape,
+                json!({ "count": count, "registries": registries, "functions": functions }),
+            )
         })
         .collect::<serde_json::Map<_, _>>()
         .into()
@@ -1032,5 +1112,27 @@ mod tests {
         }
         let empty = report(json!([]));
         assert_eq!(diff(&empty, &empty).unwrap()["changed_registries"], 0);
+    }
+
+    #[test]
+    fn a_registry_counts_once_for_each_kind_of_root_gap() {
+        let gap =
+            |kind: &str, subject: Value| json!({ "kind": kind, "subject": subject, "detail": "" });
+        let registry = json!({ "kind": "registry", "name": "common/a" });
+        let field = json!({ "kind": "field", "name": "x" });
+        let cases = [
+            json!({ "answer": { "gaps": [
+                gap("UnresolvedPath", registry.clone()),
+                gap("UnresolvedPath", registry.clone()),
+                gap("UnnamedField", field.clone()),
+            ] } }),
+            json!({ "answer": { "gaps": [gap("UnreadableInput", registry)] } }),
+            json!({ "status": "unsupported" }),
+        ];
+
+        assert_eq!(
+            registries_by_root_gap(&cases),
+            json!({ "UnnamedField": 0, "UnreadableInput": 1, "UnresolvedPath": 1 })
+        );
     }
 }

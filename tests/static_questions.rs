@@ -18,6 +18,21 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+/// Each field and its nested fields, at any `FieldMembers::Fields` depth.
+fn every_field(fields: &[pdx_native::Field]) -> Vec<&pdx_native::Field> {
+    fields
+        .iter()
+        .flat_map(|field| {
+            let children = match &field.members {
+                pdx_native::FieldMembers::Fields(children) => every_field(children),
+                _ => Vec::new(),
+            };
+
+            std::iter::once(field).chain(children)
+        })
+        .collect()
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
@@ -29,8 +44,8 @@ fn modifier_blocks_match_the_recorded_variants_and_shared_identities() {
     );
     let mut variants = BTreeMap::new();
     for answer in read_registry_fields(native).unwrap() {
-        for field in answer.value {
-            check_modifier_identity(&mut variants, &field).unwrap();
+        for field in every_field(&answer.value) {
+            check_modifier_identity(&mut variants, field).unwrap();
         }
     }
     assert_eq!(variants.len(), 4);
@@ -64,8 +79,8 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
     );
     let mut variants = BTreeMap::new();
     for answer in read_registry_fields(native).unwrap() {
-        for field in answer.value {
-            check_triggered_identity(&mut variants, &field).unwrap();
+        for field in every_field(&answer.value) {
+            check_triggered_identity(&mut variants, field).unwrap();
         }
     }
     assert_eq!(variants.len(), 3);
@@ -181,8 +196,8 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
 /// or one of three keywords, and that is read in no scope.
 fn check_description_parameters(field: &pdx_native::Field) {
     use pdx_native::{
-        AcceptedCategories, BlockFamily, FieldMembers, GrammarProperty, RepeatBehavior, ScalarForm,
-        ValueShape,
+        AcceptedCategories, BlockFamily, FieldMembers, FieldReadOutcome, GrammarProperty,
+        RepeatBehavior, ScalarForm, ValueShape,
     };
 
     assert_eq!(field.reader.kind, ReaderKind::Block);
@@ -211,6 +226,88 @@ fn check_description_parameters(field: &pdx_native::Field) {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn nested_owners_carry_the_grammar_of_their_root_identities() {
+    use pdx_native::{AcceptedCategories, BlockFamily, Field, FieldMembers};
+
+    let native = native();
+    let child = |parent: &Field, name: &str| -> Field {
+        let FieldMembers::Fields(children) = &parent.members else {
+            panic!("{}: {:?}", parent.name, parent.members);
+        };
+        children
+            .iter()
+            .find(|child| child.name == name)
+            .unwrap()
+            .clone()
+    };
+
+    for registry in ["common/traditions", "common/ascension_perks"] {
+        let fields = native.registry_fields(registry).unwrap().value;
+        let field = |name: &str| fields.iter().find(|field| field.name == name).unwrap();
+        let swap = field("tradition_swap");
+
+        for name in ["modifier", "triggered_modifier"] {
+            let (root, nested) = (field(name), child(swap, name));
+            assert_eq!(nested.reader.id, root.reader.id, "{registry} {name}");
+            assert_eq!(nested.members, root.members, "{registry} {name}");
+            assert_eq!(
+                nested.accepted_categories, root.accepted_categories,
+                "{registry} {name}"
+            );
+        }
+        assert_eq!(child(swap, "weight").reader.family, BlockFamily::Weight);
+        assert!(matches!(
+            child(swap, "weight").members,
+            FieldMembers::WeightBlock(_)
+        ));
+    }
+
+    let authorities = native
+        .registry_fields("common/governments/authorities")
+        .unwrap()
+        .value;
+    let swap = authorities
+        .iter()
+        .find(|field| field.name == "advanced_authority_swap")
+        .unwrap();
+    let modifier = child(swap, "modifier");
+    assert_eq!(modifier.reader.family, BlockFamily::Modifier);
+    assert!(matches!(modifier.members, FieldMembers::ModifierBlock(_)));
+    // Negative control: a key whose reader path stops gets no modifier grammar.
+    let election_type = child(swap, "election_type");
+    assert_eq!(election_type.reader.family, BlockFamily::Unknown);
+    assert_eq!(
+        election_type.accepted_categories,
+        AcceptedCategories::Unresolved
+    );
+
+    // An object whose member reader names or rejects every key reads no container itself.
+    let behaviour = native.registry_fields("common/attitudes").unwrap().value;
+    let behaviour = behaviour.iter().find(|f| f.name == "behaviour").unwrap();
+    assert_eq!(
+        behaviour.accepted_categories,
+        AcceptedCategories::NotApplicable
+    );
+    // Negative controls: an object with its own `Read`, and one whose keys have no token.
+    for (registry, name) in [
+        ("common/anomalies", "on_success"),
+        (
+            "common/country_customization",
+            "graphical_culture_for_random_empire",
+        ),
+    ] {
+        let fields = native.registry_fields(registry).unwrap().value;
+        let field = fields.iter().find(|field| field.name == name).unwrap();
+        assert_eq!(
+            field.accepted_categories,
+            AcceptedCategories::Unresolved,
+            "{registry} {name}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     use pdx_native::{
         BlockFamily, EmptyKey, Field, FieldCondition, FieldMembers, FieldReference,
@@ -226,8 +323,8 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     );
     let mut variants = BTreeMap::new();
     for answer in read_registry_fields(native).unwrap() {
-        for field in answer.value {
-            check_weight_identity(&mut variants, &field).unwrap();
+        for field in every_field(&answer.value) {
+            check_weight_identity(&mut variants, field).unwrap();
         }
     }
     assert_eq!(variants.len(), 5);
@@ -644,7 +741,13 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
                 .any(|gap| gap.kind == GapKind::OutsideMethod)
         );
         for name in &answer.value {
-            assert_eq!(name.lookup, NameLookup::Localization, "{name:?}");
+            let gfx = name.name.first() == Some(&NamePart::Literal("GFX_".into()));
+            let lookup = if gfx {
+                NameLookup::Sprite
+            } else {
+                NameLookup::Localization
+            };
+            assert_eq!(name.lookup, lookup, "{name:?}");
             let fixed = name
                 .name
                 .iter()
@@ -716,6 +819,27 @@ fn derived_names_follow_the_tradition_getters_and_keep_swap_conditions() {
         );
         assert!(terms(&tooltip).contains(&zero(path, false)));
     }
+    let icon = find(
+        &traditions,
+        vec![text("GFX_"), NamePart::ItemKey],
+        LookupStage::WhenUsed,
+        MissingName::Unresolved,
+    );
+    assert_eq!(icon.lookup, NameLookup::Sprite);
+    assert_eq!(
+        icon.condition,
+        FieldCondition::Unresolved,
+        "the interface caller decides"
+    );
+    let swap_icon = find(
+        &traditions,
+        vec![text("GFX_"), field(&["tradition_swap", "name"])],
+        LookupStage::WhenUsed,
+        MissingName::Unresolved,
+    );
+    assert_eq!(swap_icon.lookup, NameLookup::Sprite);
+    assert!(terms(&swap_icon).contains(&FieldCondition::Unresolved));
+    assert!(terms(&swap_icon).contains(&zero(&["tradition_swap", "inherit_icon"], true)));
     assert!(
         traditions
             .iter()

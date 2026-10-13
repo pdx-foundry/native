@@ -46,7 +46,7 @@ Native establishes what was read or observed. Atlas decides what that establishe
 | `modifier_category_keys` | Implemented | — | Each value that script writes for a modifier category (`category` in `common/scripted_modifiers`, `modifier_category` in `common/economic_categories`) with the single categories that the engine parses it as; `none` has none. A value that the engine reads as no category and reports as invalid is not listed. A category that a later step adds, such as AI Economy for generated economic-category modifiers, is an `OutsideMethod` gap. |
 | `modifier_nodes` | Implemented | — | The engine's modifier node graph: each node's source nodes, the engine types that construct it (such as `CShip`), and the categories that it keeps, named as the engine names a mask. A node whose calculation can store another mask gives each mask (the ship). Where a modifier takes effect is a gap, and the answer has no supported scopes; a category that only all-bits masks keep is a gap; a node with no followed construction (node 0) is a gap. |
 | `modifier_families` | Implemented for database generators, post-read code and shared helpers | A registry name | Name templates that the registry's code registers for each item, with the item-key position, category tags, whether every item generates the family, and a name-length limit. A template that also takes the key of an item of another named registry has a `RegistryKey` part that names that registry; `name_for_keys` gives its names for a pair of keys, and `name_for` gives none. Code that generates modifiers and is not joined to a registry is a gap, with its reason. |
-| `derived_names` | Implemented | A registry name | Names that the registry's own `const` methods and post-read initialization compose from the item key or a string field and then check or look up: the name's parts (literal, item key, field path), what it is looked up in (localisation, sprites, files), the stage (when used, or owner initialization), what a missing name gives (shows the key, silent, a diagnostic, a fallback to another derived name, or unresolved) and the field condition. Names that interface code composes and the run-time choice behind a selection are outside it; unfollowed paths, unresolved name parts and unresolved conditions are gaps. |
+| `derived_names` | Implemented | A registry name | Names that the registry's own `const` methods and post-read initialization compose from the item key or a string field and then check or look up, and names that the direct callers of a `const` method that returns the key or a field compose from it and look up or give a GUI element as its sprite: the name's parts (literal, item key, field path), what it is looked up in (localisation, sprites, files), the stage (when used, or owner initialization), what a missing name gives (shows the key, silent, a diagnostic, a fallback to another derived name, or unresolved) and the field condition. Other names that interface code composes and the run-time choice behind a selection are outside it; unfollowed paths, unresolved name parts and unresolved conditions are gaps. |
 | `loader_rules` | Implemented | A registry name | How the registry's loader selects its files: the suffix and the substring that a file name must have, and the subdirectory levels that it reads, from the arguments of each enumeration call. What the loader does with a later definition of a key that it holds: the last definition wins, or it merges into the earlier item, from the template database's handler for a key that it holds. How the loader names each form of definition: by the root statement's key or value, or by a field of its block, including definitions nested in an owner's block. A value that is not a literal, calls that disagree, a handler shape that the method does not read, or a custom loader's duplicate path leave a property unresolved. Definition names are a stated per-build rule (a manual exception); a loader with no stated rule leaves them unresolved, a rule whose definitions no form can name gives a gap that names the obstacle, and an empty known list means that the loader names none of its definitions. Files opened by a literal name are outside it. The file order and whether a mod's file replaces a game file are build-wide rules on the knowledge page, each with a gap; a live fixture control checks the file order for a template loader, and no fixture verifies the mod-over-vanilla rule. |
 | `script_expansions` | Implemented | — | For inline scripts, scripted effects, scripted triggers, script values and scripted variables: where script can use each (registry roots, command families, object blocks, trigger references, scoped operands, statements), where its names are defined, when the engine expands a use (`Lex`, `Read` or `Compile`), its call forms and parameter forms, what an absent parameter yields, and load-time checks. Call and parameter forms are a stated per-build rule (a manual exception), checked by fixtures. Unjoined readers, the variable lookup order, duplicate definitions, cycles and forward definitions are gaps. A missing parameter is one that the definition writes as a plain `$KEY$` outside the conditional blocks that the use drops. Scripted modifiers are modifier names, in `modifier_families`. |
 | `scopes`, `scope_links` | Implemented | — | Scope types with the keywords that the engine maps to each, and keywords that match several types (`carrier`); documented links and the link prefixes that take data, each with declared input and output scopes |
@@ -154,17 +154,20 @@ for contexts and scope types.
   never a `Complete` answer with silently unresolved properties. Reads validate the build identity,
   not the method revision.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
-- Constructor-bound root modifier fields expose `FieldMembers::ModifierBlock`: fixed keys with
+- Constructor-bound modifier fields expose `FieldMembers::ModifierBlock`, at the root and in the
+  `FieldMembers::Fields` of a collected or embedded object that the method walks as a nested owner: fixed keys with
   reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial
   or unresolved. Numeric entries share the ordinary conversion facts; scripted modifier names
   come from the registry's existing `modifier_families` answer. String reads do not establish
-  localisation-key existence. Runtime effects, deferred completion and nested modifier fields
-  remain outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
+  localisation-key existence. A nested field keeps its nesting, its gaps name its full key path and
+  the conditions inside its grammar name the path from the registry's definition. Equal reader
+  identities give equal grammar at any depth. Runtime effects and deferred completion remain
+  outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
 - A fixed key that takes any key with one scalar value each, such as `description_parameters`,
   exposes `FieldMembers::AnyKey`: no list limits the keys, and `value_forms` lists the written
   value forms that the engine keeps (`Number`, `Text`, or a named `Keyword`). Its reader kind is
   `Block`, with family `NotApplicable` and repeat `Accumulate`; it reads in no scope.
-- Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
+- Constructor-bound weight fields, root or nested, have family `Weight` and expose `FieldMembers::WeightBlock`:
   the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
   operation accumulates or replaces, and whether other keys are rejected or read as trigger
   conditions. Nested `modifier`, `scaled_modifier` and `complex_trigger_modifier` entries carry
@@ -172,7 +175,7 @@ for contexts and scope types.
   `Enclosing`; the field's `read_scope` names that scope. When the readers of a key differ but all
   read one value kind, the key reports that kind with no reader identity. Weight evaluation and
   operation semantics remain outside this grammar. See [weight blocks](../native/weight-blocks.md).
-- Root fields whose collected objects have a triggered modifier clause reader have family
+- Root and nested fields whose collected objects have a triggered modifier clause reader have family
   `TriggeredModifier` and expose `FieldMembers::TriggeredModifier`: the clause's own fixed keys,
   and `other_keys`, the modifier block that reads every key the clause does not name. A `modifier`
   key carries `FieldMembers::ModifierBlock`; it and `other_keys` name the reader identity of the
@@ -186,8 +189,9 @@ for contexts and scope types.
   owner stores inline); an unknown argument, an unreached construction, disagreeing paths or
   destinations and a missing join are `Unresolved` with a gap, never every category. A key of a
   triggered modifier clause that reads into the clause's own container is `Enclosing`. A field with
-  an established non-modifier reader is `NotApplicable`; one whose reader family is unknown is
-  `Unresolved`. Atlas expands an entry's `category_tags` through `modifier_categories` and accepts
+  an established non-modifier reader is `NotApplicable`, as is a field that embeds an object of
+  another class whose generic reader names or rejects every key; any other field whose reader
+  family is unknown is `Unresolved`. Atlas expands an entry's `category_tags` through `modifier_categories` and accepts
   the entry when the sets meet. Where an accepted entry takes effect stays outside this answer.
   See [modifier masks](../native/modifier-masks.md#container-masks).
 - `DerivedName.name` uses `NamePart`; a `Field` part is a string field's path from the registry's

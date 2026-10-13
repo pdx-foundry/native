@@ -853,10 +853,16 @@ impl BoundAnalysis {
         owner: &str,
     ) -> Result<FieldInput, AnalysisError> {
         let mut input = verified.loaded_field_input(owner, verified.loader_database(registry))?;
+        let requested_words = self.weight_block_facts()?.stored_scopes();
+        let initialized_words = &self.modifier_node_result()?.initialized_words;
+        let nested = input
+            .objects
+            .iter_mut()
+            .filter_map(|object| object.persistent.as_mut());
 
-        if let Some(persistent) = &mut input.persistent {
-            persistent.requested_words = self.weight_block_facts()?.stored_scopes();
-            persistent.initialized_words = self.modifier_node_result()?.initialized_words.clone();
+        for persistent in input.persistent.iter_mut().chain(nested) {
+            persistent.requested_words = requested_words.clone();
+            persistent.initialized_words = initialized_words.clone();
         }
 
         Ok(input)

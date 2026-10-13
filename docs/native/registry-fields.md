@@ -24,14 +24,20 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v35`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v37`) holds
 the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
 change when the 19 custom-loader names joined (SDK-787);
 their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`, only the 336
-[pre_trigger keys](#pre-trigger-blocks) changed (SDK-807). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[pre_trigger keys](#pre-trigger-blocks) changed (SDK-807). Against `v34`, the
+[uniform lists](#uniform-lists) and the [bit fields](#bit-fields) changed (SDK-710). Against
+`v35`, 22 registries changed (SDK-676): the nested owners of traditions, ascension perks and
+authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
+of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
+registries joined their reader once a delegating constructor's stack string no longer stops the
+constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -60,7 +66,8 @@ lookups, so the diff drops only members that match their serde defaults.
   known; no Atlas claim needs either. It accepts no other typed gap.
 - **Unknown kinds.** Most unknown kinds come from fields with no single established reader and
   from unresolved root paths, not from unclassified reader signatures (`CVariableValue::Read`,
-  `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`).
+  `CReader::Read(CColor&)`, `CReader::Read(float&)`, `CReader::Read(CVector2FixedPoint&)`). Their
+  shapes are in [fields with no shared reader](#fields-with-no-shared-reader).
 - **Compound shapes.** The dispatch walker follows a copied value token constructed as an event
   target and moved to an owner destination (`Target`), a `CString` array emplace read by the shared
   string reader (`String/Accumulate`, for example `common/asteroid_belts.mesh`), and an optional
@@ -85,6 +92,62 @@ Pitfalls:
   not the token, so they correctly stay unknown flags.
 - Unresolved concrete readers do not remove established field names or broad `Block` kinds.
 
+### Fields with no shared reader
+
+The sweep report's `reader_identity_stops` groups every root field, and every nested field of
+`FieldMembers::Fields`, without a reader identity by the distinct shapes of its read
+alternatives; these are the fields that carry the `UnresolvedReader` gap. Keys of an attached
+modifier, weight or triggered-modifier grammar are outside it: their gaps come from that
+grammar's own method. A stopped alternative gives its reason
+and the callee or mnemonic where it stopped. `registries_by_root_gap` counts the registries with
+an unfollowed root path, unnamed keys or unreadable input; `stop_shapes` gives their internal
+stops, with a distinct registry count for each. Event-kind members count once for each kind.
+
+M452, SDK-710: before at Native `34bd898` (`registry-fields/v34`), after at `registry-fields/v35`.
+
+| Count | Before | After |
+| --- | ---: | ---: |
+| `UnresolvedReader` "no shared reader" gaps (fields, root and nested) | 873 in 113 registries | 779 in 100 |
+| Root fields without identity | 419 | 338 |
+| Root fields of kind `Unknown` | 382 | 301 |
+| Root `Boolean` fields with repeat `Unknown` | 243 | 5 |
+| Gaps other than `OutsideMethod` | 4,482 | 4,036 |
+| Registries with an unfollowed root path / unnamed keys / unreadable input | 74 / 15 / 12 | 74 / 15 / 12 |
+
+The shapes, grouped by family. Fields and registries are after the repair. Every census shape
+belongs to one row.
+
+| Family (census shapes) | Fields | Registries | Disposition |
+| --- | ---: | ---: | --- |
+| `CReader::ReadUniform<T>` lists | 98 → 0 | 41 → 0 | Resolved: [uniform lists](#uniform-lists). |
+| Boolean stack temporaries (identity, repeat `Unknown`) | 240 → 2 root | | Resolved: [bit fields](#bit-fields); two named obstacles remain. |
+| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap. The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
+| Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
+| Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
+| Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
+| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-627 keyword domains. |
+| Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
+| Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
+| Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |
+| `CTriggeredEventDescription<…>::ReadEntry` (`desc`, `tooltip`) | 12 | 8 | Gap. A nested description grammar with its own trigger; repair with a description block reader. |
+| Other single helpers (`ReadColor`, `ReadTexture`, `ReadShipClass`, `ReadBeamState`, `CCompareOperator::Read`, joins of different readers) | 42 | 20 | Gap. One helper each; repair when Atlas needs the field. |
+
+**Inline `CString` copies in constructors.** `common/governments/civics` `modifier` and
+`common/star_classes` `modifier` (handed over from SDK-676) read an inline `CModifier` slot whose
+vtable the owner constructor installs, but the walk loses it on 24 of 32 paths. Before the slot,
+the constructor copies `CString` members inline. On the long path, the copy's allocator is given
+the member, so its result may be an owner address. A later store through it at an unknown index
+may reach every owner byte after the member, the modifier's vtable included. The receivers test
+`exact_build_string_and_token_constructor_effects` asserts this. Obstacle: no stated rule says
+that the string allocator returns memory outside the owner. Repair: state that rule for the
+`CString` allocator and check it on three constructors. It is an evaluator rule for every
+constructor walk, command grammar included, so it is outside this walker repair (SDK-822).
+
+Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
+unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
+`b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
+input is the twelve owners with no `ReadMember` (`CJobTag`, `CTraitTag`, `CZoneType`, …).
+
 ## Repeat behavior
 
 `FieldShape.repeat` comes from one rule for each shared reader, in `session/fields.rs::repeat`.
@@ -101,9 +164,13 @@ rule applies only to a tail call: a call with an unexamined continuation proves 
 | `CReader::Read(CPersistent&)` of a modifier block | `Merges` | All four variants reach `CPdxModifier<…>::Read` (`0x100071fcc`). It deletes the child array and clears the entry counts at `+0x1c`, `+0x44` and `+0x9c`, then calls `CPersistent::Read`. Fixed keys are written only when present, so an omitted icon, tooltip or flag stays; `description_parameters` appends. |
 | `ReadKeyReferenceDeferred<D>` with an established lookup | `Replace` | Each occurrence registers its key and a lambda that writes the destination on a hit and on a miss. The resolver runs registrations in order ([references](references.md#reference-readers)), so the last occurrence's item is stored. |
 
+A Boolean read into a stack temporary gets `Replace` from the walk, not from a rule: the walk
+follows the temporary into its member bit ([bit fields](#bit-fields)).
+
 Every other reader keeps `Unknown`, including `CTrigger::Read`, `CEffect::Read`, a persistent
-block without a constructor-proven weight or modifier reader, and an immediate reference reader,
-whose caller stores the result after the call returns.
+block without a constructor-proven weight or modifier reader, an immediate reference reader,
+whose caller stores the result after the call returns, and the [uniform list
+reader](#uniform-lists).
 
 **A recorded manual exception.** The rules are stated per reader, not derived: the method reads no
 reader or resolver body for storage. Conditions: the exact M452 build and a tail call. Obstacle:
@@ -165,15 +232,50 @@ leaves through the table's guard does not end at the rejection, the default may 
 so a case is kept only when it joins a known reader. No table on M45-release gives a `JumpTable`
 gap: each default reaches the rejection, or the table has no default slot.
 
-**Bit fields.** Boolean bit fields such as `tooltip_show_star_resources`,
+### Bit fields
+
+Boolean bit fields such as `tooltip_show_star_resources`,
 `place_entity_on_planet_plane`, `use_planet_resource`, `can_prevent_crisis_terraformation`,
 `is_ruined_orbital_ring` and `hide_name` copy the bit to a stack temporary with `ldr` and `ubfx`,
 or with `ldrb w8,[x19,x8]` where `x8` is a constant, then call `CReader::Read(bool&)`. The walker
 reads a register-offset load with a constant index and forgets the result of `ubfx` and `and`, so
 these paths reach the call and name their fields. `CReader::Read(bool&)` joins a stack
-destination, as the 4-byte integer reader does, so these fields read `Boolean`. The walk ends at
-the call, so the join establishes the kind, not the member that stores the bit, and the repeat
-stays unknown. Joining the temporary to its member is a separate repair.
+destination, as the 4-byte integer reader does.
+
+After such a call the walk goes on (`fields/dispatch.rs`, `follow_temporary`, SDK-710). On M452,
+240 of the 242 paths merge the temporary into its member with one idiom:
+
+```text
+bl    CReader::Read(bool&)       ; x1 = sp + t
+ldrb  w8,[sp,#t]                 ; the value read
+ldr   w9,[x19,#off]              ; the owner word: ldrb, ldrh, ldr w or ldr x
+and   w9,w9,#~(1 << k)           ; clears exactly bit k
+orr   w8,w9,w8,lsl #k            ; no shift for bit 0
+b     <shared store>             ; optional
+str   w8,[x19,#off]              ; same width and offset as the load
+ret                              ; after ldp and add sp restores
+```
+
+or copy the byte itself (`ldrb w8,[sp,#t]; strb w8,[x19,#off]`). The path then joins
+`Stored { CReader::Read(bool&), Boolean, destination, Replace }`: the bit gets the value that the
+reader wrote, so a second occurrence replaces the first. `destination` is the member's offset for
+a copy and `None` for a bit, because a storage offset names a whole word, and the presence test
+of [read conditions](#read-conditions-and-use-time-inheritance) would read a byte test of the word
+as a test of the bit. Any other instruction on the way, a call, a second store to the word, a
+register loaded from the temporary before the call, an `ldp` that moves the stack pointer, or a
+path bound keeps the plain join at the call. Root Boolean fields with repeat `Unknown` fall from
+243 to 5.
+
+Two temporaries keep the join at the call, with a `Repeat behavior remains unresolved.` gap:
+
+- `common/governments/civics` `pickable_at_start`: the temporary is never stored; the path restores
+  the frame and returns.
+- `common/global_ship_designs` `alliance_ship_design`: the copy (`str w8,[x20,#0x114]`) is followed
+  by a second read of the value token's type and, for a block, `CReader::ReadUniform<CString>`.
+
+The other three (`common/agreement_presets` `hidden`, `should_ai_use_for_proposals`,
+`can_preset_be_changed`) read straight into the owner and then call
+`CAgreementTermData::SetPresetData`, so their call is not a tail call.
 
 ## Members and shared readers
 
@@ -224,6 +326,22 @@ Pitfalls:
   broad value of established helper signatures; constructor joins refine a generic persistent
   destination; conditional normalization also accounts for unresolved and rejected paths. Do not
   merge them: removing the last check promotes conditional facts.
+
+### Uniform lists
+
+`CReader::ReadUniform<T>(CPdxArray<T, int>&)` appends each value of a `key = { a b c }` list to the
+array in `x1` (`0x10004e608` for `CString`: `InsertAtEmplace`, then `CReader::Read(CString&,
+bool)`, until the closing brace or the end of input; it clears nothing first). Any element type
+and both `enable_if` forms of the name are one shared reader shape (`readers.rs`,
+`is_uniform_list`): `x0` the reader and `x1` an owner array, or a stack array that the loader
+converts after the call (17 fields on M452, such as `common/traits` `requires_traits`). The kind is
+`Block` and the family `NotApplicable`: the values are not commands, so no modifier container is
+read and the read scope is `Known([])`. The identity keeps the element type. Storage and repeat stay unknown; a stack array has no
+destination. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
+grammar shares the reader rule: nested lists such as `create_species` `adjective.variables`
+join. 17 command answers change (`tests/population/m452/command-population.json`): list and
+bit-field joins remove `reader-routing` gaps or give `Replace`, and `has_active_event` now stops
+later, at its value acceptance.
 
 ### Read conditions and use-time inheritance
 
