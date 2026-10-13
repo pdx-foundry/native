@@ -1,7 +1,13 @@
 //! Shared comparison of serialized answers across additive serde defaults.
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+/// The file of a baseline directory that names its build and holds its totals.
+const HEADER_FILE: &str = "header.json";
 
 /// Remove only defaulted members absent in the other answer. Deserialization supplies the
 /// actual type defaults; unknown JSON members stay visible and required omissions stay changes.
@@ -19,7 +25,16 @@ pub fn normalize_answers<T: DeserializeOwned + Serialize>(
             continue;
         };
         let defaults = |answer: &Value| {
-            serde_json::from_value::<T>(answer.clone())
+            let mut answer = answer.clone();
+
+            // A baseline answer has no implementation stamps, which deserialization requires.
+            if let Some(source) = answer.get_mut("source").and_then(Value::as_object_mut) {
+                for stamp in ["method", "native_version"] {
+                    source.entry(stamp).or_insert_with(|| "".into());
+                }
+            }
+
+            serde_json::from_value::<T>(answer)
                 .ok()
                 .and_then(|answer| serde_json::to_value(answer).ok())
         };
@@ -32,14 +47,19 @@ pub fn normalize_answers<T: DeserializeOwned + Serialize>(
             "",
             &mut dropped,
         );
-        for answer in [old, new] {
-            if let Some(source) = answer.get_mut("source").and_then(Value::as_object_mut) {
-                source.remove("method");
-                source.remove("native_version");
-            }
-        }
+        remove_implementation_stamps(old);
+        remove_implementation_stamps(new);
     }
     dropped
+}
+
+/// Remove the method and Native version from an answer's source. A new method revision stamps
+/// every answer, so a stamp would change every subject of a baseline.
+fn remove_implementation_stamps(answer: &mut Value) {
+    if let Some(source) = answer.get_mut("source").and_then(Value::as_object_mut) {
+        source.remove("method");
+        source.remove("native_version");
+    }
 }
 
 fn prune_defaults(
@@ -93,28 +113,6 @@ fn prune_defaults(
     }
 }
 
-/// Format only comparison inputs, with one subject per line so changes stay local in Git.
-pub fn format_baseline(
-    build: &Value,
-    answers: &BTreeMap<String, Value>,
-) -> serde_json::Result<String> {
-    let rows: Result<Vec<_>, _> = answers
-        .iter()
-        .map(|(subject, answer)| {
-            Ok(format!(
-                "    {}: {}",
-                serde_json::to_string(subject)?,
-                serde_json::to_string(answer)?
-            ))
-        })
-        .collect::<serde_json::Result<_>>();
-    Ok(format!(
-        "{{\n  \"build\": {},\n  \"answers\": {{\n{}\n  }}\n}}",
-        serde_json::to_string(build)?,
-        rows?.join(",\n")
-    ))
-}
-
 /// The result of reading a population report. An error means that the report is malformed or of
 /// another kind, which is not the same as an empty report.
 pub type ReportResult<T> = Result<T, Box<dyn std::error::Error>>;
@@ -149,6 +147,162 @@ pub fn insert_unique(
         }
         Entry::Occupied(slot) => Err(format!("duplicate subject: {}", slot.key()).into()),
     }
+}
+
+/// Replace the baseline at `directory` with one file per subject, so that changes to different
+/// subjects touch different files in Git. `<subject>.json` holds the subject's comparison inputs
+/// on one line, without implementation stamps, and each `/` in a subject is a directory.
+/// `header.json` holds `header`: an object with the `build` and any totals of the report. The same
+/// inputs always give the same bytes.
+///
+/// Refuses a header without a build, a subject that cannot be a relative file name, two subjects
+/// that differ only in case, and an existing directory that is not empty and holds no
+/// `header.json`.
+pub fn write_baseline(
+    directory: &Path,
+    header: &Value,
+    answers: &BTreeMap<String, Value>,
+) -> ReportResult<()> {
+    let files = baseline_files(header, answers)?;
+    remove_baseline(directory)?;
+
+    for (path, contents) in files {
+        let path = directory.join(path);
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(path, contents)?;
+    }
+
+    Ok(())
+}
+
+/// The relative path and contents of each file of a baseline.
+fn baseline_files(
+    header: &Value,
+    answers: &BTreeMap<String, Value>,
+) -> ReportResult<Vec<(PathBuf, String)>> {
+    text(header, "build")?;
+
+    let mut files = vec![(
+        PathBuf::from(HEADER_FILE),
+        serde_json::to_string_pretty(header)? + "\n",
+    )];
+    let mut names = BTreeSet::from([HEADER_FILE.to_owned()]);
+
+    for (subject, answer) in answers {
+        let mut answer = answer.clone();
+
+        if let Some(answer) = answer.get_mut("answer") {
+            remove_implementation_stamps(answer);
+        }
+
+        let path = subject_file(subject)?;
+
+        // Case-insensitive file systems, the default on macOS, would let one file overwrite another.
+        if !names.insert(path.to_string_lossy().to_lowercase()) {
+            return Err(format!("subject names the same file as another: {subject}").into());
+        }
+
+        files.push((path, serde_json::to_string(&answer)? + "\n"));
+    }
+
+    Ok(files)
+}
+
+/// The file of `subject`, relative to its baseline directory. A component that ends in `.json`
+/// could name both a subject's directory and another subject's file.
+fn subject_file(subject: &str) -> ReportResult<PathBuf> {
+    let relative = subject.split('/').all(|component| {
+        !component.is_empty()
+            && component != "."
+            && component != ".."
+            && !component.contains('\\')
+            && !component.to_ascii_lowercase().ends_with(".json")
+    });
+
+    if !relative {
+        return Err(format!("subject cannot name a baseline file: {subject:?}").into());
+    }
+
+    Ok(PathBuf::from(format!("{subject}.json")))
+}
+
+/// Remove an earlier baseline, so that a subject that no longer exists leaves no file.
+fn remove_baseline(directory: &Path) -> ReportResult<()> {
+    let mut entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    if entries.next().is_some() && !directory.join(HEADER_FILE).is_file() {
+        return Err(format!(
+            "{} is not a baseline: it is not empty and has no {HEADER_FILE}",
+            directory.display()
+        )
+        .into());
+    }
+
+    fs::remove_dir_all(directory)?;
+
+    Ok(())
+}
+
+/// Read a population report file, or a baseline directory as its header with an `answers`
+/// object.
+pub fn read_report(path: &Path) -> ReportResult<Value> {
+    if !path.is_dir() {
+        return Ok(serde_json::from_slice(&fs::read(path)?)?);
+    }
+
+    let mut report: Value = serde_json::from_slice(&fs::read(path.join(HEADER_FILE))?)?;
+    let mut answers = Map::new();
+    read_subjects(path, "", &mut answers)?;
+
+    report
+        .as_object_mut()
+        .ok_or(format!("expected an object in {HEADER_FILE}"))?
+        .insert("answers".into(), answers.into());
+
+    Ok(report)
+}
+
+/// Add the subject of each `.json` file under `directory`, whose subjects start with `prefix`.
+fn read_subjects(
+    directory: &Path,
+    prefix: &str,
+    answers: &mut Map<String, Value>,
+) -> ReportResult<()> {
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("not a subject file: {}", path.display()))?;
+
+        if path.is_dir() {
+            read_subjects(&path, &format!("{prefix}{name}/"), answers)?;
+            continue;
+        }
+
+        let Some(stem) = name.strip_suffix(".json") else {
+            continue;
+        };
+
+        if prefix.is_empty() && name == HEADER_FILE {
+            continue;
+        }
+
+        answers.insert(
+            format!("{prefix}{stem}"),
+            serde_json::from_slice(&fs::read(&path)?)?,
+        );
+    }
+
+    Ok(())
 }
 
 /// Read comparison inputs from a compact baseline, which names its build. `None` for a full
@@ -279,6 +433,27 @@ mod tests {
     }
 
     #[test]
+    fn a_baseline_answer_without_stamps_still_has_its_defaults() {
+        #[derive(Serialize, Deserialize)]
+        struct Stamped {
+            source: pdx_native::Source,
+            #[serde(default)]
+            reference: pdx_native::FieldReference,
+        }
+        let source = json!({"build": "build", "basis": "StaticAnalysis"});
+        let mut before = report(json!({"source": source}));
+        let mut stamped = source.clone();
+        stamped["method"] = json!("v1");
+        stamped["native_version"] = json!("1");
+        let mut after = report(json!({"source": stamped, "reference": "NotEstablished"}));
+        assert_eq!(
+            normalize_answers::<Stamped>(&mut before, &mut after),
+            BTreeSet::from(["reference".into()])
+        );
+        assert_eq!(before, after);
+    }
+
+    #[test]
     fn unchanged_members_are_not_reported() {
         let mut before = report(json!({"required": "same", "reference": "NotEstablished"}));
         let mut after = before.clone();
@@ -286,20 +461,72 @@ mod tests {
     }
 
     #[test]
-    fn baseline_round_trip_keeps_each_subject_on_one_line() {
+    fn a_baseline_directory_round_trips_with_one_line_per_subject_file() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("baseline");
         let answers = BTreeMap::from([
             (
-                "a\"quoted".into(),
-                json!({"answer": {"value": [1, 2], "gaps": []}}),
+                "common/a".into(),
+                json!({"answer": {"value": [1, 2], "source": {"build": "build", "method": "v1", "native_version": "1"}}}),
             ),
-            ("z".into(), json!({"error": "failed\nwith detail"})),
+            (
+                "common/a/nested".into(),
+                json!({"error": "failed\nwith detail"}),
+            ),
+            ("events".into(), json!({"status": "complete"})),
         ]);
-        let text = format_baseline(&json!("build"), &answers).unwrap();
-        assert_eq!(text.lines().count(), answers.len() + 5);
-        let parsed: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(parsed["build"], "build");
-        assert_eq!(baseline_answers(&parsed).unwrap().unwrap(), answers);
-        assert_eq!(baseline_answers(&json!({"cases": []})).unwrap(), None);
+        let header = json!({"build": "build", "total": 3});
+        write_baseline(&directory, &header, &answers).unwrap();
+        let file = fs::read_to_string(directory.join("common/a/nested.json")).unwrap();
+        assert_eq!(file, "{\"error\":\"failed\\nwith detail\"}\n");
+
+        let report = read_report(&directory).unwrap();
+        assert_eq!(report["total"], 3);
+        let mut unstamped = answers.clone();
+        unstamped.get_mut("common/a").unwrap()["answer"]["source"] = json!({"build": "build"});
+        assert_eq!(baseline_answers(&report).unwrap().unwrap(), unstamped);
+
+        let fewer = BTreeMap::from([("events".into(), json!({"status": "partial"}))]);
+        write_baseline(&directory, &header, &fewer).unwrap();
+        assert_eq!(
+            baseline_answers(&read_report(&directory).unwrap())
+                .unwrap()
+                .unwrap(),
+            fewer
+        );
+        assert!(!directory.join("common").exists());
+    }
+
+    #[test]
+    fn a_baseline_refuses_subjects_outside_its_directory_and_other_directories() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("baseline");
+        let header = json!({"build": "build"});
+        for subject in [
+            "",
+            "../escape",
+            "common//a",
+            "common/./a",
+            "a\\b",
+            "HEADER",
+            "header.json/a",
+            "a.JSON",
+        ] {
+            let answers = BTreeMap::from([(subject.into(), json!(1))]);
+            assert!(
+                write_baseline(&directory, &header, &answers).is_err(),
+                "{subject}"
+            );
+        }
+        let answers =
+            BTreeMap::from([("Common/a".into(), json!(1)), ("common/a".into(), json!(2))]);
+        assert!(write_baseline(&directory, &header, &answers).is_err());
+        assert!(write_baseline(&directory, &json!({"total": 1}), &BTreeMap::new()).is_err());
+        assert!(!directory.exists());
+
+        fs::write(root.path().join("keep.txt"), "").unwrap();
+        assert!(write_baseline(root.path(), &header, &BTreeMap::new()).is_err());
+        assert!(root.path().join("keep.txt").exists());
     }
 
     #[test]

@@ -51,28 +51,17 @@ SDK-798). The recording stays on the capture host; its identity and the commands
 report are in the capture.
 
 The [sweep report](method-authoring.md#report-the-registry-sweep) over the recording gives the
-tracked baseline `tests/population/m452/registry-sweep.json` (each registry's statuses) and these
-rates, over 185 registries and 1,855 root fields. Every request has an answer, partial with typed
-gaps, or `Unsupported`; none fails, is missing or names an unknown registry.
+tracked baseline `tests/population/m452/registry-sweep/`: each registry's statuses, and in its
+`header.json` the complete count, denominator and rate of each relationship (`relationships`).
+The baseline generates those totals, so this page does not restate them; each ticket below states
+its own change. Every request has an answer, partial with typed gaps, or `Unsupported`; none
+fails, is missing or names an unknown registry.
 
-| Relationship | Complete | Denominator | Rate |
-| --- | ---: | ---: | ---: |
-| Fields | 105 | 185 | 56.76% |
-| Reader kinds | 1,576 | 1,926 | 81.83% |
-| Shapes and conditions | 1,376 | 1,926 | 71.44% |
-| References | 25 | 345 | 7.25% |
-| Numerics | 233 | 542 | 42.99% |
-| Weights | 96 | 480 | 20.00% |
-| Naming rules | 0 | 185 | 0.00% |
-| Scope context | 1,323 | 1,926 | 68.69% |
-| **All units** | **4,734** | **7,515** | **62.99%** |
-
-The rates are those of the tracked baseline after SDK-741; SDK-813, SDK-812 and SDK-741 are below.
-Against the baseline before SDK-676 (4,483
-of 7,268 units, 61.68%; 4,283 open gaps), SDK-676 joined 19 root fields: nine weights complete
-their weight unit, and nine modifier fields, which an unknown family had left undetermined for
-weights, leave the weight denominator. It removed 43 of the 45 container gaps: 4,243 open gaps,
-and SDK-739 accepts 48 more weight-key ranges (687 accepted in all). No naming rule is complete because every `modifier_families` answer keeps
+Against the baseline before SDK-676 (4,483 of 7,268 units, 61.68%; 4,283 open gaps), SDK-676
+joined 19 root fields: nine weights complete their weight unit, and nine modifier fields, which an
+unknown family had left undetermined for weights, leave the weight denominator. It removed 43 of
+the 45 container gaps: 4,243 open gaps, and SDK-739 accepts 48 more weight-key ranges (687
+accepted in all). No naming rule is complete because every `modifier_families` answer keeps
 one `UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
 SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all units at 3,985
 (53.06%).

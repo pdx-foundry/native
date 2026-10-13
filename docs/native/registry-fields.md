@@ -24,9 +24,8 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v39`) holds
-the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
-fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
+`tests/population/m452/registry-field-sweep/` holds the baseline. Its `header.json` has the
+counts (`summary`): registries by completeness, root fields and reader identities. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
 change when the 19 custom-loader names joined (SDK-787);
@@ -355,7 +354,7 @@ converts after the call (17 fields on M452, such as `common/traits` `requires_tr
 read and the read scope is `Known([])`. The identity keeps the element type. Storage and repeat stay unknown; a stack array has no
 destination. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
 grammar shares the reader rule: nested lists such as `create_species` `adjective.variables`
-join. 17 command answers change (`tests/population/m452/command-population.json`): list and
+join. 17 command answers change (`tests/population/m452/command-population/`): list and
 bit-field joins remove `reader-routing` gaps or give `Replace`, and `has_active_event` now stops
 later, at its value acceptance.
 

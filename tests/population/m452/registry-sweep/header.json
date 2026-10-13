@@ -1,0 +1,58 @@
+{
+  "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
+  "relationships": {
+    "fields": {
+      "complete": 105,
+      "denominator": 185,
+      "partial": 75,
+      "rate": 0.5676,
+      "unsupported": 5
+    },
+    "naming_rules": {
+      "denominator": 185,
+      "partial": 180,
+      "rate": 0.0,
+      "unsupported": 5
+    },
+    "numerics": {
+      "complete": 233,
+      "denominator": 542,
+      "rate": 0.4299,
+      "undetermined": 309
+    },
+    "reader_kinds": {
+      "complete": 1576,
+      "denominator": 1926,
+      "failed": 304,
+      "partial": 46,
+      "rate": 0.8183
+    },
+    "references": {
+      "complete": 25,
+      "denominator": 345,
+      "partial": 11,
+      "rate": 0.0725,
+      "undetermined": 309
+    },
+    "scope_context": {
+      "complete": 1323,
+      "denominator": 1926,
+      "failed": 344,
+      "partial": 259,
+      "rate": 0.6869
+    },
+    "shapes_and_conditions": {
+      "complete": 1376,
+      "denominator": 1926,
+      "failed": 290,
+      "partial": 260,
+      "rate": 0.7144
+    },
+    "weights": {
+      "complete": 96,
+      "denominator": 480,
+      "rate": 0.2,
+      "undetermined": 384
+    }
+  }
+}
