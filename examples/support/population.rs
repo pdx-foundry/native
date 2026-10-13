@@ -25,7 +25,16 @@ pub fn normalize_answers<T: DeserializeOwned + Serialize>(
             continue;
         };
         let defaults = |answer: &Value| {
-            serde_json::from_value::<T>(answer.clone())
+            let mut answer = answer.clone();
+
+            // A baseline answer has no implementation stamps, which deserialization requires.
+            if let Some(source) = answer.get_mut("source").and_then(Value::as_object_mut) {
+                for stamp in ["method", "native_version"] {
+                    source.entry(stamp).or_insert_with(|| "".into());
+                }
+            }
+
+            serde_json::from_value::<T>(answer)
                 .ok()
                 .and_then(|answer| serde_json::to_value(answer).ok())
         };
@@ -421,6 +430,27 @@ mod tests {
             normalize_answers::<Answer>(&mut before, &mut changed);
             assert_ne!(before, changed);
         }
+    }
+
+    #[test]
+    fn a_baseline_answer_without_stamps_still_has_its_defaults() {
+        #[derive(Serialize, Deserialize)]
+        struct Stamped {
+            source: pdx_native::Source,
+            #[serde(default)]
+            reference: pdx_native::FieldReference,
+        }
+        let source = json!({"build": "build", "basis": "StaticAnalysis"});
+        let mut before = report(json!({"source": source}));
+        let mut stamped = source.clone();
+        stamped["method"] = json!("v1");
+        stamped["native_version"] = json!("1");
+        let mut after = report(json!({"source": stamped, "reference": "NotEstablished"}));
+        assert_eq!(
+            normalize_answers::<Stamped>(&mut before, &mut after),
+            BTreeSet::from(["reference".into()])
+        );
+        assert_eq!(before, after);
     }
 
     #[test]
