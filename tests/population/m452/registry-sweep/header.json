@@ -35,11 +35,11 @@
       "undetermined": 309
     },
     "scope_context": {
-      "complete": 1323,
+      "complete": 1337,
       "denominator": 1926,
       "failed": 344,
-      "partial": 259,
-      "rate": 0.6869
+      "partial": 245,
+      "rate": 0.6942
     },
     "shapes_and_conditions": {
       "complete": 1376,
