@@ -125,6 +125,11 @@ fn repeat(join: &ReaderJoin, reader: &Reader, references: &ReferenceFacts) -> Re
         _ => return RepeatBehavior::Unknown,
     };
 
+    // A repeated pre_trigger key keeps the earlier value's bit and sets its own.
+    if callee == readers::PRE_TRIGGER_VALUE {
+        return RepeatBehavior::Merges;
+    }
+
     match reader.kind {
         ReaderKind::Boolean
         | ReaderKind::Integer
@@ -1054,6 +1059,18 @@ mod tests {
                 true,
                 BlockFamily::NotApplicable,
                 RepeatBehavior::Merges,
+            ),
+            (
+                readers::PRE_TRIGGER_VALUE,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Merges,
+            ),
+            (
+                readers::PRE_TRIGGER_VALUE,
+                false,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Unknown,
             ),
             (
                 MODIFIER,
