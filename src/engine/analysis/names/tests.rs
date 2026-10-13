@@ -1100,6 +1100,8 @@ const ELEMENT_CALL: SpriteCall = SpriteCall {
 
 /// Fetches an element, calls the getter, composes `GFX_` with the returned name at `sp + 0x20`,
 /// and calls through the sprite slot of `call.vtable_of`'s vtable on `call.receiver`.
+// dynasm converts a register from a variable with `.into()`, even from `u8`.
+#[allow(clippy::useless_conversion)]
 fn sprite_caller(start: u64, call: SpriteCall) -> (Arm64, CallerSites) {
     let mut code = Arm64::at(start);
     arm64!(code; sub sp, sp, #0x100);
