@@ -25,7 +25,6 @@
     ["UnresolvedPath", {"kind": "registry", "name": "common/traditions"}, "7 of the registry's methods have paths that could not be followed at string-object"],
     ["UnresolvedPath", {"kind": "registry", "name": "common/traditions"}, "6 lookup or check calls of the registry's methods were reached by no run"],
     ["UnresolvedPath", {"kind": "registry", "name": "common/traditions"}, "19 lookup or check calls receive a name with a part that the method could not follow"],
-    ["UnresolvedCondition", {"kind": "registry", "name": "common/traditions"}, "that the engine initializes every item after reading it is not established, so no name of the initialization is always used: another function constructs an item outside the database's code"],
     ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}_delayed"}, "the field values under which the engine uses {key}_delayed are not established"],
     ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}_delayed"}, "what a missing {key}_delayed gives is not established"],
     ["UnresolvedCondition", {"kind": "answer_item", "name": "{key}_delayed"}, "the field values under which the engine uses {key}_delayed are not established"],
