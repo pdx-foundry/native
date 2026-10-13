@@ -33,8 +33,8 @@ pub enum RepeatBehavior {
     Replace,
     /// Each occurrence adds an entry to a collection.
     Accumulate,
-    /// A repeat is accepted; it replaces some stored parts and keeps others. A repeated weight
-    /// block replaces `base` and keeps earlier entries.
+    /// A repeat updates some stored parts and keeps the others, whether or not it is diagnosed. A
+    /// repeated weight block replaces `base` and keeps earlier entries.
     Merges,
     /// Repeat behavior is not established.
     Unknown,
