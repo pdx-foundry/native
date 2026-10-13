@@ -26,7 +26,11 @@ pub(super) struct PersistentFields {
     pub gaps: Vec<FieldGap>,
 }
 
-pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFields {
+pub(super) fn discover(
+    binding: Option<&super::PersistentInput>,
+    read_only_data: &[super::DataSection],
+    fields: &[RootField],
+) -> PersistentFields {
     let offsets: BTreeSet<_> = fields
         .iter()
         .flat_map(|field| &field.readers)
@@ -37,7 +41,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
     if offsets.is_empty() {
         return PersistentFields::default();
     }
-    let Some(binding) = &input.persistent else {
+    let Some(binding) = binding else {
         return PersistentFields::default();
     };
     let ConstructorPoints {
@@ -45,7 +49,7 @@ pub(super) fn discover(input: &FieldInput, fields: &[RootField]) -> PersistentFi
         words,
         containers,
         gaps,
-    } = constructor_points(binding, &input.read_only_data, &offsets);
+    } = constructor_points(binding, read_only_data, &offsets);
     let readers = points
         .clone()
         .into_iter()
@@ -128,6 +132,7 @@ pub(super) fn embedded(
         let partition_accounted = inventory::partition_accounted(&paths);
         embedded.push(EmbeddedField {
             token: field.token,
+            read: reader.read.clone(),
             member: reader.member.clone(),
             fields: Box::new(RegistryFieldResult {
                 fields,
@@ -247,25 +252,26 @@ pub(crate) fn constructor_points(
                     target.and_then(|target| Some((target, binding.summaries.get(&target)?)))
                 {
                     let receiver = machine.known_register(0, "persistent-constructor-receiver")?;
-                    if !(owner..owner + SPAN).contains(&receiver) {
-                        return Err(Unresolved::new("persistent-constructor-owner"));
+                    // An object outside the owner, such as the stack string that a delegating
+                    // constructor passes on, is built by an ordinary call for the owner.
+                    if (owner..owner + SPAN).contains(&receiver) {
+                        let vtable_bound = || Unresolved::new("persistent-vtable-bound");
+                        if !enter_constructors {
+                            install_vtables(
+                                machine,
+                                receiver,
+                                owner + SPAN,
+                                vtables,
+                                CauseKind::Invalidated,
+                            )
+                            .ok_or_else(vtable_bound)?;
+                            return Ok(Call::Return(None));
+                        }
+                        let body_available = binding.constructor_bodies.contains_key(&target);
+                        return constructors
+                            .call(machine, target, receiver, body_available)
+                            .ok_or_else(vtable_bound);
                     }
-                    let vtable_bound = || Unresolved::new("persistent-vtable-bound");
-                    if !enter_constructors {
-                        install_vtables(
-                            machine,
-                            receiver,
-                            owner + SPAN,
-                            vtables,
-                            CauseKind::Invalidated,
-                        )
-                        .ok_or_else(vtable_bound)?;
-                        return Ok(Call::Return(None));
-                    }
-                    let body_available = binding.constructor_bodies.contains_key(&target);
-                    return constructors
-                        .call(machine, target, receiver, body_available)
-                        .ok_or_else(vtable_bound);
                 }
                 if enter_constructors {
                     return Ok(machine.opaque_call());

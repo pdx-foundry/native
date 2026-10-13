@@ -1136,6 +1136,8 @@ fn nested_fixture() -> FieldInput {
         data_offset: Some(8),
         count_offset: Some(0x14),
         reader: None,
+        persistent: None,
+        objects: vec![],
     });
     input
 }
@@ -1154,6 +1156,32 @@ fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
         replace(&mut input, address, arm64!(at address; mov x0, x3));
         assert!(derive(input).collections.is_empty(), "{address:#x}");
     }
+}
+
+#[test]
+fn a_nested_owner_joins_its_members_from_its_own_constructors() {
+    let nested = |root: Option<u32>, child: Option<u32>| {
+        let mut input = nested_fixture();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0x4000)
+            .unwrap()
+            .name = "CReader::Read(CPersistent&)".into();
+        input.persistent = root.map(modifier_binding);
+        input.objects[0].persistent = child.map(modifier_binding);
+        let result = derive(input);
+        assert_eq!(result.collections.len(), 1);
+
+        result.collections[0].fields.persistent_points.clone()
+    };
+
+    // The child reads its token-7 object at +0x10.
+    assert_eq!(nested(None, Some(0x10)), BTreeMap::from([(0x10, 0xb000)]));
+    // Negative controls: another offset in the child's own constructor, and the root's
+    // constructor, which builds the root owner, not the child.
+    assert!(nested(None, Some(0x40)).is_empty());
+    assert!(nested(Some(0x10), None).is_empty());
 }
 
 #[test]
@@ -1299,7 +1327,6 @@ fn an_object_without_a_block_family_keeps_its_loader_fields() {
 }
 
 fn persistent_fixture() -> FieldInput {
-    use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
     let mut input = fixture();
     input
         .symbols
@@ -1307,12 +1334,19 @@ fn persistent_fixture() -> FieldInput {
         .find(|symbol| symbol.address == 0x4000)
         .unwrap()
         .name = "CReader::Read(CPersistent&)".into();
+    input.persistent = Some(modifier_binding(0x40));
+    input
+}
+
+/// Constructor evidence whose one constructor builds a modifier object at `offset`.
+fn modifier_binding(offset: u32) -> fields::PersistentInput {
+    use crate::engine::analysis::fields::{ConcreteReader, PersistentInput};
     let mut constructor = Arm64::at(0x9000);
     constructor.prologue();
-    arm64!(constructor; mov x19, x0; add x0, x0, #0x40; bl extern 0xa000; mov x0, x19);
+    arm64!(constructor; mov x19, x0; add x0, x0, #offset; bl extern 0xa000; mov x0, x19);
     constructor.epilogue();
     arm64!(constructor; ret);
-    input.persistent = Some(PersistentInput {
+    PersistentInput {
         constructor_calls: Default::default(),
         constructor_bodies: BTreeMap::new(),
         constructors: vec![Function {
@@ -1339,8 +1373,7 @@ fn persistent_fixture() -> FieldInput {
                 delegate: None,
             },
         )]),
-    });
-    input
+    }
 }
 
 /// The persistent fixture whose embedded object at `0x40` has a member reader with no block
@@ -1426,6 +1459,56 @@ fn an_embedded_object_without_a_block_family_lists_its_keys() {
     let result = derive(wider);
     assert_eq!(result.fields[0].name, "new_engine_field");
     assert!(result.embedded.is_empty());
+}
+
+#[test]
+fn an_embedded_object_reads_no_container_only_when_the_generic_reader_hands_on_named_keys() {
+    let categories = |read: &str, member: Option<Vec<u8>>| {
+        let mut input = embedded_fixture();
+        input
+            .persistent
+            .as_mut()
+            .unwrap()
+            .readers
+            .get_mut(&0xb000)
+            .unwrap()
+            .read = read.into();
+        if let Some(code) = member {
+            input.functions.last_mut().unwrap().code = code;
+        }
+        let result = derive(input);
+        assert_eq!(result.embedded.len(), 1, "{read}");
+        let fields = crate::session::questions::normalized_fields(&result, &Default::default());
+
+        fields[0].accepted_categories.clone()
+    };
+    let generic = "CPersistent::Read(CReader&)";
+
+    assert_eq!(
+        categories(generic, None),
+        crate::AcceptedCategories::NotApplicable
+    );
+    // Negative controls: an object with its own reader, and a member reader that hands a token
+    // with no name to an unknown call.
+    assert_eq!(
+        categories("CSettings::Read(CReader&)", None),
+        crate::AcceptedCategories::Unresolved
+    );
+    let unnamed = arm64!(at 0xd000;
+        cmp w2, #7; // token 7
+        b.eq extern 0xd014;
+        cmp w2, #8; // token 8, which has no name
+        b.eq extern 0x7100; // an unknown call
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x10; // the Boolean member
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0xe000 // CReader::Read(bool&)
+    );
+    assert_eq!(
+        categories(generic, Some(unnamed)),
+        crate::AcceptedCategories::Unresolved
+    );
 }
 
 #[test]
@@ -1614,6 +1697,38 @@ fn persistent_family_requires_constructor_agreement_and_no_later_invalidation() 
             "{missing}"
         );
     }
+}
+
+#[test]
+fn a_constructor_of_an_object_outside_the_owner_is_an_ordinary_call() {
+    let points = |delegates: bool| {
+        let mut input = persistent_fixture();
+        let binding = input.persistent.as_mut().unwrap();
+        let mut body = Arm64::at(0xc000);
+        body.prologue();
+        arm64!(body;
+            mov x19, x0;
+            add x0, sp, #0x10; // a stack object
+            bl extern 0xa000 // its constructor
+        );
+        if delegates {
+            arm64!(body; mov x0, x19; bl extern 0x9000); // the full constructor
+        }
+        arm64!(body; mov x0, x19);
+        body.epilogue();
+        arm64!(body; ret);
+        binding.constructors.push(Function {
+            name: "CExample::CExample()".into(),
+            address: 0xc000,
+            code: body.bytes(),
+        });
+
+        derive(input).persistent_points
+    };
+
+    assert_eq!(points(true), BTreeMap::from([(0x40, 0xb000)]));
+    // Negative control: building the stack object does not build the owner's member.
+    assert!(points(false).is_empty());
 }
 
 #[test]

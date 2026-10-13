@@ -24,7 +24,7 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v35`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v36`) holds
 the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
@@ -32,7 +32,12 @@ listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`.
 change when the 19 custom-loader names joined (SDK-787);
 their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`, only the 336
 [pre_trigger keys](#pre-trigger-blocks) changed (SDK-807). Against `v34`, the
-[uniform lists](#uniform-lists) and the [bit fields](#bit-fields) changed (SDK-710). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[uniform lists](#uniform-lists) and the [bit fields](#bit-fields) changed (SDK-710). Against
+`v35`, 22 registries changed (SDK-676): the nested owners of traditions, ascension perks and
+authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
+of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
+registries joined their reader once a delegating constructor's stack string no longer stops the
+constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 

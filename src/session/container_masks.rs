@@ -40,9 +40,13 @@ pub(super) fn attach(
 
         field.accepted_categories = accepted(mask, categories, &path, gaps);
     }
+}
 
-    for field in values.iter() {
-        state_unresolved(field, &[], gaps);
+/// Give a gap to each unresolved container of `values` and their members, at any depth, that no
+/// gap names yet. Runs after every level's containers are attached.
+pub(super) fn state_unresolved(values: &[Field], gaps: &mut Vec<Gap>) {
+    for field in values {
+        state_unresolved_at(field, &[], gaps);
     }
 }
 
@@ -163,7 +167,7 @@ fn enclose_clause_keys(
 }
 
 /// Give a gap to each unresolved container of `field` and its members that no gap names yet.
-fn state_unresolved(field: &Field, parent: &[String], gaps: &mut Vec<Gap>) {
+fn state_unresolved_at(field: &Field, parent: &[String], gaps: &mut Vec<Gap>) {
     let mut path = parent.to_vec();
     path.push(field.name.clone());
 
@@ -190,16 +194,23 @@ fn state_unresolved(field: &Field, parent: &[String], gaps: &mut Vec<Gap>) {
     };
 
     for member in members {
-        state_unresolved(member, &path, gaps);
+        state_unresolved_at(member, &path, gaps);
     }
 }
 
-/// Whether a gap names `path` or a field that encloses it.
+/// Whether a gap names `path` or a field that encloses it, as a key path or as the dotted field
+/// name that the gaps of a nested reader carry.
 fn named(gaps: &[Gap], path: &[String]) -> bool {
     (1..=path.len()).any(|length| {
-        let subject = GapSubject::path(&path[..length]);
-        gaps.iter()
-            .any(|gap| gap.subject.as_ref() == Some(&subject))
+        let subjects = [
+            GapSubject::path(&path[..length]),
+            GapSubject::field(path[..length].join(".")),
+        ];
+        gaps.iter().any(|gap| {
+            gap.subject
+                .as_ref()
+                .is_some_and(|subject| subjects.contains(subject))
+        })
     })
 }
 
