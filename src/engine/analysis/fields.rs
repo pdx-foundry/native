@@ -36,7 +36,10 @@
 //!   interval that leaves through the table's guard does not end at the rejection, a case of
 //!   that table without a known reader is treated as the default.
 //! - Bit-field reads and ORs (`ubfx`, `and`, `orr`) forget their result. A word integer read into
-//!   a stack temporary can join its reader; the join does not establish final member storage.
+//!   a stack temporary can join its reader; the join does not establish final member storage. A
+//!   Boolean read into a stack temporary is followed to the loader's merge after the call: one
+//!   cleared bit of an owner word ORed with the temporary, or a copy of the temporary, stored
+//!   before the return. Anything else on that way keeps the join at the call.
 //! - Unknown instructions, unsupported addressing, missing symbols or names, conflicting token
 //!   names, cycles and clobbered values become explicit gaps.
 //! - Inputs: at most 256 functions and 4 MiB of aggregate code, with a 1 MiB per-function

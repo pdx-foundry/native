@@ -2806,3 +2806,229 @@ fn a_tail_call_out_of_the_loader_does_not_build_the_owner() {
     assert!(!loader_scopes(&result).contains_key("new_engine_field"));
     assert!(matches!(&tail.outcome, PathOutcome::Gap(stop) if stop.reason == "loader-tail-call"));
 }
+
+#[test]
+fn a_uniform_list_read_into_an_owner_array_joins_as_a_block_reader() {
+    use crate::ReaderKind;
+    use crate::engine::analysis::readers::{classify, destination};
+
+    let list = |array: Vec<u8>| {
+        let mut input = fixture();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0x4000)
+            .unwrap()
+            .name = "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)".into();
+        input.functions[0].code.splice(16..32, array);
+        derive(input)
+    };
+
+    let owner_array = arm64!(at 0x1010;
+        add x8, x0, #0x40; // the array member
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0x4000 // CReader::ReadUniform<CString>
+    );
+    let result = list(owner_array);
+    let readers = &result.fields[0].readers;
+    assert!(
+        matches!(readers[0], ReaderJoin::Joined { .. }),
+        "{readers:?}"
+    );
+    assert_eq!(classify(readers).kind, ReaderKind::Block);
+    assert_eq!(classify(readers).family, crate::BlockFamily::NotApplicable);
+    assert_eq!(destination(&readers[0]), Some(0x40));
+
+    let stack_array = arm64!(at 0x1010;
+        add x8, sp, #0x10; // a temporary array that the loader converts later
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0x4000 // CReader::ReadUniform<CString>
+    );
+    let result = list(stack_array);
+    let readers = &result.fields[0].readers;
+    assert_eq!(classify(readers).kind, ReaderKind::Block);
+    assert_eq!(destination(&readers[0]), None);
+
+    let loaded_array = arm64!(at 0x1010;
+        ldr x8, [x0, #0x40]; // an array that the owner points to
+        mov x0, x1; // the reader
+        mov x1, x8;
+        b extern 0x4000 // CReader::ReadUniform<CString>
+    );
+    let result = list(loaded_array);
+    assert!(
+        matches!(result.fields[0].readers[0], ReaderJoin::Missing(_)),
+        "{:?}",
+        result.fields[0].readers
+    );
+}
+
+/// A field input whose token 7 reads a Boolean into the stack temporary at `sp + 0x10`, then runs
+/// `merge` from `0x1030`, with the owner in `x19`.
+fn boolean_temporary(merge: Vec<u8>) -> fields::RegistryFieldResult {
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CReader::Read(bool&)".into();
+    let mut code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // the owner
+        ldr w8, [x19, #0x40];
+        ubfx w8, w8, #3, #1;
+        strb w8, [sp, #0x10];
+        add x1, sp, #0x10; // a temporary, not the member
+        ldrb w21, [sp, #0x10]; // the old value, kept across the call
+        mov x0, x20; // the reader, which this test keeps in x20
+        bl extern 0x4000 // CReader::Read(bool&)
+    );
+    code.extend(merge);
+    input.functions[0].code = code;
+    // The reader enters in x1; keep it in x20 for the call.
+    input.functions[0]
+        .code
+        .splice(16..20, arm64!(at 0x1010; mov x20, x1));
+    input.functions[0]
+        .code
+        .splice(20..24, arm64!(at 0x1014; mov x19, x0));
+    derive(input)
+}
+
+#[test]
+fn a_boolean_merged_into_one_bit_of_an_owner_word_replaces_that_bit() {
+    use crate::{ReaderKind, RepeatBehavior};
+
+    let merged = boolean_temporary(arm64!(at 0x1030;
+        ldrb w8, [sp, #0x10]; // the temporary
+        ldr w9, [x19, #0x40];
+        and w9, w9, #0xfffffff7; // clear bit 3
+        orr w8, w9, w8, lsl #3;
+        b extern 0x1044;
+        str w8, [x19, #0x40];
+        ret
+    ));
+    assert_eq!(
+        merged.fields[0].readers,
+        [ReaderJoin::Stored {
+            callee: "CReader::Read(bool&)".into(),
+            kind: ReaderKind::Boolean,
+            destination: None,
+            repeat: RepeatBehavior::Replace,
+        }],
+        "{:?}",
+        merged.gaps
+    );
+
+    let copied = boolean_temporary(arm64!(at 0x1030;
+        ldrb w8, [sp, #0x10]; // the temporary
+        strb w8, [x19, #0x48];
+        ret
+    ));
+    assert!(matches!(
+        copied.fields[0].readers[..],
+        [ReaderJoin::Stored {
+            destination: Some(0x48),
+            repeat: RepeatBehavior::Replace,
+            ..
+        }]
+    ));
+}
+
+#[test]
+fn a_merge_that_is_not_one_bit_of_the_stored_word_keeps_the_reader_call() {
+    for merge in [
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            ldr w9, [x19, #0x40];
+            and w9, w9, #0xfffffff3; // clears bits 2 and 3
+            orr w8, w9, w8, lsl #3;
+            str w8, [x19, #0x40];
+            ret
+        ),
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            ldr w9, [x19, #0x40];
+            and w9, w9, #0xfffffff7;
+            orr w8, w9, w8, lsl #2; // the byte lands on another bit
+            str w8, [x19, #0x40];
+            ret
+        ),
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            ldr w9, [x19, #0x40];
+            and w9, w9, #0xfffffff7;
+            orr w8, w9, w8, lsl #3;
+            str w8, [x19, #0x44]; // another word
+            ret
+        ),
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            ldr w9, [x19, #0x40];
+            and w9, w9, #0xfffffff7;
+            orr w8, w9, w8, lsl #3;
+            bl extern 0x4000; // a call before the store
+            str w8, [x19, #0x40];
+            ret
+        ),
+    ] {
+        let result = boolean_temporary(merge);
+        assert!(
+            matches!(
+                &result.fields[0].readers[..],
+                [ReaderJoin::Joined { arguments, tail: false, .. }]
+                    if arguments.get("x1") == Some(&fields::Value::Stack(0x10))
+            ),
+            "{:?}",
+            result.fields[0].readers
+        );
+    }
+}
+
+#[test]
+fn a_temporary_loaded_before_the_reader_call_is_not_the_value_read() {
+    let result = boolean_temporary(arm64!(at 0x1030;
+        ldr w9, [x19, #0x40];
+        and w9, w9, #0xfffffff7;
+        orr w8, w9, w21, lsl #3; // the old value, not the one read
+        str w8, [x19, #0x40];
+        ret
+    ));
+    assert!(
+        matches!(result.fields[0].readers[..], [ReaderJoin::Joined { tail: false, .. }]),
+        "{:?}",
+        result.fields[0].readers
+    );
+}
+
+#[test]
+fn a_continuation_that_ends_without_a_return_keeps_the_reader_call() {
+    for continuation in [
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10] // the function ends here
+        ),
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            b extern 0x1030 // a cycle
+        ),
+        arm64!(at 0x1030;
+            ldrb w8, [sp, #0x10];
+            ldp x29, x30, [sp], #0x10; // moves the stack pointer
+            strb w8, [x19, #0x48];
+            ret
+        ),
+    ] {
+        let result = boolean_temporary(continuation);
+        assert!(
+            matches!(result.fields[0].readers[..], [ReaderJoin::Joined { tail: false, .. }]),
+            "{:?}",
+            result.fields[0].readers
+        );
+    }
+}

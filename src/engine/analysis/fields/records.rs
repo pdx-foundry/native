@@ -93,6 +93,11 @@ pub enum Value {
     EqualsAny(Box<Value>, Vec<i64>),
     /// The original field token plus a constant, as a zero-extended 32-bit word.
     TokenWord(i64),
+    /// A loaded word with one bit cleared: the load and the bit.
+    ClearedBit(Box<Value>, u8),
+    /// A loaded word whose cleared bit now holds the low bit of a stack byte: the load and the
+    /// bit.
+    InsertedBit(Box<Value>, u8),
     /// A jump-table entry that the token selects.
     TableEntry(TableEntry),
     /// A code address formed from a jump-table entry: `base + (entry << shift)`.

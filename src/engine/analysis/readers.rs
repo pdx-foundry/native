@@ -140,6 +140,8 @@ fn family_of_callee(callee: &str) -> BlockFamily {
         || callee == "CEffect::Read(CReader&, EScopeType)"
     {
         BlockFamily::Effect
+    } else if is_uniform_list(callee) {
+        BlockFamily::NotApplicable
     } else if matches!(
         classify_callee(callee),
         ReaderKind::Block | ReaderKind::Unknown
@@ -209,8 +211,26 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
             ReaderKind::Block
         }
         _ if references::reader(callee).is_some() => ReaderKind::Reference,
+        _ if is_uniform_list(callee) => ReaderKind::Block,
         _ => ReaderKind::Unknown,
     }
+}
+
+/// Whether `callee` is `CReader::ReadUniform<T>`, which appends each value of a `{ a b c }` list
+/// to the array that it receives. The template's `enable_if` return type differs for an
+/// enumeration element and for any other element.
+fn is_uniform_list(callee: &str) -> bool {
+    let Some(rest) = callee.strip_prefix("std::__1::enable_if<") else {
+        return false;
+    };
+    let Some((_, reader)) = rest.split_once(", void>::type CReader::ReadUniform<") else {
+        return false;
+    };
+    let Some((element, parameter)) = reader.split_once(">(") else {
+        return false;
+    };
+
+    parameter == format!("CPdxArray<{}, int>&)", element.trim_end())
 }
 
 /// Whether the join is a shared scoped numeric reader.
@@ -337,6 +357,11 @@ pub(crate) fn arguments_join(
         owner(get("x0")) && get("x1") == Some(&Value::Reader(0))
     } else if name == SKIP {
         get("x0") == Some(&Value::Reader(0))
+    } else if is_uniform_list(name) {
+        // A list read into a stack array, which the loader converts after the call, still has
+        // the reader's value form; only its storage is unknown.
+        get("x0") == Some(&Value::Reader(0))
+            && (owner(get("x1")) || matches!(get("x1"), Some(Value::Stack(_))))
     } else if name.starts_with("CReader::Read(") {
         let stack_temporary = match classify_callee(name) {
             ReaderKind::Integer => scalar_width(name) == Some(4),
@@ -608,6 +633,43 @@ mod tests {
             ),
         ] {
             assert_eq!(classify(&[joined(callee)]).kind, expected, "{callee}");
+        }
+    }
+
+    #[test]
+    fn a_uniform_list_of_any_element_is_a_block_reader_of_an_owner_array() {
+        for callee in [
+            "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)",
+            "std::__1::enable_if<std::is_enum<EScopeType>::value, void>::type CReader::ReadUniform<EScopeType>(CPdxArray<EScopeType, int>&)",
+            "std::__1::enable_if<!(std::is_enum<TPdxRef<CShipDesign> >::value), void>::type CReader::ReadUniform<TPdxRef<CShipDesign> >(CPdxArray<TPdxRef<CShipDesign>, int>&)",
+        ] {
+            assert_eq!(classify_callee(callee), ReaderKind::Block, "{callee}");
+            assert_eq!(family_of_callee(callee), BlockFamily::NotApplicable, "{callee}");
+            let mut arguments = BTreeMap::from([
+                (
+                    "x0".into(),
+                    crate::engine::analysis::fields::Value::Reader(0),
+                ),
+                (
+                    "x1".into(),
+                    crate::engine::analysis::fields::Value::Owner(0x40),
+                ),
+            ]);
+            assert!(arguments_join(callee, &arguments, false, None), "{callee}");
+            arguments.insert(
+                "x1".into(),
+                crate::engine::analysis::fields::Value::Stack(0x10),
+            );
+            assert!(arguments_join(callee, &arguments, false, None), "{callee}");
+            arguments.insert("x1".into(), crate::engine::analysis::fields::Value::Token);
+            assert!(!arguments_join(callee, &arguments, false, None), "{callee}");
+        }
+
+        for callee in [
+            "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<int, int>&)",
+            "void NSerializer::ReadUniformWithCustomSerializer<CSpecialistSubjectLevel::CSerializer, CSpecialistSubjectLevel, >(CReader&, CPdxArray<CSpecialistSubjectLevel, int>&, &&)",
+        ] {
+            assert_eq!(classify_callee(callee), ReaderKind::Unknown, "{callee}");
         }
     }
 

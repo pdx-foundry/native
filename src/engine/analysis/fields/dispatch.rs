@@ -145,6 +145,9 @@ struct State {
     targets: BTreeSet<i64>,
     emplaced: BTreeSet<i64>,
     stored: Option<(ReaderJoin, i64, i64)>,
+    /// A Boolean that a reader call wrote into a stack temporary, while the path follows it to
+    /// its member.
+    temporary: Option<Temporary>,
     saved_addresses: BTreeMap<i64, Value>,
     unknown_stack_store: bool,
     pc: usize,
@@ -156,6 +159,18 @@ struct State {
     /// The jump-table case that this token took.
     table_case: Option<TableCase>,
 }
+/// A reader call's Boolean in a stack temporary. The loader merges it into a bit of an owner
+/// word, or copies it to an owner byte, after the call.
+#[derive(Clone)]
+struct Temporary {
+    /// The path as it ends at the reader call. It stands when the merge is not followed.
+    at_call: TokenPath,
+    /// The stack offset of the temporary.
+    slot: i64,
+    /// Once the merge is stored: the owner offset of a copy, or `None` for a bit.
+    merged: Option<Option<i64>>,
+}
+
 impl State {
     fn save_address(&mut self, at: i64, width: i64, value: Option<Value>) {
         self.unknown_stack_store |= self.stored.is_some() && value.is_none();
@@ -229,6 +244,11 @@ impl State {
             return number(operand).map(Value::Constant);
         }
         let value = self.registers.get(&register(operand)?).cloned()?;
+        if let Value::ClearedBit(load, _) | Value::InsertedBit(load, _) = &value
+            && operand.starts_with('w')
+        {
+            return matches!(load.as_ref(), Value::Load(_, width) if *width <= 4).then_some(value);
+        }
         if operand.starts_with('w') {
             match value {
                 Value::Constant(value) => Some(Value::Constant(value as u32 as i32 as i64)),
@@ -244,7 +264,12 @@ impl State {
             Some(value)
         }
     }
+    /// The path as it ends at `terminal` with `outcome`. A path that stops while it follows a
+    /// Boolean temporary to its member ends at the reader call instead.
     fn finish(&self, terminal: u64, outcome: PathOutcome) -> TokenPath {
+        if let Some(temporary) = &self.temporary {
+            return temporary.at_call.clone();
+        }
         let outcome = match (outcome, &self.value_read) {
             (PathOutcome::Gap(_) | PathOutcome::Reader(ReaderJoin::Missing(_)), Some(read)) => {
                 PathOutcome::Reader(ReaderJoin::Missing(read.clone()))
@@ -914,6 +939,7 @@ fn explore_member_with_wrapped_owner(
         targets: BTreeSet::new(),
         emplaced: BTreeSet::new(),
         stored: None,
+        temporary: None,
         saved_addresses: BTreeMap::new(),
         unknown_stack_store: false,
         pc: 0,
@@ -982,6 +1008,9 @@ fn explore_member_with_wrapped_owner(
             let Some(row) = rows.get(state.pc) else {
                 let past =
                     Unresolved::at("end-of-function", after_last, entry, Obstacle::OutsideCode);
+                if let (Some(_), Some(case)) = (&state.temporary, state.table_case) {
+                    table_readers.push((leaves.len(), case));
+                }
                 leaves.push(state.finish(0, PathOutcome::Gap(past)));
                 break;
             };
@@ -1002,11 +1031,31 @@ fn explore_member_with_wrapped_owner(
                 None
             };
             if let Some(repeated) = repeated {
+                if let (Some(_), Some(case)) = (&state.temporary, state.table_case) {
+                    table_readers.push((leaves.len(), case));
+                }
                 leaves.push(state.finish(row.address, PathOutcome::Gap(repeated)));
                 break;
             }
             state.pc += 1;
             state.path.push(row.address);
+            if let Some(mut temporary) = state.temporary.take() {
+                let path = match follow_temporary(row, &mut state, &mut temporary, &indexes) {
+                    Some(TemporaryStep::Next) => {
+                        state.temporary = Some(temporary);
+                        continue;
+                    }
+                    Some(TemporaryStep::Merged(join)) => {
+                        state.finish(row.address, PathOutcome::Reader(join))
+                    }
+                    None => temporary.at_call,
+                };
+                if let Some(case) = state.table_case {
+                    table_readers.push((leaves.len(), case));
+                }
+                leaves.push(path);
+                break;
+            }
             let args: Vec<_> = row.operands.split(',').collect();
             if input.loader.is_some() && row.operation == "blr" {
                 state.clobber_call();
@@ -1278,6 +1327,22 @@ fn explore_member_with_wrapped_owner(
                     state.clobber_call();
                     continue;
                 }
+                if row.operation == "bl"
+                    && let Some(slot) = boolean_temporary(&outcome)
+                {
+                    let at_call = state.finish(row.address, outcome);
+                    state.clobber_call();
+                    // A register loaded from the temporary before the call holds the old value.
+                    state
+                        .registers
+                        .retain(|_, value| !mentions_stack(value, slot));
+                    state.temporary = Some(Temporary {
+                        at_call,
+                        slot,
+                        merged: None,
+                    });
+                    continue;
+                }
                 if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
                     table_readers.push((leaves.len(), case));
                 }
@@ -1313,6 +1378,163 @@ fn explore_member_with_wrapped_owner(
             .then(a.conditions.cmp(&b.conditions))
     });
     (leaves, tables)
+}
+
+/// The stack offset that a joined `CReader::Read(bool&)` writes, when its destination is a stack
+/// temporary.
+fn boolean_temporary(outcome: &PathOutcome) -> Option<i64> {
+    let PathOutcome::Reader(ReaderJoin::Joined {
+        callee, arguments, ..
+    }) = outcome
+    else {
+        return None;
+    };
+    match arguments.get("x1") {
+        Some(Value::Stack(slot)) if callee == BOOLEAN_READ => Some(*slot),
+        _ => None,
+    }
+}
+
+const BOOLEAN_READ: &str = "CReader::Read(bool&)";
+
+/// Whether `value` is the stack address `slot` or derives from it.
+fn mentions_stack(value: &Value, slot: i64) -> bool {
+    match value {
+        Value::Stack(at) => *at == slot,
+        Value::Load(base, _) | Value::Offset(base, _) => mentions_stack(base, slot),
+        Value::ClearedBit(load, _) | Value::InsertedBit(load, _) => mentions_stack(load, slot),
+        Value::Indexed(base, index, _) | Value::SumProduct(base, index, _) => {
+            mentions_stack(base, slot) || mentions_stack(index, slot)
+        }
+        _ => false,
+    }
+}
+
+/// What a path does at one instruction after a Boolean reader call into a stack temporary.
+enum TemporaryStep {
+    /// Go on to the next instruction.
+    Next,
+    /// The path returns after the merge; the join holds what the merge established.
+    Merged(ReaderJoin),
+}
+
+/// Follow `row` on the way from the reader call to the member. The loader loads the temporary
+/// byte and the owner word, clears one bit of the word, ORs the byte in at that bit and stores the
+/// word; or it stores the byte itself. The bit gets the reader's value, so a second occurrence
+/// replaces the first. `None` when the row is anything else: the path then ends at the call.
+fn follow_temporary(
+    row: &Instruction,
+    state: &mut State,
+    temporary: &mut Temporary,
+    indexes: &BTreeMap<u64, usize>,
+) -> Option<TemporaryStep> {
+    let args: Vec<_> = row.operands.split(',').collect();
+    let temporary_byte = Value::Load(Box::new(Value::Stack(temporary.slot)), 1);
+    match (row.operation.as_str(), args.as_slice()) {
+        ("ldrb" | "ldrh" | "ldr", [destination, ..]) if temporary.merged.is_none() => {
+            let (_, address) = row.operands.split_once(',')?;
+            let (base, amount) = memory(address)?;
+            let width = access_width(&row.operation, destination);
+            let location = offset(state.value(base)?, amount)?;
+            if !matches!(location, Value::Owner(_)) && location != Value::Stack(temporary.slot) {
+                return None;
+            }
+            state.registers.insert(
+                register(destination)?,
+                Value::Load(Box::new(location), width),
+            );
+        }
+        ("and", [destination, source, mask]) => {
+            let Some(Value::Load(word, width)) = state.value(source) else {
+                return None;
+            };
+            let bit = cleared_bit(mask, width)?;
+            if !matches!(word.as_ref(), Value::Owner(_)) {
+                return None;
+            }
+            let cleared = Value::ClearedBit(Box::new(Value::Load(word, width)), bit);
+            state.registers.insert(register(destination)?, cleared);
+        }
+        ("orr", [destination, word, byte, shift @ ..]) => {
+            let Some(Value::ClearedBit(load, bit)) = state.value(word) else {
+                return None;
+            };
+            let shifted_by = match shift {
+                [] => 0,
+                [shift] => number(shift.strip_prefix("lsl")?)?,
+                _ => return None,
+            };
+            if state.value(byte) != Some(temporary_byte) || shifted_by != i64::from(bit) {
+                return None;
+            }
+            state
+                .registers
+                .insert(register(destination)?, Value::InsertedBit(load, bit));
+        }
+        ("strb" | "strh" | "str", [source, ..]) if temporary.merged.is_none() => {
+            let (_, address) = row.operands.split_once(',')?;
+            let (base, amount) = memory(address)?;
+            let Value::Owner(at) = offset(state.value(base)?, amount)? else {
+                return None;
+            };
+            let width = access_width(&row.operation, source);
+            temporary.merged = match state.value(source)? {
+                Value::InsertedBit(load, _)
+                    if *load == Value::Load(Box::new(Value::Owner(at)), width) =>
+                {
+                    Some(None)
+                }
+                value if value == temporary_byte => Some(Some(at)),
+                _ => return None,
+            };
+        }
+        ("b", [target]) => state.pc = *indexes.get(&(number(target)? as u64))?,
+        ("ldp", [first, second, "[sp", amount]) if amount.ends_with(']') => {
+            state.assign(first, None);
+            state.assign(second, None);
+        }
+        ("add", [destination, "sp", amount]) if *destination == "sp" => {
+            let restored = offset(state.value("sp")?, number(amount)?)?;
+            state.assign("sp", Some(restored));
+        }
+        ("ret", [""]) => {
+            let destination = temporary.merged?;
+            return Some(TemporaryStep::Merged(ReaderJoin::Stored {
+                callee: BOOLEAN_READ.into(),
+                kind: crate::ReaderKind::Boolean,
+                destination,
+                repeat: crate::RepeatBehavior::Replace,
+            }));
+        }
+        _ => return None,
+    }
+
+    Some(TemporaryStep::Next)
+}
+
+/// The bytes that a load or store moves.
+fn access_width(operation: &str, register: &str) -> u8 {
+    match operation {
+        "ldrb" | "strb" => 1,
+        "ldrh" | "strh" => 2,
+        _ if register.starts_with('x') => 8,
+        _ => 4,
+    }
+}
+
+/// The one bit of a `width`-byte word that the AND immediate `mask` clears, when it clears exactly
+/// one.
+fn cleared_bit(mask: &str, width: u8) -> Option<u8> {
+    let mask = u64::from_str_radix(mask.strip_prefix("#0x")?, 16).ok()?;
+    let bits = u32::from(width) * 8;
+    let word = if bits == 64 {
+        u64::MAX
+    } else {
+        (1 << bits) - 1
+    };
+    let cleared = !mask & word;
+
+    (cleared.count_ones() == 1).then(|| cleared.trailing_zeros() as u8)
 }
 
 /// The paths that one branch continues and ends, and the jump tables it could not decode.
@@ -2248,6 +2470,7 @@ mod tests {
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),
             stored: None,
+            temporary: None,
             saved_addresses: BTreeMap::new(),
             unknown_stack_store: false,
             pc: 0,
