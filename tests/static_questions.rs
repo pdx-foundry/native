@@ -561,11 +561,32 @@ fn weight_blocks_match_the_recorded_variants_and_shared_identities() {
     assert_eq!(field("modifier").read_scope, GrammarProperty::Known(vec![]));
     assert_eq!(field("potential").read_scope, agenda.read_scope);
 
-    // A stored zero mask has no later scope check, so it stays an unresolved path.
-    let buildings = native.registry_fields("common/buildings").unwrap();
-    assert!(buildings.gaps.iter().any(|gap| {
-        gap.kind == GapKind::UnresolvedPath && gap.detail == "read-scope: zero-mask"
-    }));
+    // A block whose every read passes scope 0 reads in no scope: a stored zero (building
+    // weights) and a literal one (root triggers), with no zero-mask gap left.
+    for (registry, name) in [
+        ("common/buildings", "planet_limit"),
+        ("common/fallen_empires", "possible"),
+        ("common/governments/civics", "playable"),
+    ] {
+        let answer = native.registry_fields(registry).unwrap();
+        let field = answer
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .unwrap();
+        assert_eq!(
+            field.read_scope,
+            GrammarProperty::Known(vec![]),
+            "{registry}.{name}"
+        );
+        assert!(
+            !answer
+                .gaps
+                .iter()
+                .any(|gap| gap.detail == "read-scope: zero-mask"),
+            "{registry}"
+        );
+    }
 }
 
 #[test]
