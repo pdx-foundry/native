@@ -119,13 +119,24 @@ belongs to one row.
 | Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap. The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
-| Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. |
+| Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
 | Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-627 keyword domains. |
 | Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
 | Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
 | Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |
 | `CTriggeredEventDescription<…>::ReadEntry` (`desc`, `tooltip`) | 12 | 8 | Gap. A nested description grammar with its own trigger; repair with a description block reader. |
 | Other single helpers (`ReadColor`, `ReadTexture`, `ReadShipClass`, `ReadBeamState`, `CCompareOperator::Read`, joins of different readers) | 42 | 20 | Gap. One helper each; repair when Atlas needs the field. |
+
+**Inline `CString` copies in constructors.** `common/governments/civics` `modifier` and
+`common/star_classes` `modifier` (handed over from SDK-676) read an inline `CModifier` slot whose
+vtable the owner constructor installs, but the walk loses it on 24 of 32 paths. Before the slot,
+the constructor copies `CString` members inline. On the long path, the copy's allocator is given
+the member, so its result may be an owner address. A later store through it at an unknown index
+may reach every owner byte after the member, the modifier's vtable included. The receivers test
+`exact_build_string_and_token_constructor_effects` asserts this. Obstacle: no stated rule says
+that the string allocator returns memory outside the owner. Repair: state that rule for the
+`CString` allocator and check it on three constructors. It is an evaluator rule for every
+constructor walk, command grammar included, so it is outside this walker repair.
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
 unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
