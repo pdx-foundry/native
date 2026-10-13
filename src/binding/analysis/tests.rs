@@ -71,6 +71,7 @@ fn fixture() -> (tempfile::TempDir, BoundAnalysis) {
     let (installation, _) = Installation::open(&path).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation,
         Default::default(),
@@ -161,6 +162,7 @@ fn every_fixture_registry_refuses_without_a_derived_loader() {
     let (installation, _) = Installation::open(&path).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation.clone(),
         Default::default(),
@@ -269,6 +271,7 @@ fn field_input_refuses_an_owner_that_no_registry_has() {
                 "CLoaderDatabase".into(),
                 LoaderOwner::Owner("CLoaderItem".into()),
             )])),
+            loader_reasons: &[],
         })),
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
@@ -306,6 +309,7 @@ fn a_root_key_owner_answers_for_the_other_class_and_names_the_keyed_class() {
                 other: "CPlanet".into(),
             },
         )])),
+        loader_reasons: &[],
     };
     assert_eq!(
         schedule
@@ -345,7 +349,13 @@ fn a_root_key_owner_answers_for_the_other_class_and_names_the_keyed_class() {
         source: Source::new(BuildId("test".into()), "test", Basis::StaticAnalysis),
     };
 
-    native.add_keyed_class_gap("common/planets", &mut answer);
+    native
+        .add_keyed_class_gap(
+            crate::Operation::DerivedNames,
+            "common/planets",
+            &mut answer,
+        )
+        .unwrap();
 
     let [gap] = &answer.gaps[..] else {
         panic!("{:?}", answer.gaps);
@@ -402,6 +412,10 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
             ("CRightDatabase".into(), LoaderOwner::Owner("CRight".into())),
             ("CColorsDatabase".into(), LoaderOwner::NoOwner),
         ])),
+        loader_reasons: &[crate::binding::groups::LoaderReason {
+            database: "CColorsDatabase",
+            reason: "the stated reason",
+        }],
     };
     let catalog = Catalog {
         candidates: vec![NamedCandidate {
@@ -460,11 +474,8 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         unsupported("common/one"),
         "the loader builds several classes with a member reader: CFirst, CSecond"
     );
-    // A loader with a stated reason for building no item gives that reason.
-    assert_eq!(
-        unsupported("common/colors"),
-        "the loader reads fixed root keys of unnamed colours into its database and builds no item"
-    );
+    // A loader that the build's recipe states a reason for gives that reason.
+    assert_eq!(unsupported("common/colors"), "the stated reason");
     // Two databases load one directory; neither owner is selected.
     assert_eq!(
         unsupported("common/pair"),
@@ -922,6 +933,7 @@ fn retargeted_executable_permanently_invalidates_static_reads() {
     let (installation, _) = Installation::open(&hint).unwrap();
     let analysis = BoundAnalysis::new(
         crate::binding::targets::test_declarations(),
+        &[],
         None,
         installation,
         Default::default(),
@@ -1419,9 +1431,10 @@ fn a_kept_registry_field_result_still_checks_executable_integrity() {
     };
     assert!(analysis.catalog.set(Ok(catalog)).is_ok());
     let kept = Arc::new(RegistryFieldResult::default());
-    analysis
-        .kept_registry_fields()
-        .insert("common/traditions".into(), Arc::clone(&kept));
+    analysis.kept_registry_fields().insert(
+        ("common/traditions".into(), "CTraditionType".into()),
+        Arc::clone(&kept),
+    );
 
     let (owner, result) = analysis
         .registry_field_result("common/traditions")

@@ -51,7 +51,7 @@ impl Native {
             let storage = names::storage(&fields);
             let result = names::analyze(shared, input, &code, &storage);
             let mut answer = normalized_names(registry, &result, self.build());
-            self.add_keyed_class_gap(registry, &mut answer);
+            self.add_keyed_class_gap(operation, registry, &mut answer)?;
             Ok(answer)
         })
     }

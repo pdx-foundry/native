@@ -48,28 +48,6 @@ pub(in crate::binding) fn loader_owners(
         .collect())
 }
 
-/// Why the loader of `database` builds no class with a member reader, as read on M452. A database
-/// with no stated reason gets the general one. Each stated reason holds while its loader keeps
-/// that shape; the knowledge page (`registry-fields.md`, "Root-key owners") gives the
-/// functions and what would answer the registry.
-pub(in crate::binding) fn no_owner_reason(database: &str) -> &'static str {
-    match database {
-        "CColorsDatabase" => {
-            "the loader reads fixed root keys of unnamed colours into its database and builds no item"
-        }
-        "CWeaponTagDatabase" => {
-            "the loader registers each token of its files as a tag and builds no item"
-        }
-        "CShipBehaviorDatabase" => {
-            "the loader reads each item in its own statement loop, not through a member reader"
-        }
-        "CWorldGfxDatabase" => {
-            "the loader reads the database itself, whose member reader builds and reads each item"
-        }
-        _ => "the loader builds no class with a member reader",
-    }
-}
-
 /// The class that each constructor body and each primary vtable address point builds, for every
 /// class with a member reader.
 fn builders(image: &Image<'_>) -> Result<BTreeMap<u64, String>, AnalysisError> {

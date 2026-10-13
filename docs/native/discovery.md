@@ -161,33 +161,37 @@ fields now have a reader kind. `--diff` against the tracked baseline names 50 re
 
 SDK-813 answered `common/planet_classes`, whose loader builds a planet class or, for the root key
 `random_list`, a random list ([root-key owners](registry-fields.md#root-key-owners-sdk-813)), and
-gave the other five `Unsupported` registries a narrower reason. Over a new recording at its merge
-with `main` `be49f13`, `--diff` against the tracked baseline names those six registries:
+gave the other five `Unsupported` registries a narrower reason. Its root fields are the 70 fields
+of a planet class and `random_list`, whose members are the random list's fields. Over a new
+recording at its merge with `main` `a093883`, `--diff` against the tracked baseline names those
+six registries:
 
 | Count | Before | After |
 | --- | ---: | ---: |
-| Fields: partial / unsupported | 81 / 6 | 82 / 5 |
-| Reader kinds | 1,493 / 1,855 | 1,555 / 1,925 |
-| Shapes and conditions | 1,331 / 1,855 | 1,358 / 1,925 |
+| Fields: partial / unsupported | 74 / 6 | 75 / 5 |
+| Reader kinds | 1,512 / 1,855 | 1,574 / 1,926 |
+| Shapes and conditions | 1,349 / 1,855 | 1,376 / 1,926 |
 | References | 24 / 336 | 25 / 345 |
 | Numerics | 216 / 517 | 233 / 542 |
-| Weights | 87 / 480 | 87 / 488 |
-| Scope context | 1,234 / 1,855 | 1,296 / 1,925 |
-| **All units** | **4,483 / 7,268 (61.68%)** | **4,652 / 7,520 (61.86%)** |
-| Open gaps | 4,283 | 4,356 |
-| Accepted gaps | 639 | 647 |
+| Weights | 96 / 471 | 96 / 480 |
+| Scope context | 1,247 / 1,855 | 1,309 / 1,926 |
+| **All units** | **4,549 / 7,259 (62.67%)** | **4,718 / 7,515 (62.78%)** |
+| Open gaps | 4,243 | 4,319 |
+| Accepted gaps | 687 | 695 |
 
-The 73 new open gaps and 8 accepted ones are the planet classes' own. One composition site that
-was reached only from planet-class code is now joined, so every `modifier_families` answer counts
-17 unjoined sites, not 18.
+The 76 new open gaps and 8 accepted ones are the planet classes' own; one says that the read
+scope of `random_list` is not established. One composition site that was reached only from
+planet-class code is now joined, so every `modifier_families` answer counts 17 unjoined sites, not
+18.
 
 To split the numeric gaps safely, the gap detail names the obstacle: the range, a storage
 property, or the conversion path ([answer rule](numeric-conversion.md#answer-rule)). A
 conversion-path gap is never accepted. The loader-condition limit lists its 207 fields by registry,
 so a loader-condition gap of another field stays open.
 
-Six registries are `Unsupported` for all three registry questions, because their loader builds
-no owner class or several (SDK-813; [custom-loader owners](registry-fields.md#custom-loader-owners)).
+Five registries are `Unsupported` for all three registry questions, because their loader builds
+no item class or two databases load the directory; each has its reason ([root-key
+owners](registry-fields.md#root-key-owners-sdk-813)).
 The Atlas `events/` exceptions with no Native shape are SDK-814 (`namespace`) and SDK-815 (Atlas:
 the type-wide `event` block). The run proposes no manual exception.
 

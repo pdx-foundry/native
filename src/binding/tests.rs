@@ -64,6 +64,7 @@ fn authored_binding(
     let invalidated = std::sync::Arc::<std::sync::Mutex<Option<UnavailableReason>>>::default();
     let analysis = super::BoundAnalysis::new(
         super::targets::test_declarations(),
+        &[],
         None,
         installation.clone(),
         invalidated.clone(),

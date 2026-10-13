@@ -292,7 +292,26 @@ impl Native {
             blocks: self.block_facts()?,
             categories: modifiers::category_names(self.category_input()?, []),
         };
-        let (answer, entry_gaps) = self.registry_field_answer(registry, &owner, &result, &facts);
+        let (mut answer, entry_gaps) =
+            self.registry_field_answer(registry, &owner, &result, &facts);
+        let keyed = self
+            .bound()
+            .analysis
+            .keyed_field_result(registry)
+            .map_err(|failure| error(Operation::RegistryFields, failure))?;
+        if let Some((key, class, keyed_result)) = keyed {
+            let (members, _) = self.registry_field_answer(registry, &class, &keyed_result, &facts);
+            let (field, gaps) = super::loader_kinds::reserved_key_field(
+                &key,
+                members.value,
+                members.gaps,
+                registry,
+            );
+            answer.value.push(field);
+            answer.gaps.extend(gaps);
+            answer.completeness = Completeness::from_gaps(&answer.gaps);
+        }
+
         Ok(RegistryFieldRun {
             answer,
             result,
@@ -462,13 +481,12 @@ impl Native {
             );
         }
         storage_gaps(&value, None, &mut gaps);
-        let mut answer = Answer {
+        let answer = Answer {
             value,
             completeness: Completeness::from_gaps(&gaps),
             gaps,
             source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
         };
-        self.add_keyed_class_gap(registry, &mut answer);
         (answer, entry_gaps)
     }
 
@@ -488,16 +506,23 @@ impl Native {
     /// Add to `answer`, an answer for `registry`'s owner, a gap for the root statements that the
     /// registry's loader reads into another class. The gap is outside the method: the answer
     /// covers the owner's items, and those statements are not its items.
-    pub(crate) fn add_keyed_class_gap<T>(&self, registry: &str, answer: &mut Answer<T>) {
-        let Ok(verified) = self.bound().analysis.verified() else {
-            return;
-        };
+    pub(crate) fn add_keyed_class_gap<T>(
+        &self,
+        operation: Operation,
+        registry: &str,
+        answer: &mut Answer<T>,
+    ) -> Result<(), Error> {
+        let verified = self
+            .bound()
+            .analysis
+            .verified()
+            .map_err(|failure| error(operation, failure))?;
         let Some((key, _)) = verified
             .database_schedule()
             .ok()
             .and_then(|schedule| schedule.keyed_class(registry))
         else {
-            return;
+            return Ok(());
         };
 
         answer.gaps.push(Gap {
@@ -508,6 +533,8 @@ impl Native {
                  answer does not cover."
             ),
         });
+
+        Ok(())
     }
 
     /// The error for a registry that the operation does not read. A registry that

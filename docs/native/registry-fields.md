@@ -25,7 +25,7 @@ required input make the answer partial.
 This sweep ran on M452.
 
 `tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v36`) holds
-the baseline: **185 registries, 13 complete, 166 partial, 0 failed, 6 unsupported**, 1,855 root
+the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
 listed, and `common/ship_sizes.carries_colony` looks up `common/planet_classes`. The 164 template answers did not
@@ -37,7 +37,8 @@ their counts are in [custom-loader owners](#custom-loader-owners). Against `v33`
 authorities gained their modifier, clause and weight grammar; 33 root fields that embed an object
 of another class gained `accepted_categories: NotApplicable`; and 19 root fields of nine
 registries joined their reader once a delegating constructor's stack string no longer stops the
-constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+constructor walk ([nested owners and unjoined fields](modifier-blocks.md#nested-owners-sdk-676)). SDK-813 answered `common/planet_classes`: its 70 planet-class fields and the reserved key
+`random_list` ([root-key owners](#root-key-owners-sdk-813)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -685,17 +686,24 @@ Both go back to the statement read.
   next statement read builds exactly one of the two classes, a different one on each side. Any
   other shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
   does not follow a path-dependent write of the constant.
-- **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), for
-  `registry_fields`, `derived_names` and `modifier_families`, each with one `OutsideMethod` gap
-  that names the reserved key. Both classes are loader owners, so `field_input` reads either.
-- **Accepted limit.** The `random_list` statements (`CPlanetClassRandomList`) have no answer.
-  Atlas's `type[planet_class_random_list]` has 12 claims, against 375 for `type[planet_class]`.
-  Removal route: a root field `random_list` whose members are the keyed class's fields, with a
-  spec rule that a reserved root key is a root statement in an otherwise ordinary answer, and the
-  matching Atlas selector (SDK-818).
+- **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), and its
+  fields are the registry's root fields. The reserved key is one more root field, `random_list`:
+  a root statement, as an [event kind](#event-kinds) is, not a member of a planet class. Its
+  members are the fields of `CPlanetClassRandomList`, from a field run of their own (the kept
+  results are by registry and owner); their conditions, member gaps and registry-wide gaps move
+  under the key, and the run's `OutsideMethod` gaps, which repeat the owner's, are dropped. The
+  key's reader is a block with no identity, and its read scope is unresolved with a gap: the
+  method does not follow the inlined construction to `CPersistent::Read(CReader&)`.
+  `derived_names` and `modifier_families` answer `CPlanetClass` with one `OutsideMethod` gap
+  that names the reserved key. Atlas maps `random_list` to `type[planet_class_random_list]` (12
+  claims) and the other root fields to `type[planet_class]` (375) in SDK-818.
+- **Pitfall.** A consumer that reads every root field as a member of an item reads `random_list`
+  as a planet-class field. The reserved key is a root statement; a planet class has no
+  `random_list` member.
 
-The other registries keep `Unsupported`, with the reason that `no_owner_reason`
-(`binding/binary/loader_owners.rs`) states for each loader. What would answer each:
+The other registries keep `Unsupported`, with the reason that the build's recipe states for each
+loader (`LoaderReason`, `binding/groups.rs`); a loader with no stated reason gets the general one,
+so another build never reuses an M452 reason. What would answer each:
 
 | Registry | Loader on M452 | Reason | What would answer it |
 | --- | --- | --- | --- |
