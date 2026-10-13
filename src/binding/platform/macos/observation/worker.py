@@ -1058,7 +1058,8 @@ class ModifierObserver:
             database = uint(process, self.load(target, registry['instance']))
             if not database or database % registry['pointer_size']:
                 raise RuntimeError('registry database instance is null')
-            if cstring(process, database + registry['directory_offset'], tag_offset) != directory:
+            directory_offset = registry['directory_offset']
+            if directory_offset is not None and cstring(process, database + directory_offset, tag_offset) != directory:
                 raise RuntimeError('registry database directory mismatch')
             count = uint(process, database + registry['count_offset'], 4)
             data = uint(process, database + registry['data_offset'])

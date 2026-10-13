@@ -49,8 +49,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::evaluate::{Call, Code, Machine, Path};
 use super::families::{
-    Ending, FamilyInput, ITEM_SPAN, KeyForm, Loading, NotEstablished, ending, every_returned_path,
-    key_storage, loading, write_source,
+    Ending, FamilyInput, ITEM_SPAN, KeyConstructor, KeyForm, Loading, NotEstablished, ending,
+    every_returned_path, key_storage, loading, write_source,
 };
 use super::fields::{ReaderJoin, RegistryFieldResult, RootField, StorageSelection, storage_offset};
 use super::stop::Unresolved;
@@ -144,7 +144,7 @@ pub struct RegistryInput {
     /// the composers that they call.
     pub entered: BTreeSet<u64>,
     /// Every body of the item constructor that takes the key.
-    pub constructors: Vec<u64>,
+    pub constructors: Vec<KeyConstructor>,
     /// The code that makes the registry's items, when a root is post-read initialization.
     pub loading: Option<Loading>,
     /// Every root, entered function and constructor body.

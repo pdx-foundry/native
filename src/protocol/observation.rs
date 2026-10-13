@@ -680,7 +680,9 @@ pub(crate) struct ModifierTableBinding {
 pub(crate) struct ModifierRegistryBinding {
     /// The global that points to the registry's database.
     pub instance: u64,
-    pub directory_offset: u64,
+    /// Where the database holds its directory text, which the worker compares with the
+    /// registry's name. `None` for a database that holds none.
+    pub directory_offset: Option<u64>,
     pub data_offset: u64,
     pub count_offset: u64,
     pub pointer_size: u64,

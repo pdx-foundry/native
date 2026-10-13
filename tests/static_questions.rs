@@ -530,7 +530,7 @@ fn modifier_declarations_match_the_recorded_m452_boundary() {
 fn modifier_families_match_the_recorded_m452_generators() {
     let native = native();
     let expected: BTreeMap<String, Value> = expected("modifier-families.json");
-    assert_eq!(expected.len(), 22);
+    assert_eq!(expected.len(), 23);
     for registry in expected.keys() {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);

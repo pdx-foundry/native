@@ -911,6 +911,138 @@
       ]
     ]
   },
+  "common/strategic_resources": {
+    "families": [
+      {
+        "category_tags": {
+          "Listed": [
+            "Countries"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "country_resource_max_{key}_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Ships"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "ship_starbase_stockpile_{key}_collection_rate_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Ships"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "ship_starbase_stockpile_{key}_collection_rate_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Waystations"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "starbase_collected_colony_{key}_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Starbases"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "starbase_collected_system_{key}_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Starbases",
+            "Waystations"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "starbase_collected_system_{key}_mult"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Waystations"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "starbase_stockpile_{key}_capacity_add"
+      },
+      {
+        "category_tags": {
+          "Listed": [
+            "Waystations"
+          ]
+        },
+        "condition": "Unresolved",
+        "name_limit": null,
+        "template": "starbase_stockpile_{key}_capacity_mult"
+      }
+    ],
+    "gaps": [
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers country_resource_max_{key}_add; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers ship_starbase_stockpile_{key}_collection_rate_add; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers ship_starbase_stockpile_{key}_collection_rate_mult; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers starbase_collected_colony_{key}_add; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers starbase_collected_system_{key}_add; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers starbase_collected_system_{key}_mult; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers starbase_stockpile_{key}_capacity_add; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnresolvedPath",
+        {"kind": "registry", "name": "common/strategic_resources"},
+        "only an item's post-read code registers starbase_stockpile_{key}_capacity_mult; that the engine runs it for every item is not established: the database's class has no constructor, so the database that its loader receives is not known"
+      ],
+      [
+        "UnnamedDeclaration",
+        null,
+        "18 sites that compose modifier names at run time are not joined to a registry (1 inside the registration function; 1 combine a registry's keys with the keys of other content; 3 reached from the post-read code of content objects that are not items of a named registry; 13 reached by no chain of calls from a registry's code); some may generate this registry's modifiers"
+      ]
+    ]
+  },
   "common/technology/category": {
     "families": [
       {

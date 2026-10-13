@@ -325,16 +325,16 @@ impl VerifiedAnalysis<'_> {
         })
     }
 
-    /// Establish the key's item-relative offset from the selected registry's constructor.
+    /// Establish the key's item-relative offset from the constructor of the items' class `owner`.
     pub(in crate::binding) fn registry_key_offset(
         &self,
-        candidate: &NamedCandidate,
+        owner: &str,
         string_tag_offset: u64,
     ) -> Result<u64, String> {
         let input = binary::families::key_storage(
             &self.executable,
             &self.catalog.symbols,
-            &candidate.record.owner_candidate,
+            owner,
             string_tag_offset,
         )
         .map_err(|error| format!("item key storage analysis failed: {error}"))?;
@@ -624,7 +624,10 @@ impl VerifiedAnalysis<'_> {
     /// The registry named `registry`, with the classes of its database and its items: its
     /// template candidate, or else the join of the registry's own loader. `None` when neither
     /// names `registry`, and the reason when its loader gives no one owner.
-    fn named_registry(&self, registry: &str) -> Option<Result<NamedRegistry<'_>, String>> {
+    pub(in crate::binding) fn named_registry(
+        &self,
+        registry: &str,
+    ) -> Option<Result<NamedRegistry<'_>, String>> {
         let template = unique_named_candidate(self.named_candidates(), registry)
             .and_then(NamedCandidate::named_registry);
         if let Some(template) = template {

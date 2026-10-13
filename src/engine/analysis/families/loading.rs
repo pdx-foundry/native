@@ -84,6 +84,9 @@ pub enum NotEstablished {
     NoLoader,
     /// The item's class has no vtable in the executable's data.
     NoVtable,
+    /// The database's class has no constructor symbol, so the database that a loader receives is
+    /// not known. A database that `CreateInstance` builds in place has none.
+    NoDatabaseConstructor,
     /// A function of another class constructs an item.
     ConstructedElsewhere { function: String },
     /// A function forms an address of the item's vtables without calling its constructor.
@@ -187,10 +190,7 @@ impl<'r> Run<'r> {
         }
 
         match self.loading.database_constructors.first() {
-            None => Err(NotEstablished::Unfollowed {
-                function: "the database constructor".into(),
-                unresolved: Unresolved::new("no-symbol"),
-            }),
+            None => Err(NotEstablished::NoDatabaseConstructor),
             Some(constructor) if databases.is_empty() => Err(NotEstablished::Unfollowed {
                 function: constructor.name.clone(),
                 unresolved: Unresolved::new("never-returns"),
@@ -550,6 +550,16 @@ mod tests {
     fn a_database_whose_constructor_selects_no_read_does_not() {
         let loading = loading(loader(NO_GATE), 1);
         assert_eq!(check(&loading, &[ROOT]), unread("CDb::Load(CReader&)"));
+    }
+
+    #[test]
+    fn a_database_without_a_constructor_symbol_is_not_established() {
+        let mut loading = loading(loader(NO_GATE), 0);
+        loading.database_constructors.clear();
+        assert_eq!(
+            check(&loading, &[ROOT]),
+            Err(NotEstablished::NoDatabaseConstructor)
+        );
     }
 
     #[test]

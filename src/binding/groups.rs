@@ -45,6 +45,15 @@ impl RegistryLayout {
         self.string_tag_offset
     }
 
+    /// Where a template database keeps its items and its directory text.
+    pub(super) fn items(self) -> DatabaseItems {
+        DatabaseItems {
+            directory_offset: Some(self.directory_offset),
+            data_offset: self.data_offset,
+            count_offset: self.count_offset,
+        }
+    }
+
     /// Where a template database holds its items, for static methods that run its code.
     pub(super) fn database(self) -> crate::engine::analysis::families::DatabaseLayout {
         crate::engine::analysis::families::DatabaseLayout {
@@ -62,12 +71,39 @@ pub(super) const M45_TEMPLATE_LAYOUT: RegistryLayout = RegistryLayout {
     string_tag_offset: 23,
 };
 
+/// Where a database keeps its items, and its directory text when it holds one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct DatabaseItems {
+    pub directory_offset: Option<u64>,
+    pub data_offset: u64,
+    pub count_offset: u64,
+}
+
+/// Where a database that its own loader builds keeps its items, by the database's class.
+pub(super) struct LoaderDatabase {
+    pub class: &'static str,
+    pub items: DatabaseItems,
+}
+
+// Exact M452 disassembly: `CStrategicResourceDatabase::CreateInstance` builds the database in
+// place (no constructor), with the item array's data at +0x8 and its count at +0x14, which
+// `Init` and `GetResource` use. It holds no directory text.
+pub(super) const M452_LOADER_DATABASES: &[LoaderDatabase] = &[LoaderDatabase {
+    class: "CStrategicResourceDatabase",
+    items: DatabaseItems {
+        directory_offset: None,
+        data_offset: 0x8,
+        count_offset: 0x14,
+    },
+}];
+
 /// The engine locations that `modifier_table_binding` joins with the layouts.
 pub(super) struct ModifierTableSymbols {
     pub documentation_entry: u64,
     pub definitions: u64,
-    /// Each registry's database instance global and its item key offset, by content directory.
-    pub registries: std::collections::BTreeMap<String, (u64, Result<u64, String>)>,
+    /// Each registry's database instance global, where that database keeps its items, and its
+    /// item key offset, by content directory.
+    pub registries: std::collections::BTreeMap<String, (u64, DatabaseItems, Result<u64, String>)>,
 }
 
 pub(super) fn modifier_table_binding(
@@ -90,14 +126,14 @@ pub(super) fn modifier_table_binding(
         registries: symbols
             .registries
             .into_iter()
-            .map(|(directory, (instance, key_offset))| {
+            .map(|(directory, (instance, items, key_offset))| {
                 (
                     directory,
                     crate::protocol::observation::ModifierRegistryBinding {
                         instance,
-                        directory_offset: registry.directory_offset,
-                        data_offset: registry.data_offset,
-                        count_offset: registry.count_offset,
+                        directory_offset: items.directory_offset,
+                        data_offset: items.data_offset,
+                        count_offset: items.count_offset,
                         pointer_size: registry.pointer_size,
                         key_storage: key_storage(key_offset),
                     },
