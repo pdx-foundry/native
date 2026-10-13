@@ -126,7 +126,7 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
         panic!("{:?}", block.other_keys);
     };
     assert_eq!(other_keys.reader.id, modifier.reader.id);
-    let GrammarProperty::Partial(modifier_keys) = &other_keys.block.fixed_keys else {
+    let GrammarProperty::Known(modifier_keys) = &other_keys.block.fixed_keys else {
         panic!("{:?}", other_keys.block.fixed_keys);
     };
     for name in [
@@ -139,6 +139,31 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
         assert!(modifier_keys.iter().any(|key| key.name == name), "{name}");
     }
 
+    // `description_parameters` takes any key with one scalar value, read directly in the
+    // tradition's `modifier` and in a triggered clause's other keys.
+    let FieldMembers::ModifierBlock(direct) = &modifier.members else {
+        panic!("{:?}", modifier.members);
+    };
+    let GrammarProperty::Known(direct_keys) = &direct.fixed_keys else {
+        panic!("{:?}", direct.fixed_keys);
+    };
+    for keys in [direct_keys, modifier_keys] {
+        check_description_parameters(
+            keys.iter()
+                .find(|key| key.name == "description_parameters")
+                .unwrap(),
+        );
+    }
+    let answer = native.registry_fields("common/traditions").unwrap();
+    assert!(
+        !answer
+            .gaps
+            .iter()
+            .any(|gap| format!("{:?}", gap.subject).contains("description_parameters")),
+        "{:?}",
+        answer.gaps
+    );
+
     // Negative control: `common/federation_perks` skips the body of its `triggered_modifier`.
     let perks = native
         .registry_fields("common/federation_perks")
@@ -149,6 +174,34 @@ fn triggered_modifiers_match_the_recorded_variants_and_shared_identities() {
             .iter()
             .filter(|field| field.name == "triggered_modifier")
             .all(|field| field.reader.family != BlockFamily::TriggeredModifier)
+    );
+}
+
+/// `description_parameters`: a block that accumulates entries of any key, each a number, text
+/// or one of three keywords, and that is read in no scope.
+fn check_description_parameters(field: &pdx_native::Field) {
+    use pdx_native::{
+        AcceptedCategories, BlockFamily, FieldMembers, GrammarProperty, RepeatBehavior, ScalarForm,
+        ValueShape,
+    };
+
+    assert_eq!(field.reader.kind, ReaderKind::Block);
+    assert_eq!(field.reader.family, BlockFamily::NotApplicable);
+    assert_eq!(field.shape.value, ValueShape::Block);
+    assert_eq!(field.shape.repeat, RepeatBehavior::Accumulate);
+    assert_eq!(field.read_scope, GrammarProperty::Known(vec![]));
+    assert_eq!(field.accepted_categories, AcceptedCategories::NotApplicable);
+    assert_eq!(
+        field.members,
+        FieldMembers::AnyKey {
+            value_forms: GrammarProperty::Known(vec![
+                ScalarForm::Number,
+                ScalarForm::Text,
+                ScalarForm::Keyword("long_float".into()),
+                ScalarForm::Keyword("num64".into()),
+                ScalarForm::Keyword("unum64".into()),
+            ]),
+        }
     );
 }
 

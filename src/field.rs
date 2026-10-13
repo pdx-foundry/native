@@ -120,8 +120,30 @@ pub enum FieldMembers {
     WeightBlock(Box<WeightBlock>),
     /// Keys of a modifier block applied while a trigger holds, such as `triggered_modifier`.
     TriggeredModifier(Box<TriggeredModifierBlock>),
+    /// Any key, each with one scalar value, such as `description_parameters = { NAME = 7 }`. No
+    /// list limits the keys. The engine keeps every entry in order with its key's text, a
+    /// repeated key too.
+    AnyKey {
+        /// The written forms of a value that the engine keeps. It reports any other value, such
+        /// as a block or another keyword, as malformed and keeps the entry with an empty value. A
+        /// scripted variable or inline math value is replaced before this check; this list does
+        /// not cover it.
+        value_forms: crate::GrammarProperty<Vec<ScalarForm>>,
+    },
     /// The child fields have not been established.
     Unresolved,
+}
+
+/// A written form of one scalar value, as the text lexer cuts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ScalarForm {
+    /// A bare word that starts with a digit or `-`, or that has only digits, `-` and `.`.
+    Number,
+    /// A quoted string, or a bare word that names no engine keyword. Keywords match without case.
+    Text,
+    /// This engine keyword, written as a bare word.
+    Keyword(String),
 }
 
 /// Parser acceptance of a shared modifier block. This does not establish runtime effects,

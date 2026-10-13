@@ -15,12 +15,11 @@ reader identities retain the read/member hash used by persistent fields:
 | `e327ea91dfe75d65` | `CModifier::ReadMember` | 2 | 1 | 2 | `Known` |
 | `5a74c67fe5a4adf9` | `CGraphicalModifier::ReadMember` | 3 | 1 | 8 | `Known` |
 | `ba5f8cddeba0d833` | `CStaticModifier::ReadMember` | 25 | 1 | 11 | `Known` |
-| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 7 | 1 | 13 | `Partial` |
+| `1c2988588f7e8eaa` | `CCustomDescriptionModifier::ReadMember` | 7 | 1 | 13 | `Known` |
 
 The full population covers 164 registries. Thirty-seven modifier fields share these four
-variants: **30 complete, 7 partial, 0 failed**. The seven partial fields are the
-CustomDescription variant, which keeps the `description_parameters` gaps (SDK-741). Every
-repeated reader identity has the same block. Another 47 generic persistent Block fields have no concrete
+variants: **37 complete, 0 partial, 0 failed** (`registry-fields/v35`). Every repeated reader
+identity has the same block. Another 47 generic persistent Block fields have no concrete
 reader join; they include thirteen weight-named fields. The four modifier fields of
 `common/agreement_term_values` join since the shared evaluator runs `ld1r` (SDK-547). Constructor-proven weight readers have
 their own grammar ([weight blocks](weight-blocks.md)).
@@ -29,7 +28,8 @@ All variants have two known entry forms. The smallest variant has `name` (skippe
 (integer). Graphical adds `icon`, `custom_tooltip` (string), `icon_frame` (integer),
 `show_only_custom_tooltip`, `important`, `hide_from_country_list` (boolean). Static adds
 `apply_modifier_to_other_planets` and `key` (string) and `divide_over_pop_groups` (boolean).
-Custom description adds `description` (string) and `description_parameters` (unknown).
+Custom description adds `description` (string) and `description_parameters` (a block of any
+key with one scalar value, `FieldMembers::AnyKey`).
 
 The compact selections are in `tests/expected/m452/modifier-blocks.json`; field selections refer
 to these variants by reader identity.
@@ -101,13 +101,47 @@ now joins a stack destination, as the 4-byte integer reader already did. The joi
 only; the walk ends at the call, so the bit storage is not joined. The same rule names 213 other
 bit-field flags ([population](discovery.md#modifier-fixed-key-readers-sdk-675)).
 
-**`description_parameters`.** It is a `{ <any key> = <scalar> }` block. Its list loop and entry
-serializer, and the obstacle to a public form, are recorded on SDK-741.
+**`description_parameters` (SDK-741, M452).** `CCustomDescriptionModifier::ReadMember` sends
+`description_parameters` (`0x39a4`) and `description` (`0x317a`) to a stack
+`CCustomDescription::CSerializer` that wraps the owner. The serializer's `ReadMember`
+(`0x10035e8b0`) reads `description` with `CReader::Read(CString&, bool)`. For the list token it
+requires the value token kind 3 (`{`), or it reports `Expected list start` and keeps nothing.
+The loop calls lexer slot `0x10` until kind 4 (`}`) or `0x13` (end of input). For each entry it
+appends an `SParam` to the array at wrapped `+0x28` (`InsertAtEmplace` at the count `+0x3c`)
+and reads it with a stack `SParam::CSerializer` through `CReader::Read(CPersistent&)`. Nothing
+clears the array, so a repeated key and a repeated block accumulate.
+
+`CCustomDescription::SParam::CSerializer::Read(CReader&)` (`0x10035eb84`), the vtable's read
+slot, calls `ReadSimpleStatement` and copies the key token's text with `CToken::ReadValue`. It
+accepts a value token whose kind is at most `0x14` with its bit in both `0x1ff000` and
+`0xfff0ffff` (`0xc`, `0xd`, `0xe`, `0xf`, `0x14`), or the keyword kinds `0x167`, `0x414` and
+`0x29c` (`long_float`, `num64`, `unum64`), and copies it to the parameter (`CToken::operator=`).
+Any other value gets `ReportMalformed("Unexpected value type for custom description modifier
+parameter")` and an empty token; the entry stays.
+
+The method `engine/analysis/modifier_blocks/parameters.rs` matches the serializer member from
+its entry to the `Expected list start` report (`shapes/parameter_list.txt`), finds the entry
+reader in the read slot of the vtable that the loop stores, and matches the entry reader's kind
+test (`parameter_entry.txt`) and keyword tests (`parameter_keywords.txt`). It reads the kinds
+from the matched immediates. A stopped walker path of the list token that passes the list route
+becomes a `Block` reader with repeat `Accumulate`, and the key gets `FieldMembers::AnyKey`.
+
+**Stated rule (written forms).** The written form of a kind comes from the [text
+lexer](text-lexer.md): `0xc` is a number word, `0xf` a quoted string or a word that names no
+keyword, and a keyword word has its token number. `0xd`, `0xe` and `0x14` come only from tokens
+built from a value (`CToken(float)`, `CToken(bool)`, `CToken(unsigned int)`); they have no
+written form. So the forms are `Number`, `Text` and the three `Keyword`s, and a bare `yes`, `no`
+or other keyword is malformed. The forms are `Known` only while the lexer boundary holds; else
+they are `Unresolved` with a `ReaderSemantics` gap. An accepted kind outside these sets stops the
+method (`parameter-entry-kind`). A `@` value is replaced in `ReadSimpleStatement` before the
+check, so the forms do not cover it. To remove the rule, join the built-token kinds to their
+constructors.
 
 **Fixed-key read scope (SDK-749).** Each fixed key's `read_scope` is set where the block is built, for
 root and embedded blocks alike. A scalar key reads in no scope (`Known([])`). A key whose reader the
 method does not classify stays `Unresolved` with a `read-scope` gap at its path. On M452 the modifier
-fixed keys that stay open are `description_parameters` (11 places).
+fixed keys that stayed open were `description_parameters` (11 places); a parameter list reads in
+no scope (`Known([])`, SDK-741).
 
 ## Proof boundaries and gaps
 
@@ -122,13 +156,14 @@ The description serializer constructor stores its wrapped owner at offset 8. A s
 member call with that proven wrapper resolves the description destination. A wrong receiver,
 non-owner constructor argument or intervening store prevents this join. Stores inside the
 serializer that overlap its wrapped-pointer slot also stop the path, including partial and
-aliased stores; writes beside the slot do not invalidate it. The list loop for
-`description_parameters` still stops on reader routing or an unsupported instruction (SDK-741).
+aliased stores; writes beside the slot do not invalidate it. The walker stops in the list loop
+for `description_parameters`; the [parameter-list method](#fixed-key-readers-sdk-675) reads it
+instead.
 
 | Gap | Owner / missing fact |
 | --- | --- |
 | `modifier-name-implementations` / `modifier-name-reader` | Modifier method: a name implementation outside single inheritance, or a read slot that is not the shared forward (none on M452) |
-| `reader-routing` / `instruction` on `description_parameters` | Shared walker: parameter-list loop and nested serializer (SDK-741) |
+| `parameter-list-shape`, `parameter-entry-shape`, `parameter-entry-body`, `parameter-entry-kind` | Parameter-list method: a serializer member, entry reader or accepted kind that the shapes do not establish (none on M452) |
 | Numeric conversion | Shared numeric method: incomplete lexical and overflow properties |
 | `modifier-numeric-member-body`, `modifier-numeric-insert-body`, `modifier-reference-member-body`, `modifier-reference-conversion-body` | A function that the build lacks (no single symbol of its name); a present body that does not match gives `-flow` or `-store` instead |
 

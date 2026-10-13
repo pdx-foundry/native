@@ -160,6 +160,10 @@ for contexts and scope types.
   come from the registry's existing `modifier_families` answer. String reads do not establish
   localisation-key existence. Runtime effects, deferred completion and nested modifier fields
   remain outside this grammar; a repeated block `Merges`. See [modifier blocks](../native/modifier-blocks.md).
+- A fixed key that takes any key with one scalar value each, such as `description_parameters`,
+  exposes `FieldMembers::AnyKey`: no list limits the keys, and `value_forms` lists the written
+  value forms that the engine keeps (`Number`, `Text`, or a named `Keyword`). Its reader kind is
+  `Block`, with family `NotApplicable` and repeat `Accumulate`; it reads in no scope.
 - Constructor-bound root weight fields have family `Weight` and expose `FieldMembers::WeightBlock`:
   the bare-value reader, fixed keys, operation keys with their operand readers, whether a further
   operation accumulates or replaces, and whether other keys are rejected or read as trigger
