@@ -1,6 +1,6 @@
 # Derived names
 
-`Native::derived_names(registry)` (`derived-names/v3`) gives the names that a registry's own code
+`Native::derived_names(registry)` (`derived-names/v4`) gives the names that a registry's own code
 composes from an item key or a string field, and then checks or looks up, and the names that the
 direct callers of an item getter compose from the key or field that it returns
 ([interface callers](#interface-callers-of-name-getters-m452)): the parts of each name,

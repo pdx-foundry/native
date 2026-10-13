@@ -25,6 +25,13 @@
 //! - The **context pass** runs each entry's function to the entry call, then through it. Every
 //!   wrapper on the way runs inline, with its caller's arguments and memory, so the context of
 //!   each evaluation that the entry reaches is read from the scope that its caller built.
+//! - An entry function can link its one scope parameter into the scope that it builds, so the
+//!   run cannot read that link. When a run reads such an unread slot and stops at nothing but a
+//!   bound, the method retries from the function's callers, with the function as a wrapper on that
+//!   parameter. The retry replaces the run only when the climb charges nothing, every retried
+//!   run reads established contexts and stops for no reason, and each context that the run read
+//!   is matched at the same evaluation by a retried one that agrees with its read slots and reads
+//!   the others; otherwise the run stands.
 //! - When strict naming fails, a separate bounded search keeps possible positive offsets of an
 //!   owner method's receiver through moves, immediate arithmetic and conditional selections.
 //!   A direct evaluator, or a same-receiver vtable slot proved within the final straight-line
@@ -52,7 +59,7 @@ use super::contexts::{
 };
 use super::instances;
 use super::names::{self, Fact, State, StringFunctions};
-use super::{CallbackLayout, Context, Findings};
+use super::{CallbackLayout, Context, Findings, Slot};
 use crate::BlockFamily;
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::evaluate::ReadOnlyData;
@@ -163,6 +170,8 @@ pub struct TypePointers {
     pub registers: BTreeMap<usize, String>,
     /// The owner type that the word at each register plus an offset points at.
     pub members: BTreeMap<(usize, i64), String>,
+    /// The registers of the function's `CEventScope&` and `CEventScope const&` parameters.
+    pub scope_parameters: BTreeSet<usize>,
 }
 
 /// A stored block: the owner type, the offset of the block in the owner object, and the family of
@@ -696,8 +705,33 @@ fn collect_contexts(
     };
 
     let shared_reads = reads(&evaluations);
+    let mut retries = Vec::new();
     for entry in entries {
-        record(result, run(entry, &entered, &evaluations, &shared_reads));
+        let pointers = input.type_pointers.get(&entry.function);
+        let found = run(entry, &entered, &evaluations, &shared_reads);
+        match linked_scope_parameter(&found, pointers) {
+            Some(wrapper) => retries.push((wrapper, found)),
+            None => record(result, found),
+        }
+    }
+    for (wrapper, original) in retries {
+        let climb = climb::climb(
+            decoded,
+            BTreeMap::from([(wrapper, original.blocks.clone())]),
+        );
+        let entered: BTreeSet<u64> = entered.union(&climb.wrappers).copied().collect();
+        let retried: Vec<EntryRun> = climb
+            .entries
+            .into_iter()
+            .map(|entry| run(entry, &entered, &evaluations, &shared_reads))
+            .collect();
+        if climb.charges.is_empty() && replaces(&retried, &original) {
+            for found in retried {
+                record(result, found);
+            }
+        } else {
+            record(result, original);
+        }
     }
     for selection in selections {
         if selection.scope_parameter {
@@ -741,6 +775,73 @@ fn collect_contexts(
             run(entry, &entered, &evaluations, &reads(&evaluations)),
         );
     }
+}
+
+/// The wrapper to retry an entry run from its function's callers: the run read a context with a
+/// slot that it could not read, stopped for no reason but a bound of the search, and its function
+/// has one scope parameter, which may be the scope that the unread slot links to. Such a function
+/// builds its own scope and links the parameter into it, as `CMegaStructureType::IsPotential(
+/// CCountry const&, CEventScope&)` stores it as the from.
+fn linked_scope_parameter(found: &EntryRun, pointers: Option<&TypePointers>) -> Option<Wrapper> {
+    let unread = found
+        .reached
+        .iter()
+        .any(|(_, _, context)| !context.is_established());
+    if !unread || !found.unresolved.is_empty() {
+        return None;
+    }
+
+    let parameters = &pointers?.scope_parameters;
+    let [parameter] = parameters.iter().copied().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    Some(Wrapper {
+        function: found.function,
+        parameter,
+    })
+}
+
+/// Whether the runs `retried` from the callers replace `original`: there is one, none stops for a
+/// reason or is contradicted, each reads only established contexts, and each arrival of `original`
+/// is covered by a retried arrival at the same evaluation of the same block that agrees with every
+/// slot it read and reads the slots it could not. A bound that a retried run reaches is kept
+/// uncharged, by the same bounded-search rule as any run: the coverage test is what keeps a bound
+/// from hiding an arrival that the retry never revisited.
+fn replaces(retried: &[EntryRun], original: &EntryRun) -> bool {
+    let complete = |run: &EntryRun| {
+        !run.contradicted
+            && run.unresolved.is_empty()
+            && run
+                .reached
+                .iter()
+                .all(|(_, _, context)| context.is_established())
+    };
+    let covered = |(site, block, context): &(u64, Block, Context)| {
+        retried
+            .iter()
+            .flat_map(|run| &run.reached)
+            .any(|(at, reached, read)| at == site && reached == block && fills(context, read))
+    };
+
+    !retried.is_empty() && retried.iter().all(complete) && original.reached.iter().all(covered)
+}
+
+/// Whether `read` agrees with every slot of `partial` that is not `Unresolved`. A chain matches up
+/// to its first unresolved link, after which `read` may go on; a chain with none must be equal.
+fn fills(partial: &Context, read: &Context) -> bool {
+    let slot = |partial: &Slot, read: &Slot| *partial == Slot::Unresolved || partial == read;
+    let chain = |partial: &[Slot], read: &[Slot]| match partial
+        .iter()
+        .position(|link| *link == Slot::Unresolved)
+    {
+        Some(unread) => partial[..unread] == read[..unread.min(read.len())] && read.len() > unread,
+        None => partial == read,
+    };
+
+    slot(&partial.this, &read.this)
+        && slot(&partial.root, &read.root)
+        && chain(&partial.from, &read.from)
+        && chain(&partial.prev, &read.prev)
 }
 
 /// Match each arriving receiver to its candidate block before giving it the path's context.

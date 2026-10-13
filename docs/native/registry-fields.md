@@ -24,7 +24,7 @@ required input make the answer partial.
 
 This sweep ran on M452.
 
-`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v37`) holds
+`tests/population/m452/registry-field-sweep.json` (recorded at `registry-fields/v38`) holds
 the baseline: **185 registries, 13 complete, 167 partial, 0 failed, 5 unsupported**, 1,926 root
 fields. Against `v31`, `events` has its 22 [kinds](#event-kinds) as root fields in place of the
 30 `CEvent` fields, and the recording takes in SDK-786: `flags` and `common/planet_classes` are
@@ -224,6 +224,21 @@ br   x10
 which tail-calls `CPersistent::ReadMember`, the verified base rejection. The `b.hi` side is split
 by unsigned intervals of `token - base`, and it holds more direct comparisons
 (`dismantle_cost`, `ai_weight`).
+
+**An unknown index (SDK-812).** A path walk forks to every case of a table whose index is unknown
+only when the code before the `br` proves the bound in this straight-line shape: the guard
+`cmp wJ,#K; b.hi`; then only moves, address arithmetic and loads that write no base register,
+which set no flags and do not branch; a frame that began at or before that run, and no direct
+branch into it; and the index copied once from `wJ` by a 32-bit `mov` after the guard or, with no
+copy, set by a 32-bit write before the `cmp`, so its upper half is zero. The adr's base must not be
+the index or the table register, and the load must not overwrite the base. Any other shape keeps
+the `branch-value` stop, and one path of `Machine::run` stops there too. Assumption: a branch
+through a register does not enter a guard run. Checked on `CSpatialObjectRefCaster::FillEventScope`
+(byte table, 11 cases, `mov w9,w0`), `CFleetOrbitalSlotHandle::ExecFunctor<SSetupScopeObjectFunctor&,
+CEventScope&>` (byte table, 4 cases, `sub w8,w8,#1` before `cmp w8,#3`) and
+`CreateFleetOrderButtons` (halfword table, 39 cases, `mov w8,w0`). On M452 it changes block entry
+contexts, one `derived_names` gap, one on_action and five game-rule gaps
+([SDK-812](#block-entry-context-stops-on-m452-sdk-812)).
 
 **The default case.** The rule is in the module comment of `fields.rs`. Pitfall: "the most
 frequent target is the default" is wrong. `CMissionType::ReadMember` has a table for tokens
@@ -1367,7 +1382,8 @@ truncates the pointer even though the register number stays the same.
   `SetupScopeObject` and `CSelectable::DetermineScope` jump tables, which also hide the mission
   and espionage operation from, and give mission `on_success`, `on_fail` and `on_cancel` a `this`
   of no type through the helper `CMission::Stop`); a `from` that is the caller's scope parameter
-  (megastructure `potential`, `possible`, `context_menu_potential`); a scope that is a member of a
+  (megastructure `potential`, `possible`, `context_menu_potential`, which
+  [SDK-812](#block-entry-context-stops-on-m452-sdk-812) resolves); a scope that is a member of a
   parameter or
   heap object (event chain `abort_trigger` and button effect `potential` and `allow` from
   `CExecuteButtonEffectCommand::IsValid`, which copies the command's member at `this + 0x20`); and
@@ -1430,3 +1446,95 @@ Pitfalls:
   offset reads an unknown word, not the next object's vtable.
 - `run_paths_to` skips the site checks inside an entered call, and `follow` runs a setter outside the
   entered calls; without them a prefix that enters a wrapper is lost or runs into the caller.
+
+### Block entry-context stops on M452 (SDK-812)
+
+**Atlas need.** Atlas credits a block's `scope_context` against a config `replace_scopes` claim
+only when the read scope is known, the block has an entry context, every slot resolves, and the
+field has no `UnresolvedPath`, `UnreadableInput` or `UnnamedDeclaration` gap (Atlas
+`assemble_scope_context`). In the SDK-798 comparison (Atlas `95e260b`, config `8574760`), 143
+registry `replace_scopes` claims were blocked by such a gap. 56 of them, on 53 blocks in 25
+registries, had a known read scope and no blocking gap other than an entry-context stop, so only
+these could gain from this method. The other 87 also wait on the read scope (SDK-808) or the reader
+(SDK-710). The 16 type-level `replace_scopes` claims have no Atlas subject.
+
+**Repairs.** Three rules, each with authored tests:
+
+- `csetm` runs as `cset` with all ones for true. Councilor `possible` resolves
+  (`CCouncilView::RefreshCouncilPickingView` sets a mask with it before the evaluation).
+- A switch table with an unknown index forks to each case when its guard proves the bound
+  ([compiler jump tables](#compiler-jump-tables)). Observation mission `potential` resolves: the
+  order button's `CFleetOrbitalSlotHandle::ExecFunctor` now gives each orbital type. Button effect
+  `potential` and `allow` gain the types of `SetupScopeObject`'s cases but keep a `branch-value`
+  stop on a walk that begins after a guard, and deposit `can_be_cleared_potential` gains planet,
+  ship and astral rift (one case stays unreadable, so its `branch-value` gap becomes an unresolved
+  scope). The mission blocks lose `branch-value`, but
+  `FillEventScope`'s eleven cases then take their runs past the path limit.
+- A scope parameter linked into the entry's scope is read at the callers (module comment of
+  `callbacks/blocks.rs`). `CMegaStructureType::IsPotential(CCountry const&, CEventScope&)` builds a
+  country scope and stores `x2` as its from; `IsPotentiallyBuildable` passes a fleet scope
+  (`Set(0x40, …)`) and `IsPotentiallyUpgradableFrom` a megastructure. Megastructure `potential`
+  (from fleet or megastructure), `possible` (country then fleet, or country then megastructure) and
+  `context_menu_potential` (country then fleet) resolve. A retry that the climb charges, or whose
+  run stops for a reason or reads an unread slot, is dropped and the entry's own run stands: this
+  keeps the gaps of buildings `potential` and the decision blocks. A retry replaces the run only
+  when each context that the run read comes back at the same evaluation with its read slots
+  unchanged and its unread ones read, so a bound cannot hide an arrival that the retry missed.
+
+Before the accepted limit, `registry-sweep --diff` against the baseline names 7 registries: five
+of the six above (button effects keeps its gap counts), and districts and specimens, whose `derived_names` each lose one path gap (an
+`instruction` stop at `csetm`, a `branch-value` stop at a switch table) with the same names. With
+the limit, it names 49: 46 move gaps to the limit, and 10 change their scope context counts (3 from
+the repairs). No command grammar changes (`command-population --diff`), and the field sweep changes
+only these entry contexts.
+
+Parity changes the three megastructure blocks and two callback answers. On_action
+`on_entering_war` gains a country with a country from: `CWar::SetupParticipant` builds a scope at
+`sp + 0x200`, links the one at `sp + 0x90` as its from, sets a country in each and fires the
+on_action, and its two switch tables (`0x100d29a68`, `0x100d29b2c`) no longer stop the run; its
+path-limit gap stays. The five `can_fill_*_job` game rules lose their `branch-value` gap; their path
+and loop bounds stay.
+
+**Credit.** 5 of the 56 claims are now creditable: councilor `possible`, megastructure `potential`,
+`possible` and `context_menu_potential`, and observation mission `potential`. Each field has a
+known read scope, established contexts and no blocking gap.
+
+**Before and after.** Over the M452 recordings, before at `main` `77847bb` (the tracked baseline):
+
+| Stop | Before | After |
+| --- | ---: | ---: |
+| no attributed evaluation | 79 | 79 |
+| path-limit | 54 | 56 |
+| some entry scopes unresolved | 46 | 44 |
+| loop-limit | 21 | 21 |
+| branch-value | 16 | 2 |
+| N unnamed direct evaluations (registry) | 10 | 10 |
+| no-caller | 8 | 8 |
+| caller-depth | 5 | 5 |
+| instruction | 5 | 4 |
+| selected-block-identity | 4 | 4 |
+| only tooltip calls | 1 | 1 |
+| **Total (registries)** | **249 (69)** | **234 (69)** |
+
+The SDK-553 run had 242 in 66 registries; SDK-710, SDK-676 and SDK-813 brought more blocks into
+the method before this work. Of the 234, an accepted limit covers 138 (below) and 96 stay open: 95
+on 61 fields with a field-level `replace_scopes` claim, and the planet classes' unnamed-evaluation
+gap, a registry that the limit does not list. Scope context goes from 1,309 to 1,323 complete
+fields: five from the repairs, the rest because the accepted gaps leave the counts.
+
+**Accepted limit.** The entry-context gaps of the 93 fields with no field-level `replace_scopes`
+claim (129 gaps), and the 9 registry gaps of direct evaluations whose block the method cannot name,
+credit no Atlas claim: `ENTRY_CONTEXTS_WITHOUT_CLAIM` in `examples/registry-sweep.rs` lists the
+fields. Reopen a field's gaps when the config gives it a claim, or when Atlas maps the type-level
+`replace_scopes` claims onto blocks.
+
+**Open, with a claim.** For the 51 claims that remain, by stop:
+
+| Stop | Disposition | Checked members |
+| --- | --- | --- |
+| Path and loop limits | A larger bound reaches no new evaluation: 1,024 paths take over 20 minutes for one registry and remove one gap. The runs fork on script-profiler and string-length branches. Reopen with a path join that merges states that differ only in dead registers. | astral action `potential`, casus belli `potential`, megastructure `tooltip_system_score` (`BuildBestSystemsText` reaches no evaluation) |
+| caller-depth | One more caller turns casus belli `is_valid` into path and loop bounds and an unreadable context (measured at depth 3). | casus belli `is_valid`; astral action `potential` and `is_exhausted` (`GetTooltip`) |
+| No attributed evaluation | The block's item comes from an array or a lookup that no type pointer leads to. Reopen paths: an element type of a typed array parameter (3 claims), an owner's offset getter naming its block whatever the receiver (2 claims). | tradable action `on_traded_effect` (`TradeActions`, an element of `CPdxArray<CTradableAction const*, int>`), agreement term value `activate_effect` (`CreateAgreement`, through `CAgreementTermValue::GetActivateEffect`), terraform `ai_weight` (`CAIInteriorMinister::Terraform`, `x23 + 0x350` from a database array); ethic attraction has no direct evaluator call on its offsets |
+| instruction | The astral `IsAllowed` run from `CAlertManager::Update` stops in floating-point alert arithmetic (`fminnm`, `fmaxnm`, `fcmp`, `fadd`, `fcsel` in turn), and the same run reaches its loop bound, so more instructions change no answer. | astral action `allow`, `potential`, `is_exhausted` |
+| selected-block-identity | The indexed swap load in `CTraditionType::OnEnabled` stays unknown, and the run also reaches the path bound. | tradition and ascension perk `on_enabled` (one function) |
+| Some entry scopes unresolved | Missions: the operator's eleven spatial types reach the path bound. The others pass their scope through a call that the pass does not follow and also reach a bound. | mission `on_start`, terraform `on_queued`, anomaly `on_spawn` |
