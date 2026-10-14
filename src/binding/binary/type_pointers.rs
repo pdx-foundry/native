@@ -11,12 +11,16 @@
 //!   stores there a parameter of one of those types, no constructor stores a parameter of another
 //!   type there, and every constructor of `C` decodes.
 //!
+//! A parameter of type `CPdxArray<O const*, int>` by pointer or reference holds pointers to items
+//! of `O`: the word at [`ARRAY_BUFFER`] in the array points at its buffer, one pointer per element.
+//!
 //! A parameter's register is known up to the first parameter that one general register may not
 //! pass: each pointer, reference, integer, `bool` and `TPdxRef<…>` takes the next register,
 //! after the receiver of a member function. A by-value class, a floating-point number or an
 //! enumeration, which a demangled name does not tell from a class, ends the known registers. A
-//! function whose qualifier is not a known class or namespace has no known registers: a class has
-//! a vtable, a type info, a constructor, a destructor or a `const` member function symbol. A
+//! function whose qualifier is not a known class or `(anonymous namespace)` has no known registers:
+//! a class has a vtable, a type info, a constructor, a destructor or a `const` member function
+//! symbol. A
 //! demangled name does not say whether a member function is static; a function of a class is read
 //! as taking its receiver in `x0`.
 //!
@@ -36,6 +40,14 @@ use crate::engine::analysis::discovery::Symbol;
 
 use super::callbacks::{INTEGERS, decoded, signature, top_level};
 use super::declarations::Text;
+
+/// The offset of the buffer pointer in a `CPdxArray`: vtable `+0`, buffer `+8`, capacity `+0x10`,
+/// size `+0x14`. Checked on M452 in `TradeActions`, `CAgreementManager::CreateAgreement` and
+/// `CScriptableValue::GetValue`.
+const ARRAY_BUFFER: i64 = 8;
+
+/// The qualifier of a free function in a translation unit's own namespace.
+const ANONYMOUS_NAMESPACE: &str = "(anonymous namespace)";
 
 /// The registry owners and the classes whose members lead to one.
 pub(super) struct TypeOwners<'a> {
@@ -104,13 +116,29 @@ impl<'a> TypeOwners<'a> {
             .then_some(first)
     }
 
+    /// The owner whose member function the function that `names` name is, when every name gives
+    /// the same owner.
+    pub(super) fn method_owner<'n>(
+        &self,
+        mut names: impl Iterator<Item = &'n str>,
+    ) -> Option<&'a str> {
+        let owner = |name: &str| {
+            let (qualified, _) = signature(name)?;
+            self.owners.get(qualifier(qualified)?).copied()
+        };
+        let first = owner(names.next()?)?;
+        names
+            .all(|name| owner(name) == Some(first))
+            .then_some(first)
+    }
+
     /// The type pointers of the function `name`, when it has one.
     fn function(&self, name: &str) -> Option<TypePointers> {
         if name.contains(".cold.") {
             return None;
         }
         let (qualified, parameters) = signature(name)?;
-        let class = qualifier(qualified);
+        let class = qualifier(qualified).filter(|class| *class != ANONYMOUS_NAMESPACE);
         let member = class.is_some_and(|class| self.classes.contains(class));
         if class.is_some() && !member {
             return None;
@@ -125,8 +153,14 @@ impl<'a> TypeOwners<'a> {
         }
         let registers = parameter_registers(parameters, member);
         for &(register, parameter) in &registers {
-            if let Some(class) = pointee(parameter) {
-                self.lead(&mut pointers, register, class);
+            let Some(class) = pointee(parameter) else {
+                continue;
+            };
+            self.lead(&mut pointers, register, class);
+            if let Some(owner) = element_class(class).and_then(|class| self.owners.get(class)) {
+                pointers
+                    .elements
+                    .insert((register, ARRAY_BUFFER), (*owner).to_owned());
             }
         }
         if pointers == TypePointers::default() {
@@ -272,6 +306,14 @@ fn pointee(parameter: &str) -> Option<&str> {
     (!class.ends_with(['*', '&'])).then_some(class)
 }
 
+/// The element class `O` of the array class `CPdxArray<O const*, int>` or `CPdxArray<O*, int>`.
+fn element_class(class: &str) -> Option<&str> {
+    let element = class.strip_prefix("CPdxArray<")?.strip_suffix(", int>")?;
+    let element = element.strip_suffix('*')?;
+    let element = element.strip_suffix(" const").unwrap_or(element);
+    (!element.ends_with(['*', '&'])).then_some(element)
+}
+
 /// The qualifier of a qualified name, before its last top-level `::`: `A::B::F` gives `A::B`.
 fn qualifier(qualified: &str) -> Option<&str> {
     let mut depth = 0usize;
@@ -383,6 +425,7 @@ mod tests {
                 method_of: Some("CAnomalyType".into()),
                 registers: BTreeMap::from([(0, "CAnomalyType".into())]),
                 members: BTreeMap::new(),
+                elements: BTreeMap::new(),
                 scope_parameters: BTreeSet::from([2]),
             })
         );
@@ -392,6 +435,7 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::from([(1, "CEdict".into())]),
                 members: BTreeMap::new(),
+                elements: BTreeMap::new(),
                 scope_parameters: BTreeSet::new(),
             })
         );
@@ -403,8 +447,40 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::from([(0, "CEdict".into())]),
                 members: BTreeMap::new(),
+                elements: BTreeMap::new(),
                 scope_parameters: BTreeSet::new(),
             })
+        );
+    }
+
+    #[test]
+    fn an_array_parameter_of_owner_pointers_leads_its_buffer_to_the_owner() {
+        let owners = BTreeSet::from(["CTradableAction"]);
+        let reader = TypeOwners {
+            owners: &owners,
+            classes: BTreeSet::new(),
+            members: BTreeMap::new(),
+        };
+        let elements = |name: &str| reader.function(name).map(|pointers| pointers.elements);
+
+        assert_eq!(
+            elements(
+                "(anonymous namespace)::TradeActions(CPdxArray<CTradableAction const*, int> const&, CCountry const&, CCountry const&)"
+            ),
+            Some(BTreeMap::from([((0, 8), "CTradableAction".into())]))
+        );
+        assert_eq!(
+            elements("Run(CCountry const&, CPdxArray<CTradableAction*, int>*)"),
+            Some(BTreeMap::from([((1, 8), "CTradableAction".into())]))
+        );
+        assert_eq!(elements("Run(CPdxArray<int, int> const&)"), None);
+        assert_eq!(
+            elements("Run(CPdxArray<CTradableAction const**, int> const&)"),
+            None
+        );
+        assert_eq!(
+            elements("NUnknown::Run(CPdxArray<CTradableAction const*, int> const&)"),
+            None
         );
     }
 
@@ -423,6 +499,7 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::new(),
                 members: BTreeMap::from([((0, 0x18), "CMissionType".into())]),
+                elements: BTreeMap::new(),
                 scope_parameters: BTreeSet::new(),
             })
         );

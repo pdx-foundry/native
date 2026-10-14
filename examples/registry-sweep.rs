@@ -431,18 +431,21 @@ const ENTRY_CONTEXT_STOPS: [&str; 9] = [
 ];
 
 /// The M452 registry gaps of direct evaluations whose block the method cannot name. No field, so
-/// no `replace_scopes` claim, has them.
+/// no `replace_scopes` claim, has them. SDK-824's `CScriptableValue` evaluators add the
+/// federation law and opinion modifier gaps.
 const UNNAMED_EVALUATIONS: [&str; 2] = [
     "1 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
     "2 direct evaluation calls in the owner's methods evaluate a block that the method cannot name",
 ];
 
 /// The registries of the M452 unnamed-evaluation gaps. Such a gap of another registry stays open.
-const UNNAMED_EVALUATION_REGISTRIES: [&str; 9] = [
+const UNNAMED_EVALUATION_REGISTRIES: [&str; 11] = [
     "common/colony_automation",
+    "common/federation_laws",
     "common/governments/civics",
     "common/map_modes",
     "common/on_actions",
+    "common/opinion_modifiers",
     "common/ship_sizes",
     "common/special_projects",
     "common/starbase_buildings",

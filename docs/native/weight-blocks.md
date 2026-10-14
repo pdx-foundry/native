@@ -190,14 +190,15 @@ the five weight fields of `common/buildings`, `planet_damage` in `common/bombard
 read in no scope (`Known([])`), as every block whose every read passes scope 0 does
 ([gap details](discovery.md#read-time-block-scopes-sdk-549)).
 
-Thirteen fields with weight names are persistent blocks without a constructor-proven reader, so the
+Eleven fields with weight names are persistent blocks without a constructor-proven reader, so the
 method does not see them: `ai_weight` in `common/federation_laws`, `common/federation_types`,
-`common/governments/civics`, `common/leader_classes` and `common/resolutions`; `random_weight` in
-civics; `ai_location_weight` in leader classes; `weight` in `common/galactic_focuses`,
+`common/leader_classes` and `common/resolutions`; `ai_location_weight` in leader classes; `weight` in `common/galactic_focuses`,
 `common/pop_categories` and `common/pop_jobs`; `network_weight` and `strategy_weight` in
 `common/ai_espionage/spynetworks`; `spawn_weight` in `common/storm_types`. The owner constructors of
 `ai_weight` in `common/war_goals` and `weight_modifier` in `common/personalities` run `ld1r`; they
-join since the shared evaluator runs it (SDK-547). The sweep lists them under
+join since the shared evaluator runs it (SDK-547). Civics `ai_weight` and `random_weight` join
+since an [allocation](registry-fields.md#allocations-in-constructor-walks) is outside the owner
+(SDK-822). The sweep lists them under
 `modifier_blocks.failed_persistent_fields`.
 
 ## Entry contexts
@@ -208,7 +209,13 @@ These results are for M452.
 method](registry-fields.md#block-entry-contexts), as for a trigger block (SDK-733). The weight
 evaluators are block evaluators there: `CMeanTimeToHappen::GetRawFactor(CEventScope&) const`,
 `GetRawFactorNoScopeCopy(CEventScope const&) const`, `GetChance(CEventScope&, int) const`,
-`GetDailyChance(CEventScope&) const` and `CAIMTTHChance::GetChance(CEventScope&) const`. Each takes
+`GetDailyChance(CEventScope&) const`, `CAIMTTHChance::GetChance(CEventScope&) const`,
+`CScriptableValue::GetValue(CEventScope&) const` (`0x10092f03c`) and
+`GetValueNoScopeCopy(CEventScope const&) const` (`0x10092f0a8`). A `CScriptableValue` has the
+`CMeanTimeToHappen` layout (base `+0x10`, modifier array `+0x18`, stored scope `+0x30`), and
+`GetValue` reads its base and calls slot `+0x18` of each modifier with the scope, as `GetRawFactor`
+does. Government `weight`, opinion modifier `opinion`, councilor `ai_hiring_weight`, ethic
+attractions, archaeological site `weight` and agreement preset weights are such blocks. Each takes
 the block in `x0` and the scope in `x1` by a direct `bl`, and each is a scope reader by the rule
 [evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes),
 with the three `ModifyNumber` implementations checked there. Before SDK-733, `GetRawFactor` was a

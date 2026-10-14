@@ -610,6 +610,57 @@ fn the_text_that_a_lookup_returns_is_assumed_and_later_lookups_establish_nothing
 }
 
 #[test]
+fn an_append_to_a_string_that_the_run_does_not_know_does_not_stop_the_path() {
+    let mut code = root(0);
+    arm64!(code; mov x20, x1; mov x0, x20); // x1: a tooltip string that the root receives
+    code.address(1, NOTICE).call(APPEND_TEXT);
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    let name = named(&result, &key_desc());
+    assert_eq!(name.on_missing, Miss::ShowsKey);
+    assert_eq!(name.condition, Condition::Always);
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+#[test]
+fn a_move_into_a_string_that_the_run_does_not_know_empties_its_source() {
+    let mut code = root(0);
+    arm64!(code; mov x20, x1); // x1: a tooltip string that the root receives
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; mov x0, x20; add x1, sp, #0x20);
+    code.call(MOVE_ASSIGN);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+#[test]
+fn a_move_from_a_string_that_the_run_does_not_know_still_stops_the_path() {
+    let mut code = root(0);
+    arm64!(code; mov x20, x1; add x0, sp, #0x20); // x1: a string that the root receives
+    code.address(1, EMPTY).call(FROM_TEXT);
+    arm64!(code; add x0, sp, #0x20; mov x1, x20);
+    code.call(MOVE_ASSIGN);
+    arm64!(code; add x0, sp, #0x20; add x1, x19, #KEY);
+    code.call(APPEND_STRING);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert_eq!(result.failures.get("string-object"), Some(&1));
+}
+
+#[test]
 fn a_lookup_of_another_name_after_a_check_is_no_fallback() {
     let mut code = root(0);
     compose(&mut code, 0x20, KEY, Some(DESC));
@@ -1299,6 +1350,19 @@ fn a_caller_path_that_stops_before_the_use_keeps_a_gap_beside_the_name_of_the_ot
         result.names,
         [caller_name(key_desc(), NameLookup::Localization)]
     );
+    assert_eq!(result.failures, BTreeMap::from([("caller-path", 1)]));
+}
+
+#[test]
+fn a_caller_move_from_a_string_that_the_run_does_not_know_over_the_name_stops_the_path() {
+    let (caller, sites) = lookup_caller(CALLER, |code| {
+        arm64!(code; add x0, sp, #0x20; mov x1, x25); // x25: a string that the caller holds
+        code.call(MOVE_ASSIGN);
+    });
+
+    let result = analyze_getter(key_getter(), vec![caller], vec![lookup_use(&sites)], &[]);
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
     assert_eq!(result.failures, BTreeMap::from([("caller-path", 1)]));
 }
 

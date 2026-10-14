@@ -198,7 +198,7 @@ fn evaluate_factory(
             return Ok(Call::Enter);
         }
         if enter_constructors {
-            return Ok(machine.opaque_call());
+            return Ok(image.unbound_call(target, machine));
         }
         let objects: Vec<_> = machine
             .labels()

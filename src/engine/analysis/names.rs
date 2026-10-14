@@ -40,7 +40,8 @@
 //!
 //! The model writes unresolved text as the empty text, so that the code runs on. A path's events
 //! after that point establish no condition and no miss behavior, and a search path that goes on
-//! after it is incomplete.
+//! after it is incomplete. A string function that writes an object that the run does not know, such
+//! as a tooltip that a root receives, is a call that the model does not follow; the path goes on.
 //!
 //! A getter is a `const` member that reaches no sink and returns a string with the key or a field
 //! in it, by reference in `x0` or by value in the `x8` object. Each of its direct callers runs from
@@ -73,7 +74,7 @@ use crate::NameLookup;
 mod tests;
 
 /// Name and revision of the derived-name method.
-pub const METHOD: &str = "derived-names/v4";
+pub const METHOD: &str = "derived-names/v5";
 
 /// The most names whose outcome one root's runs enumerate.
 const CHECK_BOUND: usize = 4;
@@ -868,10 +869,11 @@ impl Analysis<'_> {
             match model.call(target, machine, &mut arena) {
                 Ok(Effect::Followed(call)) => Ok(call),
                 Ok(Effect::Other) => Ok(Call::Return(None)),
-                Err(unknown) if unknown.reason == "string-object" => {
+                Err(unknown) if writes_unknown_object(&unknown, machine) => {
                     if receives_name {
                         machine.label(LOST_NAME, 1);
                     }
+                    empty_moved_source(&model, target, machine, &mut arena);
                     Ok(Call::Return(None))
                 }
                 Err(unresolved) => Err(unresolved),
@@ -1348,7 +1350,18 @@ impl Recorder<'_> {
         if !modelled {
             self.unfollowed(machine);
         }
-        Ok(match self.model.call(target, machine, &mut self.arena)? {
+        // A string function on an object that the run does not know, such as a string member of
+        // a tooltip that the root receives, is a call that the model does not follow.
+        let effect = match self.model.call(target, machine, &mut self.arena) {
+            Err(unknown) if writes_unknown_object(&unknown, machine) => {
+                self.unfollowed(machine);
+                let effect = self.model.call(None, machine, &mut self.arena)?;
+                empty_moved_source(self.model, target, machine, &mut self.arena);
+                effect
+            }
+            effect => effect?,
+        };
+        Ok(match effect {
             Effect::Followed(call) => call,
             Effect::Other => Call::Return(None),
         })
@@ -1559,6 +1572,27 @@ impl Recorder<'_> {
         let count = machine.labelled(EVENT_COUNT).unwrap_or(0);
         machine.label(EVENT_COUNT + 1 + count, self.events.len() as u64 - 1);
         machine.label(EVENT_COUNT, count + 1);
+    }
+}
+
+/// Whether a string function stopped only because the object that it writes, in `x0`, is unknown:
+/// it cannot change a string that the run follows. A move from an unknown source into a known
+/// object also stops at `string-object`, but it does change that object.
+fn writes_unknown_object(obstruction: &Unresolved, machine: &Machine) -> bool {
+    obstruction.reason == "string-object" && machine.register(0).is_none()
+}
+
+/// Empty the source in `x1` of a move assignment into an object that the run does not know, as
+/// the move does: otherwise a later test of the source would follow text that it no longer holds.
+fn empty_moved_source(
+    model: &Model,
+    target: Option<u64>,
+    machine: &mut Machine,
+    arena: &mut Arena,
+) {
+    let moves = target.is_some_and(|target| model.functions.move_assigns.contains(&target));
+    if let (true, Some(source)) = (moves, machine.register(1)) {
+        model.empty_moved_source(machine, source, arena);
     }
 }
 
