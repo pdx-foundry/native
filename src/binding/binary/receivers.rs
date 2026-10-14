@@ -120,8 +120,9 @@ pub(super) fn constructors(
     Ok(summaries)
 }
 
-/// Import effects and small engine accessors used by the constructor evaluator.
+/// Import effects, allocators and small engine accessors used by the constructor evaluator.
 /// Accessor names select code to execute; their bodies still determine all reads and writes.
+/// Allocator names select the allocation rule in place of their bodies.
 pub(super) fn constructor_calls(
     text: &Text<'_>,
     symbols: &[Symbol],
@@ -138,6 +139,11 @@ pub(super) fn constructor_calls(
             }
             "_memmove" => {
                 calls.moves.insert(symbol.address);
+            }
+            "operator new(unsigned long)"
+            | "operator new[](unsigned long)"
+            | "CPdxCommonStringAllocator::allocate(unsigned long, void const*)" => {
+                calls.allocators.insert(symbol.address);
             }
             "CString::GetTCharPtr() const" | "CString::GetSize() const" => {
                 let (at, body) = text.function(symbol.address)?;

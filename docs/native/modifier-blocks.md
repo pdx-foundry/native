@@ -201,23 +201,20 @@ categories (`Listed` for a modifier, `NotApplicable` otherwise); five weights al
 contexts. `common/sector_types` loses its registry `UnresolvedReader` gap, but its two fields
 stay unjoined (B below).
 
-**Still unjoined (23 fields).**
+**Still unjoined (19 fields).**
 
 | Use (class at the destination) | Fields | Obstacle |
 | --- | --- | --- |
-| Modifier (inline `CModifier`) | civics `modifier`; star_classes `modifier` | B; prerequisite SDK-710 |
-| Weight (`CMeanTimeToHappen`, `CScriptableValue`) | civics `ai_weight`, `random_weight`; diplomatic_actions `ai_acceptance`, `should_ai_propose`; sector_types `system_scores`, `local_capital_scores` | B |
+| Weight (`CMeanTimeToHappen`, `CScriptableValue`) | diplomatic_actions `ai_acceptance`, `should_ai_propose`; sector_types `system_scores`, `local_capital_scores` | B |
 | Not established | ship_sizes `modifier`, `ship_modifier`, `map_icon_override` | path limit of the constructor walk |
 | Not established | storm_types `spawn_weight`, `storm_speed`, `storm_min_radius`, `storm_max_radius`, `storm_min_steps`, `storm_max_steps`, `storm_activation_period_in_months`, `storm_monthly_added_devastation`; situations `on_monthly`; global_ship_designs `name`; diplo_phrases `weight` | no constructor path keeps a point at the destination |
 | Not established | patrons `covenant` | `float-width` in the constructor walk |
 
-- **B.** The constructor copies `CString` members inline. The copy into the return of
-  `CPdxCommonStringAllocator::allocate` (an opaque call given an owner address), and a byte store
-  at an unknown index, forget the owner on most paths (civics: 24 of 32 entered paths). A repair
-  models what the string helpers write; it belongs to the shared constructor walk, which SDK-710
-  owns. Civics `modifier` (`+0x488`) and star_classes `modifier` (`+0x140`) are proven modifier
-  uses: some paths keep the `CModifier` vtable at their destination. They stay unsupported until
-  SDK-710 lands.
+- **B.** Civics `modifier` (`+0x488`), `ai_weight` and `random_weight` and star_classes
+  `modifier` (`+0x140`) joined once the constructor walk took an
+  [allocation](registry-fields.md#allocations-in-constructor-walks) to be outside the owner
+  (SDK-822). The four fields that remain stop at other calls: a log path in the diplomatic action
+  constructor, and an indirect allocation in `CFixedResourceTable` for sector types (same page).
 
 ## Proof boundaries and gaps
 

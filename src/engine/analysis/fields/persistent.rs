@@ -274,7 +274,7 @@ pub(crate) fn constructor_points(
                     }
                 }
                 if enter_constructors {
-                    return Ok(machine.opaque_call());
+                    return Ok(image.unbound_call(target, machine));
                 }
                 machine.forget(owner, SPAN);
                 Ok(Call::Return(None))
