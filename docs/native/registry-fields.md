@@ -292,9 +292,10 @@ domains with the config (cwtools `8574760`). `enum[building_category]` also name
 `planet_buildings`, `resources` and `amenities`, which the converter does not compare, so the
 engine logs that the building has no category. `enum[scripted_modifier_category]` names `pop_job`,
 which the engine reports, and lacks `galactic_community`, `storm_influence_field` and
-`waystation`, which it accepts. `cargo live fixture_enum_domain` loads a scripted modifier with
-`category = planet` and one with `category = native_unknown`: only the second logs, `Invalid
-modifier category` on its line.
+`waystation`, which it accepts. `cargo live fixture_enum_domain` loads an economic category with
+`modifier_category = planet` and one with `modifier_category = native_unknown`: only the second
+logs, `Invalid modifier category` on its line. (`common/scripted_modifiers` has no fixture loader
+and owner boundary, so the live case uses the other field of that converter.)
 
 M452, SDK-828: before at Native `af4fb57` (`registry-fields/v41`), after at `registry-fields/v42`.
 

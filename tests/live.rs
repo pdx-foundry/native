@@ -1394,16 +1394,21 @@ async fn fixture_repeat_readers(native: &Native) -> Outcome {
     .await
 }
 
-/// A scripted modifier `category` outside the keyword domain is reported where it is read, and a
-/// name in the domain is not. The engine keeps the converter's fallback for the unknown name.
+/// An economic category's `modifier_category` outside the keyword domain is reported where it is
+/// read, and a name in the domain is not. The engine keeps the converter's fallback for the
+/// unknown name.
 async fn fixture_enum_domain(native: &Native) -> Outcome {
     use pdx_native::{DiagnosticJoin, FieldDomain, FixtureFieldQuestion, FixtureRequest};
-    let registry = "common/scripted_modifiers";
+    let registry = "common/economic_categories";
+    let field = "modifier_category";
     let listed = |name: &str| {
         let answer = native.registry_fields(registry)?;
-        let category = answer.value.iter().find(|field| field.name == "category");
+        let domain = answer
+            .value
+            .iter()
+            .find(|candidate| candidate.name == field);
         Ok::<_, Box<dyn std::error::Error>>(matches!(
-            category.map(|field| &field.domain),
+            domain.map(|candidate| &candidate.domain),
             Some(FieldDomain::Listed(names)) if names.iter().any(|listed| listed == name)
         ))
     };
@@ -1413,17 +1418,17 @@ async fn fixture_enum_domain(native: &Native) -> Outcome {
 
     let file = format!("{registry}/native_enum_domain.txt");
     let text = r#"native_enum_known = {
- category = planet
+ modifier_category = planet
 }
 native_enum_unknown = {
- category = native_unknown
+ modifier_category = native_unknown
 }
 "#;
     let request = FixtureRequest::field_outcomes(
         file.clone(),
         text,
         ["native_enum_known", "native_enum_unknown"]
-            .map(|definition| FixtureFieldQuestion::new(registry, definition, "category")),
+            .map(|definition| FixtureFieldQuestion::new(registry, definition, field)),
     );
     let mut game = native.start_game(options().fixture(request)).await?;
     let mut result = async {
