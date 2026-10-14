@@ -190,14 +190,15 @@ the five weight fields of `common/buildings`, `planet_damage` in `common/bombard
 read in no scope (`Known([])`), as every block whose every read passes scope 0 does
 ([gap details](discovery.md#read-time-block-scopes-sdk-549)).
 
-Thirteen fields with weight names are persistent blocks without a constructor-proven reader, so the
+Eleven fields with weight names are persistent blocks without a constructor-proven reader, so the
 method does not see them: `ai_weight` in `common/federation_laws`, `common/federation_types`,
-`common/governments/civics`, `common/leader_classes` and `common/resolutions`; `random_weight` in
-civics; `ai_location_weight` in leader classes; `weight` in `common/galactic_focuses`,
+`common/leader_classes` and `common/resolutions`; `ai_location_weight` in leader classes; `weight` in `common/galactic_focuses`,
 `common/pop_categories` and `common/pop_jobs`; `network_weight` and `strategy_weight` in
 `common/ai_espionage/spynetworks`; `spawn_weight` in `common/storm_types`. The owner constructors of
 `ai_weight` in `common/war_goals` and `weight_modifier` in `common/personalities` run `ld1r`; they
-join since the shared evaluator runs it (SDK-547). The sweep lists them under
+join since the shared evaluator runs it (SDK-547). Civics `ai_weight` and `random_weight` join
+since an [allocation](registry-fields.md#allocations-in-constructor-walks) is outside the owner
+(SDK-822). The sweep lists them under
 `modifier_blocks.failed_persistent_fields`.
 
 ## Entry contexts

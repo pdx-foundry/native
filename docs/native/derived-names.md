@@ -1,6 +1,6 @@
 # Derived names
 
-`Native::derived_names(registry)` (`derived-names/v4`) gives the names that a registry's own code
+`Native::derived_names(registry)` (`derived-names/v5`) gives the names that a registry's own code
 composes from an item key or a string field, and then checks or looks up, and the names that the
 direct callers of an item getter compose from the key or field that it returns
 ([interface callers](#interface-callers-of-name-getters-m452)): the parts of each name,
@@ -228,10 +228,12 @@ engine facts above.
   key; its condition is `Unresolved` (the count of the `description` block).
 - **Second entries with `Unresolved`.** A const member that calls one getter after another also
   records the second getter's names, after assumed text. `CTraditionType::GetTooltip` calls
-  `GetName` (`+0x38`) and then `GetDesc` (`+0xd0`). So `{key}_desc` and `{key}_delayed` of
-  traditions and `{key}` of categories appear a second time with an `Unresolved` miss, each with
-  its gaps. The entry with the same name, lookup and stage and an
-  established miss is the one to match.
+  `GetName` (`+0x38`) and then `GetDesc` (`+0xd0`). So `{key}_delayed` of traditions and `{key}`
+  of categories appear a second time with an `Unresolved` miss, each with its gaps. The entry with
+  the same name, lookup and stage and an established miss is the one to match. Since SDK-820 the
+  `GetTooltip` paths that stopped at its tooltip string go on and spend the path bound first, so
+  the second `{key}_desc` and one `{tradition_swap/custom_tooltip_with_modifiers}` entry without the
+  `inherit_effects` term are gone; the same names and lookups keep their other entries.
 
 ### Population
 
@@ -243,20 +245,20 @@ cargo run --release --example derived-name-population -- "$STELLARIS_PATH"
 
 | Inventory | Total | Complete | Partial | Unsupported | Failed |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Registries | 185 | 61 | 118 | 6 | 0 |
+| Registries | 185 | 62 | 118 | 5 | 0 |
 
-Eighty-seven registries return names, and all of them are partial. The 61 complete answers
+Eighty-eight registries return names, and all of them are partial. The 62 complete answers
 return no name: no own method of theirs reaches a lookup or check, and no getter of theirs has a
-caller with one. Twenty-one of the 31 partial answers with no name have no established key place;
-`common/starbase_levels` is partial only for its `getter-path` gap
-(`CStarbaseLevelType::GetTooltip`).
+caller with one. Twenty-one of the 30 partial answers with no name have no established key place.
+`common/starbase_levels` became complete with SDK-820: its `getter-path` gap
+(`CStarbaseLevelType::GetTooltip(CString&)`) was a stop at its out-argument string.
 
 The 21 registries that a database's own loader names
 ([custom-loader names](registry-fields.md#custom-loader-names)) are read through the owner that
-their loader builds, as `registry_fields` reads them. The six without one owner are
+their loader builds, as `registry_fields` reads them. The five without one owner are
 `Unsupported` with the join's reason: `common/colors`, `common/component_tags`,
-`common/ship_behaviors` and `gfx/worldgfx` (no class with a member reader),
-`common/planet_classes` (two classes) and `prescripted_countries` (two databases). The key probe
+`common/ship_behaviors` and `gfx/worldgfx` (no class with a member reader) and
+`prescripted_countries` (two databases). The key probe
 runs the template key constructor `Owner::Owner(int, CString const&)` (key in `x2`; the by-value
 form has the same call shape) and the key-first `Owner::Owner(CString const&, int)` (key in `x1`).
 On M452 the key-first shape gives `common/strategic_resources` (`+0x20`; three names, `{key}`,
@@ -266,38 +268,23 @@ have other shapes, such as `CTrait::CTrait(CString, int)` and
 `CStaticModifier::CStaticModifier(CString const&)`. A further shape is a change when Atlas needs
 the names of one of these registries.
 
-Gap shapes, by registry (the answer-item shapes also give their gap count):
+The `UnresolvedPath` shapes, with their obstacles, are in
+[paths that stop](#paths-that-stop-sdk-820). The `UnresolvedCondition` shapes, all
+[accepted](#accepted-limit-conditions-and-missing-names-sdk-810):
 
 | Shape | Registries | Gaps |
 | --- | ---: | ---: |
-| Paths go on after assumed text (`assumed-text`) | 94 | |
-| A lookup or check receives a name with an unfollowed part (`unresolved-name`) | 50 | |
-| Paths stop at the path bound (`path-limit`) | 47 | |
-| Paths stop at an unmodelled string object (`string-object`) | 45 | |
-| Lookup or check calls that no run reaches (`unreached`) | 42 | |
-| Paths stop at the loop bound (`loop-limit`) | 14 | |
-| Caller paths stop before a use site (`caller-path`) | 12 | |
-| Paths stop at an unsupported instruction (`instruction`) | 5 | |
-| Paths stop at an unknown branch value (`branch-value`) | 5 | |
-| A fixed-size buffer bounds the name (`name-limit`) | 5 | |
-| A caller's name has an unfollowed part after the getter's name went into it (`caller-name`) | 2 | |
-| A by-value call's result object is not a stack slot (`getter-result`) | 1 | |
-| No path of a getter's probe returns (`getter-path`) | 3 | |
-| No established key place (`constructor` 17, `key-storage` 4) | 21 | |
-| Every-item initialization not established ([accepted](#accepted-limit-conditions-and-missing-names-sdk-810)) | 4 | |
-| Field values of a name not established (accepted) | 47 | 112 |
-| What a missing name gives not established (accepted) | 38 | 117 |
-| Field-derived name with unexplored field states (accepted) | 25 | 67 |
-
-The interface callers add the `caller-path`, `caller-name`, `getter-result` and `getter-path` rows
-(18 gaps); the other `UnresolvedPath` rows are unchanged.
+| Every-item initialization not established | 4 | 4 |
+| Field values of a name not established | 58 | 136 |
+| What a missing name gives not established | 54 | 141 |
+| Field-derived name with unexplored field states | 26 | 68 |
 
 The four every-item gaps (36 before SDK-713) are listed in [gaps](#gaps).
 
-The 303 entries: 274 localisation, 18 file and 11 sprite; 224 when used and 79 at owner
-initialization. On a miss, 156 show the key, 117 are unresolved, 16 are silent and 14 are
-diagnostics; no entry is a fallback. The 67 names with a field part are all unresolved on a miss.
-Conditions: 124 `Always`, 67 with field terms, 112 `Unresolved`. The interface callers give six of
+The 330 entries: 300 localisation, 18 file and 12 sprite; 251 when used and 79 at owner
+initialization. On a miss, 159 show the key, 141 are unresolved, 16 are silent and 14 are
+diagnostics; no entry is a fallback. The 68 names with a field part are all unresolved on a miss.
+Conditions: 126 `Always`, 68 with field terms, 136 `Unresolved`. The interface callers give six of
 the sprite entries ([what the callers give](#what-the-callers-give)).
 
 Findings of the run:
@@ -313,8 +300,8 @@ Findings of the run:
 - **Sprite checks** are rare: `GFX_{key}_bg` and `GFX_{key}_box_icon_rectangle` of districts,
   `GFX_{icon}` and `GFX_{map_counter_icon}` of ship sizes, and the council agenda icon, whose miss
   is unresolved as the engine facts above say.
-- **Run time.** The run takes about 90 s on one process, about 65 s without the interface
-  callers. `common/agreement_presets` is the slowest, at about 7 s.
+- **Run time.** The run takes about 100 s on one process, about 65 s without the interface
+  callers. `common/agreement_presets` is the slowest, at about 17 s.
 
 ### Config agreement
 
@@ -355,17 +342,97 @@ use site.
 | --- | ---: | --- |
 | A getter returns it to callers whose use the method does not reach | 7 | `agreement_presets.icon` (`GetIcon`, `GetLargeIcon`: caller paths stop), `governments/councilors.icon`, `specialist_subject_types.icon` and `icon_large`, `game_concepts.texture`, `economic_categories.scaled_value_key` and `megastructures.build_megastructure_no_cost_localization_key` (no lookup after the call: the caller passes the text on) |
 | No key place, so no root runs | 9 | `ambient_objects`, `game_concept_categories`, `precursor_civilizations`, `special_projects`, `start_screen_messages` |
-| The registry's own paths stop (`path-limit`, `string-object`, `unreached`, `unresolved-name`, …) | 69 | `country_types.colonizing_title`, `bypass.galactic_map_tooltip_header`, `buildings.custom_tooltip`, the eleven `situations` fields |
+| The registry's own paths stop (`path-limit`, `string-object`, `unreached`, `unresolved-name`, …) | 69 | `country_types.colonizing_title`, `bypass.galactic_map_tooltip_header`, `buildings.custom_tooltip`, the eleven `situations` fields. SDK-820 re-ran them: [most are read by no method that the runs follow](#the-fields-in-registries-whose-paths-stop) |
 | The registry's own paths only go on after assumed text | 10 | `colony_types.custom_tooltip`, `megastructure_overclock_types.custom_tooltip` |
 | No stop in the owner's code, and no getter of it has a caller with a lookup | 23 | `country_focus/card_categories` (5), `resolution_categories.icon`, `map/galaxy` (3), the two `pop_tooltip` fields |
 
 Every field of the last two rows is planted in template runs, so its text is followed wherever an
 owner method reads it: those fields reach no lookup in the owner's code. Interface code that reads
-the field directly, without a getter, is the likely reader; the method does not show it. This
-change repairs no internal shape: the 69 fields sit in 32 registries with mixed stop reasons, and
-each keeps the registry-wide gap that names its shape. The interface callers
-reach no further field of the 118; they add the tradition and agenda icons and civics `picture`,
-whose claims are naming lines or not in the list.
+the field directly, without a getter, is the likely reader; the method does not show it. The
+interface callers reach no further field of the 118; they add the tradition and agenda icons and
+civics `picture`, whose claims are naming lines or not in the list.
+
+## Paths that stop (SDK-820)
+
+Population runs at `main` `af4fb57` and after SDK-820, over M452. A gap is one registry's gap of
+the shape; the count is the sum of the numbers in their details (methods or call sites).
+
+| Shape | Before: gaps | Count | After: gaps | Count | Obstacle |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `assumed-text` | 95 | 357 | 95 | 358 | A lookup's returned view is given the empty text; the later path is followed but establishes nothing ([pitfalls](#pitfalls)) |
+| `unresolved-name` | 51 | 199 | 52 | 182 | A part of the name is text that the runs do not follow: another object's string, a lookup's result, an unfollowed call's result |
+| `path-limit` | 48 | 146 | 59 | 174 | Search runs fork on unknown content in 56 description builders (`GetDetailsDesc`, `GetToolTip`, `Append*ModifiersDetailsDesc`, `PostReadInit`). No shared fork: a bound of 256 paths in place of 64 closes 4 of the 59 and adds 7 `loop-limit` |
+| `string-object` | 45 | 88 | 0 | 0 | Repaired: see below |
+| `unreached` | 42 | 406 | 32 | 336 | 323 of the 336 sites are in methods whose paths stop. The other 13 are behind a test of run-time state that is null in the image, such as `_g_CurrentGameState` (`CEdict::GetDesc`, `CPolicyGroup::GetName`) |
+| `constructor`, `key-storage` | 21 | 21 | 21 | 21 | No established key place (see above) |
+| `loop-limit` | 14 | 30 | 17 | 34 | Template runs do not join, and a loop over a collection that the run does not install (modifier lists, upgrades) never ends |
+| `caller-path` | 13 | 67 | 13 | 67 | Caller paths stop before a use site: mostly at the path bound, also at the loop bound and at moves from unknown strings |
+| `name-limit` | 5 | 18 | 5 | 19 | A `PdxStrFmt<N>` buffer bounds the name |
+| `instruction` | 4 | 4 | 3 | 3 | SIMD forms and `sbfx` that the evaluator does not run (`CIntelCategory::GetInfoPerLevel`, `CScriptedMapMode::GetToolTip`, `CResourceConverter::CanAfford`) |
+| `branch-value` | 4 | 9 | 4 | 9 | A `br` through a register: the virtual `CTrigger::Evaluate` and colony state calls on objects that the runs do not know |
+| `caller-name` | 3 | 25 | 3 | 25 | A caller passes the getter's name to a call that the method does not follow |
+| `getter-path` | 3 | 4 | 2 | 3 | Every probe path stops: `CTechnology::GetCost` (an `instruction` stop in `CFixedPoint::GetRounded`) and a `CShipSize` modifier getter (path bound) |
+| `getter-result` | 1 | 1 | 1 | 1 | `CCardinalPatronPanelEntry::Update` gives a frame-pointer slot |
+| **All** | **349** | **1,375** | **307** | **1,232** | |
+
+**The repair.** Every `string-object` stop was `CString::operator+=` or the standard string's move
+assignment on an `x0` that the run does not know: a string member of a `CToolTip&` that the root
+receives (44 `GetToolTip(CToolTip&, …)` roots) or a `CString&` or `CString*` out-argument
+(`CTraditionType::BuildEffectDescInternal`, `CanActivate`). A root run now treats a string function
+that writes an unknown object as a call that the model does not follow: it records the derived texts
+that the call receives and forgets the argument strings, and the path goes on. The caller runs
+already did this. A move from an unknown source into a known object still stops in both: it changes
+that object, and the model cannot say to what. The repair gives 22 new names, all with an
+`Unresolved` miss and condition (`{key}_desc` of tooltip builders, `edict_{key}_desc`,
+`policy_{key}_desc`, `mission_{key}_desc`, `{key}_aftermath_modifier_tooltip`, civics
+`{custom_tooltip_with_modifiers}`), and closes `common/starbase_levels`. Paths that went on also
+meet the bounds: `path-limit` grows by 11 and `loop-limit` by 3.
+
+### The fields in registries whose paths stop
+
+SDK-707 counted 69 fields but kept no list. Rebuilt from the same recording (Atlas
+`.scratch/native-b2b3969`: `value_form` claims of `localisation`, `filepath`, `icon[…]` or
+`<sprite>` on fields that Native reads as a string, joined to a registry by the config type's
+`path`), 123 fields are unreached and 76 of them are in registries with a stop gap. The 76 include
+every example above, and seven getter fields that SDK-707 counted in its first row. For each, the
+template runs watched the item's reads (`Machine::watch_reads`), the runs recorded the calls that
+receive its planted text, and the roots, getters and entered functions were searched for an
+immediate inside its 24 bytes. After SDK-820:
+
+| Result | Fields | Gap that keeps it |
+| --- | ---: | --- |
+| Reaches a lookup | 1 | `governments/civics.custom_tooltip_with_modifiers` |
+| Returned by a getter whose callers' uses are not reached | 7 | `caller-path`, `caller-name`: `agreement_presets.icon`, `governments/councilors.icon`, `specialist_subject_types.icon` and `icon_large`, `game_concepts.icon` and `texture`, `megastructures.build_megastructure_no_cost_localization_key` |
+| Passed to a call that the method does not follow | 5 | `OutsideMethod`: `game_concepts.tooltip_override` (`NTooltipUtil::TryGetDatabaseConceptTooltip`), `megastructures.custom_tooltip_requirements` (`PdxLocalize<…>` with key-value pairs), `ship_sizes.pre_communications_name` (`CheckLocalization(bool, CString const&)`), `storm_types.cosmic_storm_texture_path` and `cosmic_storm_texture_color_path` (`CTextureHandler::AddTexture_sRGB`) |
+| Read by a method whose paths stop before a call receives it | 5 | `path-limit`: `buildings.custom_tooltip` (`GetEffectsDesc` looks it up at `0x1000d3620`, after three `Append*ModifiersDetailsDesc` calls that spend the bound), `astral_actions.custom_usage_tooltip` (`IsExhausted`), `governments/councilors.custom_tooltip_with_modifiers` (`GetModifierLoc`), `megastructures.tooltip_best_systems_header` (`BuildBestSystemsText`), `star_classes.icon` (`InitPostRead`) |
+| Read, and no call receives it on any path | 2 | The consumer is not established: `bypass.galactic_map_tooltip_desc` and `mutations.icon` (`InitPostRead`, which completes) |
+| Composed by a method of another class | 1 | `OutsideMethod`: `governments/authorities.advanced_authority_swap/description` (`CAdvancedAuthoritySwap::GetCustomDescription`; the runs enter only the item class's members) |
+| No read observed | 55 | The consumer is not established. No template path reads the field and no instruction of the followed code uses its offset, so the registry's stops are not its obstacle; interface code that reads the field directly is the likely reader (`OutsideMethod`) |
+
+The 55: `anomalies.picture`; `armies.icon`; `astral_actions.picture`; `buildings.icon`;
+`bypass.galactic_map_tooltip_header` and `system_view_tooltip_header`;
+`casus_belli.aggregated_message_key`; `country_types.colonizing_desc`, `colonizing_title`,
+`pre_communications_fleet_name`, `sub_title` and `sub_title_desc`; `deposits.custom_tooltip_short`;
+`diplomatic_actions.icon`; `edicts.icon`; `espionage_operation_types.picture`;
+`event_chains.picture`; `federation_types.icon`; `governments.heir_title`, `heir_title_female`,
+`ruler_title` and `ruler_title_female`; `governments/civics.room`;
+`governments/councilors.custom_unlock_title`; `leader_classes.name`; `map_modes.icon`;
+`megastructures.cycle_icon`, `order_icon` and `portrait`; `missions/missions.picture`;
+`observation_station_missions.icon`; `patrons/psionic_auras.aura_galaxy_texture`,
+`aura_hyperlane_texture` and `background`; `pop_faction_types.election_header` and `visual_ethic`;
+`relics.portrait`; `ship_sizes.automation_icon` and `role_background`;
+`situation_log/categories.icon`; the eleven `situations` fields; `specimens.icon`;
+`storm_types.cosmic_storm_event_sprite`, `description` and `icon`.
+
+"No read observed" is not a proof: a read watch misses loads after a store to an unknown address,
+and paths cut by a bound are not observed. It is evidence that the registry's stop gap is not the
+field's obstacle.
+
+**Atlas need.** None of the 76 credits a claim now. Atlas gives a field's `value_form`
+`localisation` claim "no comparable form" (Atlas `src/coverage/comparison.rs`,
+`comparison_outcome`), and joins a derived name only to a `localisation` or `images` naming line
+(`src/coverage/language_subject.rs`, `Joins::derived_name`). Reopen a row when a naming line names
+one of these fields.
 
 ## Gaps
 
@@ -437,6 +504,11 @@ tracked baseline names the 57 registries whose open and accepted gaps changed.
 
 ## Pitfalls
 
+- **A registry's stop gap is not a field's obstacle.** SDK-707 sorted unreached fields by their
+  registry's gaps; most of them are read by no method that the runs follow. Check that a followed
+  method reads the field (a read watch on the item, the calls that receive its planted text, its
+  offset in the code) before you blame a stop.
+
 - **A vtable displacement is not a method.** Displacement `0x2e8` is `ChangeSprite` only in the GUI
   element classes; other classes hold unrelated methods there. Recognize the sprite call by the
   receiver's own vtable (the synthetic vtable of an element object), not by the displacement.
@@ -444,9 +516,11 @@ tracked baseline names the 57 registries whose open and accepted gaps changed.
   return no name (`GetCost`, `IsVisibleForCountry`); running their callers first spent most of
   the run on path bounds. Probe with one run, and count only the returned string: other events,
   such as an unfollowed call that receives the key, are not a returned name.
-- **A string function on an unknown object is not a stop in a caller.** Callers build strings in
-  members of their own objects; the root runs' `string-object` stop made thousands of caller paths
-  fail with no relation to the getter's name.
+- **A string function that writes an unknown object is not a stop.** Callers build strings in
+  members of their own objects, and roots in the tooltip or out-string that they receive; the
+  `string-object` stop made thousands of caller paths and 45 registries' root paths fail with no
+  relation to a name. A move from an unknown source into a known object is different: it changes
+  that object, so it still stops.
 - **Give the caller's placeholder its own key node.** The item key's node survives every
   unfollowed call, since a root's item key does not change. A caller may change the string that
   a getter returned, so its placeholder needs a node that an unfollowed call makes unresolved.

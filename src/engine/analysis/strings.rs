@@ -480,13 +480,19 @@ impl Model<'_> {
             None => machine.unlabel(object),
         }
 
+        self.empty_moved_source(machine, source, arena);
+        Ok(Call::Return(None))
+    }
+
+    /// Leave the string object at `source` as a move assignment leaves its source: the empty short
+    /// string, with a zero flag byte and a zero first byte.
+    pub fn empty_moved_source(&self, machine: &mut Machine, source: u64, arena: &mut Arena) {
         machine.write(source, 1, 0);
         machine.write(source + self.layout.flag_byte, 1, 0);
         // A label on the object, not the zero flag byte, makes the source empty: the first word
         // still holds most of the old buffer pointer, which may be labelled.
         let empty = arena.add(Node::literal(String::new()));
         machine.label(source, empty);
-        Ok(Call::Return(None))
     }
 
     fn append(

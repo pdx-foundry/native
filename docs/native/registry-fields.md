@@ -42,7 +42,9 @@ triggered modifier clauses in their [construction scope](triggered-modifiers.md#
 and renamed the other read-scope gaps by [obstacle](discovery.md#read-time-block-scopes-sdk-549). Against `v40`, SDK-627 stated
 the [repeat rules](#repeat-behavior) of five more readers: 131 registry answers change, four
 registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 registries to
-916 in 109. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+916 in 109. Against `v41`, SDK-822 changed two registries: civics `modifier`, `ai_weight` and
+`random_weight` and star_classes `modifier` join their readers
+([allocations](#allocations-in-constructor-walks)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -137,21 +139,72 @@ belongs to one row.
 | `CTriggeredEventDescription<…>::ReadEntry` (`desc`, `tooltip`) | 12 | 8 | Gap. A nested description grammar with its own trigger; repair with a description block reader. |
 | Other single helpers (`ReadColor`, `ReadTexture`, `ReadShipClass`, `ReadBeamState`, `CCompareOperator::Read`, joins of different readers) | 42 | 20 | Gap. One helper each; repair when Atlas needs the field. |
 
-**Inline `CString` copies in constructors.** `common/governments/civics` `modifier` and
-`common/star_classes` `modifier` (handed over from SDK-676) read an inline `CModifier` slot whose
-vtable the owner constructor installs, but the walk loses it on 24 of 32 paths. Before the slot,
-the constructor copies `CString` members inline. On the long path, the copy's allocator is given
-the member, so its result may be an owner address. A later store through it at an unknown index
-may reach every owner byte after the member, the modifier's vtable included. The receivers test
-`exact_build_string_and_token_constructor_effects` asserts this. Obstacle: no stated rule says
-that the string allocator returns memory outside the owner. Repair: state that rule for the
-`CString` allocator and check it on three constructors. It is an evaluator rule for every
-constructor walk, command grammar included, so it is outside this walker repair (SDK-822).
+**Inline `CString` copies in constructors (repaired, SDK-822).** `common/governments/civics`
+`modifier`, `ai_weight` and `random_weight` and `common/star_classes` `modifier` now join their
+readers through the [allocation rule](#allocations-in-constructor-walks).
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
 unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
 `b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
 input is the twelve owners with no `ReadMember` (`CJobTag`, `CTraitTag`, `CZoneType`, …).
+
+### Allocations in constructor walks
+
+A constructor walk (`receivers/calls.rs`) handles a call to an
+allocator by a validated rule: **the allocation is outside the owner, and the allocator writes no
+owner byte, even when it is given an owner address.** The walk returns an unknown value in `x0` that
+is not owner-derived, keeps every owner byte, and forgets memory outside the owner (the heap, a
+pool, the pool's lock). The other registers that the call does not preserve keep an ordinary
+call's taint. The allocators are the imported `operator new(unsigned long)` and
+`operator new[](unsigned long)` and the engine's
+`CPdxCommonStringAllocator::allocate(unsigned long, void const*)`. Every entered constructor walk
+applies the bound call rules, at the owner level as at a member constructor, for
+`registry_fields` and `command_grammar` alike.
+
+Without the rule, a long `CString` copy loses the owner. The copy gives the string allocator the
+member's allocator object (`x0`), so an opaque call may return an owner address; the later
+terminator store `strb wzr, [result, length]` at an unknown index then may reach every owner
+byte.
+
+Conditions, on M452 (`CPdxCommonStringAllocator::allocate` at `0x1025156fc`):
+
+- The allocator reads only its object: a mode word at `+0` and a pool pointer at `+8`. With mode 1
+  and a pool, it takes a global spin lock (`__bss` `0x1037995fc`) and calls the pool's virtual
+  allocate (slot `+0x10`); otherwise it tail-calls `operator new`. It stores to no address given
+  in its arguments.
+- The pool is not in the owner. The constructors below clear the mode and the pool
+  (`str wzr, [member, #0x18]`, `str xzr, [member, #0x20]`) before they allocate.
+
+The three checks:
+
+1. `CString::CString(char const*)` (`0x102524efc`) copies a long text: the receivers test
+   `exact_build_string_and_token_constructor_effects` keeps the owner byte before the member on
+   every long path. Before the rule it was lost.
+2. `CGovernmentCivicType::CGovernmentCivicType(int, CString const&)` (`0x1007fb32c`) copies a long
+   string inline at `+0x588`, after the `CModifier` at `+0x488`. Before the rule the walk lost the
+   modifier's vtable on 24 of 32 paths; now civics `modifier`, `ai_weight` and `random_weight`
+   join. The two weights have the weight grammar but no entry context yet: no evaluation that the
+   method attributes evaluates them.
+3. `CStarClass::CStarClass(int, CString const&)` (`0x100c0bfb0`) copies a long string on the stack,
+   then calls `operator new[]` with a size that it loads from `CPlanetClassDatabase` and fills the
+   result with `memset_pattern16`. The size is unknown and may be owner-derived, so the opaque
+   call reached the whole owner. Now all 36 entered paths keep the `CModifier` vtable at `+0x140`.
+
+Remove the rule, or limit it, when a build's allocator stores through its object or its size, when
+a constructor gives the string allocator a pool in the owner, or when the walk can run the
+allocator's body itself.
+
+Remaining obstacles of the persistent fields that the rule does not repair:
+
+- `common/diplomatic_actions` `ai_acceptance` (`+0x4f0`) and `should_ai_propose` (`+0x528`): on
+  the "Diplomatic action is missing token" path of `CDiplomaticActionType::CDiplomaticActionType`
+  (`0x10041c9b8`), the `CLogger` and stream calls that the walk does not run are given an owner
+  address (16 of 48 paths).
+- `common/sector_types` `system_scores` (`+0x168`) and `local_capital_scores` (`+0x1a0`): on every
+  entered path, `CFixedResourceTable::CFixedResourceTable()` (`0x101d190a0`) allocates through the
+  virtual allocate of `NExperimental::PdxGetNewDeleteAllocator()` (`blr`) and copies into its
+  result. The summary-only run loses them at `CPdxCommonStringAllocator::deallocate` of the default
+  constructor's stack string.
 
 ## Repeat behavior
 
@@ -1581,7 +1634,7 @@ fields. Reopen a field's gaps when the config gives it a claim, or when Atlas ma
 | --- | --- | --- |
 | Path and loop limits | A larger bound reaches no new evaluation: 1,024 paths take over 20 minutes for one registry and remove one gap. The runs fork on script-profiler and string-length branches. Reopen with a path join that merges states that differ only in dead registers. | astral action `potential`, casus belli `potential`, megastructure `tooltip_system_score` (`BuildBestSystemsText` reaches no evaluation) |
 | caller-depth | One more caller turns casus belli `is_valid` into path and loop bounds and an unreadable context (measured at depth 3). | casus belli `is_valid`; astral action `potential` and `is_exhausted` (`GetTooltip`) |
-| No attributed evaluation | [SDK-824](#arrays-and-owner-getters-on-m452-sdk-824) resolves 8 of these claims; the rest wait on array and member-word typing. | tradable action `on_traded_effect`, agreement term value `activate_effect`, terraform `ai_weight` |
+| No attributed evaluation | [SDK-824](#arrays-and-owner-getters-on-m452-sdk-824) resolves 8 of these claims; SDK-830 owns the array and member-word typing that the rest wait on. | tradable action `on_traded_effect`, agreement term value `activate_effect`, terraform `ai_weight` |
 | instruction | The astral `IsAllowed` run from `CAlertManager::Update` stops in floating-point alert arithmetic (`fminnm`, `fmaxnm`, `fcmp`, `fadd`, `fcsel` in turn), and the same run reaches its loop bound, so more instructions change no answer. | astral action `allow`, `potential`, `is_exhausted` |
 | selected-block-identity | The indexed swap load in `CTraditionType::OnEnabled` stays unknown, and the run also reaches the path bound. | tradition and ascension perk `on_enabled` (one function) |
 | Some entry scopes unresolved | Missions: the operator's eleven spatial types reach the path bound. The others pass their scope through a call that the pass does not follow and also reach a bound. | mission `on_start`, terraform `on_queued`, anomaly `on_spawn` |
@@ -1624,11 +1677,11 @@ evaluator call that the method found. Each has a known read scope and no other b
   runs, gains a `this` of no type with a country `prev` in place of an unreadable context, and
   keeps its gaps.
 
-**Before and after.** Over the M452 recordings, before at `main` `af4fb57` (the tracked baseline):
+**Before and after.** Over the M452 recordings, before at `main` `64bd448` (the tracked baseline):
 
 | Stop | Before | After |
 | --- | ---: | ---: |
-| no attributed evaluation | 79 | 45 |
+| no attributed evaluation | 81 | 47 |
 | path-limit | 56 | 61 |
 | some entry scopes unresolved | 44 | 48 |
 | loop-limit | 21 | 24 |
@@ -1639,11 +1692,10 @@ evaluator call that the method found. Each has a known read scope and no other b
 | selected-block-identity | 4 | 4 |
 | branch-value | 2 | 2 |
 | only tooltip calls | 1 | 1 |
-| **Total (registries)** | **234 (69)** | **218 (62)** |
+| **Total (registries)** | **236 (69)** | **220 (62)** |
 
-Open gaps go from 96 to 87. In the field sweep, 31 blocks gain contexts (229 without an entry gap
-and 69 with one, from 205 and 62; 61 of 359 have none, from 92); no block loses a context. Scope
-context goes from 1,420 to 1,446 complete fields. Parity and the command population do not change:
+Open gaps go from 98 to 89. In the field sweep, 31 blocks gain contexts and no block loses one.
+Scope context goes from 1,422 to 1,448 complete fields. Parity and the command population do not change:
 the callback method passes no getters, buffers or virtual evaluations. `opinion_modifiers` and
 `federation_laws` gain one unnamed direct evaluation each, a registry gap that credits no claim, so
 the SDK-812 accepted limit lists them: `CFederationLaw::IsAllowed` evaluates `x22 + 0x1f0` and
@@ -1664,9 +1716,9 @@ the other colony scopes) and government `weight` (a country). Outside the 22, le
 | Obstacle | Claims | Reopen path |
 | --- | --- | --- |
 | A bound or instruction on the run | opinion modifier `opinion` (a country with a country `from`, beside the `CCountry::CalcOurOpinionOfOther` run, which stops at the path limit), councilor `ai_hiring_weight` (the `CCachedPositionWeights` lambda stops at `fdiv` and at the loop limit) | SDK-823 |
-| A member array whose element type no signature names | tradable action `ai_weight` (`CTradeDealSide + 0xa0`), specialist subject perk `activate_effect` and `deactivate_effect` (`CSpecialistSubjectLevel + 0x8`, a class with no constructor symbol), menace perk `on_unlock` (`CCrisisLevelType + 0x48`, through a spill of the level) | type the array by the `vtable for CPdxArray<O const*, int>` that the owner's constructor stores |
-| A local, returned, map or database array | terraform `ai_weight` (an sret array of `CTerraformDatabase::GetAllAvailableLinks`), technology category `weight_modifier` (`CTechnology::GetCategoriesFor`), astral rift `event_weight` (a map value at entry `+0x10`), archaeological site `weight` (`TGameDatabase<CArchaeologicalSiteTypeDatabase>::_pInstance` `+0x48`), agreement preset `overlord_weight` and `subject_weight` (a filtered copy of the preset database, and `CAgreementTermData::GetPresetData()`) | type the array by its stored vtable, or a database's item array by its database |
-| A member word that no type pointer leads to | technology tier `weight_modifier` (`CTechnology + 0x600`), galactic focus `effect` (`CGalacticCommunity + 0x2c0` in `DailyUpdate`) | a writer check of the member word |
+| A member array whose element type no signature names | tradable action `ai_weight` (`CTradeDealSide + 0xa0`), specialist subject perk `activate_effect` and `deactivate_effect` (`CSpecialistSubjectLevel + 0x8`, a class with no constructor symbol), menace perk `on_unlock` (`CCrisisLevelType + 0x48`, through a spill of the level) | SDK-830: type the array by the `vtable for CPdxArray<O const*, int>` that the owner's constructor stores |
+| A local, returned, map or database array | terraform `ai_weight` (an sret array of `CTerraformDatabase::GetAllAvailableLinks`), technology category `weight_modifier` (`CTechnology::GetCategoriesFor`), astral rift `event_weight` (a map value at entry `+0x10`), archaeological site `weight` (`TGameDatabase<CArchaeologicalSiteTypeDatabase>::_pInstance` `+0x48`), agreement preset `overlord_weight` and `subject_weight` (a filtered copy of the preset database, and `CAgreementTermData::GetPresetData()`) | SDK-830: type the array by its stored vtable, or a database's item array by its database |
+| A member word that no type pointer leads to | technology tier `weight_modifier` (`CTechnology + 0x600`), galactic focus `effect` (`CGalacticCommunity + 0x2c0` in `DailyUpdate`) | SDK-830: a writer check of the member word |
 
 Checked members: `CAIInteriorMinister::Terraform` loads each `CTerraformLink const*` from a stack
 array that `GetAllAvailableLinks` fills and calls `GetRawFactor` on `x23 + 0x350`;
