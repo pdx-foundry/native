@@ -87,6 +87,10 @@ pub fn databases(lines: &[Line]) -> BTreeSet<&str> {
 /// A key that selects no item stores a null pointer, which `Missing` cannot name.
 const NULL_POINTER: &str = "a key that selects no item stores a null pointer";
 
+/// A getter's hash search is not qualified, and its miss stores a null pointer.
+const UNQUALIFIED_NULL_POINTER: &str = "the hash search that compares keys is not qualified, and \
+    a key that selects no item stores a null pointer";
+
 /// `CEventManager::GetEvent` selects by event id, not by the key's bytes.
 const EVENT_ID: &str = "the getter selects the event by the id that \
     `CEventManager::GetIDInNameSpace` parses from the key, not by the key's bytes, and a key that \
@@ -258,9 +262,15 @@ impl Method<'_> {
                     .filter(|search| hash_element(&search["find"]).is_some())
                     .ok_or(stop)?;
 
+                let key_match = self.hash_find(&search["find"]);
+                let unstated = match key_match {
+                    Some(_) => NULL_POINTER,
+                    None => UNQUALIFIED_NULL_POINTER,
+                };
+
                 Ok(Found {
-                    key_match: self.hash_find(&search["find"]),
-                    unstated: Some(NULL_POINTER),
+                    key_match,
+                    unstated: Some(unstated),
                     ..selection
                 })
             }

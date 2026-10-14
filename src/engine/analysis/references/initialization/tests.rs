@@ -825,6 +825,20 @@ fn a_getter_that_returns_its_hash_search_matches_equal_keys_and_misses_with_null
 }
 
 #[test]
+fn a_getter_whose_returned_hash_search_is_not_qualified_states_both_reasons() {
+    let lookup = found(getter_call(
+        ON_ACTION,
+        "COnActionDatabase::_pInstance",
+        ON_ACTION_GETTER,
+        shape("hash_getter"),
+        &[("find", ON_ACTION_FIND)],
+    ));
+
+    assert_eq!(lookup.lookup.key_match, None);
+    assert_eq!(lookup.unstated, Some(UNQUALIFIED_NULL_POINTER));
+}
+
+#[test]
 fn a_changed_event_getter_is_no_lookup() {
     let changed = mutated(shape("event_getter"), "mov wr2,#0x86a0", "mov wr2,#0x86a1");
 

@@ -268,7 +268,7 @@ every joined alternative is unconditional.
 | Initializer lookup not established | 33 | 32 |
 | Receiver join failed | 2 | 0 |
 
-Counts are from `command-population` at `command-grammar/v21` (`inventories[].initialization_lookups`).
+Counts are from `command-population` at `command-grammar/v22` (`inventories[].initialization_lookups`).
 
 Joined effects include `create_ship` (`random_existing_design`, `common/ship_sizes`, `Equal`,
 empty key not looked up), `add_district` (`district_type`, `common/districts`, `FirstEqual`) and
