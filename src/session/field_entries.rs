@@ -182,6 +182,7 @@ mod tests {
 
     fn result(fields: Vec<RootField>) -> RegistryFieldResult {
         RegistryFieldResult {
+            keyword_domains: Default::default(),
             loader: None,
             uses: vec![],
             persistent: BTreeMap::new(),

@@ -210,7 +210,8 @@ for contexts and scope types.
   that wrote the flag. The `Unresolved` term beside a flag term is the run-time choice of the
   selected object, which the `OutsideMethod` gap states.
 - `ReaderKind::Keyword` identifies a value from a fixed set of engine names that the reader stores
-  as the engine's own value, such as `calc` or `mode` in a weight modifier. Its `numeric` is
+  as the engine's own value, such as `calc` or `mode` in a weight modifier, or a registry field
+  that a token converter reads, such as a building's `category`. Its `numeric` is
   `Known(None)`. `Field.domain` is `Listed` with the accepted names, sorted, when they are
   established; until then a `ReaderSemantics` gap says the domain is unknown. A name is accepted
   when the engine recognizes it and keeps it. A fallback that the engine stores for an unknown

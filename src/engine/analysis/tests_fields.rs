@@ -3336,3 +3336,230 @@ fn a_merged_boolean_temporary_is_a_known_reader_of_its_table_case() {
     ));
     assert!(jump_table_gaps(&result).is_empty(), "{:?}", result.gaps);
 }
+
+/// The reader's offset of the value token in the keyword fixtures.
+const VALUE_TOKEN: i64 = 0x278;
+
+/// Field 7 converts the value token with `GetExampleFromToken(int)`, which returns 1 for token 8
+/// (`alpha`) and the fallback 0 for any other token; `rest` follows the call, from `0x1024`, and
+/// ends with the epilogue at `0x1100`. `alpha` may get a second literal name.
+fn keyword_fixture(rest: &[u8], second_alpha: bool) -> FieldInput {
+    let mut input = fixture();
+    input.key_readers.value_token = VALUE_TOKEN;
+    input.symbols.extend([
+        Symbol {
+            name: "GetExampleFromToken(int)".into(),
+            address: 0x9000,
+        },
+        Symbol {
+            name: "CReader::ReportMalformed()".into(),
+            address: 0xa000,
+        },
+        Symbol {
+            name: "CExample::Touch(CReader&)".into(),
+            address: 0xb000,
+        },
+    ]);
+    input
+        .strings
+        .extend([(0x8100, "alpha".into()), (0x8200, "beta".into())]);
+    let root = &mut input.functions[0];
+    root.code.truncate(16);
+    root.code.extend(arm64!(at 0x1010;
+        stp x19, x20, [sp, #-16]!;
+        mov x19, x0; // the owner
+        mov x20, x1; // the reader
+        ldr w0, [x20, #0x278]; // the value token
+        bl extern 0x9000 // GetExampleFromToken
+    ));
+    root.code.extend(rest);
+    while root.code.len() < 0x100 {
+        root.code.extend(arm64!(at 0; nop));
+    }
+    root.code.extend(arm64!(at 0x1100;
+        ldp x19, x20, [sp], #16;
+        ret
+    ));
+    let names = &mut input.functions[1];
+    names.code.truncate(names.code.len() - 4);
+    names.code.extend(arm64!(at 0x2010;
+        mov w1, #8; // token 8
+        adrp x2, extern 0x8000; // "alpha"
+        add x2, x2, #0x100;
+        bl extern 0x3000 // CToken::CToken
+    ));
+    if second_alpha {
+        names.code.extend(arm64!(at 0x2020;
+            mov w1, #8; // token 8
+            adrp x2, extern 0x8000; // "beta"
+            add x2, x2, #0x200;
+            bl extern 0x3000 // CToken::CToken
+        ));
+    }
+    names.code.extend(arm64!(at 0; ret));
+    input.functions.push(Function {
+        name: "GetExampleFromToken(int)".into(),
+        address: 0x9000,
+        code: arm64!(at 0x9000;
+            cmp w0, #8; // token 8
+            b.ne extern 0x9010;
+            mov w0, #1; // alpha
+            ret;
+            mov w0, #0; // the fallback
+            ret
+        ),
+    });
+    input
+}
+
+/// Store the converter's result in the owner, and report it when it is the fallback.
+fn reported() -> Vec<u8> {
+    arm64!(at 0x1024;
+        str w0, [x19, #0x40];
+        cbnz w0, extern 0x1100;
+        bl extern 0xa000; // CReader::ReportMalformed
+        b extern 0x1100
+    )
+}
+
+#[test]
+fn a_converted_value_stored_in_the_owner_is_a_keyword() {
+    let silent = arm64!(at 0x1024; str w0, [x19, #0x40]; b extern 0x1100);
+    let result = derive(keyword_fixture(&silent, false));
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+    assert_eq!(
+        result.fields[0].readers,
+        [ReaderJoin::Stored {
+            callee: "GetExampleFromToken(int)".into(),
+            kind: crate::ReaderKind::Keyword,
+            destination: Some(0x40),
+            repeat: crate::RepeatBehavior::Replace,
+        }]
+    );
+    // Every unknown name keeps the fallback 0, with no diagnostic.
+    assert_eq!(
+        result.keyword_domains[&7],
+        Err("An unknown name keeps the converter's fallback with no diagnostic.")
+    );
+}
+
+#[test]
+fn a_reported_fallback_leaves_the_accepted_names() {
+    let result = derive(keyword_fixture(&reported(), false));
+
+    // Both sides of the test of the result read the field.
+    let readers = &result.fields[0].readers;
+    assert_eq!(readers.len(), 2);
+    assert!(
+        readers.iter().all(|join| *join == readers[0]),
+        "{readers:?}"
+    );
+    assert_eq!(result.keyword_domains[&7], Ok(vec!["alpha".to_owned()]));
+}
+
+#[test]
+fn a_keyword_domain_needs_one_literal_name_and_a_followed_caller() {
+    let ambiguous = derive(keyword_fixture(&reported(), true));
+    assert_eq!(
+        ambiguous.keyword_domains[&7],
+        Err("An accepted value has no single literal name.")
+    );
+
+    // After the store, the caller passes the reader to a call that the method does not follow.
+    let touches_reader = arm64!(at 0x1024;
+        str w0, [x19, #0x40];
+        mov x0, x20; // the reader
+        bl extern 0xb000; // CExample::Touch
+        b extern 0x1100
+    );
+    let unresolved = derive(keyword_fixture(&touches_reader, false));
+    assert!(matches!(
+        unresolved.fields[0].readers[..],
+        [ReaderJoin::Stored { .. }]
+    ));
+    assert_eq!(
+        unresolved.keyword_domains[&7],
+        Err("A path of the caller could not be followed for some value.")
+    );
+}
+
+#[test]
+fn a_converter_keeps_the_field_when_it_is_no_keyword() {
+    let reason = |result: &fields::RegistryFieldResult| match &result.fields[..] {
+        [field] => match &field.readers[..] {
+            [ReaderJoin::Missing(stop)] => stop.reason,
+            readers => panic!("{readers:?}"),
+        },
+        fields => panic!("{fields:?}"),
+    };
+
+    // The converter receives the key token, not the value token.
+    let mut key = keyword_fixture(&reported(), false);
+    replace(&mut key, 0x101c, arm64!(at 0x101c; mov w0, w2));
+    let key = derive(key);
+    assert_eq!(reason(&key), "reader-routing");
+    assert!(key.keyword_domains.is_empty());
+
+    // The caller returns without storing the result.
+    let unstored = derive(keyword_fixture(&arm64!(at 0x1024; b extern 0x1100), false));
+    assert_eq!(reason(&unstored), "keyword-store");
+}
+
+#[test]
+fn a_pointer_converter_reads_the_stack_word_that_holds_the_value_token() {
+    let converter = "EExample TokenToEnum<EExample>(int const&)";
+    let pointer = |overwritten: bool| {
+        let mut input = keyword_fixture(&[], false);
+        let symbol = input.symbols.iter_mut().find(|s| s.address == 0x9000);
+        symbol.unwrap().name = converter.into();
+        let function = input.functions.iter_mut().find(|f| f.address == 0x9000);
+        let function = function.unwrap();
+        function.name = converter.into();
+        function.code = arm64!(at 0x9000;
+            ldr w0, [x0]; // the token
+            cmp w0, #8; // token 8
+            b.ne extern 0x9014;
+            mov w0, #1; // alpha
+            ret;
+            mov w0, #0; // the fallback
+            ret
+        );
+        let mut code = Arm64::at(0x1010);
+        arm64!(code;
+            stp x19, x20, [sp, #-32]!;
+            mov x19, x0; // the owner
+            mov x20, x1; // the reader
+            ldr w8, [x20, #0x278]; // the value token
+            str w8, [sp, #16]
+        );
+        if overwritten {
+            arm64!(code; stp wzr, wzr, [sp, #16]);
+        }
+        arm64!(code;
+            add x0, sp, #16;
+            bl extern 0x9000; // TokenToEnum
+            str w0, [x19, #0x40];
+            ldp x19, x20, [sp], #32;
+            ret
+        );
+        let root = &mut input.functions[0];
+        root.code.truncate(16);
+        root.code.extend(code.bytes());
+        derive(input)
+    };
+
+    let read = pointer(false);
+    assert!(
+        matches!(&read.fields[0].readers[..], [ReaderJoin::Stored { callee, .. }] if callee == converter),
+        "{:?}",
+        read.fields[0].readers
+    );
+    // A pair store replaced the word, so the converter does not read the value.
+    let overwritten = pointer(true);
+    assert!(
+        matches!(overwritten.fields[0].readers[..], [ReaderJoin::Missing(_)]),
+        "{:?}",
+        overwritten.fields[0].readers
+    );
+}
