@@ -65,6 +65,54 @@ pub fn classify(readers: &[ReaderJoin]) -> Classification<'_> {
     }
 }
 
+/// Calls that write an engine diagnostic.
+pub(crate) const DIAGNOSTICS: &[&str] = &[
+    "CPdxLogFileAndLine::operator()(char const*, ...)",
+    "CLogger::Log(char const*, unsigned int, int)",
+    "CReader::ReportMalformed()",
+    "CReader::ReportUnexpected()",
+];
+
+/// Calls that locate a diagnostic in the reader or the engine source and change no script state.
+pub(crate) const DIAGNOSTIC_LOCATIONS: &[&str] = &[
+    "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)",
+    "CReader::GetFileName() const",
+    "CReader::GetLineNumber() const",
+    "CReader::GetFileLocationDescription() const",
+];
+
+/// Releases a string's heap buffer.
+pub(crate) const STRING_RELEASE: &str =
+    "CPdxCommonStringAllocator::deallocate(char*, unsigned long)";
+
+/// Whether a call writes or locates a diagnostic, or releases a string. It changes no script
+/// state: a validated rule, which the weight and keyword methods state.
+pub(crate) fn changes_no_script_state(callee: &str) -> bool {
+    DIAGNOSTICS.contains(&callee)
+        || DIAGNOSTIC_LOCATIONS.contains(&callee)
+        || callee == STRING_RELEASE
+}
+
+/// A pure converter from a token to an engine enum: `E TokenToEnum<E>(int const&)`, which reads
+/// the token through a pointer, or `Get…FromToken(int)`, which takes it in `w0`.
+pub(crate) fn converter(callee: &str) -> Option<ConverterArgument> {
+    if callee.contains(" TokenToEnum<") && callee.ends_with("(int const&)") {
+        return Some(ConverterArgument::Pointer);
+    }
+    let name = callee.strip_suffix("FromToken(int)")?;
+
+    (name.starts_with("Get") && !name.contains(['(', ' '])).then_some(ConverterArgument::Word)
+}
+
+/// How a [`converter`] receives its token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConverterArgument {
+    /// `x0` points at a word that holds the token.
+    Pointer,
+    /// `w0` holds the token.
+    Word,
+}
+
 /// The two member-dispatch signatures supported by the token path evaluator.
 pub(crate) fn is_member(callee: &str) -> bool {
     callee.ends_with("::ReadMember(CReader&, int)")

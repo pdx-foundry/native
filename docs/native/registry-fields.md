@@ -4,8 +4,9 @@
 alternatives, nested object fields and local stored-value selections; `Native::registries()`
 gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
-ever established; Git `d8f9d8a`); SDK-828 owns enum domains, except the weight keyword domains, which the
-[weight blocks](weight-blocks.md) method establishes (SDK-725), and SDK-829 owns required fields.
+ever established; Git `d8f9d8a`). The [keyword domains](#keyword-domains-sdk-828) of fields read
+through a token converter come from this method (SDK-828), the weight keyword domains from the
+[weight blocks](weight-blocks.md) method (SDK-725); SDK-829 owns required fields.
 
 ## What complete means
 
@@ -42,7 +43,11 @@ triggered modifier clauses in their [construction scope](triggered-modifiers.md#
 and renamed the other read-scope gaps by [obstacle](discovery.md#read-time-block-scopes-sdk-549). Against `v40`, SDK-627 stated
 the [repeat rules](#repeat-behavior) of five more readers: 131 registry answers change, four
 registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 registries to
-916 in 109. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+916 in 109. Against `v41`, SDK-828 joined the [token converters](#keyword-domains-sdk-828)
+as keyword readers: 14 registries change, `common/scripted_modifiers` becomes complete, and four
+fields that a `movk`, `csel` or `tst` used to stop join their readers (`common/deposits`
+`potential` and `resources`, `common/ship_sizes` `possible_construction` and
+`potential_construction`). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -130,7 +135,7 @@ belongs to one row.
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
-| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 | 14 | SDK-828 keyword domains. |
+| Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 → 2 | 14 → 2 | Resolved: [keyword domains](#keyword-domains-sdk-828). `construction_type` converts a list of lexer tokens, and `requirements.shipclass_*` converts the key token. |
 | Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
 | Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
 | Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |
@@ -224,6 +229,91 @@ Pitfalls:
 - A deferred reader's key string is a temporary; storing it proves nothing. The destination that
   the lambda captures, the resolver order and the lambda's write decide the result.
 - A logged duplicate is not a rejection; the repeat is read.
+
+## Keyword domains (SDK-828)
+
+M452 executable `c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b`. A converter is
+a pure switch from a token to an engine enum: `E TokenToEnum<E>(int const&)` reads the token
+through a pointer, `Get…FromToken(int)` takes it in `w0`. Each returns one fallback for every
+token that it does not compare, for example 4 from `TokenToEnum<ERarity>` (`0x1006c64fc`) and 2
+from `GetTechAreaFromToken` (`0x1006c3f18`).
+
+**Reader.** When a path calls a converter with the value token, as the stack word that a
+`TokenToEnum` argument points to or as `w0`, and stores the result in the owner, the field's
+reader is `Keyword` with that destination and `Replace`: the store assigns one destination. The
+converter is the reader identity. Branches after the call test the result or later state, so
+they are not read conditions. A path that calls the converter and stops later keeps its field
+with an unresolved reader; a path that returns without the store stops at `keyword-store`. A
+converter of another token keeps the `reader-routing` stop. Command children go through the same
+walk, so 28 command answers gain `Keyword` keys (`create_ship` `rarity`, `give_dna`,
+`count_tech_options`); the command method states value domains as `OutsideMethod` and computes
+none.
+
+**Method.** `fields/keywords.rs` runs the owner's member reader concretely for the key and each
+value token from 0 to the largest literal token, and the first value after it, which stands for
+every name that the engine does not know. The converter runs its own code, and the
+[weight method's](weight-blocks.md#keyword-domains) diagnostic calls mark a report. A value is
+accepted when some path returns with no diagnostic, and reported when every path writes one,
+whatever the caller stored: a reported fallback is a recovery, as `mode`'s is. When the
+run-time token is reported, the accepted values are the domain; when it is accepted, the caller
+keeps the fallback of an unknown name with no diagnostic, and the domain stays `Unknown` with the
+gap "An unknown name keeps the converter's fallback with no diagnostic." Every path must return
+through the converter, or the gap is "A path of the caller could not be followed for some
+value."; every accepted value needs one literal name, or the gap is "An accepted value has no
+single literal name."
+
+Validated rules, from the weight method: the run-time token behaves as any unknown name, and a
+call that receives neither the owner nor the reader changes no script state; a call that receives
+either stops the path. A diagnostic, its location, the log line's constructor and a string
+release change no script state, so the walker goes on past them after the store too
+(`readers::changes_no_script_state`). "Some path accepts" is also a validated rule: on
+`CEconomicCategory` (`0x101c383e8`) a stored category logs `modifier_category … not specified
+before triggered … modifiers` when an earlier key set an owner flag; that diagnostic is about the
+key order, not the name.
+
+Accepted limit: the owner's `InitPostRead()` is not run, so a fallback that a hook would report
+and replace keeps `Unknown`. On M452 no hook of these owners reads the stored offset, except
+`CBuildingType::InitPostRead()` (`0x1000d9964`), which reads `owner_type` to log a missing
+`building_sets` and overwrites nothing. Change this for a build whose hook reads a keyword's
+offset.
+
+| Fields (M452) | Converter | Domain |
+| --- | --- | --- |
+| buildings `category` | `GetBuildingCategoryEnumFromToken` | `Listed`, 9 names. A fallback 0 logs `Failed to get any building category for this building…`. |
+| scripted_modifiers `category`, economic_categories `modifier_category` | `GetModifierCategoryFromToken` | `Listed`, 24 names. A fallback 0 for a name other than `none` logs `Invalid modifier category '%s' at %s`. |
+| situations `category`, `fail_category`, `complete_category` | `TokenToEnum<EPolarityType>` | `Unknown`: an unknown name is kept as 2, the value of `neutral`. |
+| authorities `election_type`, `advanced_authority_swap.election_type` | `GetElectionTypeFromToken` | `Unknown`: kept as 0, the value of `none`. |
+| mutations `component_slot_size_to_disable`, ship_sizes `mutation_components_size` | `TokenToEnum<EComponentSlotSize>` | `Unknown`: kept silently. |
+| global_ship_designs `ship_owner_type`, pop_jobs `possible_precalc`, traits `leader_trait_type` and `category`, buildings `owner_type`, specimens `rarity`, target_types `target_type`, technology `area` | their own converters | `Unknown`: kept silently. |
+| ship_sizes `construction_type`, special_projects `requirements.shipclass_starbase` | `TokenToEnum<EShipConstructionType>`, `GetShipClassEnumFromToken` | No reader: the argument is a lexer token appended to an array, or the key token, whose result indexes the storage. |
+
+The parity test `enum_fields_list_their_names_or_say_why_not` checks each row and compares two
+domains with the config (cwtools `8574760`). `enum[building_category]` also names
+`planet_buildings`, `resources` and `amenities`, which the converter does not compare, so the
+engine logs that the building has no category. `enum[scripted_modifier_category]` names `pop_job`,
+which the engine reports, and lacks `galactic_community`, `storm_influence_field` and
+`waystation`, which it accepts. `cargo live fixture_enum_domain` loads a scripted modifier with
+`category = planet` and one with `category = native_unknown`: only the second logs, `Invalid
+modifier category` on its line.
+
+M452, SDK-828: before at Native `af4fb57` (`registry-fields/v41`), after at `registry-fields/v42`.
+
+| Count | Before | After |
+| --- | ---: | ---: |
+| `Keyword` fields / with a `Listed` domain | 0 / 0 | 18 / 3 |
+| `UnresolvedReader` "no shared reader" gaps (fields, root and nested) | 763 in 97 registries | 746 in 95 |
+| Root fields found | 1,926 | 1,930 |
+| Gaps other than `OutsideMethod` | 3,662 | 3,633 |
+| `UnresolvedStorage` gaps | 916 | 899 |
+| Complete registries | 18 | 19 |
+
+Pitfalls:
+
+- A converter's fallback can be the value of a name it compares, as `neutral` and `none` are
+  above. Listing the names whose result is not the fallback would drop them; decide by what the
+  caller does with an unknown name.
+- `GetShipClassEnumFromToken` in `SProjectRequirements::ReadMember` receives the key token
+  (`x2`), not the value token: the key selects a slot.
 
 ## Compiler jump tables
 

@@ -195,6 +195,7 @@ enum Case {
     FixtureRelicPortrait,
     FixtureBlockParsing,
     FixtureRepeatReaders,
+    FixtureEnumDomain,
     FixtureReadScope,
     FixtureModifierCategory,
     FixtureModifierBlock,
@@ -417,6 +418,7 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
     cases.push(("fixture_repeat_readers".into(), Case::FixtureRepeatReaders));
+    cases.push(("fixture_enum_domain".into(), Case::FixtureEnumDomain));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
     cases.push((
         "fixture_triggered_modifier".into(),
@@ -762,6 +764,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureRepeatReaders => fixture_repeat_readers(native).await,
+        Case::FixtureEnumDomain => fixture_enum_domain(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierCategory => fixture_modifier_category(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
@@ -1389,6 +1392,65 @@ async fn fixture_repeat_readers(native: &Native) -> Outcome {
         ],
     )
     .await
+}
+
+/// A scripted modifier `category` outside the keyword domain is reported where it is read, and a
+/// name in the domain is not. The engine keeps the converter's fallback for the unknown name.
+async fn fixture_enum_domain(native: &Native) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FieldDomain, FixtureFieldQuestion, FixtureRequest};
+    let registry = "common/scripted_modifiers";
+    let listed = |name: &str| {
+        let answer = native.registry_fields(registry)?;
+        let category = answer.value.iter().find(|field| field.name == "category");
+        Ok::<_, Box<dyn std::error::Error>>(matches!(
+            category.map(|field| &field.domain),
+            Some(FieldDomain::Listed(names)) if names.iter().any(|listed| listed == name)
+        ))
+    };
+    if !listed("planet")? || listed("native_unknown")? {
+        return Err("the static domain does not list `planet` alone of the two names".into());
+    }
+
+    let file = format!("{registry}/native_enum_domain.txt");
+    let text = r#"native_enum_known = {
+ category = planet
+}
+native_enum_unknown = {
+ category = native_unknown
+}
+"#;
+    let request = FixtureRequest::field_outcomes(
+        file.clone(),
+        text,
+        ["native_enum_known", "native_enum_unknown"]
+            .map(|definition| FixtureFieldQuestion::new(registry, definition, "category")),
+    );
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let logged_at = |line: u64| -> Vec<&str> {
+            answer
+                .value
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    matches!(&diagnostic.join, DiagnosticJoin::Source { file: logged, line: at, .. }
+                        if *logged == file && *at == line)
+                })
+                .map(|diagnostic| diagnostic.text.as_str())
+                .collect()
+        };
+        let unknown = logged_at(5);
+        let reported = unknown.len() == 1 && unknown[0].starts_with("Invalid modifier category");
+        if !logged_at(2).is_empty() || !reported {
+            return Err(format!("enum domain: {answer:?}").into());
+        }
+
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
 }
 
 /// Load `text` as one file of `registry`, and check that each field of `definition` in

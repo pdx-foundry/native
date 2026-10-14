@@ -113,6 +113,7 @@ mod tests {
         let partition_accounted = partition_accounted(&paths);
         let offset = storage_offset(&fields[0], partition_accounted);
         let result = RegistryFieldResult {
+            keyword_domains: Default::default(),
             loader: None,
             uses: Vec::new(),
             persistent: BTreeMap::new(),

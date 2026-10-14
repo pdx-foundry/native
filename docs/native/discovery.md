@@ -96,6 +96,10 @@ that the read does not reset, and names the cause of every other unknown repeat.
 764 wait for a field's shared reader (SDK-710's families) and 22 are event kinds, whose repeat
 belongs to the loader. Enum domains moved to SDK-828 and required fields to SDK-829.
 
+SDK-828 (2026-10-13) joins the 20 fields read through a token converter as keyword readers: 18
+are `Keyword`, 3 of them with a `Listed` domain, and the other 15 keep the fallback of an unknown
+name with no diagnostic ([keyword domains](registry-fields.md#keyword-domains-sdk-828)).
+
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
 gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 300 other gaps in
 56 (SDK-810, after SDK-713's every-item change). The callers add 18 path gaps (caller paths that

@@ -5,6 +5,7 @@ use super::{
 };
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::discovery::{Symbol, SymbolIndex};
+use crate::engine::analysis::readers::{self, ConverterArgument};
 use crate::engine::analysis::stop::{Bound, Obstacle, Unknown, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -144,6 +145,13 @@ struct State {
     value_read: Option<Unresolved>,
     targets: BTreeSet<i64>,
     emplaced: BTreeSet<i64>,
+    /// Stack words that hold the value token, as a converter's argument.
+    value_token_words: BTreeSet<i64>,
+    /// The converter that the path called with the value token, until its result is stored.
+    converted: Option<u64>,
+    /// How many conditions the path had when it called a converter with the value token.
+    /// Branches after the call test the read's result or later state, not which reader reads.
+    keyword_conditions: Option<usize>,
     stored: Option<(ReaderJoin, i64, i64)>,
     /// A Boolean that a reader call wrote into a stack temporary, while the path follows it to
     /// its member.
@@ -254,6 +262,7 @@ impl State {
                 Value::Constant(value) => Some(Value::Constant(value as u32 as i32 as i64)),
                 Value::Token => Some(Value::Token),
                 Value::TokenWord(offset) => Some(Value::TokenWord(offset)),
+                Value::Converted(entry) => Some(Value::Converted(entry)),
                 Value::Load(base, width) => Some(Value::Load(base, width.min(4))),
                 value @ Value::Offset(..) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
                     Some(value)
@@ -274,11 +283,19 @@ impl State {
             (PathOutcome::Gap(_) | PathOutcome::Reader(ReaderJoin::Missing(_)), Some(read)) => {
                 PathOutcome::Reader(ReaderJoin::Missing(read.clone()))
             }
+            // A path that called a converter with the value token reached the field's reader.
+            (PathOutcome::Gap(stop), _) if self.keyword_conditions.is_some() => {
+                PathOutcome::Reader(ReaderJoin::Missing(stop))
+            }
             (outcome, _) => outcome,
+        };
+        let conditions = match self.keyword_conditions {
+            Some(before) => self.conditions[..before].to_vec(),
+            None => self.conditions.clone(),
         };
         TokenPath {
             domain: self.domain,
-            conditions: self.conditions.clone(),
+            conditions,
             instructions: self.path.clone(),
             terminal,
             outcome,
@@ -298,6 +315,7 @@ impl State {
                 // A W-register write zero-extends, so a copy of the token is a token word.
                 Some(Value::Token) => Some(Value::TokenWord(0)),
                 Some(Value::TokenWord(offset)) => Some(Value::TokenWord(offset)),
+                Some(Value::Converted(entry)) => Some(Value::Converted(entry)),
                 Some(value @ Value::Offset(..)) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
                     Some(value)
                 }
@@ -772,14 +790,33 @@ fn apply(
                 state.value_strings.clear();
                 state.targets.clear();
                 state.stack.clear();
+                state.value_token_words.clear();
                 if row.operation == "str"
                     && operand.starts_with('x')
                     && let Some(value) = state.value(operand)
                 {
                     state.stack.insert(at, value);
                 }
-            } else if matches!(location, Some(Value::Owner(_))) {
+                if row.operation == "str"
+                    && state.value(operand) == Some(value_token_word(input.key_readers))
+                {
+                    state.value_token_words.insert(at);
+                }
+            } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
+                if let Some(Value::Converted(converter)) = state.value(operand)
+                    && state.stored.is_none()
+                {
+                    let callee = input.symbol_index.name(input.symbols, converter);
+                    let join = ReaderJoin::Stored {
+                        callee: callee.unwrap_or_default().into(),
+                        kind: crate::ReaderKind::Keyword,
+                        destination: Some(at),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    state.stored = Some((join, at, width));
+                    state.converted = None;
+                }
             } else {
                 return Err(stop("store-destination", unestablished(state, base)));
             }
@@ -816,6 +853,7 @@ fn apply(
                 state.copied_tokens.clear();
                 state.value_strings.clear();
                 state.targets.clear();
+                state.value_token_words.clear();
             }
             if row.operation == "ldp" {
                 if update.is_some() && [register(first), register(second)].contains(&register(base))
@@ -841,8 +879,13 @@ fn apply(
                 state.assign(base, updated);
             }
         }
-        // Bit-field reads and ORs do not set flags; their result is not followed.
-        ("ubfx" | "and" | "orr", [destination, ..]) => state.assign(destination, None),
+        // Bit-field reads, ORs, half-word moves and selects do not set flags; their result is
+        // not followed.
+        ("ubfx" | "and" | "orr" | "movk" | "csel", [destination, ..]) => {
+            state.assign(destination, None)
+        }
+        // A bit test of a value that the walk does not follow leaves the flags unknown.
+        ("tst", _) => state.flags = None,
         ("adrp" | "adr", [destination, address]) => {
             state.assign(destination, number(address).map(Value::Constant))
         }
@@ -938,6 +981,9 @@ fn explore_member_with_wrapped_owner(
         value_read: None,
         targets: BTreeSet::new(),
         emplaced: BTreeSet::new(),
+        value_token_words: BTreeSet::new(),
+        converted: None,
+        keyword_conditions: None,
         stored: None,
         temporary: None,
         saved_addresses: BTreeMap::new(),
@@ -1080,6 +1126,11 @@ fn explore_member_with_wrapped_owner(
                 leaves.push(state.finish(row.address, outcome));
                 break;
             }
+            if row.operation == "ret" && state.converted.is_some() {
+                let unstored = stop("keyword-store", Obstacle::Unsupported);
+                leaves.push(state.finish(row.address, PathOutcome::Gap(unstored)));
+                break;
+            }
             if row.operation == "ret"
                 && matches!(row.operands.as_str(), "" | "x30")
                 && let Some((join, _, _)) = &state.stored
@@ -1189,6 +1240,13 @@ fn explore_member_with_wrapped_owner(
                     }
                     break;
                 }
+                let harmless = target
+                    .and_then(|address| input.symbol_index.name(input.symbols, address))
+                    .is_some_and(readers::changes_no_script_state);
+                if state.stored.is_some() && harmless && row.operation == "bl" {
+                    state.clobber_call();
+                    continue;
+                }
                 if state.stored.is_some() {
                     let touches = (0..=8)
                         .filter_map(|index| state.value(&format!("x{index}")))
@@ -1208,6 +1266,16 @@ fn explore_member_with_wrapped_owner(
                         break;
                     }
                     state.clobber_call();
+                    continue;
+                }
+                if row.operation == "bl"
+                    && let Some(target) = target
+                    && converts_value_token(input, target, &state)
+                {
+                    state.clobber_call();
+                    state.assign("x0", Some(Value::Converted(target)));
+                    state.converted = Some(target);
+                    state.keyword_conditions = Some(state.conditions.len());
                     continue;
                 }
                 if let Some(target) = target {
@@ -2142,6 +2210,29 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     CompoundCall::Continue
 }
 
+/// The value token's word, loaded from the reader.
+fn value_token_word(bindings: &super::KeyReaders) -> Value {
+    Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
+}
+
+/// Whether the call to `target` converts the value token with a pure converter, which a
+/// keyword's caller then stores.
+fn converts_value_token(input: &DispatchInput<'_>, target: u64, state: &State) -> bool {
+    let Some(callee) = input.symbol_index.name(input.symbols, target) else {
+        return false;
+    };
+
+    match readers::converter(callee) {
+        Some(ConverterArgument::Pointer) => {
+            matches!(state.value("x0"), Some(Value::Stack(at)) if state.value_token_words.contains(&at))
+        }
+        Some(ConverterArgument::Word) => {
+            state.value("w0") == Some(value_token_word(input.key_readers))
+        }
+        None => false,
+    }
+}
+
 /// The pointer to the value token's text, loaded from the reader.
 fn value_text(bindings: &super::KeyReaders) -> Value {
     Value::Load(
@@ -2530,6 +2621,9 @@ mod tests {
             value_read: None,
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),
+            value_token_words: BTreeSet::new(),
+            converted: None,
+            keyword_conditions: None,
             stored: None,
             temporary: None,
             saved_addresses: BTreeMap::new(),
