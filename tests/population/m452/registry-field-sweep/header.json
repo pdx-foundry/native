@@ -8,10 +8,10 @@
     "known_reader_identities": 1598,
     "known_reader_kinds": 1617,
     "partial_queries": 162,
-    "queries_with_unresolved_paths": 156,
+    "queries_with_unresolved_paths": 153,
     "unknown_reader_identities": 328,
     "unknown_reader_kinds": 309,
-    "unresolved_paths": 1161,
+    "unresolved_paths": 1145,
     "unsupported_queries": 5
   }
 }

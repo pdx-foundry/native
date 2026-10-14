@@ -1638,11 +1638,15 @@ evaluator call that the method found. Each has a known read scope and no other b
 | only tooltip calls | 1 | 1 |
 | **Total (registries)** | **234 (69)** | **218 (62)** |
 
-Open gaps go from 96 to 89. In the field sweep, 31 blocks gain contexts (229 without an entry gap
-and 69 with one, from 205 and 62; 61 of 359 have none, from 92); no block loses a context. Parity
-and the command population do not change: the callback method passes no getters, buffers or
-virtual evaluations. `opinion_modifiers` and `federation_laws` gain one unnamed direct evaluation
-each, a registry gap that credits no claim (the SDK-812 accepted limit lists them now).
+Open gaps go from 96 to 87. In the field sweep, 31 blocks gain contexts (229 without an entry gap
+and 69 with one, from 205 and 62; 61 of 359 have none, from 92); no block loses a context. Scope
+context goes from 1,420 to 1,446 complete fields. Parity and the command population do not change:
+the callback method passes no getters, buffers or virtual evaluations. `opinion_modifiers` and
+`federation_laws` gain one unnamed direct evaluation each, a registry gap that credits no claim, so
+the SDK-812 accepted limit lists them: `CFederationLaw::IsAllowed` evaluates `x22 + 0x1f0` and
+`COpinionModifier::CalcGrowthRate` evaluates `x19`, registers that the name pass does not lead to
+the receiver. A registry gap can hide a field, so federation laws go from complete to partial
+fields (104 complete registries, from 105).
 
 **Credit.** 8 of the 22 claims now have established contexts and no entry gap: tradable action
 `on_traded_effect`, `on_deal_ended_sender_effect` and `on_deal_ended_recipient_effect` (a country
