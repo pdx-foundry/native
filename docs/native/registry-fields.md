@@ -1619,7 +1619,10 @@ evaluator call that the method found. Each has a known read scope and no other b
   reader. Before, the first loop's virtual call in `CreateAgreement` (and in `DestroyAgreement`)
   made the scope unknown for the second loop's call, which gave each term value block an unreadable
   context beside the agreement. Archaeological site `on_visible` loses its unreadable context and
-  its gaps the same way; its country with an archaeological site `from` agrees with the config.
+  its gaps the same way; its country with an archaeological site `from` agrees with the config. A
+  helper's attributed evaluations are scope readers too: mission `on_stop`, which `CMission::Stop`
+  runs, gains a `this` of no type with a country `prev` in place of an unreadable context, and
+  keeps its gaps.
 
 **Before and after.** Over the M452 recordings, before at `main` `af4fb57` (the tracked baseline):
 
