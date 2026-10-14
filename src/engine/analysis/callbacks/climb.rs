@@ -12,7 +12,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::contexts::{Read, Selected};
-use super::names::{self, Fact, State, StringFunctions};
+use super::names::{self, Fact, Known, OffsetGetter, Root, State, StringFunctions};
 use crate::engine::analysis::decode::{Instruction, number};
 use crate::engine::analysis::evaluate::Code;
 
@@ -39,8 +39,8 @@ pub(super) struct Decoded<'a> {
     /// The scope functions that the context pass runs.
     pub scope_code: &'a [Instruction],
     pub strings: &'a StringFunctions,
-    /// The offset `k` of each function whose whole body is `add x0, x0, #k; ret`, by its address.
-    pub offset_getters: &'a BTreeMap<u64, i64>,
+    /// Each function whose whole body is `add x0, x0, #k; ret`, by its address.
+    pub offset_getters: &'a BTreeMap<u64, OffsetGetter>,
 }
 
 /// A function that passes its scope parameter `parameter` on to a read call.
@@ -133,6 +133,7 @@ pub(super) fn climb<T: Ord + Clone>(
             decoded.functions,
             decoded.strings,
             decoded.offset_getters,
+            &BTreeMap::new(),
             calls
                 .iter()
                 .map(|(_, _, call)| (call.function, call.address)),
@@ -168,10 +169,12 @@ pub(super) fn climb<T: Ord + Clone>(
 }
 
 /// The name-pass state before each `(function, address)`, for the functions that are decoded.
+/// `buffers` gives the buffer words of each function's arrays of owner pointers.
 pub(super) fn states_at(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     strings: &StringFunctions,
-    offset_getters: &BTreeMap<u64, i64>,
+    offset_getters: &BTreeMap<u64, OffsetGetter>,
+    buffers: &BTreeMap<u64, BTreeSet<(usize, i64)>>,
     sites: impl Iterator<Item = (u64, u64)>,
 ) -> BTreeMap<u64, State> {
     let mut by_function: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
@@ -184,7 +187,12 @@ pub(super) fn states_at(
         let Some(rows) = functions.get(&function) else {
             continue;
         };
-        names::each_state(rows, strings, offset_getters, |row, state| {
+        let known = Known {
+            strings,
+            offset_getters,
+            buffers: buffers.get(&function).unwrap_or(const { &BTreeSet::new() }),
+        };
+        names::each_state(rows, known, |row, state| {
             if addresses.contains(&row.address) {
                 states.insert(row.address, state.clone());
             }
@@ -196,7 +204,7 @@ pub(super) fn states_at(
 /// The parameter that register `register` holds on every path, unchanged.
 pub(super) fn parameter(state: &State, register: usize) -> Option<usize> {
     match names::sole_fact(state.register(register)) {
-        Some(Fact::Argument(parameter, 0)) => Some(parameter),
+        Some(Fact::Address(Root::Argument(parameter), 0)) => Some(parameter),
         _ => None,
     }
 }

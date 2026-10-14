@@ -1898,7 +1898,8 @@ fn fixture_constructor_joins_only_one_direct_or_matching_new_entry_route() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
-    use crate::BlockFamily::{Effect, Trigger};
+    use crate::BlockFamily::{Effect, Trigger, Weight};
+    use crate::engine::analysis::callbacks::OffsetGetter;
     use crate::engine::analysis::callbacks::blocks::TypePointers;
 
     let binding = crate::session::installed_native().bound();
@@ -1919,13 +1920,31 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         std::collections::BTreeMap::from([(0x58, Trigger)])
     );
     // CSpecialistSubjectType::GetOnProgressCompleteEffect() const: add x0, x0, #0xa0; ret.
-    assert_eq!(input.offset_getters.get(&0x100ba5d44), Some(&0xa0));
+    let getter = |offset: i64, owner: &str| OffsetGetter {
+        offset,
+        owner: Some(owner.into()),
+    };
+    assert_eq!(
+        input.offset_getters.get(&0x100ba5d44),
+        Some(&getter(0xa0, "CSpecialistSubjectType"))
+    );
+    // CAgreementTermValue::GetActivateEffect() const, which CAgreementManager::CreateAgreement
+    // calls on each element of a term array that no type pointer leads to.
+    assert_eq!(
+        input.offset_getters.get(&0x10004ec04),
+        Some(&getter(0x978, "CAgreementTermValue"))
+    );
+    assert!(input.type_pointers.contains_key(&0x10004335c));
+    // CScriptableValue::GetValue and GetValueNoScopeCopy evaluate a weight block.
+    assert_eq!(input.evaluators.get(&0x10092f03c), Some(&Weight));
+    assert_eq!(input.evaluators.get(&0x10092f0a8), Some(&Weight));
 
     let pointers = |function: u64| input.type_pointers.get(&function).cloned();
     let member = |register: usize, offset: i64, owner: &str| TypePointers {
         method_of: None,
         registers: Default::default(),
         members: [((register, offset), owner.into())].into(),
+        elements: Default::default(),
         scope_parameters: Default::default(),
     };
     // CMission::Start: its mission type is the word at this + 0x18.
@@ -1946,6 +1965,12 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     assert_eq!(
         pointers(0x100c6f8a0).map(|pointers| pointers.registers),
         Some([(1, "CSpecialistSubjectType".into())].into())
+    );
+    // (anonymous namespace)::TradeActions(CPdxArray<CTradableAction const*, int> const&, …): the
+    // buffer at x0 + 8 holds tradable actions.
+    assert_eq!(
+        pointers(0x100cd2790).map(|pointers| pointers.elements),
+        Some([((0, 8), "CTradableAction".into())].into())
     );
 }
 

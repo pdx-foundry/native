@@ -135,6 +135,9 @@ pub(super) struct EntryCalls<'a> {
     /// Trigger evaluators and effect executors: each takes its block in `x0` and its scope in
     /// [`EVALUATED_SCOPE`].
     pub evaluators: &'a BTreeSet<u64>,
+    /// Calls through a register that evaluate a block: a slot of the block's own vtable whose
+    /// family the name pass established. The pass treats each as it treats an evaluator.
+    pub virtual_evaluations: &'a BTreeSet<u64>,
     /// Other trigger and effect code that receives a scope, such as a tooltip builder. By
     /// assumption, neither this code nor an evaluation changes a scope object's type or links or
     /// keeps a pointer to one, so the pass treats both as scope readers.
@@ -357,6 +360,10 @@ impl Runner<'_> {
                 if calls.evaluators.contains(&target) || calls.scope_users.contains(&target) =>
             {
                 self.forget_reached(machine, Some(target), BTreeSet::new());
+                Call::Return(None)
+            }
+            None if calls.virtual_evaluations.contains(&machine.pc()) => {
+                self.forget_reached(machine, None, BTreeSet::new());
                 Call::Return(None)
             }
             _ => self.path_call(target, machine),

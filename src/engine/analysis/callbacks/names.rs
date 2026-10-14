@@ -38,20 +38,38 @@ use crate::engine::analysis::decode::{Instruction, general_register, written_reg
 /// The most facts that one value holds before it becomes unknown.
 pub(super) const VALUE_LIMIT: usize = 16;
 
+/// The size of a pointer, which is the stride of a buffer of owner pointers.
+const POINTER: i64 = 8;
+
+/// Where a chain of loads starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Root {
+    /// Argument register `n` at entry.
+    Argument(usize),
+    /// What a call to the owner getter at this address returned, less the getter's offset: an
+    /// item of the getter's owner.
+    Getter(u64),
+    /// An element of the buffer that [`Fact::Elements`] names.
+    Element(usize, i64),
+}
+
 /// One thing that a register can hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Fact {
     Constant(u64),
     /// The stack pointer at entry, plus this offset.
     Stack(i64),
-    /// Argument register `n` at entry, plus this offset.
-    Argument(usize, i64),
-    /// The word at `Argument(n, k)`, plus an offset: `Member(n, k, offset)`.
-    Member(usize, i64, i64),
-    /// The word at `Member(n, k, j)`: `Deref(n, k, j)`.
-    Deref(usize, i64, i64),
-    /// The word `s` bytes past `Deref(n, k, j)`: `DerefAt(n, k, j, s)`.
-    DerefAt(usize, i64, i64, i64),
+    /// The address that a root names, plus this offset: `Address(r, k)`.
+    Address(Root, i64),
+    /// The word at `Address(r, k)`, plus an offset: `Member(r, k, offset)`.
+    Member(Root, i64, i64),
+    /// The word at `Member(r, k, j)`: `Deref(r, k, j)`.
+    Deref(Root, i64, i64),
+    /// The word `s` bytes past `Deref(r, k, j)`: `DerefAt(r, k, j, s)`.
+    DerefAt(Root, i64, i64, i64),
+    /// Some word of the buffer of owner pointers that the word at `Address(Argument(n), b)`
+    /// points at: `Elements(n, b)`.
+    Elements(usize, i64),
     /// The value stored at this global address.
     Global(u64),
     /// The value stored at the address held in a global, plus this offset.
@@ -76,6 +94,37 @@ pub struct StringFunctions {
     pub object_size: i64,
 }
 
+/// A function whose whole body is `add x0, x0, #k; ret`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OffsetGetter {
+    /// Its `k`.
+    pub offset: i64,
+    /// The registry owner whose member function it is, when it is one.
+    pub owner: Option<String>,
+}
+
+/// What the pass knows about one function beyond its instructions.
+#[derive(Clone, Copy)]
+pub(super) struct Known<'a> {
+    pub strings: &'a StringFunctions,
+    /// Each offset getter that the function may call, by its address.
+    pub offset_getters: &'a BTreeMap<u64, OffsetGetter>,
+    /// Each word `(n, b)`, at argument register `n` plus `b`, that points at a buffer of owner
+    /// pointers.
+    pub buffers: &'a BTreeSet<(usize, i64)>,
+}
+
+impl<'a> Known<'a> {
+    /// Only the string functions: no offset getters and no buffers.
+    pub(super) fn strings(strings: &'a StringFunctions) -> Self {
+        Self {
+            strings,
+            offset_getters: const { &BTreeMap::new() },
+            buffers: const { &BTreeSet::new() },
+        }
+    }
+}
+
 /// Register and stack-string facts before one instruction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct State {
@@ -92,7 +141,7 @@ impl State {
     fn entry() -> Self {
         let mut registers: [Value; 31] = std::array::from_fn(|_| None);
         for (index, register) in registers.iter_mut().enumerate().take(8) {
-            *register = Some(BTreeSet::from([Fact::Argument(index, 0)]));
+            *register = single(Fact::Address(Root::Argument(index), 0));
         }
         Self {
             registers,
@@ -115,7 +164,7 @@ impl State {
     fn independent_registers() -> Self {
         let mut state = Self::unknown();
         for register in 0..31 {
-            state.set(register, single(Fact::Argument(register, 0)));
+            state.set(register, single(Fact::Address(Root::Argument(register), 0)));
         }
         state
     }
@@ -221,16 +270,16 @@ pub(super) fn sole_fact(value: &Value) -> Option<Fact> {
 
 /// The displacement `s` when `target` is the word `s` bytes past the first word of the object at
 /// `object`: a call through `target` with `object` in `x0` calls slot `s` of that object's vtable,
-/// when the object has one. The first word of the object at `Argument(n, k)` is `Member(n, k, 0)`,
-/// so its slot `s` is `Deref(n, k, s)`; the first word of the object at `Member(n, k, j)` is
-/// `Deref(n, k, j)`, so its slot `s` is `DerefAt(n, k, j, s)`.
+/// when the object has one. The first word of the object at `Address(r, k)` is `Member(r, k, 0)`,
+/// so its slot `s` is `Deref(r, k, s)`; the first word of the object at `Member(r, k, j)` is
+/// `Deref(r, k, j)`, so its slot `s` is `DerefAt(r, k, j, s)`.
 pub(super) fn vtable_slot(object: Fact, target: Fact) -> Option<i64> {
     match (object, target) {
-        (Fact::Argument(n, k), Fact::Deref(target_n, target_k, slot)) => {
-            ((n, k) == (target_n, target_k)).then_some(slot)
+        (Fact::Address(r, k), Fact::Deref(target_r, target_k, slot)) => {
+            ((r, k) == (target_r, target_k)).then_some(slot)
         }
-        (Fact::Member(n, k, j), Fact::DerefAt(target_n, target_k, target_j, slot)) => {
-            ((n, k, j) == (target_n, target_k, target_j)).then_some(slot)
+        (Fact::Member(r, k, j), Fact::DerefAt(target_r, target_k, target_j, slot)) => {
+            ((r, k, j) == (target_r, target_k, target_j)).then_some(slot)
         }
         _ => None,
     }
@@ -243,7 +292,7 @@ pub(super) fn receiver_stores(
     strings: &StringFunctions,
 ) -> BTreeMap<i64, BTreeSet<usize>> {
     let mut stores: BTreeMap<i64, BTreeSet<usize>> = BTreeMap::new();
-    each_state(rows, strings, &BTreeMap::new(), |row, state| {
+    each_state(rows, Known::strings(strings), |row, state| {
         if !matches!(row.operation.as_str(), "str" | "stur" | "stp") {
             return;
         }
@@ -260,7 +309,7 @@ pub(super) fn receiver_stores(
             let parameter = general_register(source)
                 .filter(|_| source.starts_with('x'))
                 .and_then(|register| match sole_fact(state.register(register))? {
-                    Fact::Argument(parameter, 0) => Some(parameter),
+                    Fact::Address(Root::Argument(parameter), 0) => Some(parameter),
                     _ => None,
                 });
             if let Some(parameter) = parameter {
@@ -286,13 +335,13 @@ fn stored_address(state: &State, memory: &str) -> Option<i64> {
         Some(text) => immediate(text)?,
     };
     match sole_fact(state.register(base))? {
-        Fact::Argument(0, offset) => Some(offset + displacement),
+        Fact::Address(Root::Argument(0), offset) => Some(offset + displacement),
         _ => None,
     }
 }
 
 /// Run the pass over one function and give `visit` the state before each instruction, once the
-/// states are stable. `offset_getters` holds each offset getter's `k` by its address.
+/// states are stable.
 ///
 /// A block that no direct branch reaches is a target of a branch through a register, such as a
 /// jump table, when the function has one: it starts from the joined states at those branches.
@@ -300,8 +349,7 @@ fn stored_address(state: &State, memory: &str) -> Option<i64> {
 /// nothing to the blocks after it.
 pub(super) fn each_state(
     rows: &[Instruction],
-    strings: &StringFunctions,
-    offset_getters: &BTreeMap<u64, i64>,
+    known: Known<'_>,
     mut visit: impl FnMut(&Instruction, &State),
 ) {
     if rows.is_empty() {
@@ -318,7 +366,7 @@ pub(super) fn each_state(
         while let Some(block) = pending.pop_first() {
             let mut state = entry[&block].clone();
             for row in &rows[blocks.range(block)] {
-                step(row, strings, offset_getters, &mut state);
+                step(row, known, &mut state);
             }
             for successor in blocks.successors(block) {
                 match entry.get_mut(&successor) {
@@ -338,7 +386,7 @@ pub(super) fn each_state(
             if blocks.jumps_through_register(rows, block) {
                 let mut state = start.clone();
                 for row in &rows[blocks.range(block)] {
-                    step(row, strings, offset_getters, &mut state);
+                    step(row, known, &mut state);
                 }
                 match &mut indirect {
                     Some(joined) => {
@@ -377,7 +425,7 @@ pub(super) fn each_state(
         let mut state = start.clone();
         for row in &rows[blocks.range(block)] {
             visit(row, &state);
-            step(row, strings, offset_getters, &mut state);
+            step(row, known, &mut state);
         }
     }
 }
@@ -457,12 +505,7 @@ pub(super) fn local_state(rows: &[Instruction], site: u64) -> Option<State> {
             state = State::independent_registers();
             continue;
         }
-        step(
-            row,
-            &StringFunctions::default(),
-            &BTreeMap::new(),
-            &mut state,
-        );
+        step(row, Known::strings(&StringFunctions::default()), &mut state);
     }
     Some(state)
 }
@@ -493,12 +536,7 @@ fn successors(
 }
 
 /// Apply one instruction to the state.
-fn step(
-    row: &Instruction,
-    strings: &StringFunctions,
-    offset_getters: &BTreeMap<u64, i64>,
-    state: &mut State,
-) {
+fn step(row: &Instruction, known: Known<'_>, state: &mut State) {
     let operands: Vec<&str> = split(&row.operands);
     let operation = row.operation.as_str();
 
@@ -542,14 +580,14 @@ fn step(
             let Some(destination) = general_register(destination) else {
                 return;
             };
-            state.set(destination, loaded(state, memory));
+            state.set(destination, loaded(state, memory, known.buffers));
         }
         ("ldr", [destination, indexed])
             if destination.starts_with('x')
                 && indexed.ends_with("]!")
                 && !indexed.starts_with("[sp") =>
         {
-            let value = loaded(state, indexed.trim_end_matches('!'));
+            let value = loaded(state, indexed.trim_end_matches('!'), known.buffers);
             let moved = write_back(&operands, 1).and_then(|back| {
                 let base = general_register(back.base)?;
                 Some((
@@ -585,7 +623,12 @@ fn step(
         {
             let slot = stack_address(state, memory).expect("a stack slot");
             let sources = &operands[..operands.len() - 1];
-            forget_stack(state, slot, 8 * sources.len() as i64, strings.object_size);
+            forget_stack(
+                state,
+                slot,
+                8 * sources.len() as i64,
+                known.strings.object_size,
+            );
             for (index, source) in sources.iter().enumerate() {
                 let value = match *source {
                     "xzr" => single(Fact::Constant(0)),
@@ -596,25 +639,25 @@ fn step(
         }
         ("bl", [target]) => {
             let target = immediate(target).map(|target| target as u64);
-            call(row.address, target, strings, offset_getters, state);
+            call(row.address, target, known, state);
         }
-        ("blr", _) => call(row.address, None, strings, offset_getters, state),
-        _ => clear_written(row, &operands, strings, state),
+        ("blr", _) => call(row.address, None, known, state),
+        _ => clear_written(row, &operands, known.strings, state),
     }
 }
 
 /// A call: follow the string functions, then make the caller-saved registers unknown and `x0`
-/// the call's result, which an offset getter's `k` gives.
-fn call(
-    address: u64,
-    target: Option<u64>,
-    strings: &StringFunctions,
-    offset_getters: &BTreeMap<u64, i64>,
-    state: &mut State,
-) {
+/// the call's result. An owner getter returns the address at its owner's offset `k`, whatever
+/// item its receiver is; another offset getter returns `x0` plus its `k`.
+fn call(address: u64, target: Option<u64>, known: Known<'_>, state: &mut State) {
+    let strings = known.strings;
     let object = state.stack_offset(0);
-    let result = match target.and_then(|target| offset_getters.get(&target)) {
-        Some(&getter_offset) => offset(state, "x0", getter_offset),
+    let getter = target.and_then(|target| Some((target, known.offset_getters.get(&target)?)));
+    let result = match getter {
+        Some((target, getter)) if getter.owner.is_some() => {
+            single(Fact::Address(Root::Getter(target), getter.offset))
+        }
+        Some((_, getter)) => offset(state, "x0", getter.offset),
         None => single(Fact::Result(address)),
     };
 
@@ -778,8 +821,10 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
         .map(|fact| match *fact {
             Fact::Constant(value) => Some(Fact::Constant(value.wrapping_add(amount as u64))),
             Fact::Stack(base) => Some(Fact::Stack(base + amount)),
-            Fact::Argument(index, base) => Some(Fact::Argument(index, base + amount)),
-            Fact::Member(index, member, base) => Some(Fact::Member(index, member, base + amount)),
+            Fact::Address(root, base) => Some(Fact::Address(root, base + amount)),
+            Fact::Member(root, member, base) => Some(Fact::Member(root, member, base + amount)),
+            Fact::Elements(..) if amount % POINTER == 0 => Some(*fact),
+            Fact::Elements(..) => None,
             Fact::Field(global, base) => Some(Fact::Field(global, base + amount)),
             Fact::Global(_) | Fact::Deref(..) | Fact::DerefAt(..) | Fact::Result(_)
                 if amount == 0 =>
@@ -794,17 +839,18 @@ fn offset(state: &State, source: &str, amount: i64) -> Value {
 
 /// The value that a 64-bit load without writeback from `memory` gives: a stack slot's, or what
 /// [`load`] names.
-fn loaded(state: &State, memory: &str) -> Value {
+fn loaded(state: &State, memory: &str, buffers: &BTreeSet<(usize, i64)>) -> Value {
     match stack_address(state, memory) {
         Some(slot) => state.slots.get(&slot).cloned().flatten(),
-        None => load(state, memory),
+        None => load(state, memory, buffers),
     }
 }
 
 /// A 64-bit load without writeback: from a constant address it is that global's value; from a
-/// global's value it is a field of the object that the global points at. From an address that an
-/// argument leads to, it is the word at that address, up to a vtable slot.
-fn load(state: &State, memory: &str) -> Value {
+/// global's value it is a field of the object that the global points at. From an address that a
+/// root leads to, it is the word at that address, up to a vtable slot; a word of `buffers` points
+/// at a buffer of owner pointers, each word of which is an element.
+fn load(state: &State, memory: &str, buffers: &BTreeSet<(usize, i64)>) -> Value {
     let inner = memory.strip_prefix('[')?.strip_suffix(']')?;
     let mut parts = inner.split(',');
     let base = general_register(parts.next()?)?;
@@ -823,12 +869,20 @@ fn load(state: &State, memory: &str) -> Value {
                 Some(Fact::Global(address.wrapping_add(displacement as u64)))
             }
             Fact::Global(global) => Some(Fact::Field(global, displacement)),
-            Fact::Argument(index, offset) => Some(Fact::Member(index, offset + displacement, 0)),
-            Fact::Member(index, member, offset) => {
-                Some(Fact::Deref(index, member, offset + displacement))
+            Fact::Address(Root::Argument(index), offset)
+                if buffers.contains(&(index, offset + displacement)) =>
+            {
+                Some(Fact::Elements(index, offset + displacement))
             }
-            Fact::Deref(index, member, offset) => {
-                Some(Fact::DerefAt(index, member, offset, displacement))
+            Fact::Address(root, offset) => Some(Fact::Member(root, offset + displacement, 0)),
+            Fact::Member(root, member, offset) => {
+                Some(Fact::Deref(root, member, offset + displacement))
+            }
+            Fact::Deref(root, member, offset) => {
+                Some(Fact::DerefAt(root, member, offset, displacement))
+            }
+            Fact::Elements(index, buffer) if displacement % POINTER == 0 => {
+                Some(Fact::Address(Root::Element(index, buffer), 0))
             }
             _ => None,
         })
@@ -1010,19 +1064,19 @@ mod tests {
 
     /// The state before the last instruction of `bytes`, authored at `0x1000`.
     fn state_at_end(bytes: &[u8]) -> State {
+        known_state_at_end(bytes, Known::strings(&StringFunctions::default()))
+    }
+
+    /// The state before the last instruction of `bytes`, authored at `0x1000`, with `known`.
+    fn known_state_at_end(bytes: &[u8], known: Known<'_>) -> State {
         let rows = decode_arm64(bytes, 0x1000).unwrap();
         let last = rows.last().unwrap().address;
         let mut end = None;
-        each_state(
-            &rows,
-            &StringFunctions::default(),
-            &BTreeMap::new(),
-            |row, state| {
-                if row.address == last {
-                    end = Some(state.clone());
-                }
-            },
-        );
+        each_state(&rows, known, |row, state| {
+            if row.address == last {
+                end = Some(state.clone());
+            }
+        });
         end.unwrap()
     }
 
@@ -1036,7 +1090,10 @@ mod tests {
         );
         let state = state_at_end(&bytes);
 
-        assert_eq!(*state.register(9), single(Fact::Argument(1, 0)));
+        assert_eq!(
+            *state.register(9),
+            single(Fact::Address(Root::Argument(1), 0))
+        );
         assert_eq!(*state.register(8), None);
     }
 
@@ -1065,5 +1122,87 @@ mod tests {
         assert_eq!(*state.register(11), single(Fact::Constant(0xffff_ffff)));
         assert_eq!(*state.register(9), None);
         assert_eq!(*state.register(12), None);
+    }
+
+    /// The facts of `x0` before the last instruction of `bytes`, whose word at `x0 + 8` points at
+    /// a buffer of owner pointers when `typed`.
+    fn x0_at_end_with_buffer(bytes: &[u8], typed: bool) -> Value {
+        let buffers = if typed {
+            BTreeSet::from([(0, 8)])
+        } else {
+            BTreeSet::new()
+        };
+        let strings = StringFunctions::default();
+        let known = Known {
+            buffers: &buffers,
+            ..Known::strings(&strings)
+        };
+        known_state_at_end(bytes, known).register(0).clone()
+    }
+
+    #[test]
+    fn a_cursor_over_a_typed_buffer_loads_an_element() {
+        let bytes = arm64!(at 0x1000;
+            ldr x19, [x0, #8];
+            mov x20, #3;
+            ->next:;
+            ldr x8, [x19];
+            cbz x8, ->skip;
+            add x0, x8, #0x268;
+            ->skip:;
+            add x19, x19, #8;
+            subs x20, x20, #1;
+            b.ne ->next;
+            ldr x8, [x19];
+            add x0, x8, #0x268;
+            ret
+        );
+
+        let element = single(Fact::Address(Root::Element(0, 8), 0x268));
+        assert_eq!(x0_at_end_with_buffer(&bytes, true), element);
+        assert_eq!(x0_at_end_with_buffer(&bytes, false), None);
+    }
+
+    #[test]
+    fn a_misaligned_cursor_over_a_typed_buffer_loads_no_element() {
+        let bytes = arm64!(at 0x1000;
+            ldr x19, [x0, #8];
+            add x19, x19, #4;
+            ldr x8, [x19];
+            add x0, x8, #0x268;
+            ret
+        );
+
+        assert_eq!(x0_at_end_with_buffer(&bytes, true), None);
+    }
+
+    #[test]
+    fn an_owner_getter_returns_its_owner_offset_whatever_its_receiver() {
+        let bytes = arm64!(at 0x1000;
+            ldr x0, [x1, x2];
+            bl extern 0x7000;
+            ret
+        );
+        let strings = StringFunctions::default();
+        let state = |owner: Option<String>| {
+            let getters = BTreeMap::from([(
+                0x7000,
+                OffsetGetter {
+                    offset: 0xa0,
+                    owner,
+                },
+            )]);
+            let known = Known {
+                offset_getters: &getters,
+                ..Known::strings(&strings)
+            };
+            known_state_at_end(&bytes, known).register(0).clone()
+        };
+
+        assert_eq!(
+            state(Some("COwner".into())),
+            single(Fact::Address(Root::Getter(0x7000), 0xa0))
+        );
+        assert_eq!(state(None), None);
     }
 }

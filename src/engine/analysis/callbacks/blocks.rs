@@ -1,19 +1,22 @@
 //! Registry field blocks: the scope that each evaluation of a stored trigger, effect or weight
 //! block receives, for `this`, `root`, the `from` chain and the `prev` chain.
 //!
-//! An evaluation passes a *type pointer* plus the block's storage offset and a scope object to a
-//! trigger evaluator, an effect executor or a weight evaluator, directly or through the block
-//! object's own vtable. A type pointer is a register that points at a registry owner's item: the
-//! receiver of the owner's methods, a parameter of an owner pointer or reference type, or a member
-//! that the constructors of the parameter's class fill only with such a parameter. The binding
-//! decides which registers of a function lead to which owner, and which vtable slots evaluate a
-//! block of which family. The method then works in two steps.
+//! An evaluation passes a pointer to a registry owner's item plus the block's storage offset and a
+//! scope object to a trigger evaluator, an effect executor or a weight evaluator, directly or
+//! through the block object's own vtable. A *type pointer* is a register that points at an
+//! owner's item: the receiver of the owner's methods, a parameter of an owner pointer or reference
+//! type, or a member that the constructors of the parameter's class fill only with such a
+//! parameter. An item is also an element of a parameter of type `CPdxArray<O const*, int>`, and
+//! the receiver of an *owner getter*, an offset getter that is a member of the owner's class,
+//! whatever register holds it. The binding decides which registers of a function lead to which
+//! owner, and which vtable slots evaluate a block of which family. The method then works in two
+//! steps.
 //!
 //! - The **name pass** names the block: a call is attributed to `(owner, offset, family)` only
-//!   when `x0` holds one type pointer plus one offset on every path, and, for a call through a
-//!   register, the called register holds an evaluation slot of the vtable at that same address.
-//!   A call to an *offset getter*, whose whole body is `add x0, x0, #k; ret`, returns its `x0`
-//!   plus `k`. The name pass also finds where the scope comes from. When the scope is the
+//!   when `x0` holds one item plus one offset on every path, and, for a call through a register,
+//!   the called register holds an evaluation slot of the vtable at that same address. A call to
+//!   an *offset getter*, whose whole body is `add x0, x0, #k; ret`, returns its `x0` plus `k`; an
+//!   owner getter returns its owner's offset `k`. The name pass also finds where the scope comes from. When the scope is the
 //!   function's own parameter, the function is a *wrapper*, and the same test runs at each direct
 //!   call to it, up to [`climb::CALLER_DEPTH`] callers. A call whose scope is not a parameter is
 //!   an *entry*.
@@ -47,9 +50,8 @@
 //! Evaluators forward through virtual calls that the pass cannot follow. The pass assumes that an
 //! evaluation, and other trigger and effect code that receives a scope, changes no scope object's
 //! type or links and keeps no pointer to one; this lets a scope that one evaluation received stay
-//! known for the next. A call through a vtable slot is read on arrival and then treated as a call
-//! that the pass does not follow: the pass does not know the block's family, and the same slot of
-//! another family's block is not an evaluation. Other virtual calls and nested blocks are outside
+//! known for the next. An attributed call through a vtable slot is such an evaluation: the name
+//! pass established the block's family there. Other virtual calls and nested blocks are outside
 //! the method.
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -58,7 +60,7 @@ use super::contexts::{
     CallReads, EVALUATED_SCOPE, EntryCalls, Read, Runner, ScopeFunctions, Selected, Subject,
 };
 use super::instances;
-use super::names::{self, Fact, State, StringFunctions};
+use super::names::{self, Fact, OffsetGetter, Root, State, StringFunctions};
 use super::{CallbackLayout, Context, Findings, Slot};
 use crate::BlockFamily;
 use crate::engine::analysis::decode::Instruction;
@@ -91,8 +93,9 @@ pub struct BlockInput {
     pub tooltip_builders: BTreeMap<u64, BlockFamily>,
     /// The block family of each vtable slot that builds a block's tooltip, by its displacement.
     pub tooltip_slots: BTreeMap<i64, BlockFamily>,
-    /// The offset `k` of each function whose whole body is `add x0, x0, #k; ret`, by its address.
-    pub offset_getters: BTreeMap<u64, i64>,
+    /// Each function whose whole body is `add x0, x0, #k; ret` that a decoded function calls, by
+    /// its address.
+    pub offset_getters: BTreeMap<u64, OffsetGetter>,
     /// The registry owners that the registers of each function that holds a site, and of each
     /// decoded caller, lead to.
     pub type_pointers: BTreeMap<u64, TypePointers>,
@@ -170,6 +173,9 @@ pub struct TypePointers {
     pub registers: BTreeMap<usize, String>,
     /// The owner type that the word at each register plus an offset points at.
     pub members: BTreeMap<(usize, i64), String>,
+    /// The owner type of the elements of the buffer that the word at each register plus an offset
+    /// points at, a buffer of pointers to items of that owner.
+    pub elements: BTreeMap<(usize, i64), String>,
     /// The registers of the function's `CEventScope&` and `CEventScope const&` parameters.
     pub scope_parameters: BTreeSet<usize>,
 }
@@ -307,12 +313,12 @@ pub fn named_functions(
     type_pointers: &BTreeMap<u64, TypePointers>,
     evaluation: &Evaluation<'_>,
     strings: &StringFunctions,
-    offset_getters: &BTreeMap<u64, i64>,
 ) -> NamedFunctions {
     let states = climb::states_at(
         functions,
         strings,
-        offset_getters,
+        evaluation.offset_getters,
+        &buffers(type_pointers),
         sites.iter().map(|site| (site.function, site.address)),
     );
     let mut named = NamedFunctions::default();
@@ -355,6 +361,8 @@ pub struct Evaluation<'a> {
     pub tooltip_builders: &'a BTreeMap<u64, BlockFamily>,
     /// The block family of each tooltip slot, by its displacement.
     pub tooltip_slots: &'a BTreeMap<i64, BlockFamily>,
+    /// The offset getters that the functions call, by address.
+    pub offset_getters: &'a BTreeMap<u64, OffsetGetter>,
 }
 
 /// What the name pass finds that a site calls.
@@ -396,11 +404,15 @@ impl Evaluation<'_> {
             family,
         };
 
-        match (stored_block(object, pointers), evaluated, tooltip) {
+        match (
+            stored_block(object, pointers, self.offset_getters),
+            evaluated,
+            tooltip,
+        ) {
             (Some(stored), Some(family), _) => Named::Evaluation(block(stored, family)),
             (Some(stored), None, Some(family)) => Named::Tooltip(block(stored, family)),
             (None, Some(family), _) => match object {
-                Fact::Argument(parameter, 0) if !pointers.leads(parameter) => {
+                Fact::Address(Root::Argument(parameter), 0) if !pointers.leads(parameter) => {
                     Named::Parameter(parameter, family)
                 }
                 _ => Named::Nothing,
@@ -415,15 +427,38 @@ impl TypePointers {
     fn leads(&self, register: usize) -> bool {
         self.registers.contains_key(&register)
             || self.members.keys().any(|(holder, _)| *holder == register)
+            || self.elements.keys().any(|(holder, _)| *holder == register)
     }
 }
 
-/// The owner and the offset of the block at `object`: one type pointer plus one offset other than
-/// zero.
-fn stored_block(object: Fact, pointers: &TypePointers) -> Option<(&String, i64)> {
+/// The buffer words of each function's arrays of owner pointers, which the name pass types.
+fn buffers(type_pointers: &BTreeMap<u64, TypePointers>) -> BTreeMap<u64, BTreeSet<(usize, i64)>> {
+    type_pointers
+        .iter()
+        .filter(|(_, pointers)| !pointers.elements.is_empty())
+        .map(|(&function, pointers)| (function, pointers.elements.keys().copied().collect()))
+        .collect()
+}
+
+/// The owner and the offset of the block at `object`: an address that leads to an owner's item
+/// plus one offset other than zero. A type pointer, the result of an owner getter of
+/// `offset_getters` and an element of a buffer of owner pointers each lead to one.
+fn stored_block<'a>(
+    object: Fact,
+    pointers: &'a TypePointers,
+    offset_getters: &'a BTreeMap<u64, OffsetGetter>,
+) -> Option<(&'a String, i64)> {
     let (owner, offset) = match object {
-        Fact::Argument(register, offset) => (pointers.registers.get(&register)?, offset),
-        Fact::Member(register, member, offset) => {
+        Fact::Address(Root::Argument(register), offset) => {
+            (pointers.registers.get(&register)?, offset)
+        }
+        Fact::Address(Root::Getter(getter), offset) => {
+            (offset_getters.get(&getter)?.owner.as_ref()?, offset)
+        }
+        Fact::Address(Root::Element(register, buffer), offset) => {
+            (pointers.elements.get(&(register, buffer))?, offset)
+        }
+        Fact::Member(Root::Argument(register), member, offset) => {
             (pointers.members.get(&(register, member))?, offset)
         }
         _ => return None,
@@ -451,6 +486,7 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
         &input.functions,
         &input.strings,
         &input.offset_getters,
+        &buffers(&input.type_pointers),
         input.sites.iter().map(|site| (site.function, site.address)),
     );
     let evaluation = Evaluation {
@@ -458,6 +494,7 @@ fn attribute_sites(input: &BlockInput, result: &mut BlockEntries) -> Attribution
         slots: &input.evaluation_slots,
         tooltip_builders: &input.tooltip_builders,
         tooltip_slots: &input.tooltip_slots,
+        offset_getters: &input.offset_getters,
     };
     let mut attribution = Attribution {
         evaluations: BTreeMap::new(),
@@ -570,6 +607,7 @@ fn helper_calls(
         decoded.functions,
         decoded.strings,
         decoded.offset_getters,
+        &buffers(type_pointers),
         helpers
             .keys()
             .flat_map(callers)
@@ -588,7 +626,7 @@ fn helper_calls(
             let pointers = type_pointers.get(&call.function);
             let mut evaluations = BTreeMap::new();
             for evaluation in passed {
-                match passed_block(state, pointers, evaluation) {
+                match passed_block(state, pointers, decoded.offset_getters, evaluation) {
                     Ok(block) if evaluation.scope_is_parameter => {
                         let block = BTreeSet::from([block]);
                         charge(result, &block, "block-and-scope-from-caller");
@@ -621,13 +659,14 @@ fn helper_calls(
 fn passed_block(
     state: Option<&State>,
     pointers: Option<&TypePointers>,
+    offset_getters: &BTreeMap<u64, OffsetGetter>,
     evaluation: &PassedBlock,
 ) -> Result<Block, &'static str> {
     let state = state.ok_or("caller-not-decoded")?;
     let object = names::sole_fact(state.register(evaluation.parameter));
     let stored = object
         .zip(pointers)
-        .and_then(|(object, pointers)| stored_block(object, pointers));
+        .and_then(|(object, pointers)| stored_block(object, pointers, offset_getters));
     if let Some((owner, offset)) = stored {
         return Ok(Block {
             owner: owner.clone(),
@@ -638,7 +677,9 @@ fn passed_block(
 
     let leads = |parameter| pointers.is_some_and(|pointers| pointers.leads(parameter));
     match object {
-        Some(Fact::Argument(parameter, 0)) if !leads(parameter) => Err("block-caller-depth"),
+        Some(Fact::Address(Root::Argument(parameter), 0)) if !leads(parameter) => {
+            Err("block-caller-depth")
+        }
         _ => Err("unattributed"),
     }
 }
@@ -673,8 +714,10 @@ fn collect_contexts(
         ignores_x8: &input.ignores_x8,
     };
     let evaluators: BTreeSet<u64> = input.evaluators.keys().copied().collect();
+    let virtual_evaluations: BTreeSet<u64> = evaluations.keys().copied().collect();
     let calls = EntryCalls {
         evaluators: &evaluators,
+        virtual_evaluations: &virtual_evaluations,
         scope_users: &input.scope_users,
         wrappers,
         receivers: &input.receivers,

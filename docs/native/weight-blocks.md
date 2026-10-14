@@ -208,7 +208,13 @@ These results are for M452.
 method](registry-fields.md#block-entry-contexts), as for a trigger block (SDK-733). The weight
 evaluators are block evaluators there: `CMeanTimeToHappen::GetRawFactor(CEventScope&) const`,
 `GetRawFactorNoScopeCopy(CEventScope const&) const`, `GetChance(CEventScope&, int) const`,
-`GetDailyChance(CEventScope&) const` and `CAIMTTHChance::GetChance(CEventScope&) const`. Each takes
+`GetDailyChance(CEventScope&) const`, `CAIMTTHChance::GetChance(CEventScope&) const`,
+`CScriptableValue::GetValue(CEventScope&) const` (`0x10092f03c`) and
+`GetValueNoScopeCopy(CEventScope const&) const` (`0x10092f0a8`). A `CScriptableValue` has the
+`CMeanTimeToHappen` layout (base `+0x10`, modifier array `+0x18`, stored scope `+0x30`), and
+`GetValue` reads its base and calls slot `+0x18` of each modifier with the scope, as `GetRawFactor`
+does. Government `weight`, opinion modifier `opinion`, councilor `ai_hiring_weight`, ethic
+attractions, archaeological site `weight` and agreement preset weights are such blocks. Each takes
 the block in `x0` and the scope in `x1` by a direct `bl`, and each is a scope reader by the rule
 [evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes),
 with the three `ModifyNumber` implementations checked there. Before SDK-733, `GetRawFactor` was a

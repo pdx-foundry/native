@@ -12,8 +12,8 @@ use crate::AnalysisError;
 use crate::BlockFamily;
 use crate::engine::analysis::{
     callbacks::{
-        CallbacksInput, Forwarder, ForwarderKind, Pulse, RuleFamily, RuleTables, ScopeFunctions,
-        Site, SiteCall, SiteScope, StringFunctions,
+        CallbacksInput, Forwarder, ForwarderKind, OffsetGetter, Pulse, RuleFamily, RuleTables,
+        ScopeFunctions, Site, SiteCall, SiteScope, StringFunctions,
         blocks::{
             BlockInput, Evaluation, EvaluationCall, EvaluationSite, NamedFunctions, RECEIVER_DEPTH,
             TypePointers, named_functions,
@@ -324,6 +324,14 @@ fn evaluator_names() -> Vec<(String, BlockFamily)> {
             "CAIMTTHChance::GetChance(CEventScope&) const".into(),
             Weight,
         ),
+        (
+            "CScriptableValue::GetValue(CEventScope&) const".into(),
+            Weight,
+        ),
+        (
+            "CScriptableValue::GetValueNoScopeCopy(CEventScope const&) const".into(),
+            Weight,
+        ),
     ]
 }
 
@@ -360,12 +368,14 @@ pub(in crate::binding) fn block_evaluations(
         .filter(|owner| unique(symbols, &format!("vtable for {owner}")).is_ok())
         .collect();
     let type_owners = TypeOwners::read(&text, symbols, &polymorphic);
+    let owner_getters = owner_getters(&text, symbols, &names, &type_owners);
     let string_functions = string_functions(symbols, recipe);
     let evaluation = Evaluation {
         evaluators: &evaluators,
         slots: &evaluation_slots,
         tooltip_builders: &tooltip_builders,
         tooltip_slots: &tooltip_slots,
+        offset_getters: &owner_getters,
     };
     let Candidates {
         sites,
@@ -427,7 +437,7 @@ pub(in crate::binding) fn block_evaluations(
         evaluation_slots,
         tooltip_builders,
         tooltip_slots,
-        offset_getters: offset_getters(&text, &functions),
+        offset_getters: offset_getters(&text, &functions, &owner_getters),
         type_pointers,
         scope_users,
         receivers,
@@ -539,9 +549,9 @@ struct Candidates {
 }
 
 /// The direct evaluator calls and calls through a register in the functions whose registers lead
-/// to an owner. Of those functions, keep each that holds a call that the block method names a
-/// block at, and each owner's method with a direct evaluator call, which the block method counts
-/// when it names no block.
+/// to an owner or that call an owner getter of `evaluation`. Of those functions, keep each that
+/// holds a call that the block method names a block at, and each owner's method with a direct
+/// evaluator call, which the block method counts when it names no block.
 fn candidates(
     text: &Text,
     names: &Names<'_>,
@@ -564,7 +574,14 @@ fn candidates(
                 .into_iter()
                 .map(|(address, register)| (address, EvaluationCall::Register(register))),
         );
+    let owner_getters: BTreeSet<u64> = evaluation.offset_getters.keys().copied().collect();
     let mut found: BTreeMap<u64, Option<TypePointers>> = BTreeMap::new();
+    for (address, _) in text.calls_into(&owner_getters) {
+        if let Some(&function) = text.starts.range(..=address).next_back() {
+            let pointers = type_owners.of(names.of(function)).unwrap_or_default();
+            found.insert(function, Some(pointers));
+        }
+    }
     let mut sites = Vec::new();
     for (address, call) in calls {
         let Some(&function) = text.starts.range(..=address).next_back() else {
@@ -590,18 +607,15 @@ fn candidates(
         .keys()
         .filter_map(|&start| Some((start, decoded(text, start)?)))
         .collect();
-    let getters = offset_getters(text, &functions);
+    let getters = offset_getters(text, &functions, evaluation.offset_getters);
+    let evaluation = &Evaluation {
+        offset_getters: &getters,
+        ..*evaluation
+    };
     let NamedFunctions {
         evaluating,
         tooltips,
-    } = named_functions(
-        &sites,
-        &functions,
-        &type_pointers,
-        evaluation,
-        strings,
-        &getters,
-    );
+    } = named_functions(&sites, &functions, &type_pointers, evaluation, strings);
     let counted: BTreeSet<u64> = sites
         .iter()
         .filter(|site| site.calls_evaluator(evaluation.evaluators))
@@ -624,8 +638,12 @@ fn candidates(
 }
 
 /// The offset getters that `functions` call directly: each function whose whole body is
-/// `add x0, x0, #k; ret`, with its `k`.
-fn offset_getters(text: &Text, functions: &BTreeMap<u64, Vec<Instruction>>) -> BTreeMap<u64, i64> {
+/// `add x0, x0, #k; ret`, with its `k`, and its owner when it is one of `owner_getters`.
+fn offset_getters(
+    text: &Text,
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    owner_getters: &BTreeMap<u64, OffsetGetter>,
+) -> BTreeMap<u64, OffsetGetter> {
     let called: BTreeSet<u64> = functions
         .values()
         .flatten()
@@ -635,11 +653,42 @@ fn offset_getters(text: &Text, functions: &BTreeMap<u64, Vec<Instruction>>) -> B
     called
         .into_iter()
         .filter_map(|target| {
-            let code = text.bytes(target, 8).ok()?;
-            let rows = decode_arm64(code, target).ok()?;
-            Some((target, getter_offset(&rows)?))
+            let getter = match owner_getters.get(&target) {
+                Some(getter) => getter.clone(),
+                None => OffsetGetter {
+                    offset: function_getter_offset(text, target)?,
+                    owner: None,
+                },
+            };
+            Some((target, getter))
         })
         .collect()
+}
+
+/// The offset getters that are member functions of a registry owner, by every name at their
+/// address, with that owner. By C++ typing, such a getter's receiver is an item of its owner.
+fn owner_getters(
+    text: &Text,
+    symbols: &[Symbol],
+    names: &Names<'_>,
+    type_owners: &TypeOwners<'_>,
+) -> BTreeMap<u64, OffsetGetter> {
+    let addresses: BTreeSet<u64> = symbols.iter().map(|symbol| symbol.address).collect();
+    addresses
+        .into_iter()
+        .filter_map(|address| {
+            let owner = type_owners.method_owner(names.of(address))?;
+            let offset = function_getter_offset(text, address)?;
+            let owner = Some(owner.to_owned());
+            Some((address, OffsetGetter { offset, owner }))
+        })
+        .collect()
+}
+
+/// The `k` of the function at `start` when its whole body is `add x0, x0, #k; ret`.
+fn function_getter_offset(text: &Text, start: u64) -> Option<i64> {
+    let code = text.bytes(start, 8).ok()?;
+    getter_offset(&decode_arm64(code, start).ok()?)
 }
 
 /// The `k` of a function whose first two instructions, `rows`, are `add x0, x0, #k; ret`.
@@ -1217,6 +1266,7 @@ mod tests {
             method_of: Some("COwner".into()),
             registers: BTreeMap::from([(0, "COwner".into())]),
             members: BTreeMap::new(),
+            elements: BTreeMap::new(),
             scope_parameters: BTreeSet::new(),
         };
         let named = named_functions(
@@ -1228,9 +1278,9 @@ mod tests {
                 slots: &BTreeMap::from([(0x48, BlockFamily::Effect)]),
                 tooltip_builders: &BTreeMap::new(),
                 tooltip_slots: &BTreeMap::new(),
+                offset_getters: &BTreeMap::new(),
             },
             &StringFunctions::default(),
-            &BTreeMap::new(),
         );
         assert_eq!(named.evaluating, BTreeSet::from([0x1000]));
         assert!(named.tooltips.is_empty());
