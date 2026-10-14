@@ -99,7 +99,9 @@ Linear.
   of a `Replace` field and allows an `Accumulate` or `Merges` field. Atlas credits a config maximum
   of 1 on `Replace` and an unbounded maximum on `Accumulate` and `Merges` (SDK-724); it publishes no
   engine limit. A field is required only
-  where validation reports its absence.
+  where validation reports its absence: `Field.requirement` gives it from a census run on the
+  exact build (SDK-829, [required fields](../native/registry-fields.md#required-fields)), and
+  Atlas credits a minimum of 1 on `Required` and 0 on `Optional`.
 - **Decision 9, one game per host.** Keep the host-wide lock and its one-time setup. A per-account
   lock loses only the case of two accounts that launch in the same instant. Revisit only if a second
   account becomes a real need.

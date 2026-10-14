@@ -332,6 +332,10 @@ impl Native {
             answer.completeness = Completeness::from_gaps(&answer.gaps);
         }
 
+        for field in &mut answer.value {
+            field.requirement = self.bound().field_requirement(registry, &field.name);
+        }
+
         Ok(RegistryFieldRun {
             answer,
             result,
@@ -1444,6 +1448,7 @@ mod field_gap_tests {
             read_scope: GrammarProperty::Unresolved,
             accepted_categories: crate::AcceptedCategories::NotApplicable,
             reference: FieldReference::NotEstablished,
+            requirement: crate::FieldRequirement::Unknown,
         };
         let grammar = FieldMembers::ModifierBlock(ModifierBlock {
             fixed_keys: GrammarProperty::Unresolved,

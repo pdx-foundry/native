@@ -594,6 +594,7 @@ mod tests {
             read_scope: GrammarProperty::Known(Vec::new()),
             accepted_categories: crate::AcceptedCategories::NotApplicable,
             reference: FieldReference::NotEstablished,
+            requirement: crate::FieldRequirement::Unknown,
         }
     }
 

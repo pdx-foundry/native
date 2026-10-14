@@ -6,7 +6,7 @@ gives the registries. The module comments of `engine/analysis/fields.rs` and
 `engine/analysis/discovery.rs` describe the methods. `FieldDefault` was removed (only `Unknown` was
 ever established; Git `d8f9d8a`). The [keyword domains](#keyword-domains-sdk-828) of fields read
 through a token converter come from this method (SDK-828), the weight keyword domains from the
-[weight blocks](weight-blocks.md) method (SDK-725); SDK-829 owns required fields.
+[weight blocks](weight-blocks.md) method (SDK-725). [Required fields](#required-fields) have their own section.
 
 ## What complete means
 
@@ -284,6 +284,124 @@ Pitfalls:
 - A deferred reader's key string is a temporary; storing it proves nothing. The destination that
   the lambda captures, the resolver order and the lambda's write decide the result.
 - A logged duplicate is not a rejection; the repeat is read.
+
+## Required fields
+
+`Field.requirement` says whether a definition must contain a root field. A field is required only
+where validation reports its absence (decision 5 of the
+[simplification decision](../design/simplification.md)): a missing field keeps its constructor
+default, and the loader keeps the definition. The answer comes from one recorded census run per
+build, in `binding/requirements.rs`; a build without a census gives `Unknown` everywhere.
+
+| Requirement | Rule | Root fields (M452) |
+| --- | --- | ---: |
+| `Required` | An unconditional check logs the field's absence | 30 |
+| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below the root | 164 |
+| `Optional` | Every other root field of a census registry | 1,736 |
+
+**A recorded manual exception.** Claim: loading a definition without a field logs a report of
+its absence, or logs none. Conditions: the exact M452 build, and a registry whose empty
+definition the census run read. Obstacle: the checks are one-off member tests in post-read hooks
+with no shared shape (below), and the method cannot join a tested member to its key. Removal
+route: a static reading of those hooks. Change the census for a new build by running it again.
+
+**Census run (M452, 2026-10-14).** A probe launched the installed game once, with the window
+guard, a private `-userdir` and Native's host lock, and a mod that adds one empty definition
+`native_required_N = { }` to each of the 185 registries of the field sweep
+(`common/special_projects` takes `special_project = { key = … }`; `events` takes a namespace and
+one `country_event`; `flags` and `common/scripted_variables` hold no blocks and are skipped). The
+same mod with no files logs one line in `error.log`; the probe logs 239. A second run adds an
+unknown key `native_required_witness = yes` to each definition: the absence reports are the same,
+and 163 registries report the unknown key, which shows that they read the definition. The census
+is those 163, less three whose report joins no key: `common/diplomatic_actions` (`Diplomatic
+action is missing token`), `common/astral_rifts` (an invalid stage event) and
+`common/species_names` (the definition key is read as a species class). Probe, logs and joins:
+`.local/evidence/sdk-829-required-fields-2026-10-14/`.
+
+- **Crashes.** An empty `common/technology` definition stops the game in
+  `CTechnologyDatabase::PostReadInitInstance()` (inferred: an array insert at the index of the
+  missing `tier`), and an empty `common/tradition_categories` definition in
+  `TSingleObjectGameDatabase<CTraditionCategoryDatabase, …>::PostReadInit()`, before any item's
+  hook logs. Both registries are outside the census. A crash is not a report: tradition
+  categories' `adoption_bonus` and `finish_bonus` are `Required` from the static check in
+  `CTraditionCategory::PostReadInit()` (`0x100cda348`), which logs `is missing required field
+  '…'`, and no vanilla category omits them.
+- **Joins.** Each report is joined by hand to the key that its text names. A report about a
+  localisation key, a sprite, a texture or an entity is not a field check. A report whose key is
+  not a returned field leaves the other fields `Optional`: special_projects `event_scope`,
+  mutations `type`, war_goals icon, colony_automation_exceptions category, galactic_focuses
+  `trigger`, federation_laws category, patrons category, patrons/deeds attunement and counter,
+  archaeological_site_types visible trigger, economic_plans income goals, zones `zone_sets` and
+  buildings, districts zone slots, and technology `tier`.
+- **Conditional checks.** Vanilla content logs nothing, so a vanilla definition that omits a
+  candidate field shows that its check depends on another field. `buildings.building_sets` (65 of
+  498 omit it; `CBuildingType::InitPostRead()` tests `owner_type`), card_categories `background`,
+  `background_expanded` and `icon` (`core_focus`, `selectable = no`), patrons
+  `first_contact_event` (2 of 14), ship_categories `namelist` (`uses_name_list = no`) and missions
+  `icon` and `counter` (51 of 102) are `Unknown`. So are planet_classes `icon` and `icon_large`
+  (`CPlanetClass::PostProcess()`, a conditional check that the empty definition does not reach),
+  resolutions `resources` (the report is about a category inside it), and the six keys of which
+  traditions and ascension perks need one (`Missing effects tradition`).
+
+| Registry | Required fields (M452) | Report |
+| --- | --- | --- |
+| ai_budget | `category`, `resource` | `No category type defined for budget entry`, `No resource type defined…` |
+| archaeological_site_types, espionage_operation_types, first_contact | `on_roll_failed` | `has no on_roll_failed, … will never progress` |
+| buildings | `category` | `No category assigned to building type` |
+| colony_automation | `category` | `has a missing or invalid category` |
+| country_focus/card_categories | `name`, `desc` | `has empty 'name' field`, `… 'desc' field` |
+| country_focus/focus_rewards | `category` | `The focus reward type has an invalid category value` |
+| ethics | `category`, `cost` | `Missing category for ethic`, `Non-positive cost for ethic` |
+| galactic_focuses | `effect` | `has no effect set!` |
+| game_concept_categories | `name`, `icon` | `has empty 'name' field`, `… 'icon' field` |
+| mutations | `icon`, `ship_components` | `has no icon`, `No components are attached to mutation` |
+| patrons | `text_color_code` | `doesn't have a text_color_code` |
+| patrons/callings | `tier` | `A calling needs at least one tier` |
+| portrait_sets | `species_class` | `doesn't reference a valid species class` |
+| resolution_categories | `resolution_types`, `group` | `does not contain any resolutions!`, `Could not find resolution group ""` |
+| situations | `stages` | `No stages detected in situation_type` |
+| species_classes | `graphical_culture` | `is missing graphical culture` |
+| specimens | `type` | `Invalid specimen type:` |
+| star_classes/randomizers | `stars` | `random_list does not contain any star classes!` |
+| tradition_categories | `adoption_bonus`, `finish_bonus` | `is missing required field '…'` (static) |
+| war_goals | `casus_belli` | `lacks a Casus Belli` |
+| map/galaxy | `stars_min_dist` | `has stars_min_dist = 0 (expected positive)` |
+
+The ethics `cost` and galaxy `stars_min_dist` checks test the default value, which an absent
+field keeps; they report absence too. No vanilla definition omits a field in this table.
+
+**Static census.** Before the run, absence checks were found by their log text: every string
+with "missing", "not set", "not specified", "must have", "must specify", "lacks" or "no … set",
+then the functions that form its address (`inspect --strings`). That found 19 unconditional and
+14 conditional checks; the run found the ones whose text does not use these words.
+
+**Shape.** No two checks share code. Each loads one member, tests it against its default (a null
+pointer, a zero count, `-1`, an empty string), and logs its own message through
+`CPdxLogFileAndLine` or `CLogger::Log` with `CLogStream`. `CGalacticFocus::PostReadInit()`
+(`0x10057b620`) tests the effect's child count at `+0x294` with `cbnz` before its log. The same two
+loggers make 1,230 calls from 877 functions named `InitPostRead`, `PostReadInit`, `PostProcess`,
+`PostInit`, `PostValidate` or `Validate`; most report a bad value, not an absent one.
+
+**Check.** `cargo live fixture_required_field` loads two card categories through validation: the
+one without `name` logs `has empty 'name' field` on its own line, the other logs nothing about
+it, and `registry_fields` gives `name` as `Required`. The message names its definition as `File:
+'<file>', Lines: [<first>-<last>]`; the fixture joins that form to the first line.
+
+**Atlas mapping.** `Required` answers a config minimum of 1; a larger minimum is a count, which
+this answer does not give. `Optional` answers a minimum of 0. `Unknown` answers neither.
+
+Accepted limits: a check that runs only when another field has a value is not observed for the
+fields that an empty definition leaves at their defaults, so such a field can be `Optional` here
+and required in context. A check at use time, not at load, is not validation.
+
+Pitfalls:
+
+- A missing-asset message (a sprite, a sound or a localisation key) tests the resolved asset, not
+  the field. The field can be present with a wrong name.
+- Run-time messages, such as `Ship size %s was missing ai_ship_data` from
+  `CShipSize::GetAIDataRawFactor`, are not validation.
+- A registry that reads no unknown key is not a witness: a silent run proves nothing about a
+  definition that the loader never read.
 
 ## Keyword domains (SDK-828)
 

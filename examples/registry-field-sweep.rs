@@ -849,8 +849,8 @@ mod tests {
     fn the_summary_counts_each_query_and_field_once() {
         let mut report = SweepReport::default();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved" },
-            { "name": "icon", "reader": { "id": null, "kind": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved" },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved", "requirement": "Unknown" },
+            { "name": "icon", "reader": { "id": null, "kind": "Unknown", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved", "requirement": "Unknown" },
         ]);
         let gaps = json!([{ "kind": "UnresolvedPath", "subject": null, "detail": "path 1" }]);
         report
@@ -862,7 +862,7 @@ mod tests {
             )
             .unwrap();
         let fields = json!([
-            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved" },
+            { "name": "cost", "reader": { "id": "r1", "kind": "Integer", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": "Unknown" }, "shape": {"value": "Unknown", "repeat": "Unknown"}, "read": [{"condition": "Unresolved", "outcome": "Unresolved"}], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": [], "read_scope": "Unresolved", "accepted_categories": "Unresolved", "requirement": "Unknown" },
         ]);
         report
             .add_answer(
@@ -1049,7 +1049,7 @@ mod tests {
         let known =
             json!({ "this": country, "root": "SelfLink", "from": [country], "prev": ["SelfLink"] });
         let unresolved = json!({ "this": "Unresolved", "root": "Unresolved", "from": ["Unresolved"], "prev": ["Unresolved"] });
-        let field = |name: &str, family: &str, contexts: Value| json!({ "name": name, "reader": { "id": null, "kind": "Block", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": family }, "shape": {"value": "Block", "repeat": "Unknown"}, "read": [], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": contexts, "read_scope": "Unresolved", "accepted_categories": "NotApplicable" });
+        let field = |name: &str, family: &str, contexts: Value| json!({ "name": name, "reader": { "id": null, "kind": "Block", "numeric": "Unresolved", "scoped_operand": "Unresolved", "family": family }, "shape": {"value": "Block", "repeat": "Unknown"}, "read": [], "members": "Unresolved", "domain": "Unknown", "reference": "NotEstablished", "uses": [], "entry_contexts": contexts, "read_scope": "Unresolved", "accepted_categories": "NotApplicable", "requirement": "Unknown" });
         let fields = json!([
             field("potential", "Trigger", json!([known, unresolved])),
             field("allow", "Trigger", json!([known])),

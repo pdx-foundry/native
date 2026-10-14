@@ -20,6 +20,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Unknown",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -96,6 +97,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Unknown",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -174,6 +176,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Unknown",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -201,6 +204,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Unknown",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -228,6 +232,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Required",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -255,6 +260,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Required",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -306,6 +312,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Unknown",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"

@@ -360,6 +360,7 @@ mod tests {
             read_scope: crate::GrammarProperty::Unresolved,
             accepted_categories: crate::AcceptedCategories::NotApplicable,
             reference: FieldReference::NotEstablished,
+            requirement: crate::FieldRequirement::Unknown,
         }
     }
 

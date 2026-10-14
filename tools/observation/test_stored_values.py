@@ -30,6 +30,8 @@ class SourceMessageTests(unittest.TestCase):
             ('Error: "x" in file: "dir/first file.txt" near line: 2', [('dir/first file.txt', 2)]),
             ('error at file: first.txt', [('first.txt', None)]),
             ('file: first.txt line: 2 file: second.txt line: 4', [('first.txt', 2), ('second.txt', 4)]),
+            ("Category 'x' has empty 'name' field. File: 'dir/first.txt', Lines: [3-5].",
+             [('dir/first.txt', 3)]),
         ]:
             self.assertEqual(stored_values.message_sources(text), expected, text)
 

@@ -69,6 +69,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -236,6 +237,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Scalar"
@@ -353,6 +355,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -470,6 +473,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -546,6 +550,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -622,6 +627,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -698,6 +704,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -760,6 +767,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -826,6 +834,7 @@
     }
    ]
   },
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -912,6 +921,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
