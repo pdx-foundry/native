@@ -40,10 +40,20 @@ impl ConstructorImage {
         &self.constant
     }
 
-    /// Attach import semantics and helper bodies to the entered-constructor route.
+    /// Attach import semantics, allocator effects and helper bodies to the entered-constructor
+    /// route.
     pub fn with_calls(mut self, calls: ConstructorCalls) -> Self {
         self.calls = calls;
         self
+    }
+
+    /// Handle a call to `target` in a run that enters constructor bodies, when the target is not
+    /// a bound constructor: with its bound semantics, else as a call that the machine does not
+    /// run.
+    pub fn unbound_call(&self, target: Option<u64>, machine: &mut Machine<'_>) -> Call {
+        self.calls
+            .call(target, machine)
+            .unwrap_or_else(|| machine.opaque_call())
     }
 
     /// A machine for a run that enters constructor bodies. Such a run relies on stores being
@@ -1165,9 +1175,6 @@ mod string_tests {
             inline_capacity: u64,
             text_offset: u64,
             source_is_string_object: bool,
-            /// Whether the long path's allocator is given the member, so that it may return an
-            /// owner address that a later call is given with an unknown value.
-            allocator_given_the_member: bool,
         }
         // Both ABI entries are checked: the complete-object entry forwards to the base entry.
         for case in [
@@ -1177,7 +1184,6 @@ mod string_tests {
                 inline_capacity: 23,
                 text_offset: 0,
                 source_is_string_object: false,
-                allocator_given_the_member: true,
             },
             ConstructorCase {
                 entries: [0x1025bf784, 0x1025bf984],
@@ -1185,7 +1191,6 @@ mod string_tests {
                 inline_capacity: 256,
                 text_offset: 32,
                 source_is_string_object: true,
-                allocator_given_the_member: false,
             },
         ] {
             let mut bodies: Vec<_> = case
@@ -1250,10 +1255,9 @@ mod string_tests {
                             assert_eq!(state.bytes.get(&(text_offset + offset)), Some(&b'a'));
                         }
                     } else if let Some(state) = state {
-                        // The text is not copied into the inline buffer. The earlier member
-                        // survives unless a later call is given an unknown owner address.
-                        let earlier = (!case.allocator_given_the_member).then_some(&42);
-                        assert_eq!(state.bytes.get(&0), earlier, "{entry:#x}, {length}");
+                        // The text is not copied into the inline buffer, and the string
+                        // allocator's result is outside the owner, so the earlier member survives.
+                        assert_eq!(state.bytes.get(&0), Some(&42), "{entry:#x}, {length}");
                         let text_offset = 64 + case.text_offset;
                         assert!(
                             (0..length).all(|offset| {

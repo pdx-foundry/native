@@ -1,11 +1,12 @@
-//! Bounded C library effects and executable bodies used by constructor walks.
+//! Bounded C library effects, allocator effects and executable bodies used by constructor walks.
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
 use crate::engine::analysis::evaluate::{Call, Machine, ReturnTaint};
 
-/// Bound imports have their C ABI semantics. Engine helpers are executed, never summarized by name.
+/// Bound imports have their C ABI semantics, and allocators have the stated allocation rule.
+/// Engine accessors are executed, never summarized by name.
 #[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct ConstructorCalls {
     /// Entry addresses of the imported C `strlen`.
@@ -14,6 +15,10 @@ pub(crate) struct ConstructorCalls {
     pub copies: BTreeSet<u64>,
     /// Entry addresses of the imported C `memmove`, which permits overlapping spans.
     pub moves: BTreeSet<u64>,
+    /// Entry addresses of allocators: the imported C++ `operator new` and `operator new[]`, and
+    /// the engine's `CPdxCommonStringAllocator::allocate`. An allocation is outside the owner and
+    /// writes no owner byte, even when the allocator is given an owner address.
+    pub allocators: BTreeSet<u64>,
     /// Accessor entry addresses and executable bodies to enter when the receiver is known.
     pub helpers: BTreeMap<u64, Vec<u8>>,
 }
@@ -32,6 +37,18 @@ impl ConstructorCalls {
             } else {
                 machine.opaque_call()
             });
+        }
+        if self.allocators.contains(&target) {
+            // It may write its heap or pool and the pool's lock, which are outside the owner.
+            let taint = machine.given_call_taint();
+            machine.forget_memory_outside_owner();
+            return Some(machine.return_with_taint(
+                None,
+                ReturnTaint {
+                    returned: false,
+                    ..taint
+                },
+            ));
         }
         if self.lengths.contains(&target) {
             let length = machine
@@ -89,6 +106,7 @@ mod tests {
     const COPY: u64 = 0x8000;
     const MOVE: u64 = 0x8100;
     const LENGTH: u64 = 0x8200;
+    const ALLOCATE: u64 = 0x8300;
     const OWNER: u64 = 0x10000;
     const SOURCE: u64 = 0x20000;
 
@@ -97,6 +115,8 @@ mod tests {
             lengths: [LENGTH].into(),
             copies: [COPY].into(),
             moves: [MOVE].into(),
+            allocators: [ALLOCATE].into(),
+
             ..Default::default()
         }
     }
@@ -278,6 +298,37 @@ mod tests {
             ret
         );
         for body in [owner_length, owner_copy] {
+            assert_eq!(owner_word_after_calls(&body), None);
+        }
+    }
+
+    #[test]
+    fn an_allocation_given_the_owner_keeps_later_owner_bytes() {
+        let long_copy = arm64!(at 0x1000;
+            mov x0, x19; // the member, before the owner word at +8
+            bl extern ALLOCATE as usize;
+            mov x23, x0;
+            mov x1, x21;
+            mov x2, x22; // an unknown length
+            bl extern MOVE as usize;
+            strb wzr, [x23, x22];
+            ret
+        );
+        assert_eq!(owner_word_after_calls(&long_copy), Some(7));
+
+        let store_through_the_owner = arm64!(at 0x1000;
+            mov x0, x19;
+            bl extern ALLOCATE as usize;
+            strb wzr, [x19, x22];
+            ret
+        );
+        let store_through_a_clobbered_register = arm64!(at 0x1000;
+            mov x0, x19;
+            bl extern ALLOCATE as usize;
+            str wzr, [x1]; // x1 may still hold an owner address
+            ret
+        );
+        for body in [store_through_the_owner, store_through_a_clobbered_register] {
             assert_eq!(owner_word_after_calls(&body), None);
         }
     }

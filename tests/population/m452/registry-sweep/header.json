@@ -21,11 +21,11 @@
       "undetermined": 309
     },
     "reader_kinds": {
-      "complete": 1581,
+      "complete": 1585,
       "denominator": 1926,
       "failed": 304,
-      "partial": 41,
-      "rate": 0.8209
+      "partial": 37,
+      "rate": 0.8229
     },
     "references": {
       "complete": 36,
@@ -34,24 +34,24 @@
       "undetermined": 309
     },
     "scope_context": {
-      "complete": 1420,
+      "complete": 1422,
       "denominator": 1926,
-      "failed": 344,
-      "partial": 162,
-      "rate": 0.7373
+      "failed": 340,
+      "partial": 164,
+      "rate": 0.7383
     },
     "shapes_and_conditions": {
-      "complete": 1481,
+      "complete": 1485,
       "denominator": 1926,
       "failed": 290,
-      "partial": 155,
-      "rate": 0.769
+      "partial": 151,
+      "rate": 0.771
     },
     "weights": {
-      "complete": 96,
-      "denominator": 480,
-      "rate": 0.2,
-      "undetermined": 384
+      "complete": 98,
+      "denominator": 478,
+      "rate": 0.205,
+      "undetermined": 380
     }
   }
 }
