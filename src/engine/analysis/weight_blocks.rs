@@ -594,7 +594,7 @@ impl<'a> Context<'a> {
         machine.set_register(0, owner);
 
         let paths = machine.run_paths(*entry, &mut |target, machine| {
-            if target.is_some_and(|target| EMISSIONS.contains(&self.name(target))) {
+            if target.is_some_and(|target| readers::DIAGNOSTICS.contains(&self.name(target))) {
                 machine.label(EMITTED, 1);
                 return Ok(Call::Return(None));
             }
@@ -812,7 +812,8 @@ impl<'a> Context<'a> {
             if block || (joined && is_reader(callee)) {
                 return Ok(Call::Stop);
             }
-            if LOCATIONS.contains(&callee) || callee == STRING_RELEASE {
+            if readers::DIAGNOSTIC_LOCATIONS.contains(&callee) || callee == readers::STRING_RELEASE
+            {
                 return Ok(Call::Return(None));
             }
             if is_string_move(callee)
@@ -922,7 +923,7 @@ impl<'a> Context<'a> {
         };
         let callee = self.name(target);
         let arguments = seeds.arguments(machine);
-        if EMISSIONS.contains(&callee) {
+        if readers::DIAGNOSTICS.contains(&callee) {
             machine.label(EMITTED, 1);
             return Ok(Call::Return(None));
         }
@@ -1029,7 +1030,9 @@ impl<'a> Context<'a> {
         if let Some(call) = follow_target_from_value(callee, seeds, value_token, machine)? {
             return Ok(call);
         }
-        if LOCATIONS.contains(&callee) || reads_value_text(callee, seeds, machine) {
+        if readers::DIAGNOSTIC_LOCATIONS.contains(&callee)
+            || reads_value_text(callee, seeds, machine)
+        {
             return Ok(Call::Return(None));
         }
         if reaches_state {
@@ -1485,21 +1488,6 @@ fn key(ends: &[End]) -> Key {
     }
 }
 
-/// Calls that write an engine diagnostic.
-const EMISSIONS: &[&str] = &[
-    "CPdxLogFileAndLine::operator()(char const*, ...)",
-    "CLogger::Log(char const*, unsigned int, int)",
-    "CReader::ReportMalformed()",
-    "CReader::ReportUnexpected()",
-];
-
-/// Calls that locate a diagnostic in the reader and change no script state.
-const LOCATIONS: &[&str] = &[
-    "CReader::GetFileName() const",
-    "CReader::GetLineNumber() const",
-    "CReader::GetFileLocationDescription() const",
-];
-
 /// The calls that read the value token as an event target and assign it.
 const TOKEN_COPY: &str = "CToken::CToken(CToken const&)";
 const TARGET_FROM_TOKEN: &str = "CEventTarget::CEventTarget(CToken)";
@@ -1619,11 +1607,9 @@ fn is_reader(callee: &str) -> bool {
 }
 
 fn is_enum_switch(callee: &str) -> bool {
-    callee.contains(" TokenToEnum<") && callee.ends_with("(int const&)")
+    readers::converter(callee) == Some(readers::ConverterArgument::Pointer)
 }
 
-/// Releases a string's heap buffer.
-const STRING_RELEASE: &str = "CPdxCommonStringAllocator::deallocate(char*, unsigned long)";
 /// The size of a string object.
 const STRING_SIZE: u64 = 0x18;
 

@@ -59,6 +59,7 @@ mod containers;
 mod control_flow;
 mod dispatch;
 mod inventory;
+mod keywords;
 mod member;
 mod nested;
 mod persistent;
@@ -77,7 +78,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v43";
+pub const METHOD: &str = "registry-fields/v44";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -173,6 +174,7 @@ fn owner_result(
         &persistent.readers,
         tokens,
     );
+    let keyword_domains = keywords::domains(input, symbol_index, owner.class, &fields, tokens);
 
     RegistryFieldResult {
         persistent: persistent.readers,
@@ -182,6 +184,7 @@ fn owner_result(
         container_masks: persistent.containers,
         collections,
         embedded,
+        keyword_domains,
         fields,
         paths,
         gaps,

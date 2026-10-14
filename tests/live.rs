@@ -196,6 +196,7 @@ enum Case {
     FixtureBlockParsing,
     FixtureRepeatReaders,
     FixtureRequiredField,
+    FixtureEnumDomain,
     FixtureReadScope,
     FixtureModifierCategory,
     FixtureModifierBlock,
@@ -419,6 +420,7 @@ fn cases() -> Vec<(String, Case)> {
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
     cases.push(("fixture_repeat_readers".into(), Case::FixtureRepeatReaders));
     cases.push(("fixture_required_field".into(), Case::FixtureRequiredField));
+    cases.push(("fixture_enum_domain".into(), Case::FixtureEnumDomain));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
     cases.push((
         "fixture_triggered_modifier".into(),
@@ -765,6 +767,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureRepeatReaders => fixture_repeat_readers(native).await,
         Case::FixtureRequiredField => fixture_required_field(native).await,
+        Case::FixtureEnumDomain => fixture_enum_domain(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierCategory => fixture_modifier_category(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
@@ -1458,6 +1461,70 @@ async fn fixture_required_field(native: &Native) -> Outcome {
             .collect();
         if !covered || !witnessed || name_reports != [Some(2)] {
             return Err(format!("missing `name`: {answer:?}").into());
+        }
+
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
+}
+
+/// An economic category's `modifier_category` outside the keyword domain is reported where it is
+/// read, and a name in the domain is not. The engine keeps the converter's fallback for the
+/// unknown name.
+async fn fixture_enum_domain(native: &Native) -> Outcome {
+    use pdx_native::{DiagnosticJoin, FieldDomain, FixtureFieldQuestion, FixtureRequest};
+    let registry = "common/economic_categories";
+    let field = "modifier_category";
+    let listed = |name: &str| {
+        let answer = native.registry_fields(registry)?;
+        let domain = answer
+            .value
+            .iter()
+            .find(|candidate| candidate.name == field);
+        Ok::<_, Box<dyn std::error::Error>>(matches!(
+            domain.map(|candidate| &candidate.domain),
+            Some(FieldDomain::Listed(names)) if names.iter().any(|listed| listed == name)
+        ))
+    };
+    if !listed("planet")? || listed("native_unknown")? {
+        return Err("the static domain does not list `planet` alone of the two names".into());
+    }
+
+    let file = format!("{registry}/native_enum_domain.txt");
+    let text = r#"native_enum_known = {
+ modifier_category = planet
+}
+native_enum_unknown = {
+ modifier_category = native_unknown
+}
+"#;
+    let request = FixtureRequest::field_outcomes(
+        file.clone(),
+        text,
+        ["native_enum_known", "native_enum_unknown"]
+            .map(|definition| FixtureFieldQuestion::new(registry, definition, field)),
+    );
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let logged_at = |line: u64| -> Vec<&str> {
+            answer
+                .value
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| {
+                    matches!(&diagnostic.join, DiagnosticJoin::Source { file: logged, line: at, .. }
+                        if *logged == file && *at == line)
+                })
+                .map(|diagnostic| diagnostic.text.as_str())
+                .collect()
+        };
+        let unknown = logged_at(5);
+        let reported = unknown.len() == 1 && unknown[0].starts_with("Invalid modifier category");
+        if !logged_at(2).is_empty() || !reported {
+            return Err(format!("enum domain: {answer:?}").into());
         }
 
         Ok(())

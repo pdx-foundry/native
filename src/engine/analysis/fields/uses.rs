@@ -758,6 +758,7 @@ mod tests {
             class: "CChild".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {
+                keyword_domains: Default::default(),
                 loader: None,
                 persistent: Default::default(),
                 persistent_points: Default::default(),

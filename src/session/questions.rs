@@ -826,7 +826,7 @@ fn normalized_gaps(
     let mut gaps = vec![Gap {
         kind: GapKind::OutsideMethod,
         subject: Some(GapSubject::registry(registry)),
-        detail: "Defaults, exhaustive enum domains, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
+        detail: "Defaults, enum domains other than those of keyword fields, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
     }];
     let field_of = |path: usize| {
         result
@@ -857,6 +857,17 @@ fn normalized_gaps(
                 kind,
                 subject: Some(GapSubject::field(field.name.clone())),
                 detail: detail.into(),
+            });
+        }
+        if built.reader.kind == ReaderKind::Keyword && built.domain == crate::FieldDomain::Unknown {
+            let detail = match result.keyword_domains.get(&field.token) {
+                Some(Err(detail)) => detail,
+                _ => "The keyword domain is not established.",
+            };
+            gaps.push(Gap {
+                kind: GapKind::ReaderSemantics,
+                subject: Some(GapSubject::field(field.name.clone())),
+                detail: detail.to_string(),
             });
         }
     }
@@ -1129,6 +1140,7 @@ mod field_gap_tests {
             tail: true,
         };
         RegistryFieldResult {
+            keyword_domains: Default::default(),
             loader: None,
             persistent: Default::default(),
             persistent_points: Default::default(),
@@ -1209,6 +1221,39 @@ mod field_gap_tests {
             assert_eq!(on_field[0].kind, public, "{kind:?}");
             assert_eq!(on_field[0].subject, Some(GapSubject::field("known")));
         }
+    }
+
+    #[test]
+    fn a_keyword_field_lists_its_domain_or_says_why_not() {
+        let keyword = |domain: Result<Vec<String>, &'static str>| {
+            let join = ReaderJoin::Stored {
+                callee: "GetExampleFromToken(int)".into(),
+                kind: ReaderKind::Keyword,
+                destination: Some(0x40),
+                repeat: crate::RepeatBehavior::Replace,
+            };
+            let mut result = result(vec![]);
+            result.fields[0].readers = vec![join.clone()];
+            result.paths[0].outcome = PathOutcome::Reader(join);
+            result.keyword_domains = [(7, domain)].into();
+            let fields = normalized_fields(&result, &ReferenceFacts::default());
+            let gaps: Vec<_> = field_gaps(&result)
+                .into_iter()
+                .filter(|gap| gap.subject == Some(GapSubject::field("known")))
+                .collect();
+
+            (fields[0].domain.clone(), gaps)
+        };
+
+        let (listed, gaps) = keyword(Ok(vec!["alpha".into()]));
+        assert_eq!(listed, crate::FieldDomain::Listed(vec!["alpha".into()]));
+        assert!(gaps.is_empty(), "{gaps:?}");
+
+        let (unknown, gaps) = keyword(Err("why"));
+        assert_eq!(unknown, crate::FieldDomain::Unknown);
+        assert_eq!(gaps.len(), 1, "{gaps:?}");
+        assert_eq!(gaps[0].kind, GapKind::ReaderSemantics);
+        assert_eq!(gaps[0].detail, "why");
     }
 
     #[test]
