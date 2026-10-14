@@ -139,7 +139,10 @@ the key string, its length and flag byte (`+0x8`, `+0x17`), the item key layout 
 | `initializer_scan_nonempty` | 5 | returns for an empty key, then the same scan |
 | `initializer_map_nonempty` | 3 | skips an empty key, then `Find` on the map at `+0x58` |
 | `initializer_map` | 2 | `Find` on the map at `+0x58`, empty key included |
-| `initializer_getter` | 18 | `D::getter(CString const&) const` on `D::_pInstance` |
+| `initializer_getter` | 20 | `D::getter(CString const&) const` on `D::_pInstance` |
+| `initializer_scan_valid` | 8 | the scan, then the selected object's validity check (slot `0x10`): `item+0x38` when it passes, a null pointer otherwise |
+| `initializer_scan_valid_flag` | 8 | the same scan and store; when the check fails, also stores whether `StringToToken` of the key is token `0x3ff8` |
+| `initializer_getter_scan_nonempty` | 4 | two lookups: a getter call, then a scan of another database that returns early for an empty key |
 
 The getter's own body gives the lookup. `GetResource` and `FindProjectType` (10 initializers)
 scan their own items (`getter_scan`). `GetModifier` and `GetPlanetClass` (5) call
@@ -147,6 +150,19 @@ scan their own items (`getter_scan`). `GetModifier` and `GetPlanetClass` (5) cal
 (`null_getter`); `Find` hashes with `_PMurHash32`, walks the bucket chain and compares length
 and bytes (`hash_find`), so the key match is `Equal`. The null object's type must equal the
 element type that the map or hash table states. A scan does not state its element type.
+`COnActionDatabase::GetOnActionList` tail-calls a qualified `Find` on its own table and returns
+its result, so a miss stores a null pointer (`hash_getter`). `CEventManager::GetEvent`
+(`event_getter`) calls `GetIDInNameSpace` on the key, splits the id into a namespace index
+(`id / 100000`) and an event index (`id % 100000`), and returns the event pointer or null; an id
+below `-100000` returns null. It never compares the key's bytes.
+
+The two validity scans are the species-rights commands (`CSetSpeciesRightsEffect<…>`,
+`CHasSpeciesRightsTrigger<…>`). The method requires the scanned item's check to return 1 and
+the null object's to return 0, read from their vtables as for [list readers](#list-readers), so a
+found item is stored and a miss stores a null pointer. The resource comparisons
+(`CResourceCompareTrigger<…>`) call `CStrategicResourceDatabase::GetResource` for `resource` and
+scan `TGameDatabase<CEconomicCategoryDatabase>` for a nonempty `category`; an empty `category`
+leaves its item unwritten.
 
 `CCreateArmyEffect::PostInit()` walks the `CEventTarget` chain at `this+0x650` and classifies each
 link's keyword token (`+0x58`) through compare trees and two `ldrh` jump tables. It names no
@@ -223,31 +239,36 @@ equal key, empty key looked up, omitted on a miss.
 ### Owner initializers
 
 On M452 the method analyzes every `PostInit()` in the executable. Of the 154 that name a global
-instance, **63 complete, 91 failed**:
+instance, **85 establish their lookups (67 with every fact, 18 partial), 69 failed**:
 
 | Result | Initializers | Shape |
 | --- | ---: | --- |
-| Complete | 63 | the shapes above, with a content directory and a key match |
-| Failed | 74 | another shape, such as a scan guarded by a flag at `this+0x228` (9), a scan with a validity check that stores null (8), or a getter wrapper that orders its loads differently |
-| Failed | 14 | the initializer holds several lookups (`CCreateCountry`, `CCreateSpecies`, `CFreeJobsOfType` …) |
-| Failed | 3 | a getter of another shape: `GetLeaderTrait`, `GetOnActionList` (no null substitute) and `CEventManager::GetEvent` |
+| Complete | 67 | the shapes above, with a content directory and every lookup fact |
+| Partial | 18 | the event and on-action getters and the 16 species-rights scans: the target and key match are known where the shape states them; the miss stores a null pointer, which `MissingResult` cannot name, and the event id match is not a key match |
+| Failed | 58 | another shape (`initializer-shape`); see [Gaps](#gaps) |
+| Failed | 10 | the initializer holds several lookups of other shapes (`CCreateCountry`, `CCreateSpecies`, `CFreeJobsOfType` …) |
+| Failed | 1 | `CTraitDatabase::GetLeaderTrait`, a getter of another shape |
 
 `command-population` joins the initializers to the commands. A lookup joins a child key when
-a read alternative of the key ends in a tail call to `CReader::Read(CString&, bool)` that stores
-at the lookup's key offset; a call with a continuation could overwrite the key before
-`PostInit()`. The key's `Field.reference` then holds one lookup with stage `OwnerInitialization`
-for each such alternative, with that alternative's condition. On M45-release every joined
-alternative is unconditional.
+a read alternative of the key stores its string at the lookup's key offset with
+`CReader::Read(CString&, bool)` as the path's last write: a tail call, or a call followed only by
+register and frame restores and a tail call to a function whose body is only `ret` (the event
+effects' `id` returns through `CEventManager::AddFiredEvent(CString const&)`, which is empty on
+M452). Any other continuation could overwrite the key before `PostInit()`. The key's
+`Field.reference` then holds one lookup with stage `OwnerInitialization` for each such
+alternative and each lookup at that offset, with the alternative's condition. On M45-release
+every joined alternative is unconditional.
 
-| Commands | Effects (1,074) | Triggers (1,096) |
+| Commands | Effects (1,080) | Triggers (1,098) |
 | --- | ---: | ---: |
-| Lookup joined to a child key, complete | 16 | 8 |
-| Initialization lookup without an authored field | 32 | 9 |
-| Initializer with no lookup | 956 | 1,025 |
-| Initializer lookup not established | 60 | 52 |
-| Receiver join failed | 10 | 2 |
+| Lookup joined to a child key, complete | 37 | 17 |
+| Lookup joined to a child key, partial | 29 | 16 |
+| Initialization lookup without an authored field | 11 | 4 |
+| Initializer with no lookup | 968 | 1,029 |
+| Initializer lookup not established | 33 | 32 |
+| Receiver join failed | 2 | 0 |
 
-Counts are from `command-population` at `command-grammar/v9` (`inventories[].initialization_lookups`).
+Counts are from `command-population` at `command-grammar/v22` (`inventories[].initialization_lookups`).
 
 Joined effects include `create_ship` (`random_existing_design`, `common/ship_sizes`, `Equal`,
 empty key not looked up), `add_district` (`district_type`, `common/districts`, `FirstEqual`) and
@@ -262,21 +283,34 @@ string reader stores that key.
 
 ## Gaps
 
-- Initializers of another shape, several lookups or another getter (the 91 above). Atlas reads a
-  command key's lookup: on M452, 105 `String` keys of 68 commands have no lookup because their
-  receiver's initializer is one of these, so Atlas reports a reference gap for each. The families
-  need semantics that the answer does not yet state; SDK-827 owns them:
-  - the 20 event effects (`country_event` …, key `id`): `CEventManager::GetEvent` selects by the
-    event id that `GetIDInNameSpace` parses, not by the key's bytes, and returns a null pointer on
-    a miss;
-  - the 24 species-rights commands (`set_citizenship_type`, `has_citizenship_type`,
-    `former_citizenship_type` … , key `type`): the scan's selected object passes its validity
-    check before the initializer stores `item+0x38` or null, and a `StringToToken` test sets a
-    flag;
-  - the resource commands (`has_resource`, `resource_income_compare` …, key `resource`) and
-    others that hold several lookups, which need the initializer split into one lookup per key.
+- Partial lookups (SDK-827). The answer gives the target and stage, and keeps the rest
+  `Unresolved` with the reason in the key's gap: the event effects' `id` is selected by the id
+  that `GetIDInNameSpace` parses, not by its bytes; the event, on-action and species-rights
+  lookups store a null pointer on a miss; the species-rights triggers also flag token `0x3ff8`.
+  `MissingResult` has no null-pointer value, and Atlas reads only the target.
+- Initializers of another shape, several lookups or another getter (the 69 above). Atlas reads
+  a command key's lookup; on M452 (SDK-798 recording, cwtools `config/`) 30 config `value_form`
+  claims still fall on keys of these initializers, out of the 100 that SDK-827 counted. Each
+  obstacle, with its claims:
+  - a known lookup followed by more code that the whole-function shapes do not allow:
+    `add_casus_belli` (a scan, then `CIntVariableValue::IsSet`, 1), `set_resource` and
+    `ship_size_cost_resource_percent` (`GetResource`, then a validity check that logs, 2);
+  - a getter call guarded by a nonempty key and split across the body: `has_resource` (1);
+  - a getter called on `TGameDatabase<D>::_pInstance` loaded with `ldr`: `spawn_system`
+    (`CSystemInitializerDataBase::FindInitializer`, 2);
+  - a lookup in the found item, not in a registry: `set_policy`, `can_set_policy` (a policy scan,
+    then `CPolicyGroup::GetOption` on the found group for `option`, 4);
+  - a scan, then a tail call to the base class's initializer: `enable_patron_first_contact_project`
+    (`CEnableSpecialProjectEffect::PostInit()` looks up `name`, 2);
+  - two scans of one database for two keys: `pop_force_transfer_ethic`, `replace_patron` (4);
+  - a getter with further code: `change_species_characteristics`, `set_habitability_trait`
+    (`GetTrait`, 3);
+  - several lookups of different shapes: `create_starbase` (4), `create_species` (1),
+    `free_jobs_of_type` and `is_job_of_pop_category` (4), `check_economic_production_modifier_for_job` (1);
+  - `GetLeaderTrait`, which searches the trait array of each entry of a hash table: `add_timed_trait` (1).
 
-  A guarded scan's condition is a stored flag that no child key is known to write.
+  Each needs its own whole-function shape, or a shape that matches one lookup inside a larger
+  body; the second would cover most of them.
 - Registry objects: no registry item class on M45-release has a `PostInit()` that names a
   database, so registry fields have no initialization lookups.
 - The seven readers in the table above.
@@ -308,7 +342,12 @@ string reader stores that key.
   lookup; mismatched string offsets and a null object of another type reject it; and a field
   joins only when its string reader stores at the lookup's key offset.
 - A shared initializer can serve many commands: `CFireEventEffect::PostInit()` calls
-  `CEventManager::GetEvent`, and its failure appears on 20 event-firing effects.
+  `CEventManager::GetEvent`, and its result appears on 20 event-firing effects.
+- A string read that is not a tail call can still be the key's last write. The event effects'
+  `id` read returns through the empty `AddFiredEvent(CString const&)`. A `CString const&`
+  signature alone proves nothing: a member function's `this` is mutable.
+- A validity check decides what an initializer stores. The species-rights scans select the null
+  object on a miss, but store a null pointer because its check fails.
 
 ## Identifier grammar
 

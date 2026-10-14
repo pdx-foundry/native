@@ -259,15 +259,12 @@ pub(crate) fn normalize(
                     .as_ref()
                     .ok()
                     .and_then(|name| references.initializers.get(name));
-                let lookup = match initialization {
-                    Some(Initialization::Lookup(lookup)) => Some(lookup),
-                    _ => None,
-                };
+                let lookups = established_lookups(initialization);
                 let mut keys = super::fields::grammar_fields(
                     &result.fields.fields,
                     &result.fields.paths,
                     references,
-                    lookup,
+                    lookups,
                 );
                 for key in &mut keys {
                     if let Some(child) = result.nested.get(&key.name) {
@@ -276,7 +273,7 @@ pub(crate) fn normalize(
                         ));
                     }
                 }
-                key_gaps = reference_gaps(result, references, lookup);
+                key_gaps = reference_gaps(result, references, lookups);
                 nested_reference_gaps(result, references, &[], &mut key_gaps);
                 let coverage = result.coverage();
                 for (path, stop) in &coverage.gaps {
@@ -433,20 +430,16 @@ fn nested_fields(
     references: &ReferenceFacts,
     parent: &str,
 ) -> Vec<crate::Field> {
-    let lookup = result
+    let initialization = result
         .initializer
         .as_ref()
         .ok()
-        .and_then(|name| references.initializers.get(name))
-        .and_then(|initialization| match initialization {
-            Initialization::Lookup(lookup) => Some(lookup),
-            _ => None,
-        });
+        .and_then(|name| references.initializers.get(name));
     let mut fields = super::fields::grammar_fields(
         &result.fields.fields,
         &result.fields.paths,
         references,
-        lookup,
+        established_lookups(initialization),
     );
     for field in &mut fields {
         if let Some(child) = result.nested.get(&field.name) {
@@ -474,10 +467,6 @@ fn nested_reference_gaps(
             .as_ref()
             .ok()
             .and_then(|name| references.initializers.get(name));
-        let lookup = match initialization {
-            Some(Initialization::Lookup(lookup)) => Some(lookup),
-            _ => None,
-        };
         if let Some((kind, detail)) = initialization_gap(child, initialization) {
             gaps.push(Gap {
                 kind,
@@ -485,7 +474,7 @@ fn nested_reference_gaps(
                 detail,
             });
         }
-        for mut gap in reference_gaps(child, references, lookup) {
+        for mut gap in reference_gaps(child, references, established_lookups(initialization)) {
             if let Some(GapSubject::Field { name }) = gap.subject {
                 let mut key = path.clone();
                 key.push(name);
@@ -559,12 +548,21 @@ fn value_reference_gap(
     })
 }
 
+/// The lookups that the receiver's initializer establishes; none when it makes no lookup or none
+/// is established.
+fn established_lookups(initialization: Option<&Initialization>) -> &[InitializationLookup] {
+    match initialization {
+        Some(Initialization::Lookups(lookups)) => lookups,
+        _ => &[],
+    }
+}
+
 /// One gap for each child key whose reference lookups are not fully established: the lookups of
-/// its reader, and the receiver initializer's lookup of the string it stores.
+/// its reader, and the receiver initializer's lookups of the string it stores.
 fn reference_gaps(
     result: &grammar::GrammarResult,
     references: &ReferenceFacts,
-    initialization: Option<&InitializationLookup>,
+    initialization: &[InitializationLookup],
 ) -> Vec<Gap> {
     result
         .fields
@@ -572,12 +570,13 @@ fn reference_gaps(
         .iter()
         .flat_map(|field| {
             let joined = initialization
-                .filter(|lookup| super::fields::stores_initialization_key(field, lookup));
-            let details = [
-                super::fields::reference_gap(field, references),
-                joined.and_then(super::fields::initialization_gap),
-            ];
-            details.into_iter().flatten().map(|detail| Gap {
+                .iter()
+                .filter(|lookup| super::fields::stores_initialization_key(field, lookup))
+                .filter_map(super::fields::initialization_gap);
+            let details = super::fields::reference_gap(field, references)
+                .into_iter()
+                .chain(joined);
+            details.map(|detail| Gap {
                 kind: GapKind::ReaderSemantics,
                 subject: Some(GapSubject::field(field.name.clone())),
                 detail,
@@ -607,13 +606,15 @@ fn initialization_gap(
                 initialization_obstacle(stop.reason)
             ),
         )),
-        Some(Initialization::Lookup(lookup)) => {
-            let joined = result
-                .fields
-                .fields
-                .iter()
-                .any(|field| super::fields::stores_initialization_key(field, lookup));
-            (!joined).then(|| {
+        Some(Initialization::Lookups(lookups)) => {
+            let every_joined = lookups.iter().all(|lookup| {
+                result
+                    .fields
+                    .fields
+                    .iter()
+                    .any(|field| super::fields::stores_initialization_key(field, lookup))
+            });
+            (!every_joined).then(|| {
                 (
                     GapKind::ReaderSemantics,
                     "The receiver's initializer looks up a stored key that no child key's string \
@@ -723,7 +724,7 @@ mod tests {
             KeyMatch, Lookup, Missing, Stage, initialization::Execution,
         };
 
-        Initialization::Lookup(InitializationLookup {
+        Initialization::Lookups(vec![InitializationLookup {
             database: "CDistrictTypeDatabase".into(),
             directory: Some("common/districts".into()),
             key_offset,
@@ -732,12 +733,13 @@ mod tests {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
                 empty_key_looked_up: true,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
             },
-            execution: Execution::Inline {
+            unstated: None,
+            execution: Some(Execution::Inline {
                 null: "TPdxNullObject<CDistrictType>::_pInstance".into(),
-            },
-        })
+            }),
+        }])
     }
 
     fn key_reference(answer: &Answer<CommandGrammar>) -> crate::FieldReference {
@@ -928,6 +930,52 @@ mod tests {
             }])
         );
         assert!(!joins_no_key(&answer));
+    }
+
+    #[test]
+    fn a_partial_lookup_gives_its_target_and_states_why_the_rest_is_unresolved() {
+        use crate::{KeyMatch, MissingResult};
+
+        let Initialization::Lookups(mut lookups) = scan_at(0xa8) else {
+            unreachable!()
+        };
+        lookups[0].lookup.key_match = None;
+        lookups[0].lookup.on_missing = None;
+        lookups[0].unstated = Some("the getter selects by event id");
+        let mut unjoined = lookups[0].clone();
+        unjoined.key_offset = 0x300;
+        lookups.push(unjoined);
+        let answer = normalize(
+            Ok(&keyed(Ok(INITIALIZER.into()))),
+            "country_event",
+            crate::BuildId("authored".into()),
+            &facts(Initialization::Lookups(lookups)),
+        );
+        let crate::FieldReference::Lookups(joined) = key_reference(&answer) else {
+            panic!("no lookup");
+        };
+
+        assert_eq!(
+            joined.len(),
+            1,
+            "only the lookup of the stored key joins it"
+        );
+        assert_eq!(
+            joined[0].target,
+            crate::ReferenceTarget::Registry {
+                name: "common/districts".into()
+            }
+        );
+        assert_eq!(joined[0].key_match, KeyMatch::Unresolved);
+        assert_eq!(joined[0].on_missing, MissingResult::Unresolved);
+        let key_gap = answer
+            .gaps
+            .iter()
+            .find(|gap| gap.subject == Some(GapSubject::field("district_type".to_owned())))
+            .expect("a key gap");
+        assert!(key_gap.detail.contains("the getter selects by event id"));
+        assert!(!key_gap.detail.contains("map search"));
+        assert!(joins_no_key(&answer), "the second lookup joins no key");
     }
 
     #[test]

@@ -1,0 +1,42 @@
+# CEventManager::GetEvent(CString const&) const: parses the key with GetIDInNameSpace into an
+# event id, splits the id into a namespace index (id / 100000) and an event index (id % 100000),
+# and returns the event pointer that the namespace array holds (namespaces at this+0x30, count
+# this+0x3c, 0x18 bytes each; events at +0x8, count +0x14). An id below -100000, a negative event
+# index or an index out of range returns a null pointer. The key's bytes are never compared.
+stp xr0,xr1,[sp,#-0x20]!
+stp x29,x30,[sp,#0x10]
+add x29,sp,#0x10
+mov xr1,x0
+bl CALL = CEventManager::GetIDInNameSpace(CString const&) const
+mov wr2,#0x7961
+movk wr2,#0xfffe,lsl#16
+cmp w0,wr2
+b.lt @+25
+mov wr2,#0xb589
+movk wr2,#0x14f8,lsl#16
+smull xr2,w0,wr2
+lsr xr3,xr2,#0x3f
+asr xr2,xr2,#0x2d
+ldr wr4,[xr1,#0x3c]
+add wr3,wr2,wr3
+cmp wr3,wr4
+b.ge @+16
+mov wr2,#0x86a0
+movk wr2,#0x1,lsl#16
+msub wr2,wr3,wr2,w0
+tbnz wr2,#0x1f,@+12
+ldr xr4,[xr1,#0x30]
+mov wr5,#0x18
+smaddl xr3,wr3,wr5,xr4
+ldr wr4,[xr3,#0x14]
+cmp wr2,wr4
+b.ge @+6
+ldr xr3,[xr3,#0x8]
+ldr x0,[xr3,wr2,uxtw#3]
+ldp x29,x30,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x20
+ret
+mov x0,#0x0
+ldp x29,x30,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x20
+ret

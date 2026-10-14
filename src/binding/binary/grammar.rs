@@ -332,7 +332,7 @@ pub(in crate::binding) fn initializers(
         grammar::forms::{Initializer, LookupExecution},
         references::{
             self,
-            initialization::{Execution, Initialization},
+            initialization::{Execution, Initialization, InitializationLookup},
         },
     };
     let facts = references::analyze(input);
@@ -363,25 +363,38 @@ pub(in crate::binding) fn initializers(
             .collect();
         let initializer = match fact {
             Initialization::NoLookup => Initializer::NoLookup,
-            Initialization::Lookup(lookup) => {
-                let execution = match &lookup.execution {
-                    Execution::Inline { null } => LookupExecution::Inline {
-                        always: lookup.lookup.empty_key_looked_up,
-                        null: super::declarations::unique(symbols, null)?,
+            // Forms run the summary in place of the initializer, so only one lookup that is the
+            // initializer's whole effect has one.
+            Initialization::Lookups(lookups) => match lookups.as_slice() {
+                [
+                    lookup @ InitializationLookup {
+                        execution: Some(execution),
+                        ..
                     },
-                    Execution::Getter {
-                        database,
-                        getter,
-                        null,
-                    } => LookupExecution::Getter {
-                        database: super::declarations::unique(symbols, database)?,
-                        getter: super::declarations::unique(symbols, getter)?,
-                        null: super::declarations::unique(symbols, null)?,
-                    },
-                };
+                ] => {
+                    let execution = match execution {
+                        Execution::Inline { null } => LookupExecution::Inline {
+                            always: lookup.lookup.empty_key_looked_up,
+                            null: super::declarations::unique(symbols, null)?,
+                        },
+                        Execution::Getter {
+                            database,
+                            getter,
+                            null,
+                        } => LookupExecution::Getter {
+                            database: super::declarations::unique(symbols, database)?,
+                            getter: super::declarations::unique(symbols, getter)?,
+                            null: super::declarations::unique(symbols, null)?,
+                        },
+                    };
 
-                Initializer::Lookup { lookup, execution }
-            }
+                    Initializer::Lookup {
+                        lookup: lookup.clone(),
+                        execution,
+                    }
+                }
+                _ => Initializer::Unresolved,
+            },
             Initialization::Unresolved(_) => Initializer::Unresolved,
         };
         for address in addresses {

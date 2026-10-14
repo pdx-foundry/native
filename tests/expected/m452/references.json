@@ -201,5 +201,101 @@
  },
  "trigger/free_jobs_of_type": [
   "The receiver's initializer reads a global instance, but no lookup of it is established: the initializer holds several lookups."
- ]
+ ],
+ "effect/country_event#id": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "Unresolved",
+    "on_missing": "Unresolved",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "events"
+     }
+    }
+   }
+  ]
+ },
+ "effect/fire_on_action#on_action": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "Equal",
+    "on_missing": "Unresolved",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/on_actions"
+     }
+    }
+   }
+  ]
+ },
+ "effect/set_citizenship_type#type": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "Unresolved",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/species_rights/citizenship_types"
+     }
+    }
+   }
+  ]
+ },
+ "trigger/has_citizenship_type#type": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "Unresolved",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/species_rights/citizenship_types"
+     }
+    }
+   }
+  ]
+ },
+ "trigger/resource_income_compare#resource": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "LookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/strategic_resources"
+     }
+    }
+   }
+  ]
+ },
+ "trigger/resource_income_compare#category": {
+  "Lookups": [
+   {
+    "condition": "Always",
+    "empty_key": "NotLookedUp",
+    "key_match": "FirstEqual",
+    "on_missing": "NullObject",
+    "stage": "OwnerInitialization",
+    "target": {
+     "Registry": {
+      "name": "common/economic_categories"
+     }
+    }
+   }
+  ]
+ }
 }
