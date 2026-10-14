@@ -627,6 +627,22 @@ fn an_append_to_a_string_that_the_run_does_not_know_does_not_stop_the_path() {
 }
 
 #[test]
+fn a_move_into_a_string_that_the_run_does_not_know_empties_its_source() {
+    let mut code = root(0);
+    arm64!(code; mov x20, x1); // x1: a tooltip string that the root receives
+    compose(&mut code, 0x20, KEY, Some(DESC));
+    arm64!(code; mov x0, x20; add x1, sp, #0x20);
+    code.call(MOVE_ASSIGN);
+    use_stack(&mut code, 0x20, LOOKUP);
+    arm64!(code; ret);
+
+    let result = analyze_root(code, &Storage::default());
+
+    assert!(result.names.is_empty(), "{:#?}", result.names);
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+}
+
+#[test]
 fn a_move_from_a_string_that_the_run_does_not_know_still_stops_the_path() {
     let mut code = root(0);
     arm64!(code; mov x20, x1; add x0, sp, #0x20); // x1: a string that the root receives

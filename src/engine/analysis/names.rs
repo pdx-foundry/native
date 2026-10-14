@@ -873,6 +873,7 @@ impl Analysis<'_> {
                     if receives_name {
                         machine.label(LOST_NAME, 1);
                     }
+                    empty_moved_source(&model, target, machine, &mut arena);
                     Ok(Call::Return(None))
                 }
                 Err(unresolved) => Err(unresolved),
@@ -1354,7 +1355,9 @@ impl Recorder<'_> {
         let effect = match self.model.call(target, machine, &mut self.arena) {
             Err(unknown) if writes_unknown_object(&unknown, machine) => {
                 self.unfollowed(machine);
-                self.model.call(None, machine, &mut self.arena)?
+                let effect = self.model.call(None, machine, &mut self.arena)?;
+                empty_moved_source(self.model, target, machine, &mut self.arena);
+                effect
             }
             effect => effect?,
         };
@@ -1577,6 +1580,20 @@ impl Recorder<'_> {
 /// object also stops at `string-object`, but it does change that object.
 fn writes_unknown_object(obstruction: &Unresolved, machine: &Machine) -> bool {
     obstruction.reason == "string-object" && machine.register(0).is_none()
+}
+
+/// Empty the source in `x1` of a move assignment into an object that the run does not know, as
+/// the move does: otherwise a later test of the source would follow text that it no longer holds.
+fn empty_moved_source(
+    model: &Model,
+    target: Option<u64>,
+    machine: &mut Machine,
+    arena: &mut Arena,
+) {
+    let moves = target.is_some_and(|target| model.functions.move_assigns.contains(&target));
+    if let (true, Some(source)) = (moves, machine.register(1)) {
+        model.empty_moved_source(machine, source, arena);
+    }
 }
 
 /// What a sink gives for a name with an unresolved part: an unknown value, so that both outcomes of
