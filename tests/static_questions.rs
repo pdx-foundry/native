@@ -12,7 +12,8 @@ use pdx_native::{
     Answer, Basis, Completeness, ContextScopes, DeclarationKind, DeclaredScopes, DeclaredTags,
     EntryScope, Error, FieldDomain, FieldReference, GapKind, GapSubject, KeptCategories, KeyMatch,
     LinkData, LocalizationContextReference, LocalizationDeclarations, LocalizationOutput,
-    LookupStage, Native, Operation, OutputScope, ReaderKind, ReferenceTarget, RuleKind, ScopeId,
+    LookupStage, MissingResult, Native, Operation, OutputScope, ReaderKind, ReferenceTarget,
+    RuleKind, ScopeId,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -2154,6 +2155,7 @@ fn reference_lookups_name_their_registry_and_keep_unresolved_facts() {
                 lookup.target == ReferenceTarget::Unresolved
                     || lookup.stage == LookupStage::Unresolved
                     || lookup.key_match == KeyMatch::Unresolved
+                    || lookup.on_missing == MissingResult::Unresolved
             }),
             _ if command(owner).is_some() => continue,
             _ => true,

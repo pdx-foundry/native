@@ -1,0 +1,93 @@
+# The scan of initializer_scan_valid.shape with the key string at this+{input}, the selected
+# object plus 0x38 or a null pointer stored at this+{output}. When the validity check returns
+# zero, the initializer also stores at this+{flag_output} whether StringToToken of the key string
+# is token 0x3ff8.
+stp xr0,xr1,[sp,#-0x50]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp xr6,xr7,[sp,#0x30]
+stp x29,x30,[sp,#0x40]
+add x29,sp,#0x40
+mov xr7,x0
+add xr6,x0,#{input}
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {database}
+ldr xr8,[xr8]
+ldr wr2,[xr8,#0x54]
+cmp wr2,#0x1
+b.lt @+52
+ldr xr1,[xr8,#0x48]
+ldrb wr8,[xr7,#{input_flag}]
+sxtb wr9,wr8
+ldr xr10,[xr7,#{input_length}]
+cmp wr9,#0x0
+csel xr4,xr10,xr8,lt
+ldr xr8,[xr7,#{input}]
+csel xr3,xr8,xr6,lt
+cbz xr4,@+6
+mov xr0,#0x0
+b @+20
+add xr1,xr1,#0x8
+subs xr2,xr2,#0x1
+b.eq @+38
+ldr xr5,[xr1]
+ldrb wr8,[xr5,#{flag}]
+sxtb wr9,wr8
+ldr xr10,[xr5,#{length}]
+cmp wr9,#0x0
+csel xr8,xr10,xr8,lt
+cbnz xr8,@-9
+b @+33
+ldr x0,[xr8]
+mov x1,xr3
+mov x2,xr4
+bl CALL = _memcmp
+cbz w0,@+28
+add xr0,xr0,#0x1
+cmp xr0,xr2
+b.eq @+22
+ldr xr5,[xr1,xr0,lsl#3]
+ldrb wr9,[xr5,#{flag}]
+sxtb wr8,wr9
+ldr xr10,[xr5,#{length}]
+cmp wr8,#0x0
+csel xr8,xr10,xr9,lt
+cmp xr8,xr4
+b.ne @-10
+add xr8,xr5,#{key}
+tbnz wr9,#7,@-17
+sub xr9,xr9,#0x1
+mov xr10,xr3
+ldrb wr11,[xr8],#0x1
+ldrb wr12,[xr10],#0x1
+cmp wr11,wr12
+ccmp xr9,#0x0,#0x4,eq
+sub xr9,xr9,#0x1
+b.ne @-5
+cmp wr11,wr12
+b.ne @-22
+b @+4
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {null}
+ldr xr5,[xr8]
+mov xr4,xr5
+ldr xr8,[xr4],#0x38
+ldr xr8,[xr8,#0x10]
+mov x0,xr5
+blr xr8
+cmp w0,#0x0
+csel xr8,xr4,xzr,ne
+str xr8,[xr7,#{output}]
+tbnz w0,#0,@+7
+mov x0,xr6
+bl CALL = StringToToken(CString const&)
+mov wr8,#0x3ff8
+cmp w0,wr8
+cset wr8,eq
+strb wr8,[xr7,#{flag_output}]
+ldp x29,x30,[sp,#0x40]
+ldp xr6,xr7,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x50
+ret

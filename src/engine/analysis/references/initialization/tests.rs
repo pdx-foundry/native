@@ -107,6 +107,23 @@ fn initialization(image: &Image, name: &str) -> Initialization {
                 Directory::Named("common/districts".into()),
             ),
             ("CPlanetClassDatabase", Directory::Missing),
+            (
+                "CCitizenshipTypeDatabase",
+                Directory::Named("common/species_rights/citizenship_types".into()),
+            ),
+            ("CEventManager", Directory::Named("events".into())),
+            (
+                "COnActionDatabase",
+                Directory::Named("common/on_actions".into()),
+            ),
+            (
+                "CStrategicResourceDatabase",
+                Directory::Named("common/strategic_resources".into()),
+            ),
+            (
+                "CEconomicCategoryDatabase",
+                Directory::Named("common/economic_categories".into()),
+            ),
         ],
     );
     input.initializers.insert(name.to_owned());
@@ -116,7 +133,7 @@ fn initialization(image: &Image, name: &str) -> Initialization {
 
 fn found(initialization: Initialization) -> InitializationLookup {
     match initialization {
-        Initialization::Lookup(lookup) => lookup,
+        Initialization::Lookups(lookups) if lookups.len() == 1 => lookups[0].clone(),
         other => panic!("no lookup: {other:?}"),
     }
 }
@@ -156,11 +173,12 @@ fn control_01_ship_map_skips_an_empty_key_and_selects_the_null_object() {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::Equal),
                 empty_key_looked_up: false,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
             },
-            execution: Execution::Inline {
+            unstated: None,
+            execution: Some(Execution::Inline {
                 null: "TPdxNullObject<CShipSize>::_pInstance".into(),
-            },
+            }),
         }
     );
 }
@@ -178,11 +196,12 @@ fn control_02_district_scan_selects_the_first_equal_item() {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(KeyMatch::FirstEqual),
                 empty_key_looked_up: true,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
             },
-            execution: Execution::Inline {
+            unstated: None,
+            execution: Some(Execution::Inline {
                 null: "TPdxNullObject<CDistrictType>::_pInstance".into(),
-            },
+            }),
         }
     );
 }
@@ -203,16 +222,16 @@ fn control_03_planet_getter_is_an_equal_hash_search_with_a_null_substitute() {
             stage: Stage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         }
     );
     assert_eq!(
         lookup.execution,
-        Execution::Getter {
+        Some(Execution::Getter {
             database: "CPlanetClassDatabase::_pInstance".into(),
             getter: PLANET_GETTER.into(),
             null: "TPdxNullObject<CPlanetClass>::_pInstance".into(),
-        }
+        })
     );
 }
 
@@ -512,8 +531,8 @@ fn control_20_a_changed_getter_body_is_no_lookup() {
             .insert(0x5010, "TPdxNullObject<CPlanetClass>::_pInstance".into());
 
         match (&analyze(&input).initializers[PLANET], expected) {
-            (Initialization::Lookup(lookup), None) => {
-                assert_eq!(lookup.lookup.key_match, Some(KeyMatch::Equal));
+            (Initialization::Lookups(lookups), None) => {
+                assert_eq!(lookups[0].lookup.key_match, Some(KeyMatch::Equal));
             }
             (Initialization::Unresolved(stop), Some(reason)) => assert_eq!(stop.reason, reason),
             (other, _) => panic!("{null_on_equal}: {other:?}"),
@@ -611,9 +630,9 @@ fn a_miss_that_selects_no_typed_null_object_is_no_lookup() {
 
 #[test]
 fn initializer_execution_requires_the_whole_inline_body_and_an_unconditional_lookup() {
-    let inline = Execution::Inline {
+    let inline = Some(Execution::Inline {
         null: "TPdxNullObject<CDistrictType>::_pInstance".into(),
-    };
+    });
     let original = found(initialization(
         &district(shape("initializer_scan"), DISTRICT_VALUES),
         DISTRICT,
@@ -634,4 +653,270 @@ fn initializer_execution_requires_the_whole_inline_body_and_an_unconditional_loo
     ));
     assert_eq!(conditional.execution, inline);
     assert!(!conditional.lookup.empty_key_looked_up);
+}
+
+const RIGHTS: &str = "CSetSpeciesRightsEffect<SSetCitizenshipType>::PostInit()";
+const RIGHTS_TRIGGER: &str = "CHasSpeciesRightsTrigger<SHasCitizenshipType>::PostInit()";
+
+const RIGHTS_SCAN_VALUES: &[(&str, &str)] = &[
+    (
+        "database",
+        "TGameDatabase<CCitizenshipTypeDatabase>::_pInstance",
+    ),
+    ("null", "TPdxNullObject<CCitizenshipType>::_pInstance"),
+    ("key", "0x10"),
+    ("length", "0x18"),
+    ("flag", "0x27"),
+];
+
+/// A species-rights initializer whose scanned item's validity check returns `item_valid`; the null
+/// object's returns 0.
+fn rights(name: &str, initializer: &str, owner: &[(&str, &str)], item_valid: &str) -> Image {
+    let values: Vec<_> = RIGHTS_SCAN_VALUES.iter().chain(owner).copied().collect();
+    let mut image = Image::default();
+    image
+        .add(name, initializer, &values)
+        .validity("CCitizenshipType", item_valid)
+        .validity("TPdxNullObject<CCitizenshipType>", "0x0");
+
+    image
+}
+
+fn set_rights(item_valid: &str) -> Initialization {
+    let owner = [
+        ("input", "0x240"),
+        ("input_length", "0x248"),
+        ("input_flag", "0x257"),
+        ("output", "0xa8"),
+    ];
+
+    initialization(
+        &rights(RIGHTS, shape("initializer_scan_valid"), &owner, item_valid),
+        RIGHTS,
+    )
+}
+
+#[test]
+fn a_scan_that_stores_only_a_valid_item_leaves_the_miss_unstated() {
+    let lookup = found(set_rights("0x1"));
+
+    assert_eq!(
+        lookup.directory.as_deref(),
+        Some("common/species_rights/citizenship_types")
+    );
+    assert_eq!((lookup.key_offset, lookup.item_offset), (0x240, 0xa8));
+    assert_eq!(
+        lookup.lookup,
+        Lookup {
+            stage: Stage::OwnerInitialization,
+            key_match: Some(KeyMatch::FirstEqual),
+            empty_key_looked_up: true,
+            on_missing: None,
+        }
+    );
+    assert_eq!(lookup.unstated, Some(NULL_POINTER));
+    assert_eq!(
+        lookup.execution, None,
+        "the initializer stores no typed null object"
+    );
+}
+
+#[test]
+fn a_valid_scan_needs_an_item_check_that_always_passes() {
+    assert_eq!(reason(set_rights("0x0")), "initializer-validity");
+}
+
+#[test]
+fn the_species_rights_trigger_scan_also_states_its_keyword_flag() {
+    let owner = [
+        ("input", "0x200"),
+        ("input_length", "0x208"),
+        ("input_flag", "0x217"),
+        ("output", "0x68"),
+        ("flag_output", "0x228"),
+    ];
+    let image = rights(
+        RIGHTS_TRIGGER,
+        shape("initializer_scan_valid_flag"),
+        &owner,
+        "0x1",
+    );
+    let lookup = found(initialization(&image, RIGHTS_TRIGGER));
+
+    assert_eq!((lookup.key_offset, lookup.item_offset), (0x200, 0x68));
+    assert_eq!(lookup.lookup.on_missing, None);
+    assert_eq!(lookup.unstated, Some(KEYWORD_FLAG));
+}
+
+const EVENT: &str = "CFireEventEffect::PostInit()";
+const EVENT_GETTER_NAME: &str = "CEventManager::GetEvent(CString const&) const";
+const ON_ACTION: &str = "CFireOnActionEffect::PostInit()";
+const ON_ACTION_GETTER: &str = "COnActionDatabase::GetOnActionList(CString const&) const";
+const ON_ACTION_FIND: &str = "CHashTable<CString, COnActionList const, ClassicHashKeyTraits<CString, COnActionList const> >::Find(CString const&) const";
+
+/// An initializer that calls `getter` on `database`, whose body is `body`.
+fn getter_call(
+    name: &str,
+    database: &str,
+    getter: &str,
+    body: &str,
+    values: &[(&str, &str)],
+) -> Initialization {
+    let mut image = Image::default();
+    image
+        .add(
+            name,
+            shape("initializer_getter"),
+            &[
+                ("database", database),
+                ("getter", getter),
+                ("input", "0xa8"),
+                ("output", "0xd0"),
+            ],
+        )
+        .add(getter, body, values);
+
+    initialization(&image, name)
+}
+
+#[test]
+fn the_event_getter_gives_the_target_but_not_its_id_match_or_miss() {
+    let lookup = found(getter_call(
+        EVENT,
+        "CEventManager::_pInstance",
+        EVENT_GETTER_NAME,
+        shape("event_getter"),
+        &[],
+    ));
+
+    assert_eq!(lookup.directory.as_deref(), Some("events"));
+    assert_eq!(lookup.lookup.key_match, None);
+    assert_eq!(lookup.lookup.on_missing, None);
+    assert_eq!(lookup.unstated, Some(EVENT_ID));
+    assert_eq!(lookup.execution, None);
+}
+
+#[test]
+fn a_getter_that_returns_its_hash_search_matches_equal_keys_and_misses_with_null() {
+    let mut image = Image::default();
+    image
+        .add(
+            ON_ACTION,
+            shape("initializer_getter"),
+            &[
+                ("database", "COnActionDatabase::_pInstance"),
+                ("getter", ON_ACTION_GETTER),
+                ("input", "0xa8"),
+                ("output", "0xd0"),
+            ],
+        )
+        .add(
+            ON_ACTION_GETTER,
+            shape("hash_getter"),
+            &[("find", ON_ACTION_FIND)],
+        )
+        .add(ON_ACTION_FIND, shape("hash_find"), PLANET_FIND_VALUES);
+    let lookup = found(initialization(&image, ON_ACTION));
+
+    assert_eq!(lookup.directory.as_deref(), Some("common/on_actions"));
+    assert_eq!(lookup.lookup.key_match, Some(KeyMatch::Equal));
+    assert_eq!(lookup.lookup.on_missing, None);
+    assert_eq!(lookup.unstated, Some(NULL_POINTER));
+}
+
+#[test]
+fn a_changed_event_getter_is_no_lookup() {
+    let changed = mutated(shape("event_getter"), "mov wr2,#0x86a0", "mov wr2,#0x86a1");
+
+    assert_eq!(
+        reason(getter_call(
+            EVENT,
+            "CEventManager::_pInstance",
+            EVENT_GETTER_NAME,
+            &changed,
+            &[],
+        )),
+        "initializer-getter-shape"
+    );
+}
+
+const COMPARE: &str = "CResourceCompareTrigger<SResourceIncomeCompare>::PostInit()";
+const RESOURCE_GETTER: &str = "CStrategicResourceDatabase::GetResource(CString const&) const";
+
+#[test]
+fn a_getter_then_a_nonempty_scan_gives_one_lookup_for_each_key() {
+    let mut image = Image::default();
+    image
+        .add(
+            COMPARE,
+            shape("initializer_getter_scan_nonempty"),
+            &[
+                ("call_database", "CStrategicResourceDatabase::_pInstance"),
+                ("call_getter", RESOURCE_GETTER),
+                ("call_input", "0x280"),
+                ("call_output", "0x270"),
+                (
+                    "database",
+                    "TGameDatabase<CEconomicCategoryDatabase>::_pInstance",
+                ),
+                ("null", "TPdxNullObject<CEconomicCategory>::_pInstance"),
+                ("input", "0x2a8"),
+                ("input_length", "0x2b0"),
+                ("input_flag", "0x2bf"),
+                ("key", "0x10"),
+                ("length", "0x18"),
+                ("flag", "0x27"),
+                ("output", "0x278"),
+            ],
+        )
+        .add(
+            RESOURCE_GETTER,
+            shape("getter_scan"),
+            &[
+                ("items", "0x3d0"),
+                ("count", "0x3dc"),
+                ("key", "0x158"),
+                ("length", "0x160"),
+                ("flag", "0x16f"),
+                ("null", "TPdxNullObject<CStrategicResource>::_pInstance"),
+            ],
+        );
+    let Initialization::Lookups(lookups) = initialization(&image, COMPARE) else {
+        panic!("no lookups");
+    };
+    let summary: Vec<_> = lookups
+        .iter()
+        .map(|lookup| {
+            (
+                lookup.directory.as_deref(),
+                lookup.key_offset,
+                lookup.item_offset,
+                lookup.lookup.empty_key_looked_up,
+                lookup.lookup.on_missing,
+                lookup.execution.is_some(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        summary,
+        [
+            (
+                Some("common/strategic_resources"),
+                0x280,
+                0x270,
+                true,
+                Some(Missing::NullObject),
+                false,
+            ),
+            (
+                Some("common/economic_categories"),
+                0x2a8,
+                0x278,
+                false,
+                Some(Missing::NullObject),
+                false,
+            ),
+        ]
+    );
 }

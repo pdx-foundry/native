@@ -110,7 +110,7 @@ fn normalize(
 ) -> Option<ModifierBlock> {
     let parent = path.last()?;
     let mut fields =
-        super::fields::grammar_fields(&variant.fields, &variant.paths, references, None);
+        super::fields::grammar_fields(&variant.fields, &variant.paths, references, &[]);
     any_keys(&mut fields, variant, path, gaps);
     super::read_scope::block_keys(
         &mut fields,

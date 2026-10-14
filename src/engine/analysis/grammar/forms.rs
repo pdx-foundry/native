@@ -855,7 +855,7 @@ fn stages<'a>(
                     Some(Initializer::Lookup {
                         lookup,
                         execution: LookupExecution::Inline { always: true, null },
-                    }) if (!missing || lookup.lookup.on_missing == Missing::NullObject)
+                    }) if (!missing || lookup.lookup.on_missing == Some(Missing::NullObject))
                         && value.is_some_and(|value| {
                             value.destination == u64::try_from(lookup.key_offset).ok()
                         }) =>

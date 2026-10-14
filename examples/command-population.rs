@@ -432,7 +432,7 @@ impl InitializationTally {
                 .entry(stop.reason)
                 .or_default()
                 .push(name.into()),
-            Some(Initialization::Lookup(_)) => match joined_lookup(&run.answer) {
+            Some(Initialization::Lookups(_)) => match joined_lookup(&run.answer) {
                 Some(true) => self.complete.push(name.into()),
                 Some(false) => self.partial.push(name.into()),
                 None => self.without_authored_field.push(name.into()),
@@ -459,10 +459,11 @@ impl InitializationTally {
     }
 }
 
-/// Whether the owner-initialization lookup that a child key joins is fully established, or
+/// Whether the owner-initialization lookups that child keys join are fully established, or
 /// `None` when no child key joins one.
 fn joined_lookup(answer: &Answer<CommandGrammar>) -> Option<bool> {
-    let GrammarProperty::Partial(keys) = &answer.value.fixed_keys else {
+    let (GrammarProperty::Known(keys) | GrammarProperty::Partial(keys)) = &answer.value.fixed_keys
+    else {
         return None;
     };
     let lookups: Vec<_> = keys

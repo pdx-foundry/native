@@ -1,0 +1,3 @@
+# Database getter that tail-calls {find} on its own hash table at this+0x0 and returns its result:
+# the item, or a null pointer when no item is equal.
+b CALL = {find}

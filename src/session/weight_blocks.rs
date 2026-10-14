@@ -296,7 +296,7 @@ impl Block<'_> {
             &grammar.fields,
             &grammar.paths,
             self.facts.references,
-            None,
+            &[],
         );
         for key in &mut keys {
             let subject = self.subject(Some(&key.name));

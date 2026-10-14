@@ -1994,11 +1994,12 @@ fn m452_planet_class_lookups_name_the_directory_that_the_loader_reads() {
         .initializers
         .values()
         .filter_map(|initialization| match initialization {
-            Initialization::Lookup(lookup) if lookup.database == "CPlanetClassDatabase" => {
-                Some(&lookup.directory)
-            }
+            Initialization::Lookups(lookups) => Some(lookups),
             _ => None,
         })
+        .flatten()
+        .filter(|lookup| lookup.database == "CPlanetClassDatabase")
+        .map(|lookup| &lookup.directory)
         .collect();
     assert_eq!(initializers, [&planet_classes, &planet_classes]);
 }
@@ -2089,7 +2090,7 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
 
     let binding = crate::session::installed_native().bound();
     let facts = binding.analysis.reference_facts().unwrap();
-    let missing = |database: &str, form: ReaderForm| -> Vec<Result<Missing, &str>> {
+    let missing = |database: &str, form: ReaderForm| -> Vec<Result<Option<Missing>, &str>> {
         facts
             .readers
             .iter()
@@ -2107,16 +2108,16 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
 
     assert_eq!(
         missing("", ReaderForm::ImmediateList),
-        [Ok(Missing::Omitted); 13]
+        [Ok(Some(Missing::Omitted)); 13]
     );
     assert_eq!(
         missing("CScriptedActionDatabase", ReaderForm::DeferredList),
-        [Ok(Missing::NullObject)]
+        [Ok(Some(Missing::NullObject))]
     );
     for database in ["CBypassTypeDatabase", "CPlanetClassDatabase"] {
         assert_eq!(
             missing(database, ReaderForm::Immediate),
-            [Ok(Missing::NullObject)],
+            [Ok(Some(Missing::NullObject))],
             "{database}"
         );
     }
@@ -2129,7 +2130,7 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
     ] {
         assert_eq!(
             missing(database, ReaderForm::Deferred),
-            [Ok(Missing::NullObject)],
+            [Ok(Some(Missing::NullObject))],
             "{database}"
         );
     }

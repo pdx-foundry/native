@@ -533,11 +533,12 @@ fn lookup() -> InitializationLookup {
             stage: LookupStage::OwnerInitialization,
             key_match: Some(KeyMatch::Equal),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         },
-        execution: Execution::Inline {
+        unstated: None,
+        execution: Some(Execution::Inline {
             null: "TPdxNullObject<Item>::_pInstance".into(),
-        },
+        }),
     }
 }
 fn found_validation() -> Arm64 {
