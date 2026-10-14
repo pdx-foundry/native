@@ -1413,7 +1413,7 @@ fn explore_member_with_wrapped_owner(
                 }
                 if row.operation == "bl"
                     && target == input.key_readers.string_read
-                    && returns_through_string_consumer(&rows[state.pc..], &state, input)
+                    && returns_through_empty_call(&rows[state.pc..], input)
                     && let PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) = &mut outcome
                 {
                     *tail = true;
@@ -1459,41 +1459,23 @@ fn explore_member_with_wrapped_owner(
     (leaves, tables)
 }
 
-/// Whether the code after a string read (`continuation`, with `state` at the read call) only
-/// restores the frame and returns through a tail call that receives the read string as its one
-/// `CString const&` argument. Such a callee cannot change the string, so the read is the path's
-/// last write to its destination, as a tail-called read is. Only callee-saved registers keep their
-/// values across the read.
-fn returns_through_string_consumer(
-    continuation: &[Instruction],
-    state: &State,
-    input: &DispatchInput<'_>,
-) -> bool {
-    const CALLEE_SAVED: std::ops::RangeInclusive<u8> = 19..=28;
-
-    let Some(destination) = state.value("x1") else {
-        return false;
-    };
-    let mut passes_string = false;
+/// Whether the code after a read (`continuation`) only restores registers and the frame, then
+/// returns through a tail call to a function whose body only returns. Such a continuation writes
+/// no memory, so the read is the path's last write to its destination, as a tail-called read is.
+fn returns_through_empty_call(continuation: &[Instruction], input: &DispatchInput<'_>) -> bool {
     for row in continuation {
         match row.operation.as_str() {
-            "mov" => {
-                let Some(("x0", source)) = row.operands.split_once(',') else {
-                    return false;
-                };
-                let saved = source
-                    .strip_prefix('x')
-                    .and_then(|number| number.parse::<u8>().ok())
-                    .is_some_and(|number| CALLEE_SAVED.contains(&number));
-                passes_string = saved && state.value(source) == Some(destination.clone());
-            }
-            "ldp" | "ldr" if row.operands.contains("[sp") && !row.operands.starts_with("x0,") => {}
+            "mov" => {}
+            "ldp" | "ldr" if row.operands.contains("[sp") => {}
             "add" if row.operands.starts_with("sp,sp,") => {}
             "b" => {
-                let consumer = number(&row.operands)
-                    .and_then(|address| input.symbol_index.name(input.symbols, address as u64));
-                return passes_string
-                    && consumer.is_some_and(|name| name.ends_with("(CString const&)"));
+                return number(&row.operands)
+                    .and_then(|address| input.symbol_index.name(input.symbols, address as u64))
+                    .and_then(|name| input.function(name))
+                    .and_then(|body| decode(body).ok())
+                    .is_some_and(
+                        |rows| matches!(rows.as_slice(), [only] if only.operation == "ret"),
+                    );
             }
             _ => return false,
         }

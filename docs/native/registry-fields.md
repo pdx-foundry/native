@@ -216,8 +216,8 @@ Remaining obstacles of the persistent fields that the rule does not repair:
 `FieldShape.repeat` comes from one rule for each shared reader, in `session/fields.rs::repeat`.
 Each read alternative gets its own value, and the field keeps it when all alternatives agree. A
 rule applies only to a tail call: a call with an unexamined continuation proves no final storage.
-A string read whose continuation only restores the frame and tail-calls a function with the read
-string as its one `CString const&` argument counts as a tail call (`fields/dispatch.rs`).
+A string read whose continuation only restores registers and the frame, then tail-calls a
+function whose body is only `ret`, counts as a tail call (`fields/dispatch.rs`).
 
 | Reader | Repeat | Engine fact (M452) |
 | --- | --- | --- |

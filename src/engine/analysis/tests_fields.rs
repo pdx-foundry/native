@@ -2048,31 +2048,42 @@ fn only_a_plain_string_read_gives_a_derived_name_its_storage() {
 }
 
 #[test]
-fn a_string_read_that_returns_through_a_const_string_consumer_is_final() {
-    for (source, consumer, last) in [
-        (19u8, 0x9800usize, true),
-        (19, 0xa000, false),
-        (9, 0x9800, false),
+fn a_string_read_that_returns_through_an_empty_call_is_final() {
+    for (consumer, body_returns, last) in [
+        (0x9800usize, true, true),
+        (0x9800, false, false),
+        (0xa000, true, false),
     ] {
         let code = arm64!(at 0x1000;
             cmp w2, #7; b.eq extern 0x1010;
             mov x0, x1; b extern 0x6000;
-            add x19, x0, #0x80; add x9, x0, #0x80;
+            add x19, x0, #0x80;
             mov x0, x1; mov x1, x19; mov w2, #0;
             bl extern 0xf000;
-            mov x0, X(source);
+            mov x0, x19;
             ldp x29, x30, [sp, #0x10];
             add sp, sp, #0x20;
             b extern consumer
         );
-        let result = derive(compound_fixture(code));
+        let mut input = compound_fixture(code);
+        let body = if body_returns {
+            arm64!(at 0x9800; ret)
+        } else {
+            arm64!(at 0x9800; str xzr, [x0]; ret)
+        };
+        input.functions.push(Function {
+            name: "Owner::SetKey(CString const&)".into(),
+            address: 0x9800,
+            code: body,
+        });
+        let result = derive(input);
 
         assert!(
             matches!(
                 result.fields[0].readers[..],
                 [ReaderJoin::Joined { tail, .. }] if tail == last
             ),
-            "x{source} to {consumer:#x}: {:?}",
+            "{consumer:#x} {body_returns}: {:?}",
             result.fields[0].readers
         );
     }

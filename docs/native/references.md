@@ -252,9 +252,9 @@ instance, **85 establish their lookups (67 with every fact, 18 partial), 69 fail
 `command-population` joins the initializers to the commands. A lookup joins a child key when
 a read alternative of the key stores its string at the lookup's key offset with
 `CReader::Read(CString&, bool)` as the path's last write: a tail call, or a call followed only by
-the frame restore and a tail call that receives the read string as its one `CString const&`
-argument (the event effects' `id` reaches `CEventManager::AddFiredEvent(CString const&)`, an empty
-function on M452). Any other continuation could overwrite the key before `PostInit()`. The key's
+register and frame restores and a tail call to a function whose body is only `ret` (the event
+effects' `id` returns through `CEventManager::AddFiredEvent(CString const&)`, which is empty on
+M452). Any other continuation could overwrite the key before `PostInit()`. The key's
 `Field.reference` then holds one lookup with stage `OwnerInitialization` for each such
 alternative and each lookup at that offset, with the alternative's condition. On M45-release
 every joined alternative is unconditional.
@@ -344,8 +344,8 @@ string reader stores that key.
 - A shared initializer can serve many commands: `CFireEventEffect::PostInit()` calls
   `CEventManager::GetEvent`, and its result appears on 20 event-firing effects.
 - A string read that is not a tail call can still be the key's last write. The event effects'
-  `id` read returns through `AddFiredEvent(CString const&)`; without the const-consumer rule the
-  lookup joins no key.
+  `id` read returns through the empty `AddFiredEvent(CString const&)`. A `CString const&`
+  signature alone proves nothing: a member function's `this` is mutable.
 - A validity check decides what an initializer stores. The species-rights scans select the null
   object on a miss, but store a null pointer because its check fails.
 

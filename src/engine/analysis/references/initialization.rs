@@ -226,42 +226,43 @@ impl Method<'_> {
         let body = self
             .lines(getter)
             .ok_or_else(|| Unresolved::new("initializer-getter-body"))?;
-        let found = |key_match, on_missing, unstated, execution| Found {
+        let selection = Found {
             database: database.to_owned(),
             key_offset: call.input,
             item_offset: call.output,
-            key_match,
+            key_match: None,
             empty_key_looked_up: true,
-            on_missing,
-            unstated,
-            execution,
+            on_missing: None,
+            unstated: None,
+            execution: None,
         };
 
         match self.getter_search(&body) {
-            Ok((key_match, null)) => {
-                let execution = Execution::Getter {
+            Ok((key_match, null)) => Ok(Found {
+                key_match,
+                on_missing: Some(Missing::NullObject),
+                execution: Some(Execution::Getter {
                     database: call.database.to_owned(),
                     getter: getter.to_owned(),
                     null,
-                };
-                Ok(found(
-                    key_match,
-                    Some(Missing::NullObject),
-                    None,
-                    Some(execution),
-                ))
-            }
-            Err(_) if EVENT_GETTER.matches(&body).is_some() => {
-                Ok(found(None, None, Some(EVENT_ID), None))
-            }
+                }),
+                ..selection
+            }),
+            Err(_) if EVENT_GETTER.matches(&body).is_some() => Ok(Found {
+                unstated: Some(EVENT_ID),
+                ..selection
+            }),
             Err(stop) => {
                 let search = HASH_GETTER
                     .matches(&body)
                     .filter(|search| hash_element(&search["find"]).is_some())
                     .ok_or(stop)?;
-                let key_match = self.hash_find(&search["find"]);
 
-                Ok(found(key_match, None, Some(NULL_POINTER), None))
+                Ok(Found {
+                    key_match: self.hash_find(&search["find"]),
+                    unstated: Some(NULL_POINTER),
+                    ..selection
+                })
             }
         }
     }
