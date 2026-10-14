@@ -2048,6 +2048,37 @@ fn only_a_plain_string_read_gives_a_derived_name_its_storage() {
 }
 
 #[test]
+fn a_string_read_that_returns_through_a_const_string_consumer_is_final() {
+    for (source, consumer, last) in [
+        (19u8, 0x9800usize, true),
+        (19, 0xa000, false),
+        (9, 0x9800, false),
+    ] {
+        let code = arm64!(at 0x1000;
+            cmp w2, #7; b.eq extern 0x1010;
+            mov x0, x1; b extern 0x6000;
+            add x19, x0, #0x80; add x9, x0, #0x80;
+            mov x0, x1; mov x1, x19; mov w2, #0;
+            bl extern 0xf000;
+            mov x0, X(source);
+            ldp x29, x30, [sp, #0x10];
+            add sp, sp, #0x20;
+            b extern consumer
+        );
+        let result = derive(compound_fixture(code));
+
+        assert!(
+            matches!(
+                result.fields[0].readers[..],
+                [ReaderJoin::Joined { tail, .. }] if tail == last
+            ),
+            "x{source} to {consumer:#x}: {:?}",
+            result.fields[0].readers
+        );
+    }
+}
+
+#[test]
 fn compound_tail_call_does_not_return_to_the_next_instruction() {
     let code = arm64!(at 0x1000;
         cmp w2, #7; b.eq extern 0x1010;
