@@ -81,6 +81,7 @@ pub(super) fn root_fields(
             entry_contexts: Vec::new(),
             read_scope: read_scope(&paths, names, &key.name, &mut answer_gaps),
             accepted_categories: AcceptedCategories::NotApplicable,
+            requirement: crate::FieldRequirement::Unknown,
         });
     }
 
@@ -157,6 +158,7 @@ pub(super) fn reserved_key_field(
         entry_contexts: Vec::new(),
         read_scope: GrammarProperty::Unresolved,
         accepted_categories: AcceptedCategories::NotApplicable,
+        requirement: crate::FieldRequirement::Unknown,
     };
 
     (field, field_gaps)

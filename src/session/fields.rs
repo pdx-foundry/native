@@ -509,6 +509,7 @@ fn ordinary_field(
         } else {
             FieldReference::Lookups(lookups)
         },
+        requirement: crate::FieldRequirement::Unknown,
     }
 }
 
@@ -709,6 +710,7 @@ fn collection_field(
             _ => accepted_categories(family),
         },
         reference: FieldReference::NotEstablished,
+        requirement: crate::FieldRequirement::Unknown,
     }
 }
 

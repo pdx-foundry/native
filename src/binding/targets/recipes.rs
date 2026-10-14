@@ -29,6 +29,8 @@ pub(in crate::binding) struct Recipe {
     pub strategy: StrategyId,
     pub declarations: &'static DeclarationRecipe,
     pub script_checks: Option<fn() -> crate::protocol::script_check::ScriptCheckBinding>,
+    /// Which root fields a definition must contain, when the build has a census.
+    pub field_requirements: Option<&'static crate::binding::requirements::RequirementCensus>,
 }
 
 /// Virtual reader slots and shared family methods on the selected build.
@@ -141,6 +143,7 @@ pub(super) const M452: Recipe = Recipe {
     strategy: StrategyId::MacSuspendedChildLoaderEntry,
     declarations: &M45_DECLARATIONS,
     script_checks: Some(m452_script_checks),
+    field_requirements: Some(&crate::binding::requirements::M452_REQUIREMENTS),
 };
 
 /// Console readers and logger verified on the exact 4.5.2 ARM64 slice.

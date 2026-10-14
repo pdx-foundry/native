@@ -18,6 +18,7 @@ pub(super) struct ResolvedObservation {
     pub registry_layout: Option<groups::RegistryLayout>,
     pub loader_databases: &'static [groups::LoaderDatabase],
     pub default_registries: &'static [&'static str],
+    pub field_requirements: Option<&'static super::requirements::RequirementCensus>,
 }
 
 impl ResolvedObservation {
@@ -69,6 +70,7 @@ fn assemble(
         registry_layout: recipe.registry_layout,
         loader_databases: recipe.loader_databases,
         default_registries: recipe.default_registries,
+        field_requirements: recipe.field_requirements,
         fixture: recipe.fixture.map(|bind| bind()),
         script_checks: recipe.script_checks.map(|bind| bind()),
     })

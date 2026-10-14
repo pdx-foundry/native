@@ -195,6 +195,7 @@ enum Case {
     FixtureRelicPortrait,
     FixtureBlockParsing,
     FixtureRepeatReaders,
+    FixtureRequiredField,
     FixtureReadScope,
     FixtureModifierCategory,
     FixtureModifierBlock,
@@ -417,6 +418,7 @@ fn cases() -> Vec<(String, Case)> {
     ));
     cases.push(("fixture_block_parsing".into(), Case::FixtureBlockParsing));
     cases.push(("fixture_repeat_readers".into(), Case::FixtureRepeatReaders));
+    cases.push(("fixture_required_field".into(), Case::FixtureRequiredField));
     cases.push(("fixture_modifier_block".into(), Case::FixtureModifierBlock));
     cases.push((
         "fixture_triggered_modifier".into(),
@@ -762,6 +764,7 @@ async fn run(native: &Native, case: &Case) -> Outcome {
     match *case {
         Case::FixtureBlockParsing => fixture_block_parsing(native).await,
         Case::FixtureRepeatReaders => fixture_repeat_readers(native).await,
+        Case::FixtureRequiredField => fixture_required_field(native).await,
         Case::FixtureReadScope => fixture_read_scope(native).await,
         Case::FixtureModifierCategory => fixture_modifier_category(native).await,
         Case::FixtureModifierBlock => fixture_modifier_block(native).await,
@@ -1389,6 +1392,79 @@ async fn fixture_repeat_readers(native: &Native) -> Outcome {
         ],
     )
     .await
+}
+
+/// A field that `registry_fields` gives as required reports its absence while the game loads
+/// (`registry-fields.md`, "Required fields"): a focus card category without `name` logs that
+/// its `name` is empty on its own line, and one with `name` logs nothing about it.
+async fn fixture_required_field(native: &Native) -> Outcome {
+    use pdx_native::{
+        DiagnosticCoverage, DiagnosticJoin, DiagnosticWindow, FieldRequirement,
+        FixtureFieldQuestion, FixtureRequest,
+    };
+    const REGISTRY: &str = "common/country_focus/card_categories";
+    const NAMED: &str = "native_named_category";
+    const UNNAMED: &str = "native_unnamed_category";
+
+    let fields = native.registry_fields(REGISTRY)?.value;
+    let requirement = |name: &str| {
+        fields
+            .iter()
+            .find(|field| field.name == name)
+            .map(|field| field.requirement)
+    };
+    if requirement("name") != Some(FieldRequirement::Required) {
+        return Err(format!("`name` is not required: {:?}", requirement("name")).into());
+    }
+
+    let file = format!("{REGISTRY}/native_required.txt");
+    let text = format!(
+        "{NAMED} = {{ name = native_name desc = native_desc }}\n\
+         {UNNAMED} = {{ desc = native_desc }}\n"
+    );
+    let request = FixtureRequest::field_outcomes(
+        &file,
+        text,
+        [
+            FixtureFieldQuestion::new(REGISTRY, NAMED, "desc"),
+            FixtureFieldQuestion::new(REGISTRY, UNNAMED, "desc"),
+        ],
+    )
+    .through_validation();
+    let mut game = native.start_game(options().fixture(request)).await?;
+    let mut result = async {
+        let answer = game.observe_fixture().await?;
+        let observation = &answer.value;
+        let covered = matches!(
+            observation.diagnostic_coverage,
+            DiagnosticCoverage::Complete {
+                window: DiagnosticWindow::FixtureFileLoadAndValidation
+            }
+        );
+        let witnessed = observation
+            .field_outcomes
+            .iter()
+            .all(|outcome| !outcome.definitions.is_empty());
+        let name_reports: Vec<_> = observation
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.text.contains("has empty 'name' field"))
+            .map(|diagnostic| match &diagnostic.join {
+                DiagnosticJoin::Source {
+                    file: logged, line, ..
+                } if *logged == file => Some(*line),
+                _ => None,
+            })
+            .collect();
+        if !covered || !witnessed || name_reports != [Some(2)] {
+            return Err(format!("missing `name`: {answer:?}").into());
+        }
+
+        Ok(())
+    }
+    .await;
+    and_close(&mut result, &mut game).await;
+    result
 }
 
 /// Load `text` as one file of `registry`, and check that each field of `definition` in

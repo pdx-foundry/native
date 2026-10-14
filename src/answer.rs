@@ -745,6 +745,8 @@ pub struct Field {
     pub read_scope: crate::GrammarProperty<Vec<ReadScope>>,
     /// The categories of modifier entries that the field's modifier container accepts.
     pub accepted_categories: AcceptedCategories,
+    /// Whether a definition must contain the field. Always `Unknown` below the root.
+    pub requirement: crate::FieldRequirement,
 }
 
 /// The categories of modifier entries that a modifier container accepts. For an entry with none

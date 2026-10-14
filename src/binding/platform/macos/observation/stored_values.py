@@ -9,8 +9,10 @@ import re
 
 # How an engine message names its source: `file: <name> line: <n>`, or in a quoted error
 # `in file: "<name>" near line: <n>`. The line is optional. docs/native/script-expansion.md has
-# the build.
-SOURCE_MESSAGE = re.compile(r'(?:in file: "([^"]+)"|file: ([^\s]+))(?: (?:near )?line: (\d+))?')
+# the build. A post-read check names its definition's lines as `File: '<name>', Lines: [<first>-
+# <last>]`; the first line is the definition's (docs/native/registry-fields.md, "Required fields").
+SOURCE_MESSAGE = re.compile(r'(?:in file: "([^"]+)"|file: ([^\s]+))(?: (?:near )?line: (\d+))?'
+                            r"|File: '([^']+)', Lines: \[(\d+)-\d+\]")
 
 
 def message_sources(text):
@@ -19,8 +21,10 @@ def message_sources(text):
     sources = []
 
     for match in SOURCE_MESSAGE.finditer(text):
-        quoted_name, bare_name, line = match.groups()
-        sources.append((quoted_name or bare_name, int(line) if line else None))
+        quoted_name, bare_name, line, range_name, first_line = match.groups()
+        name = quoted_name or bare_name or range_name
+        line = line or first_line
+        sources.append((name, int(line) if line else None))
 
     return sources
 

@@ -10,6 +10,7 @@ pub mod inspect;
 mod installation;
 mod machine;
 mod platform;
+mod requirements;
 mod targets;
 
 #[cfg(test)]
@@ -183,6 +184,17 @@ impl Binding {
                     .map(|name| (*name).into())
             })
             .collect()
+    }
+
+    /// Whether a definition of `registry` must contain the root field `field`, by the build's
+    /// census. `Unknown` when the build has none.
+    pub(crate) fn field_requirement(&self, registry: &str, field: &str) -> crate::FieldRequirement {
+        self.operation
+            .as_ref()
+            .and_then(|operation| operation.field_requirements)
+            .map_or(crate::FieldRequirement::Unknown, |census| {
+                census.requirement(registry, field)
+            })
     }
 
     pub(crate) fn registry_bindings(
