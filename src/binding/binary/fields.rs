@@ -1,11 +1,13 @@
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
+    decode::call_target,
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
         FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput, PointReader,
         has_owner_receiver,
     },
+    readers,
 };
 use crate::{AnalysisError, BlockFamily};
 use std::collections::{BTreeMap, BTreeSet};
@@ -137,6 +139,7 @@ pub(in crate::binding) fn read(
         persistent_recipe,
     )?;
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
+    push_converters(&text, indexed, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
@@ -282,6 +285,35 @@ fn push_embedded_readers(
         if let [symbol] = symbols.named(&reader.member).collect::<Vec<_>>()[..] {
             push_function(text, functions, symbol);
         }
+    }
+}
+
+/// The token converters that the collected member readers call directly, which the keyword
+/// domain method runs.
+fn push_converters(text: &Text, symbols: IndexedSymbols<'_>, functions: &mut Vec<Function>) {
+    let targets: BTreeSet<u64> = functions
+        .iter()
+        .filter(|function| readers::is_member(&function.name))
+        .flat_map(|function| {
+            function
+                .code
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .enumerate()
+                .filter_map(|(index, word)| {
+                    let word = u32::from_le_bytes(*word);
+                    call_target(word, function.address + 4 * index as u64)
+                })
+        })
+        .collect();
+    let converters: Vec<_> = symbols
+        .at(&targets)
+        .filter(|symbol| readers::converter(&symbol.name).is_some())
+        .cloned()
+        .collect();
+    for symbol in &converters {
+        push_function(text, functions, symbol);
     }
 }
 

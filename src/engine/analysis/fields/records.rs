@@ -98,6 +98,8 @@ pub enum Value {
     /// A loaded word whose cleared bit now holds the low bit of a stack byte: the load and the
     /// bit.
     InsertedBit(Box<Value>, u8),
+    /// What the converter at this entry returned for the value token: an engine enum value.
+    Converted(u64),
     /// A jump-table entry that the token selects.
     TableEntry(TableEntry),
     /// A code address formed from a jump-table entry: `base + (entry << shift)`.
@@ -271,6 +273,9 @@ pub struct RegistryFieldResult {
     pub collections: Vec<CollectionField>,
     /// Fixed keys of the embedded objects that root fields read and that no block family reads.
     pub embedded: Vec<EmbeddedField>,
+    /// The accepted names of each keyword field, sorted, by the field's token, or why they are
+    /// not established.
+    pub keyword_domains: BTreeMap<i64, Result<Vec<String>, &'static str>>,
     /// Named root fields, with explicit reader alternatives.
     pub fields: Vec<RootField>,
     /// Full bounded token-path ledger.

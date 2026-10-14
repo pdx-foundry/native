@@ -266,6 +266,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         RegistryFieldResult {
+            keyword_domains: Default::default(),
             loader: None,
             persistent: destinations
                 .iter()

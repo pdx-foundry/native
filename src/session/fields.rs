@@ -301,6 +301,11 @@ pub(super) fn field(
             prefix_conditions(child, &field.name);
         }
     }
+    if normalized.reader.kind == ReaderKind::Keyword
+        && let Some(Ok(names)) = result.keyword_domains.get(&field.token)
+    {
+        normalized.domain = FieldDomain::Listed(names.clone());
+    }
 
     attach_uses(
         &mut normalized,
@@ -524,6 +529,16 @@ pub(super) fn read_alternatives(
         .map(|path| (path.conditions.clone(), path.outcome.clone()))
         .collect();
     collapse_equivalent_branches(&mut alternatives);
+    // Paths that differ only after the read, such as a keyword's test of its result, are one
+    // alternative.
+    let mut distinct = Vec::new();
+    alternatives.retain(|alternative| {
+        let new = !distinct.contains(alternative);
+        if new {
+            distinct.push(alternative.clone());
+        }
+        new
+    });
 
     alternatives
 }
@@ -1654,6 +1669,7 @@ mod tests {
             readers: vec![target_join],
         };
         let result = |fields, paths, collections| RegistryFieldResult {
+            keyword_domains: Default::default(),
             loader: None,
             persistent: BTreeMap::new(),
             persistent_points: BTreeMap::new(),

@@ -1001,6 +1001,7 @@ fn field_result(
     uses: Vec<StorageSelection>,
 ) -> RegistryFieldResult {
     RegistryFieldResult {
+        keyword_domains: Default::default(),
         loader: None,
         uses,
         persistent: BTreeMap::new(),

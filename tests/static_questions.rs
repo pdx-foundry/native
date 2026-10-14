@@ -274,12 +274,12 @@ fn nested_owners_carry_the_grammar_of_their_root_identities() {
     let modifier = child(swap, "modifier");
     assert_eq!(modifier.reader.family, BlockFamily::Modifier);
     assert!(matches!(modifier.members, FieldMembers::ModifierBlock(_)));
-    // Negative control: a key whose reader path stops gets no modifier grammar.
+    // Negative control: a keyword key gets no modifier grammar and reads no container.
     let election_type = child(swap, "election_type");
-    assert_eq!(election_type.reader.family, BlockFamily::Unknown);
+    assert_eq!(election_type.reader.family, BlockFamily::NotApplicable);
     assert_eq!(
         election_type.accepted_categories,
-        AcceptedCategories::Unresolved
+        AcceptedCategories::NotApplicable
     );
 
     // An object whose member reader names or rejects every key reads no container itself.
@@ -1730,6 +1730,157 @@ fn read_registry_fields(native: &Native) -> Result<Vec<Answer<Vec<pdx_native::Fi
 fn expected<T: serde::de::DeserializeOwned>(name: &str) -> T {
     let path = parity::expected_directory().join(name);
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+}
+
+/// The domain of each field that M452 reads through a token converter, or why it has none. Two
+/// listed domains are compared with their config enums (cwtools-stellaris-config `8574760`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn enum_fields_list_their_names_or_say_why_not() {
+    use std::collections::BTreeSet;
+
+    const KEPT: &str = "An unknown name keeps the converter's fallback with no diagnostic.";
+    const NO_READER: &str = "The field's alternatives do not establish one shared reader.";
+    // The listed fields, the silent fallbacks, and the converter paths that the walk does not
+    // join: a list of lexer tokens, and a converter of the key token.
+    let listed = [
+        ("common/buildings", "category"),
+        ("common/economic_categories", "modifier_category"),
+        ("common/scripted_modifiers", "category"),
+    ];
+    let kept = [
+        ("common/buildings", "owner_type"),
+        ("common/global_ship_designs", "ship_owner_type"),
+        (
+            "common/governments/authorities",
+            "advanced_authority_swap.election_type",
+        ),
+        ("common/governments/authorities", "election_type"),
+        ("common/mutations", "component_slot_size_to_disable"),
+        ("common/pop_jobs", "possible_precalc"),
+        ("common/ship_sizes", "mutation_components_size"),
+        ("common/situations", "category"),
+        ("common/situations", "complete_category"),
+        ("common/situations", "fail_category"),
+        ("common/specimens", "rarity"),
+        ("common/target_types", "target_type"),
+        ("common/technology", "area"),
+        ("common/traits", "category"),
+        ("common/traits", "leader_trait_type"),
+    ];
+    let unjoined = [
+        ("common/ship_sizes", "construction_type"),
+        ("common/special_projects", "requirements.shipclass_starbase"),
+    ];
+    let native = native();
+    let field = |registry: &str, path: &str| {
+        let answer = native.registry_fields(registry).unwrap();
+        let mut fields = answer.value.as_slice();
+        let mut found = None;
+        for name in path.split('.') {
+            let field = fields
+                .iter()
+                .find(|field| field.name == name)
+                .unwrap_or_else(|| panic!("{registry} {path}"));
+            if let pdx_native::FieldMembers::Fields(children) = &field.members {
+                fields = children;
+            }
+            found = Some(field.clone());
+        }
+        let field = found.unwrap();
+        let gaps: BTreeSet<String> = answer
+            .gaps
+            .iter()
+            .filter(|gap| matches!(&gap.subject, Some(GapSubject::Field { name }) if name == path))
+            .map(|gap| gap.detail.clone())
+            .collect();
+        (field, gaps)
+    };
+
+    let mut domains = BTreeMap::new();
+    for (registry, path) in listed {
+        let (field, gaps) = field(registry, path);
+        assert_eq!(field.reader.kind, ReaderKind::Keyword, "{registry} {path}");
+        let FieldDomain::Listed(names) = field.domain else {
+            panic!("{registry} {path}: {:?} {gaps:?}", field.domain);
+        };
+        domains.insert((registry, path), names);
+    }
+    for (registry, path) in kept {
+        let (field, gaps) = field(registry, path);
+        assert_eq!(field.reader.kind, ReaderKind::Keyword, "{registry} {path}");
+        assert_eq!(field.domain, FieldDomain::Unknown, "{registry} {path}");
+        assert!(gaps.contains(KEPT), "{registry} {path}: {gaps:?}");
+    }
+    for (registry, path) in unjoined {
+        let (field, gaps) = field(registry, path);
+        assert_eq!(field.reader.kind, ReaderKind::Unknown, "{registry} {path}");
+        assert!(gaps.contains(NO_READER), "{registry} {path}: {gaps:?}");
+    }
+
+    // `enum[building_category]` also names three spellings that are no category of the converter:
+    // the engine logs that the building has none.
+    let mut building_category: Vec<_> = [
+        "planet_buildings",
+        "army",
+        "manufacturing",
+        "government",
+        "pop_assembly",
+        "resource",
+        "resources",
+        "unity",
+        "research",
+        "trade",
+        "amenity",
+        "amenities",
+    ]
+    .into_iter()
+    .filter(|name| !["planet_buildings", "resources", "amenities"].contains(name))
+    .collect();
+    building_category.sort();
+    assert_eq!(
+        domains[&("common/buildings", "category")],
+        building_category
+    );
+    // `enum[scripted_modifier_category]` names `pop_job`, which the converter does not know and
+    // the engine reports; the converter knows three categories that the config lacks.
+    let mut modifier_category: Vec<_> = [
+        "all",
+        "none",
+        "pop_group",
+        "pop_job",
+        "ship",
+        "station",
+        "fleet",
+        "country",
+        "army",
+        "leader",
+        "planet",
+        "component",
+        "pop_faction",
+        "deposit",
+        "megastructure",
+        "habitability",
+        "starbase",
+        "economic_unit",
+        "system",
+        "federation",
+        "espionage",
+        "colony",
+    ]
+    .into_iter()
+    .filter(|name| *name != "pop_job")
+    .chain(["galactic_community", "storm_influence_field", "waystation"])
+    .collect();
+    modifier_category.sort();
+    assert_eq!(
+        domains[&("common/scripted_modifiers", "category")],
+        modifier_category
+    );
+    assert_eq!(
+        domains[&("common/economic_categories", "modifier_category")],
+        modifier_category
+    );
 }
 
 #[test]
