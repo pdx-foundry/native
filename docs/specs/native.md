@@ -131,6 +131,12 @@ for contexts and scope types.
   `Unknown`, or whose block members no block family or attached grammar answers, has an
   `UnresolvedStorage` gap whose detail names the cause. See
   [registry fields](../native/registry-fields.md#repeat-behavior).
+- `Field.requirement` says whether a definition must contain a root field: `Required` where
+  loading a definition without it logs a report of its absence, `Optional` where it logs none,
+  and `Unknown` where the check depends on another field's value, the registry is outside the
+  build's census, or the field is below the root. It gives no occurrence count. The answer is a
+  recorded census of one game run per build; a build without one gives `Unknown`. See
+  [registry fields](../native/registry-fields.md#required-fields).
 - `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`
   means equality with the parent's scope, never `Any`. A known empty list means that no scope is

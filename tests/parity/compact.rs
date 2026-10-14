@@ -553,7 +553,7 @@ mod triggered_tests {
             "name":"triggered_modifier", "reader":{"id":"shared","kind":"Block","family":"TriggeredModifier","numeric":"Unresolved","scoped_operand":"Unresolved"},
             "shape":{"value":"Block","repeat":"Accumulate"}, "read":[],
             "members":{"TriggeredModifier":{"fixed_keys":{"Known":[]},"other_keys":"Unresolved"}},
-            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable"
+            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable","requirement":"Unknown"
         }))
         .unwrap();
         let mut variants = BTreeMap::new();
@@ -580,7 +580,7 @@ mod weight_tests {
             "members":{"WeightBlock":{"scalar":{"Known":null},"fixed_keys":{"Known":[]},
                 "operations":{"Known":[{"key":"add","operand":null}]},
                 "operation_repeat":"Accumulate","other_keys":"Rejected"}},
-            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable"
+            "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable","requirement":"Unknown"
         })).unwrap()
     }
 
@@ -643,7 +643,7 @@ mod modifier_tests {
             "shape":{"value":"Unknown","repeat":"Unknown"}, "read":[],
             "members":{"ModifierBlock":{"fixed_keys":{"Known":[]},"entries":{"Known":[
                 {"Reference":{"target":{"Registry":{"name":"common/static_modifiers"}},"value":"FixedPoint"}}
-            ]}}}, "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable"
+            ]}}}, "domain":"Unknown","reference":"NotEstablished","uses":[],"entry_contexts":[],"read_scope":"Unresolved","accepted_categories":"NotApplicable","requirement":"Unknown"
         })).unwrap()
     }
 

@@ -44,6 +44,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -95,6 +96,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -226,6 +228,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -277,6 +280,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -328,6 +332,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -379,6 +384,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -406,6 +412,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -509,6 +516,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -626,6 +634,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -712,6 +721,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -827,6 +837,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -878,6 +889,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -929,6 +941,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1015,6 +1028,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -1066,6 +1080,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1152,6 +1167,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -1238,6 +1254,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -1369,6 +1386,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1500,6 +1518,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1527,6 +1546,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1611,6 +1631,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -1652,6 +1673,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -1783,6 +1805,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -1914,6 +1937,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2023,6 +2047,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2132,6 +2157,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2253,6 +2279,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2362,6 +2389,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2450,6 +2478,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2538,6 +2567,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2626,6 +2656,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2708,6 +2739,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -2759,6 +2791,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2810,6 +2843,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -2872,6 +2906,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -2989,6 +3024,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3106,6 +3142,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3157,6 +3194,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3217,6 +3255,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -3268,6 +3307,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3319,6 +3359,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
    "value": "Block"
@@ -3370,6 +3411,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3436,6 +3478,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Replace",
       "value": "Block"
@@ -3482,6 +3525,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -3533,6 +3577,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3584,6 +3629,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3650,6 +3696,7 @@
     }
    ]
   },
+  "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
    "value": "Scalar"
@@ -3695,6 +3742,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -3761,6 +3809,7 @@
     }
    ]
   },
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Scalar"
@@ -3847,6 +3896,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -3898,6 +3948,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -3949,6 +4000,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4015,6 +4067,7 @@
     }
    ]
   },
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Scalar"
@@ -4102,6 +4155,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
    "value": "Block"
@@ -4153,6 +4207,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4229,6 +4284,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -4346,6 +4402,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4477,6 +4534,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4528,6 +4586,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4579,6 +4638,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4630,6 +4690,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4657,6 +4718,7 @@
    "scoped_operand": "Unresolved"
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
    "value": "Unknown"
@@ -4708,6 +4770,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4759,6 +4822,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4810,6 +4874,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4861,6 +4926,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4912,6 +4978,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -4963,6 +5030,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -5029,6 +5097,7 @@
     }
    ]
   },
+  "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
    "value": "Scalar"
@@ -5105,6 +5174,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -5286,6 +5356,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Scalar"
@@ -5343,6 +5414,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -5394,6 +5466,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Accumulate",
       "value": "Block"
@@ -5445,6 +5518,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -5491,6 +5565,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -5548,6 +5623,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -5599,6 +5675,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Accumulate",
       "value": "Block"
@@ -5650,6 +5727,7 @@
       }
      },
      "reference": "NotEstablished",
+     "requirement": "Unknown",
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
@@ -5696,6 +5774,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Block"
@@ -5747,6 +5826,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -5798,6 +5878,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -5849,6 +5930,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -5937,6 +6019,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -6019,6 +6102,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -6070,6 +6154,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -6121,6 +6206,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Scalar"
@@ -6288,6 +6374,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Merges",
    "value": "Scalar"
@@ -6370,6 +6457,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -6452,6 +6540,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"
@@ -6534,6 +6623,7 @@
    }
   },
   "reference": "NotEstablished",
+  "requirement": "Optional",
   "shape": {
    "repeat": "Replace",
    "value": "Block"

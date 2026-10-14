@@ -159,7 +159,8 @@ mod tests {
             "shape": { "value": "Unknown", "repeat": "Unknown" }, "read": [],
             "members": "Unresolved", "domain": "Unknown", "uses": [],
             "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
-            "accepted_categories": "NotApplicable"
+            "accepted_categories": "NotApplicable",
+            "requirement": "Unknown"
         }))
         .unwrap()
     }

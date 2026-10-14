@@ -359,7 +359,8 @@ mod tests {
             "members": "None", "domain": "Unknown",
             "uses": [{ "id": "u", "condition": { "FieldZero": { "path": ["id"], "zero": true } } }],
             "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
-            "accepted_categories": "NotApplicable"
+            "accepted_categories": "NotApplicable",
+            "requirement": "Unknown"
         }))
         .unwrap()
     }

@@ -1404,7 +1404,7 @@ mod tests {
         json!({ "name": name, "reader": reader, "shape": shape,
             "read": [{ "condition": "Always", "outcome": { "Read": { "reader": reader, "shape": shape } } }],
             "members": "None", "domain": "Unknown", "uses": [], "reference": "NotEstablished",
-            "entry_contexts": [], "read_scope": { "Known": [] }, "accepted_categories": "NotApplicable" })
+            "entry_contexts": [], "read_scope": { "Known": [] }, "accepted_categories": "NotApplicable", "requirement": "Unknown" })
     }
 
     fn write(root: &Path, file: &str, value: Value) {
