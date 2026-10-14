@@ -41,11 +41,11 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
 pub use contexts::ScopeFunctions;
-pub use names::StringFunctions;
+pub use names::{OffsetGetter, StringFunctions};
 
 use climb::{CallSite, Decoded, Wrapper};
 use contexts::{CallReads, EntryCalls, Read, Runner, SiteContexts, Subject};
-use names::{Fact, State};
+use names::{Fact, Known, Root, State};
 
 /// Name and revision of this static method.
 pub const METHOD: &str = "callbacks/v5";
@@ -56,8 +56,9 @@ const PROBE: u64 = 7;
 /// Consecutive missing enumerations after which the rule table ends.
 const TABLE_MISSES: u64 = 64;
 
-/// The callback method's name pass follows no offset getter; the block method's does.
-const NO_OFFSET_GETTERS: &BTreeMap<u64, i64> = &BTreeMap::new();
+/// The callback method's name pass follows no offset getter and types no buffer; the block
+/// method's does.
+const NO_OFFSET_GETTERS: &BTreeMap<u64, OffsetGetter> = &BTreeMap::new();
 
 /// Layout facts of one exact build.
 #[derive(Debug, Clone, Copy)]
@@ -365,6 +366,7 @@ pub fn analyze(input: &CallbacksInput, family: Family) -> Result<CallbacksResult
         &input.functions,
         &input.strings,
         NO_OFFSET_GETTERS,
+        &BTreeMap::new(),
         input.sites.iter().map(|site| (site.function, site.address)),
     );
     let declared = match family {
@@ -481,6 +483,7 @@ pub fn climbing_functions(
         functions,
         strings,
         NO_OFFSET_GETTERS,
+        &BTreeMap::new(),
         sites.iter().map(|site| (site.function, site.address)),
     );
     climbing_sites(sites.iter(), forwarders, &states)
@@ -555,6 +558,7 @@ fn climbed_contexts<'s>(
     let none = BTreeSet::new();
     let calls = EntryCalls {
         evaluators: &none,
+        virtual_evaluations: &none,
         scope_users: &none,
         wrappers: &climb.wrappers,
         receivers: &none,
@@ -983,7 +987,8 @@ fn rule_name(
     if !input.rule_owners.contains(&site.function) {
         return Err("rule-outside-the-rule-set");
     }
-    let Some(Fact::Argument(0, offset)) = names::sole_fact(state.register(rule)) else {
+    let Some(Fact::Address(Root::Argument(0), offset)) = names::sole_fact(state.register(rule))
+    else {
         return Err("rule-unknown");
     };
     let enumeration = enumeration(input.layout, family, offset).ok_or("rule-offset")?;
@@ -1020,7 +1025,8 @@ fn forwarder_contexts(
     };
     let state = states.get(&site.address)?;
     let is_argument = |register: usize, argument: usize| {
-        names::sole_fact(state.register(register)) == Some(Fact::Argument(argument, 0))
+        names::sole_fact(state.register(register))
+            == Some(Fact::Address(Root::Argument(argument), 0))
     };
 
     match (forwarder.kind, site.call) {
@@ -1215,7 +1221,7 @@ fn pulse_names(input: &CallbacksInput) -> BTreeMap<i64, u64> {
         .enumerate()
         .map(|(position, row)| (row.address, position))
         .collect();
-    names::each_state(rows, &input.strings, NO_OFFSET_GETTERS, |row, state| {
+    names::each_state(rows, Known::strings(&input.strings), |row, state| {
         let at = position[&row.address];
         if row.operation == "bl"
             && names::immediate(&row.operands)
@@ -1286,7 +1292,7 @@ fn database_store(row: &Instruction, state: &State) -> Option<i64> {
         Some(text) => names::immediate(text)?,
     };
     match names::sole_fact(state.register(base))? {
-        Fact::Argument(0, offset) => Some(offset + displacement),
+        Fact::Address(Root::Argument(0), offset) => Some(offset + displacement),
         _ => None,
     }
 }

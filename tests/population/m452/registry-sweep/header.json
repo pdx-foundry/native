@@ -2,10 +2,10 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "relationships": {
     "fields": {
-      "complete": 105,
+      "complete": 104,
       "denominator": 185,
-      "partial": 75,
-      "rate": 0.5676,
+      "partial": 76,
+      "rate": 0.5622,
       "unsupported": 5
     },
     "naming_rules": {
@@ -34,11 +34,11 @@
       "undetermined": 309
     },
     "scope_context": {
-      "complete": 1422,
+      "complete": 1448,
       "denominator": 1926,
       "failed": 340,
-      "partial": 164,
-      "rate": 0.7383
+      "partial": 138,
+      "rate": 0.7518
     },
     "shapes_and_conditions": {
       "complete": 1485,

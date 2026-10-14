@@ -41,7 +41,7 @@ struct Program {
     instances: BTreeMap<u64, u64>,
     words: BTreeMap<u64, u64>,
     factories: BTreeMap<u64, Vec<Instruction>>,
-    offset_getters: BTreeMap<u64, i64>,
+    offset_getters: BTreeMap<u64, OffsetGetter>,
 }
 
 impl Program {
@@ -94,7 +94,22 @@ impl Program {
 
     /// The function at `function` is an offset getter that returns its receiver plus `offset`.
     fn getter(mut self, function: u64, offset: i64) -> Self {
-        self.offset_getters.insert(function, offset);
+        let getter = OffsetGetter {
+            offset,
+            owner: None,
+        };
+        self.offset_getters.insert(function, getter);
+        self
+    }
+
+    /// The function at `function` is an offset getter of the owner, which returns its receiver
+    /// plus `offset`.
+    fn owner_getter(mut self, function: u64, offset: i64) -> Self {
+        let getter = OffsetGetter {
+            offset,
+            owner: Some(OWNER.into()),
+        };
+        self.offset_getters.insert(function, getter);
         self
     }
 
@@ -110,6 +125,7 @@ impl Program {
             method_of: Some(OWNER.into()),
             registers: BTreeMap::from([(0, OWNER.into())]),
             members: BTreeMap::new(),
+            elements: BTreeMap::new(),
             scope_parameters: BTreeSet::new(),
         };
         self.pointing(pointers, lines)
@@ -496,6 +512,7 @@ fn linking_method(
         method_of: Some(OWNER.into()),
         registers: BTreeMap::from([(0, OWNER.into())]),
         members: BTreeMap::new(),
+        elements: BTreeMap::new(),
         scope_parameters: scope_parameters.iter().copied().collect(),
     };
     program.pointing(pointers, &lines)
@@ -1721,27 +1738,6 @@ fn a_call_through_another_slot_or_another_objects_vtable_or_on_the_item_is_not_a
 }
 
 #[test]
-fn a_virtual_evaluation_leaves_the_scope_unknown_for_the_next_evaluation() {
-    let lines = with_country_scope(
-        &[("mov", "x21,x0")],
-        &[
-            ("add", "x0,x21,#0x48"),
-            ("ldr", "x8,[x21,#0x48]"),
-            ("ldr", "x8,[x8,#0x48]"),
-            ("blr", "x8"),
-            ("add", "x0,x21,#0x40"),
-            ("add", "x1,sp,#0x100"),
-            ("bl", "#0x9400"),
-        ],
-    );
-    let result = Program::new().method(&lines).analyze();
-
-    assert_eq!(block_contexts(&result, &effect(ALLOW)), [fresh(COUNTRY)]);
-    assert!(contexts(&result, ALLOW).is_empty());
-    assert_eq!(contexts(&result, POTENTIAL), [unreadable()]);
-}
-
-#[test]
 fn a_constructor_stores_its_parameters_in_its_object() {
     let lines = [
         (0x1000, "stp", "x8,x2,[x0,#0x10]"),
@@ -1792,6 +1788,95 @@ fn a_call_to_an_offset_getter_names_the_block_at_its_offset() {
     assert!(other_call.blocks.is_empty());
 }
 
+#[test]
+fn a_call_to_an_owner_getter_names_its_block_whatever_its_receiver() {
+    let lines = with_country_scope(
+        &[("ldr", "x21,[x1]")],
+        &[
+            ("mov", "x0,x21"),
+            ("bl", "#0x7000"),
+            ("ldr", "x8,[x0]"),
+            ("ldr", "x8,[x8,#0x48]"),
+            ("add", "x1,sp,#0x100"),
+            ("blr", "x8"),
+        ],
+    );
+    let run = |program: Program| {
+        program
+            .arguments(0x7000, 1)
+            .pointing(TypePointers::default(), &lines)
+            .analyze()
+    };
+
+    let owner_getter = run(Program::new().owner_getter(0x7000, 0xa0));
+    let other_getter = run(Program::new().getter(0x7000, 0xa0));
+
+    assert_eq!(
+        block_contexts(&owner_getter, &effect(0xa0)),
+        [fresh(COUNTRY)]
+    );
+    assert!(other_getter.blocks.is_empty());
+}
+
+#[test]
+fn an_element_of_a_typed_array_parameter_names_the_block_at_its_offset() {
+    let lines = with_country_scope(
+        &[("ldr", "x19,[x0,#0x8]"), ("mov", "x20,#3")],
+        &[
+            ("ldr", "x8,[x19]"),
+            ("add", "x0,x8,#0x268"),
+            ("ldr", "x8,[x8,#0x268]"),
+            ("ldr", "x8,[x8,#0x48]"),
+            ("add", "x1,sp,#0x100"),
+            ("blr", "x8"),
+            ("add", "x19,x19,#8"),
+            ("subs", "x20,x20,#1"),
+            ("b.ne", "#0x1020"),
+        ],
+    );
+    let run = |elements: BTreeMap<(usize, i64), String>| {
+        let pointers = TypePointers {
+            elements,
+            ..TypePointers::default()
+        };
+        Program::new().pointing(pointers, &lines).analyze()
+    };
+
+    let typed = run(BTreeMap::from([((0, 8), OWNER.into())]));
+    let untyped = run(BTreeMap::new());
+
+    assert_eq!(lines[8], (0x1020, "ldr", "x8,[x19]"));
+    assert_eq!(block_contexts(&typed, &effect(0x268)), [fresh(COUNTRY)]);
+    assert!(untyped.blocks.is_empty());
+}
+
+#[test]
+fn an_evaluation_through_a_block_vtable_leaves_the_scope_for_the_next_one() {
+    let lines = |first_slot: &'static str| {
+        with_country_scope(
+            &[("mov", "x21,x0")],
+            &[
+                ("add", "x0,x21,#0x40"),
+                ("ldr", "x8,[x21,#0x40]"),
+                ("ldr", first_slot),
+                ("add", "x1,sp,#0x100"),
+                ("blr", "x8"),
+                ("add", "x0,x21,#0x50"),
+                ("ldr", "x8,[x21,#0x50]"),
+                ("ldr", "x8,[x8,#0x48]"),
+                ("add", "x1,sp,#0x100"),
+                ("blr", "x8"),
+            ],
+        )
+    };
+
+    let evaluation = Program::new().method(&lines("x8,[x8,#0x48]")).analyze();
+    let other_call = Program::new().method(&lines("x8,[x8,#0x30]")).analyze();
+
+    assert_eq!(block_contexts(&evaluation, &effect(0x50)), [fresh(COUNTRY)]);
+    assert_eq!(block_contexts(&other_call, &effect(0x50)), [unreadable()]);
+}
+
 /// A helper at 0x2000 that keeps the block in its parameter `x1`, builds its own scope, typed as
 /// a country when `x2` is not zero and as a leader otherwise, and runs the block's effect. Its
 /// receiver leads to the owner through the member at `+0x18`, as `CMission`'s does.
@@ -1836,6 +1921,35 @@ fn a_helper_gives_each_caller_s_block_only_the_context_of_that_caller_s_run() {
     assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
     assert_eq!(block_contexts(&result, &effect(0x48)), [fresh(LEADER)]);
     assert!(result.helpers[&0x2000].is_empty());
+}
+
+#[test]
+fn a_helper_s_second_evaluation_of_its_block_reads_the_scope_that_the_first_left() {
+    let helper: Rows<'static> = &[
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x19,x1"),
+        (0x2008, "add", "x0,sp,#0x100"),
+        (0x200c, "bl", "#0x8000"),
+        (0x2010, "add", "x0,sp,#0x100"),
+        (0x2014, "bl", "#0x8100"),
+        (0x2018, "ldr", "x8,[x19]"),
+        (0x201c, "ldr", "x8,[x8,#0x48]"),
+        (0x2020, "mov", "x0,x19"),
+        (0x2024, "add", "x1,sp,#0x100"),
+        (0x2028, "blr", "x8"),
+        (0x202c, "ldr", "x8,[x19]"),
+        (0x2030, "ldr", "x8,[x8,#0x48]"),
+        (0x2034, "mov", "x0,x19"),
+        (0x2038, "add", "x1,sp,#0x100"),
+        (0x203c, "blr", "x8"),
+        (0x2040, "ret", ""),
+    ];
+    let result = Program::new()
+        .pointing(leading(0, Some(0x18)), helper)
+        .method(&passes_to_helper(0x1000, "x1,x0,#0x40", "w2,#1"))
+        .analyze();
+
+    assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
 }
 
 #[test]
@@ -1950,6 +2064,7 @@ fn authored_selection(bytes: &[u8]) -> Program {
             method_of: Some(OWNER.into()),
             registers: BTreeMap::from([(0, OWNER.into())]),
             members: BTreeMap::new(),
+            elements: BTreeMap::new(),
             scope_parameters: BTreeSet::new(),
         },
     );
