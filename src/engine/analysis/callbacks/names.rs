@@ -16,9 +16,9 @@
 //! to a 32-bit register keeps only the low half of constants; its other facts become unknown.
 //! Any other instruction makes the registers that it may write unknown. A call makes `x0`–`x18`
 //! unknown and `x0` the result of that call; the result of a call to an offset getter, whose
-//! whole body is `add x0, x0, #k; ret`, is `x0` plus `k`. Stack offsets are relative to the stack pointer at
-//! entry; the state also knows where the stack pointer is now, until it moves by an amount that is
-//! not known.
+//! whole body is `add x0, x0, #k; ret`, is `x0` plus `k`, or, for an owner's getter, the owner's
+//! offset `k`. Stack offsets are relative to the stack pointer at entry; the state also knows
+//! where the stack pointer is now, until it moves by an amount that is not known.
 //!
 //! A stack slot keeps the 64-bit value last stored to it on every path. A callee writes only
 //! inside the objects that it receives, and an object never starts above its address, so a call
@@ -99,7 +99,10 @@ pub struct StringFunctions {
 pub struct OffsetGetter {
     /// Its `k`.
     pub offset: i64,
-    /// The registry owner whose member function it is, when it is one.
+    /// The registry owner whose member function it is, by every name at its address. With an
+    /// owner, a call returns the address at that owner's offset `k`, whatever item `x0` holds; a
+    /// path that forms the same address from a type pointer then joins to two facts and names no
+    /// block. Without one, a call returns `x0` plus `k`.
     pub owner: Option<String>,
 }
 

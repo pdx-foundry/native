@@ -714,7 +714,11 @@ fn collect_contexts(
         ignores_x8: &input.ignores_x8,
     };
     let evaluators: BTreeSet<u64> = input.evaluators.keys().copied().collect();
-    let virtual_evaluations: BTreeSet<u64> = evaluations.keys().copied().collect();
+    let virtual_evaluations: BTreeSet<u64> = evaluations
+        .keys()
+        .chain(helper_calls.iter().flat_map(|call| call.evaluations.keys()))
+        .copied()
+        .collect();
     let calls = EntryCalls {
         evaluators: &evaluators,
         virtual_evaluations: &virtual_evaluations,

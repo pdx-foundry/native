@@ -1924,6 +1924,35 @@ fn a_helper_gives_each_caller_s_block_only_the_context_of_that_caller_s_run() {
 }
 
 #[test]
+fn a_helper_s_second_evaluation_of_its_block_reads_the_scope_that_the_first_left() {
+    let helper: Rows<'static> = &[
+        (0x2000, "sub", "sp,sp,#0x200"),
+        (0x2004, "mov", "x19,x1"),
+        (0x2008, "add", "x0,sp,#0x100"),
+        (0x200c, "bl", "#0x8000"),
+        (0x2010, "add", "x0,sp,#0x100"),
+        (0x2014, "bl", "#0x8100"),
+        (0x2018, "ldr", "x8,[x19]"),
+        (0x201c, "ldr", "x8,[x8,#0x48]"),
+        (0x2020, "mov", "x0,x19"),
+        (0x2024, "add", "x1,sp,#0x100"),
+        (0x2028, "blr", "x8"),
+        (0x202c, "ldr", "x8,[x19]"),
+        (0x2030, "ldr", "x8,[x8,#0x48]"),
+        (0x2034, "mov", "x0,x19"),
+        (0x2038, "add", "x1,sp,#0x100"),
+        (0x203c, "blr", "x8"),
+        (0x2040, "ret", ""),
+    ];
+    let result = Program::new()
+        .pointing(leading(0, Some(0x18)), helper)
+        .method(&passes_to_helper(0x1000, "x1,x0,#0x40", "w2,#1"))
+        .analyze();
+
+    assert_eq!(block_contexts(&result, &effect(0x40)), [fresh(COUNTRY)]);
+}
+
+#[test]
 fn a_helper_with_no_caller_or_with_callers_that_name_no_block_gives_no_context() {
     let alone = Program::new()
         .pointing(leading(0, Some(0x18)), HELPER)
