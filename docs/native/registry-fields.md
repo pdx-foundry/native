@@ -278,6 +278,48 @@ Pitfalls:
   the lambda captures, the resolver order and the lambda's write decide the result.
 - A logged duplicate is not a rejection; the repeat is read.
 
+## Required fields
+
+A field is required only where validation reports its absence (decision 5 of the
+[simplification decision](../design/simplification.md)). A missing field keeps its constructor
+default, and the loader keeps the item. `registry_fields` publishes no required-field fact.
+
+**Census on M452 (SDK-829).** Absence checks were found by their log text: every string with
+"missing", "not set", "not specified", "must have", "must specify", "lacks" or "no … set", then
+the functions that form each string's address (`inspect --strings`). A check whose text does not
+use these words is not counted.
+
+| Check | Fields | Owners (M452) |
+| --- | ---: | --- |
+| Unconditional: a load hook logs when the field is absent | 19 | `CTraditionCategory` (`adoption_bonus`, `finish_bonus`), `CTechnology` (`tier`), `CSpecialProjectType` (`event_scope`), `CGalacticFocus` (effect and fulfilled trigger), `CColonyAutomation` (category), `CEthic` (category), `CAIBudgetEntry` (category and resource), `CDistrictType` (zone slots), `CWarGoalType` (casus belli), `CMutation` (type), `CSpeciesClass` (`graphical_culture`), `CTerraformLink` (duration), `CEnvironmentOverride` (condition and texture), `CPortraitAssetSelector` (default texture), `CEmpireFlagSpriteType` (`effectFile`) |
+| Conditional: absence is logged only when another field has a value | 14 | `CCountryFocusCardCategory` (three textures of a selectable category), `CEvent` (`difficulty` for an astral rift event, a `tag` option for a leader recruit event), `CZoneType` (`swap_type` and `swap_type_weight` as a pair), `CSituationType` (stage `section_weight` with `total_progress`), `CPlanetClass` (icon and large icon), `CTrait` (portrait explanation), `CScriptedActionInfo` (`user_scope` and `scope` for a specific behavior), `CMutation` (component set) |
+| A group: at least one of several keys | 2 | `CTraditionType` (tradition and tradition swap: `custom_tooltip`, `modifier`, `on_enabled` and four more) |
+| Not a field check | — | A sprite, sound or localisation key that does not resolve (mission, event chain and special project icons), a database entry that is absent (technology tier, mandatory ship category, empty game rule), and checks at use time, not at load (`CShipSize` AI data, edict economic category, species names) |
+
+Field keys and conditions in this table come from the message text, not from a member join; only the `CGalacticFocus` and `CTraditionCategory` checks were read in the disassembly. The
+`CEventManager` title and description messages belong to the events loader.
+
+**Shape.** No two checks share code. Each loads one member, tests it against its default (a null
+pointer, a zero count, `-1`, an empty string), and logs its own message through
+`CPdxLogFileAndLine` or `CLogger::Log` with `CLogStream`. `CGalacticFocus::PostReadInit()`
+(`0x10057b620`) tests the effect's child count at `+0x294` with `cbnz` before its log. The same two
+loggers make 1,230 calls from 877 functions named `InitPostRead`, `PostReadInit`, `PostProcess`,
+`PostInit`, `PostValidate` or `Validate`; most report a bad value, not an absent one. A
+static method would have to classify each call and join the tested member to its key, which needs
+the block and pointer storage that fixtures do not decode ([repeat behavior](#repeat-behavior)).
+
+**Atlas need.** The Atlas comparison at Native `b2b3969` has 6,689 `cardinality_minimum` claims:
+6,306 give a minimum of 0 and 383 a minimum of 1 or more. A list of the 19 unconditional checks
+answers few of the 383. A minimum of 0 needs proof that no check exists, which is the hook census
+above for every owner.
+
+Pitfalls:
+
+- A missing-asset message (a sprite, a sound or a localisation key) tests the resolved asset, not
+  the field. The field can be present with a wrong name.
+- Run-time messages, such as `Ship size %s was missing ai_ship_data` from
+  `CShipSize::GetAIDataRawFactor`, are not validation.
+
 ## Compiler jump tables
 
 The compiler chooses between a jump table and direct comparisons on each build, so the method
