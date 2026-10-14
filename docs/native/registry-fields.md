@@ -1298,20 +1298,32 @@ on `x1 + 0x2e0`, and `CMission::Start` loads its mission type from `this + 0x18`
 **The method.** A *type pointer* is a register that points at an owner's item at entry: the
 receiver of a member of the owner, by the function's exact qualifier (a member of
 `CAnomalyType::COutcomeEffect` is not a member of `CAnomalyType`); a parameter of type `O const*`,
-`O*`, `O const&` or `O&`; or the word at offset `k` of an object of class `C`, when some
-constructor of `C` stores there a parameter of one of those types, no constructor stores a
-parameter of another type there, and every constructor of `C` decodes (`CMission` `+0x18`,
-`CResolution` `+0x18`). A parameter's register is known up to the first parameter that one
+`O*`, `O const&` or `O&`; or the word at offset `k` of an object of class `C`, when every
+constructor of `C` decodes, and its constructors and the members of `C` that load
+`TPdxNullObject<O>::_pInstance` store there an item of `O` (a parameter of one of those types, or
+that null object) and no item of another owner or other named value (`CMission` `+0x18`,
+`CResolution` `+0x18`, `CTechnology` `+0x600`, `CGalacticCommunity` `+0x2c0`; SDK-830). A stored
+null, and a value that the name pass does not name, agree with any owner. A parameter's register is known up to the first parameter that one
 general register may not pass (pointers, references, integers, `bool` and `TPdxRef<…>` take one);
 an enumeration, which a demangled name does not tell from a class, ends them, and a function whose
 qualifier is not a known class or `(anonymous namespace)` has none. A class is a qualifier with a vtable, a type info, a
 constructor, a destructor or a `const` member function: `CSubjectSpecialization` has only `const`
 members. Two more values lead to an owner's item without a type pointer
-([SDK-824](#arrays-and-owner-getters-on-m452-sdk-824)): an element of a parameter of type
-`CPdxArray<O const*, int>` by pointer or reference, and the receiver of an *owner getter*, an offset
-getter that is a member function of `O` by every name at its address. The candidate calls are the
-direct calls to an evaluator or a tooltip builder and every `blr`, in the functions that have a
-type pointer or call an owner getter. The name pass names a load from an argument by
+([SDK-824](#arrays-and-owner-getters-on-m452-sdk-824)): an element of a buffer of owner pointers,
+and the receiver of an *owner getter*, an offset getter that is a member function of `O` by every
+name at its address. A `CPdxArray<O const*, int>` holds its vtable at `+0`, its buffer at `+8`, its
+capacity at `+0x10` and its size at `+0x14`. Its buffer is the word at `+8` of a parameter of that
+type by pointer or reference; the word at `k + 8` of an object of class `C`, when every
+constructor of `C` decodes and every store that they make at `k` is the address point of
+`vtable for CPdxArray<O const*, int>` (or `O*`), the symbol plus `0x10` (`CTradeDealSide` `+0xa0`,
+`CCrisisLevelType` `+0x48`; [SDK-830](#member-and-database-arrays-on-m452-sdk-830)); and the word at
+`k + 8` of a global database instance, `TGameDatabase<D>::_pInstance` or `D::_pInstance` loaded
+through its pointer slot, when `D` has such a member array at `k`
+(`CArchaeologicalSiteTypeDatabase` `+0x40`). A load from a buffer, at an immediate multiple of 8 or
+at a register index scaled by 8 (`[x8, x23, lsl #3]`), is an element, and a move of a buffer
+address by a multiple of 8 stays in the buffer. The candidate calls are the direct calls to an
+evaluator or a tooltip builder and every `blr`, in the functions that have a type pointer, call an
+owner getter or load such a database instance. The name pass names a load from an argument by
 its chain of loads, three loads deep (`Member`, `Deref`, `DerefAt`), with or without pre-index
 writeback (`ldr x8,[x0,#0x40]!` loads the vtable of the object at `x0 + 0x40` and leaves that
 address in `x0`), and attributes a call to
@@ -1411,15 +1423,30 @@ rule.
 **Assumptions.** Beside the self-link rule:
 
 - Every function that writes a member word that leads to an owner keeps the owner's layout: it
-  stores an item of that owner, its null object, or null. Checked by hand on M452 for `CMission`
+  stores an item of that owner, its null object, or null. The method reads the constructors and
+  the members that load an owner's null object; a writer that does neither, and a stored value that
+  the name pass does not name, are taken on this assumption. Checked by hand on M452 for `CMission`
   (its constructors, and `ReadMember`, which stores a lookup result or
   `TPdxNullObject<CMissionType>::_pInstance` at `+0x18`), `CResolution` (the constructor from a
   `CResolutionType const&` stores it at `+0x18`; the default constructor stores
   `TPdxNullObject<CResolutionType>::_pInstance`; `ReadMember` stores the result of
   `ReadKeyReference<CResolutionTypeDatabase>`) and `CCosmicStorm` (`+0x328`: the constructor
   from a `CCosmicStormType const*`, the default constructor, which passes it the null object, and
-  `ReadMember`, which stores a lookup result or `TPdxNullObject<CCosmicStormType>::_pInstance`).
+  `ReadMember`, which stores a lookup result or `TPdxNullObject<CCosmicStormType>::_pInstance`),
+  and for the SDK-830 words: `CTechnology` `+0x600` (`ReadMember` stores
+  `TPdxNullObject<CTechnologyTier>::_pInstance` or an element of the tier database's item array,
+  `PostReadInitialize` a value that the pass does not name), `CGalacticCommunity` `+0x2c0`
+  (`DailyUpdate` stores `TPdxNullObject<CGalacticFocus>::_pInstance` or the chosen focus) and
+  `+0x348` (`TPdxNullObject<COwnershipLimits>::_pInstance`).
   Remove the assumption with a writer check that covers every function that stores the word.
+- A member array keeps the vtable that its constructors store, and a database instance is an
+  object of its database class. Checked by hand on M452: `CTradeDealSide()` stores the
+  `CPdxArray<CTradableAction const*, int>` vtable at `+0xa0` and `CalcValueFor` walks the buffer
+  at `+0xa8` with the size at `+0xb4`; `CCrisisLevelType(int, CString const&)` stores the
+  `CPdxArray<CCrisisPerk const*, int>` vtable at `+0x48` and `UnlockLevel` reads the buffer at
+  `+0x50` and the size at `+0x5c`; `CArchaeologicalSiteTypeDatabase()` stores the
+  `CPdxArray<CArchaeologicalSiteType const*, int>` vtable at `+0x40` and `CreateRandomSite` reads the
+  buffer at `+0x48` and the size at `+0x54`.
 - A demangled name does not say whether a member function is static; a function of a class is
   read as taking its receiver in `x0`, as the owner test did before SDK-732.
 - [Evaluation leaves a scope as it found it](engine-commands.md#on_actions-game-rules-and-their-entry-scopes):
@@ -1427,7 +1454,11 @@ rule.
 - A bounded search with no contradiction: when the paths of a call stop only at the path, loop or
   step limit, and every evaluation that the followed paths reach receives a scope that the method
   can read, the found contexts stand with no gap. A path that reaches an evaluation with an
-  unreadable scope is a contradiction; then the bounds are gaps too.
+  unreadable scope is a contradiction; then the bounds are gaps too. So is a bound inside a
+  function that receives the scope (SDK-830): the path that it cut may have built the scope
+  differently. `CSpatialObjectRefCaster::FillEventScope` switches on the spatial object's type
+  through a jump table; the fork of the table exceeds the path limit, and the one followed path,
+  the default for a type above 10, sets no scope.
 - A prologue's register save is not memory that a callee can reach through a lower stack address
   that it receives. Checked by hand at three of the eleven call sites that the rule changes:
   `CDiplomaticActionType::IsPotential(CEventScope const&, CString*)` saves the caller's `x23`, the
@@ -1833,8 +1864,8 @@ on 61 fields with a field-level `replace_scopes` claim, and the planet classes' 
 gap, a registry that the limit does not list. Scope context goes from 1,309 to 1,323 complete
 fields: five from the repairs, the rest because the accepted gaps leave the counts.
 
-**Accepted limit.** The entry-context gaps of the 93 fields with no field-level `replace_scopes`
-claim (129 gaps), and the 9 registry gaps of direct evaluations whose block the method cannot name,
+**Accepted limit.** The entry-context gaps of the 94 fields with no field-level `replace_scopes`
+claim (129 gaps at SDK-812; SDK-830 added ethic `playable`), and the 9 registry gaps of direct evaluations whose block the method cannot name,
 credit no Atlas claim: `ENTRY_CONTEXTS_WITHOUT_CLAIM` in `examples/registry-sweep.rs` lists the
 fields. Reopen a field's gaps when the config gives it a claim, or when Atlas maps the type-level
 `replace_scopes` claims onto blocks.
@@ -1845,7 +1876,7 @@ fields. Reopen a field's gaps when the config gives it a claim, or when Atlas ma
 | --- | --- | --- |
 | Path and loop limits | A larger bound reaches no new evaluation: 1,024 paths take over 20 minutes for one registry and remove one gap. The runs fork on script-profiler and string-length branches. Reopen with a path join that merges states that differ only in dead registers. | astral action `potential`, casus belli `potential`, megastructure `tooltip_system_score` (`BuildBestSystemsText` reaches no evaluation) |
 | caller-depth | One more caller turns casus belli `is_valid` into path and loop bounds and an unreadable context (measured at depth 3). | casus belli `is_valid`; astral action `potential` and `is_exhausted` (`GetTooltip`) |
-| No attributed evaluation | [SDK-824](#arrays-and-owner-getters-on-m452-sdk-824) resolves 8 of these claims; SDK-830 owns the array and member-word typing that the rest wait on. | tradable action `on_traded_effect`, agreement term value `activate_effect`, terraform `ai_weight` |
+| No attributed evaluation | [SDK-824](#arrays-and-owner-getters-on-m452-sdk-824) resolves 8 of these claims and [SDK-830](#member-and-database-arrays-on-m452-sdk-830) 3 more; that section names the obstacle of each claim that is left. | tradable action `on_traded_effect`, agreement term value `activate_effect`, terraform `ai_weight` |
 | instruction | The astral `IsAllowed` run from `CAlertManager::Update` stops in floating-point alert arithmetic (`fminnm`, `fmaxnm`, `fcmp`, `fadd`, `fcsel` in turn), and the same run reaches its loop bound, so more instructions change no answer. | astral action `allow`, `potential`, `is_exhausted` |
 | selected-block-identity | The indexed swap load in `CTraditionType::OnEnabled` stays unknown, and the run also reaches the path bound. | tradition and ascension perk `on_enabled` (one function) |
 | Some entry scopes unresolved | Missions: the operator's eleven spatial types reach the path bound. The others pass their scope through a call that the pass does not follow and also reach a bound. | mission `on_start`, terraform `on_queued`, anomaly `on_spawn` |
@@ -1927,9 +1958,9 @@ the other colony scopes) and government `weight` (a country). Outside the 22, le
 | Obstacle | Claims | Reopen path |
 | --- | --- | --- |
 | A bound or instruction on the run | opinion modifier `opinion` (a country with a country `from`, beside the `CCountry::CalcOurOpinionOfOther` run, which stops at the path limit), councilor `ai_hiring_weight` (the `CCachedPositionWeights` lambda stops at `fdiv` and at the loop limit) | SDK-823 |
-| A member array whose element type no signature names | tradable action `ai_weight` (`CTradeDealSide + 0xa0`), specialist subject perk `activate_effect` and `deactivate_effect` (`CSpecialistSubjectLevel + 0x8`, a class with no constructor symbol), menace perk `on_unlock` (`CCrisisLevelType + 0x48`, through a spill of the level) | SDK-830: type the array by the `vtable for CPdxArray<O const*, int>` that the owner's constructor stores |
-| A local, returned, map or database array | terraform `ai_weight` (an sret array of `CTerraformDatabase::GetAllAvailableLinks`), technology category `weight_modifier` (`CTechnology::GetCategoriesFor`), astral rift `event_weight` (a map value at entry `+0x10`), archaeological site `weight` (`TGameDatabase<CArchaeologicalSiteTypeDatabase>::_pInstance` `+0x48`), agreement preset `overlord_weight` and `subject_weight` (a filtered copy of the preset database, and `CAgreementTermData::GetPresetData()`) | SDK-830: type the array by its stored vtable, or a database's item array by its database |
-| A member word that no type pointer leads to | technology tier `weight_modifier` (`CTechnology + 0x600`), galactic focus `effect` (`CGalacticCommunity + 0x2c0` in `DailyUpdate`) | SDK-830: a writer check of the member word |
+| A member array whose element type no signature names | tradable action `ai_weight` (`CTradeDealSide + 0xa0`), specialist subject perk `activate_effect` and `deactivate_effect` (`CSpecialistSubjectLevel + 0x8`, a class with no constructor symbol), menace perk `on_unlock` (`CCrisisLevelType + 0x48`, through a spill of the level) | [SDK-830](#member-and-database-arrays-on-m452-sdk-830) |
+| A local, returned, map or database array | terraform `ai_weight` (an sret array of `CTerraformDatabase::GetAllAvailableLinks`), technology category `weight_modifier` (`CTechnology::GetCategoriesFor`), astral rift `event_weight` (a map value at entry `+0x10`), archaeological site `weight` (`TGameDatabase<CArchaeologicalSiteTypeDatabase>::_pInstance` `+0x48`), agreement preset `overlord_weight` and `subject_weight` (a filtered copy of the preset database, and `CAgreementTermData::GetPresetData()`) | [SDK-830](#member-and-database-arrays-on-m452-sdk-830) |
+| A member word that no type pointer leads to | technology tier `weight_modifier` (`CTechnology + 0x600`), galactic focus `effect` (`CGalacticCommunity + 0x2c0` in `DailyUpdate`) | [SDK-830](#member-and-database-arrays-on-m452-sdk-830) |
 
 Checked members: `CAIInteriorMinister::Terraform` loads each `CTerraformLink const*` from a stack
 array that `GetAllAvailableLinks` fills and calls `GetRawFactor` on `x23 + 0x350`;
@@ -1939,3 +1970,93 @@ loads each type from the database's item array and evaluates `+0x58`. No signatu
 arrays' element types. Psionic aura `monthly_decrease` and `monthly_increase` gain an unreadable
 context at the path limit and trait `cost` a country beside a `no-caller` gap; they are outside this
 group.
+
+### Member and database arrays on M452 (SDK-830)
+
+**Atlas need.** After SDK-824, 12 fields with a field-level `replace_scopes` claim kept the gap "no
+evaluation that the method attributes evaluates this block" (one claim each; config `8574760`).
+Recounted at Native `main` `a82d1df`: all 12 still had the gap and no other blocking gap.
+
+**Repairs.** Three typing rules and one contradiction, each with authored tests
+([the method](#block-entry-contexts)):
+
+- A constructor's array vtable types a member array: `CTradeDealSide()` stores the
+  `CPdxArray<CTradableAction const*, int>` vtable at `+0xa0`, so `CTradeDealSide::CalcValueFor`'s
+  loop over `+0xa8` loads tradable actions and evaluates `+0x460` (`ai_weight`) and `+0x498`.
+- A null object types a member word: `CTechnology::ReadMember` stores
+  `TPdxNullObject<CTechnologyTier>::_pInstance` at `+0x600`, which
+  `CTechnologyStatus::GetTechWeight` loads to evaluate the tier's `+0x40`; `CGalacticCommunity::
+  DailyUpdate` stores `TPdxNullObject<CGalacticFocus>::_pInstance` at `+0x2c0` and executes the
+  focus's `+0xb8` (`effect`). The reader keeps every fact of a joined value, so `ReadMember`'s
+  other store, an element of the tier database's item array, agrees.
+- A database instance is an object of its database class: `CArchaeologicalSiteManager::
+  CreateRandomSite` loads `TGameDatabase<CArchaeologicalSiteTypeDatabase>::_pInstance`, whose
+  constructor stores the `CPdxArray<CArchaeologicalSiteType const*, int>` vtable at `+0x40`, and
+  evaluates `+0x58` (`weight`) of the element at a register index (`ldr x26,[x8,x23,lsl#3]`).
+- A bound inside a function, other than a wrapper, that receives the scope contradicts a run that
+  reaches a scope with no `this`. `CreateRandomSite` passes its scope to
+  `CSpatialObjectRefCaster::FillEventScope`, which switches on the spatial object's type through a
+  jump table. The table's fork exceeds the path limit, so the only followed path is the default
+  for a type above 10, which sets no scope; without the rule, archaeological site `weight` read
+  `this` not set beside the config's planet.
+
+`Field(g, k)` in the name pass is now only a load, the word at `[g] + k`; a move of it by an
+amount is unknown, so a database instance is the word that its slot's address holds.
+
+**Before and after.** Over the M452 recordings, before at `main` `a82d1df` (the tracked baseline),
+counted as field gaps:
+
+| Stop | Before | After |
+| --- | ---: | ---: |
+| path-limit | 62 | 67 |
+| some entry scopes unresolved | 49 | 51 |
+| no attributed evaluation | 47 | 37 |
+| loop-limit | 24 | 27 |
+| unnamed direct evaluations (registry) | 12 | 12 |
+| no-caller | 10 | 11 |
+| caller-depth | 8 | 9 |
+| instruction | 5 | 6 |
+| selected-block-identity | 4 | 4 |
+| branch-value | 2 | 2 |
+| only tooltip calls | 1 | 2 |
+
+Scope context goes from 1,465 to 1,470 complete fields. The command population does not change;
+parity changes in megastructure `outliner_trigger` alone (below). Seventeen fields change; each is
+listed here:
+
+- Gain a context and lose their gap: tradable action `ai_weight` (a country with a country `from`,
+  as the config states), technology tier `weight_modifier` and galactic focus `effect` (a country,
+  as the config states), first contact `on_roll_failed` (a first contact) and trait
+  `trade_acceptance_weight` (a leader, as the config states).
+- Gain a context, no gap change: greeting overlay sound `possible` and `weight` (a country), and
+  megastructure `outliner_trigger`, which `CMegaStructureTypeDatabase::PostReadInit` evaluates on a
+  fresh scope with no `this` to check the outliner icons; the config states a megastructure, which
+  the other runs read.
+- A narrower gap: archaeological site `weight` and tradable action `ai_acceptance` (path and loop
+  limits), deposit `drop_weight` (the bounds and an unreadable context), leader class `ai_weight`
+  (a country beside an `instruction` stop), system tooltip `custom_tooltip` (only tooltip calls).
+- A newly attributed evaluation with a gap: army `allow` (`CBuildableArmy::CanBuild` reaches it
+  with a colony and an unreadable scope at the path limit), building `potential`
+  (`CZoneType::CollectPotentialBuildingTypes` walks the zone's building array with a scope
+  parameter and has no direct caller) and dynamic text `available` (`NDynamicText::
+  BuildDynamicText` is past the caller depth).
+- The contradiction rule: ethic `playable` (`NGameUtil::SetupFakeCountryScope` is cut at the path
+  limit beside a scope with no `this`), which has no claim, so the SDK-812 accepted limit lists it.
+
+**Credit.** 3 of the 12 claims now have established contexts that agree with the config:
+tradable action `ai_weight`, technology tier `weight_modifier` and galactic focus `effect`.
+Outside the 12, trait `trade_acceptance_weight` resolves. Army `allow` has a claim and loses its
+complete status; its earlier context was a colony, beside the config's country.
+
+**Open, with a claim.** The other 9 claims, by obstacle:
+
+| Obstacle | Claims | Reopen path |
+| --- | --- | --- |
+| A bound on the run | archaeological site `weight` (the `FillEventScope` jump table above) | SDK-823 |
+| A level class with no constructor | specialist subject perk `activate_effect` and `deactivate_effect`: `CSpecialistSubjectLevel::OnLevelUp` and `DeactivatePerks` walk `this + 0x10`, but only the `CPdxArray<CSpecialistSubjectLevel, int>` methods (`InsertAt`, `GrowCapacity`) store the perk array's vtable, at element `+8` | type an element class by the array vtable that its array's methods store at element `+k` |
+| A spilled level | menace perk `on_unlock`: `CCrisisProgression::UnlockLevel` spills the level with `stur x1,[x29,#-0x60]`, passes that address to `InsertAtEmplace`, and reloads it with `ldur`. The name pass follows neither `stur` nor `ldur`, and a call that receives a slot's address forgets the slot. `CCrisisLevelType + 0x48` is typed. | follow `stur` and `ldur`, and keep a slot that a call receives as `T const&` |
+| An array returned through `x8` | terraform `ai_weight`: `CAIInteriorMinister::Terraform` walks the array that `CTerraformDatabase::GetAllAvailableLinks` builds at `x29 - 0x78`; the callee stores the vtable | type an `x8` result by the array vtable that its callee stores at `[x8]` |
+| A returned reference | technology category `weight_modifier`: `CTechnology::GetCategoriesFor` returns `this + 0x4f8` or `GetTechnologySwap(…) + 0x2f0`, not an offset getter | a getter that returns one of two typed arrays |
+| A map value | astral rift `event_weight`: `PickRandomAstralRiftTypeForCountry` loads the array value of a `CPdxUnorderedMap` entry | type a map's value array by the map's class |
+| A sort comparator | agreement preset `overlord_weight` and `subject_weight`: the weights are evaluated in the comparator inlined into `std::__stable_sort<…CalcBestAIAgreementProposal() const::$_2&, CAgreementPreset const**>`, with a captured scope | elements of a `O const**` parameter, and a scope captured by a lambda |
+

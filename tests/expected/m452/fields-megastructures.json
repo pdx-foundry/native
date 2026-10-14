@@ -4232,6 +4232,16 @@
       "name": "megastructure"
      }
     }
+   },
+   {
+    "from": [
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": "NotSet"
    }
   ],
   "members": "Unresolved",

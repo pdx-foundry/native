@@ -455,7 +455,7 @@ const UNNAMED_EVALUATION_REGISTRIES: [&str; 11] = [
 
 /// The M452 trigger, effect and weight fields with an entry-context gap and no field-level
 /// `replace_scopes` claim in the config. An entry-context gap of another field stays open.
-const ENTRY_CONTEXTS_WITHOUT_CLAIM: [(&str, &str); 93] = [
+const ENTRY_CONTEXTS_WITHOUT_CLAIM: [(&str, &str); 94] = [
     ("common/agreement_term_values", "resource_max"),
     ("common/agreement_term_values", "resource_min"),
     ("common/ai_budget", "desired_max"),
@@ -496,6 +496,7 @@ const ENTRY_CONTEXTS_WITHOUT_CLAIM: [(&str, &str); 93] = [
     ("common/espionage_assets", "potential"),
     ("common/espionage_operation_types", "on_create"),
     ("common/espionage_operation_types", "on_roll_failed"),
+    ("common/ethics", "playable"),
     ("common/federation_laws", "required_centralization"),
     ("common/first_contact", "on_abort"),
     ("common/first_contact", "on_create"),

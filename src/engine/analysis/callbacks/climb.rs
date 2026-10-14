@@ -12,7 +12,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::contexts::{Read, Selected};
-use super::names::{self, Fact, Known, OffsetGetter, Root, State, StringFunctions};
+use super::names::{self, Buffer, Fact, Known, OffsetGetter, Root, State, StringFunctions};
 use crate::engine::analysis::decode::{Instruction, number};
 use crate::engine::analysis::evaluate::Code;
 
@@ -174,7 +174,7 @@ pub(super) fn states_at(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     strings: &StringFunctions,
     offset_getters: &BTreeMap<u64, OffsetGetter>,
-    buffers: &BTreeMap<u64, BTreeSet<(usize, i64)>>,
+    buffers: &BTreeMap<u64, BTreeSet<Buffer>>,
     sites: impl Iterator<Item = (u64, u64)>,
 ) -> BTreeMap<u64, State> {
     let mut by_function: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();

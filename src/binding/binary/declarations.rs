@@ -10,7 +10,10 @@ use object::{Object, ObjectSection, SectionKind};
 use crate::engine::analysis::{
     InputError,
     declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
-    decode::{Instruction, blr_register, call_or_jump_target, call_target, decode_arm64},
+    decode::{
+        Instruction, add_immediate, adrp, blr_register, call_or_jump_target, call_target,
+        decode_arm64, ldr_immediate,
+    },
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{DataSection, Token, recover_decoded},
@@ -23,6 +26,10 @@ use super::super::targets::DeclarationRecipe;
 /// The most bytes of one function that the declaration and grammar readers keep. A longer body is
 /// cut at this length, and the grammar reader records it as a cut body.
 pub(super) const FUNCTION_BODY_LIMIT: u64 = 65_536;
+
+/// How many words after an `adrp` [`Text::functions_forming`] looks for the instruction that
+/// completes an address on its page.
+const ADDRESS_WINDOW: usize = 4;
 
 /// Read every registration call in executable text, including tail calls and calls in compiler
 /// outlined regions that have no reliable symbol boundary, with the code that composes run-time
@@ -394,6 +401,41 @@ impl<'a> Text<'a> {
                 targets.contains(&target).then_some((at, target))
             })
             .collect()
+    }
+
+    /// The functions that form one of `addresses`, each with those that it forms: an `adrp` of the
+    /// address's page, then, within the next [`ADDRESS_WINDOW`] words, an `add` or a 64-bit `ldr`
+    /// with an immediate on that `adrp`'s register that gives the address.
+    pub fn functions_forming(&self, addresses: &BTreeSet<u64>) -> BTreeMap<u64, BTreeSet<u64>> {
+        let words: Vec<u32> = self
+            .code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
+        let mut forming: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
+        for (index, &word) in words.iter().enumerate() {
+            let at = self.address + index as u64 * 4;
+            let Some((page_register, page)) = adrp(word, at) else {
+                continue;
+            };
+
+            let formed = words[index + 1..]
+                .iter()
+                .take(ADDRESS_WINDOW)
+                .filter_map(|&word| add_immediate(word).or_else(|| ldr_immediate(word)))
+                .filter(|&(_, base, _)| base == page_register)
+                .map(|(_, _, offset)| page + offset)
+                .filter(|address| addresses.contains(address));
+            let formed: BTreeSet<u64> = formed.collect();
+            if let Some(&function) = self.starts.range(..=at).next_back()
+                && !formed.is_empty()
+            {
+                forming.entry(function).or_default().extend(formed);
+            }
+        }
+        forming
     }
 
     /// Every `blr` in address order, with the register that it calls through.
