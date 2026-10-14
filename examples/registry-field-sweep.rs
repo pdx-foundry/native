@@ -226,8 +226,23 @@ fn reader_census(native: &Native) -> Result<Value, Box<dyn std::error::Error>> {
     }))
 }
 
-/// Every owner initializer in the executable, by what the method established about its lookup.
-/// Complete: a qualified shape, a content directory and a key match. Failed: the initializer
+/// The first fact that an initializer's lookups leave unestablished, if any.
+fn unestablished(lookups: &[reference_readers::InitializationLookup]) -> Option<&'static str> {
+    lookups.iter().find_map(|lookup| {
+        if lookup.directory.is_none() {
+            Some("no-content-directory")
+        } else if lookup.unstated.is_some() {
+            Some("semantics-not-stated")
+        } else if lookup.lookup.key_match.is_none() {
+            Some("search-not-qualified")
+        } else {
+            None
+        }
+    })
+}
+
+/// Every owner initializer in the executable, by what the method established about its lookups.
+/// Complete: a qualified shape, and for each lookup a content directory and every fact. Failed: the initializer
 /// searches a database, but no qualified shape established the lookup.
 fn initializer_census(facts: &reference_readers::ReferenceFacts) -> Value {
     use reference_readers::Initialization;
@@ -239,16 +254,9 @@ fn initializer_census(facts: &reference_readers::ReferenceFacts) -> Value {
     for (name, initialization) in &facts.initializers {
         match initialization {
             Initialization::NoLookup => no_lookup += 1,
-            Initialization::Lookup(found) => match (&found.directory, found.lookup.key_match) {
-                (Some(_), Some(_)) => complete.push(name.as_str()),
-                (None, _) => partial
-                    .entry("no-content-directory")
-                    .or_default()
-                    .push(name),
-                (Some(_), None) => partial
-                    .entry("search-not-qualified")
-                    .or_default()
-                    .push(name),
+            Initialization::Lookups(lookups) => match unestablished(lookups) {
+                None => complete.push(name.as_str()),
+                Some(reason) => partial.entry(reason).or_default().push(name),
             },
             Initialization::Unresolved(stop) => failed.entry(stop.reason).or_default().push(name),
         }

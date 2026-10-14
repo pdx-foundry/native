@@ -250,7 +250,7 @@ fn stores_last_deferred_key(callee: &str, references: &ReferenceFacts) -> bool {
             &fact.lookup,
             Ok(Lookup {
                 stage: references::Stage::Deferred,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
                 ..
             })
         )
@@ -315,20 +315,20 @@ pub(super) fn field(
     normalized
 }
 /// Normalize command children from their dispatch ledger, without registry storage or uses.
-/// `initialization` is the receiver's initialization lookup, which joins the child keys that
-/// store its key string; each joined read alternative keeps its own condition.
+/// `initialization` holds the receiver's initialization lookups; each joins the child keys that
+/// store its key string, and each joined read alternative keeps its own condition.
 pub(super) fn grammar_fields(
     fields: &[RootField],
     paths: &[TokenPath],
     references: &ReferenceFacts,
-    initialization: Option<&InitializationLookup>,
+    initialization: &[InitializationLookup],
 ) -> Vec<Field> {
     let persistent = BTreeMap::new();
     fields
         .iter()
         .map(|field| {
             let mut normalized = ordinary_field(field, fields, paths, &persistent, references);
-            if let Some(initialization) = initialization {
+            for initialization in initialization {
                 for lookup in initialization_lookups(field, fields, paths, initialization) {
                     normalized.reference =
                         with_lookup(std::mem::take(&mut normalized.reference), lookup);
@@ -585,9 +585,10 @@ pub(super) fn reference_lookup(
             EmptyKey::NotLookedUp
         },
         on_missing: match lookup.on_missing {
-            Missing::NullObject => MissingResult::NullObject,
-            Missing::ScriptedTriggerPlaceholder => MissingResult::ScriptedTriggerPlaceholder,
-            Missing::Omitted => MissingResult::Omitted,
+            Some(Missing::NullObject) => MissingResult::NullObject,
+            Some(Missing::ScriptedTriggerPlaceholder) => MissingResult::ScriptedTriggerPlaceholder,
+            Some(Missing::Omitted) => MissingResult::Omitted,
+            None => MissingResult::Unresolved,
         },
     }
 }
@@ -643,7 +644,9 @@ pub(super) fn initialization_gap(initialization: &InitializationLookup) -> Optio
     if initialization.directory.is_none() {
         missing.insert(NO_DIRECTORY);
     }
-    if initialization.lookup.key_match.is_none() {
+    if let Some(unstated) = initialization.unstated {
+        missing.insert(unstated);
+    } else if initialization.lookup.key_match.is_none() {
         missing.insert(UNQUALIFIED_SEARCH);
     }
 
@@ -1155,7 +1158,7 @@ mod tests {
                             stage: Stage::Deferred,
                             key_match: None,
                             empty_key_looked_up: true,
-                            on_missing: Missing::NullObject,
+                            on_missing: Some(Missing::NullObject),
                         }),
                         null_object: Some("TPdxNullObject<CStaticModifier>::_pInstance".into()),
                     },
@@ -1416,7 +1419,7 @@ mod tests {
                 stage: Stage::Deferred,
                 key_match: None,
                 empty_key_looked_up: true,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
             }),
             null_object: Some(format!("TPdxNullObject<{database}>::_pInstance")),
         };
@@ -1499,11 +1502,12 @@ mod tests {
                 stage: Stage::OwnerInitialization,
                 key_match: Some(references::KeyMatch::Equal),
                 empty_key_looked_up: false,
-                on_missing: Missing::NullObject,
+                on_missing: Some(Missing::NullObject),
             },
-            execution: Execution::Inline {
+            unstated: None,
+            execution: Some(Execution::Inline {
                 null: "TPdxNullObject<CShipSize>::_pInstance".into(),
-            },
+            }),
         }
     }
 
@@ -1559,12 +1563,7 @@ mod tests {
         ];
         let references = ReferenceFacts::default();
 
-        let fields = grammar_fields(
-            &[flag, size],
-            &paths,
-            &references,
-            Some(&initialization(0xa8)),
-        );
+        let fields = grammar_fields(&[flag, size], &paths, &references, &[initialization(0xa8)]);
 
         let FieldReference::Lookups(lookups) = &fields[1].reference else {
             panic!("{:?}", fields[1].reference);
@@ -1724,7 +1723,7 @@ mod tests {
                         stage: Stage::Deferred,
                         key_match: None,
                         empty_key_looked_up: true,
-                        on_missing: Missing::NullObject,
+                        on_missing: Some(Missing::NullObject),
                     }),
                     null_object: Some("TPdxNullObject<CShip>::_pInstance".into()),
                 },

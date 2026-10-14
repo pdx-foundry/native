@@ -1411,6 +1411,13 @@ fn explore_member_with_wrapped_owner(
                     });
                     continue;
                 }
+                if row.operation == "bl"
+                    && target == input.key_readers.string_read
+                    && returns_through_empty_call(&rows[state.pc..], input)
+                    && let PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) = &mut outcome
+                {
+                    *tail = true;
+                }
                 if let (PathOutcome::Reader(_), Some(case)) = (&outcome, state.table_case) {
                     table_readers.push((leaves.len(), case));
                 }
@@ -1450,6 +1457,31 @@ fn explore_member_with_wrapped_owner(
             .then(a.conditions.cmp(&b.conditions))
     });
     (leaves, tables)
+}
+
+/// Whether the code after a read (`continuation`) only restores registers and the frame, then
+/// returns through a tail call to a function whose body only returns. Such a continuation writes
+/// no memory, so the read is the path's last write to its destination, as a tail-called read is.
+fn returns_through_empty_call(continuation: &[Instruction], input: &DispatchInput<'_>) -> bool {
+    for row in continuation {
+        match row.operation.as_str() {
+            "mov" => {}
+            "ldp" | "ldr" if row.operands.contains("[sp") => {}
+            "add" if row.operands.starts_with("sp,sp,") => {}
+            "b" => {
+                return number(&row.operands)
+                    .and_then(|address| input.symbol_index.name(input.symbols, address as u64))
+                    .and_then(|name| input.function(name))
+                    .and_then(|body| decode(body).ok())
+                    .is_some_and(
+                        |rows| matches!(rows.as_slice(), [only] if only.operation == "ret"),
+                    );
+            }
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 /// The stack offset that a joined `CReader::Read(bool&)` writes, when its destination is a stack

@@ -1,0 +1,90 @@
+# {Owner}::PostInit() as a linear scan of {database} that keeps an item only when its validity
+# check passes: the item array (+0x48) and count (+0x54), each item's key string (item+{key},
+# length item+{length}, flag byte item+{flag}) compared by length, then bytes with an inline loop
+# or memcmp, against the owner's key string (this+{input}, length this+{input_length}, flag byte
+# this+{input_flag}). An empty key selects the first item with an empty key. The first equal item,
+# or the typed null object {null} when none is equal, is the selected object; its vtable slot
+# 0x10 is called, and this+{output} stores the selected object plus 0x38 when the check returns
+# nonzero, otherwise a null pointer.
+stp xr0,xr1,[sp,#-0x50]!
+stp xr2,xr3,[sp,#0x10]
+stp xr4,xr5,[sp,#0x20]
+stp xr6,xr7,[sp,#0x30]
+stp x29,x30,[sp,#0x40]
+add x29,sp,#0x40
+mov xr7,x0
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {database}
+ldr xr8,[xr8]
+ldr wr3,[xr8,#0x54]
+cmp wr3,#0x1
+b.lt @+53
+add xr9,xr7,#{input}
+ldr xr2,[xr8,#0x48]
+ldrb wr8,[xr7,#{input_flag}]
+sxtb wr10,wr8
+ldr xr11,[xr7,#{input_length}]
+cmp wr10,#0x0
+csel xr5,xr11,xr8,lt
+ldr xr8,[xr7,#{input}]
+csel xr4,xr8,xr9,lt
+cbz xr5,@+6
+mov xr1,#0x0
+b @+20
+add xr2,xr2,#0x8
+subs xr3,xr3,#0x1
+b.eq @+38
+ldr xr6,[xr2]
+ldrb wr8,[xr6,#{flag}]
+sxtb wr9,wr8
+ldr xr10,[xr6,#{length}]
+cmp wr9,#0x0
+csel xr8,xr10,xr8,lt
+cbnz xr8,@-9
+b @+33
+ldr x0,[xr8]
+mov x1,xr4
+mov x2,xr5
+bl CALL = _memcmp
+cbz w0,@+28
+add xr1,xr1,#0x1
+cmp xr1,xr3
+b.eq @+22
+ldr xr6,[xr2,xr1,lsl#3]
+ldrb wr9,[xr6,#{flag}]
+sxtb wr8,wr9
+ldr xr10,[xr6,#{length}]
+cmp wr8,#0x0
+csel xr8,xr10,xr9,lt
+cmp xr8,xr5
+b.ne @-10
+add xr8,xr6,#{key}
+tbnz wr9,#7,@-17
+sub xr9,xr9,#0x1
+mov xr10,xr4
+ldrb wr11,[xr8],#0x1
+ldrb wr12,[xr10],#0x1
+cmp wr11,wr12
+ccmp xr9,#0x0,#0x4,eq
+sub xr9,xr9,#0x1
+b.ne @-5
+cmp wr11,wr12
+b.ne @-22
+b @+4
+adrp xr8,PAGE
+ldr xr8,[xr8,G] = {null}
+ldr xr6,[xr8]
+mov xr5,xr6
+ldr xr8,[xr5],#0x38
+ldr xr8,[xr8,#0x10]
+mov x0,xr6
+blr xr8
+cmp w0,#0x0
+csel xr8,xr5,xzr,ne
+str xr8,[xr7,#{output}]
+ldp x29,x30,[sp,#0x40]
+ldp xr6,xr7,[sp,#0x30]
+ldp xr4,xr5,[sp,#0x20]
+ldp xr2,xr3,[sp,#0x10]
+ldp xr0,xr1,[sp],#0x50
+ret

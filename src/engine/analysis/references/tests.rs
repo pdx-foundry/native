@@ -190,6 +190,13 @@ pub(super) fn shape(name: &str) -> &'static str {
         "initializer_map" => include_str!("shapes/initializer_map.shape"),
         "initializer_map_nonempty" => include_str!("shapes/initializer_map_nonempty.shape"),
         "initializer_getter" => include_str!("shapes/initializer_getter.shape"),
+        "initializer_scan_valid" => include_str!("shapes/initializer_scan_valid.shape"),
+        "initializer_scan_valid_flag" => include_str!("shapes/initializer_scan_valid_flag.shape"),
+        "initializer_getter_scan_nonempty" => {
+            include_str!("shapes/initializer_getter_scan_nonempty.shape")
+        }
+        "event_getter" => include_str!("shapes/event_getter.shape"),
+        "hash_getter" => include_str!("shapes/hash_getter.shape"),
         "null_getter" => include_str!("shapes/null_getter.shape"),
         "hash_find" => include_str!("shapes/hash_find.shape"),
         "deferred" => include_str!("shapes/deferred.shape"),
@@ -299,7 +306,7 @@ fn a_deferred_reader_with_a_forwarded_scan_is_a_deferred_first_equal_lookup() {
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         })
     );
     assert_eq!(
@@ -440,7 +447,7 @@ fn an_immediate_reader_looks_up_while_reading_and_names_its_own_clone() {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         })
     );
     assert_eq!(
@@ -549,7 +556,7 @@ fn an_immediate_list_omits_a_key_whose_null_object_fails_its_validity_check() {
             stage: Stage::WhileReading,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::Omitted,
+            on_missing: Some(Missing::Omitted),
         })
     );
     assert_eq!(fact.null_object.as_deref(), Some(SHIP_NULL));
@@ -670,7 +677,7 @@ fn a_deferred_list_replaces_each_appended_null_object_with_the_first_equal_item(
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         })
     );
     assert_eq!(
@@ -832,7 +839,7 @@ fn the_trigger_lookup_runs_while_reading_and_makes_a_placeholder_on_a_miss() {
             stage: Stage::WhileReading,
             key_match: None,
             empty_key_looked_up: true,
-            on_missing: Missing::ScriptedTriggerPlaceholder,
+            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
         })
     );
 }

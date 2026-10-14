@@ -164,8 +164,8 @@ pub struct Lookup {
     pub key_match: Option<KeyMatch>,
     /// Whether an empty key is looked up like any other key.
     pub empty_key_looked_up: bool,
-    /// What a key that selects no item yields.
-    pub on_missing: Missing,
+    /// What a key that selects no item yields, when it is a result that `Missing` names.
+    pub on_missing: Option<Missing>,
 }
 
 /// Everything established about one reference reader.
@@ -335,7 +335,7 @@ impl Method<'_> {
             stage: Stage::WhileReading,
             key_match,
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         };
 
         Ok((lookup, null))
@@ -367,7 +367,7 @@ impl Method<'_> {
             stage: Stage::Deferred,
             key_match,
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         };
 
         Ok((lookup, null))
@@ -404,7 +404,7 @@ impl Method<'_> {
             stage: Stage::WhileReading,
             key_match,
             empty_key_looked_up: true,
-            on_missing: Missing::Omitted,
+            on_missing: Some(Missing::Omitted),
         };
 
         Ok((lookup, bindings["null"].clone()))
@@ -449,7 +449,7 @@ impl Method<'_> {
             stage: Stage::Deferred,
             key_match: Some(KeyMatch::FirstEqual),
             empty_key_looked_up: true,
-            on_missing: Missing::NullObject,
+            on_missing: Some(Missing::NullObject),
         };
 
         Ok((lookup, scan["null"].clone()))
@@ -493,7 +493,7 @@ impl Method<'_> {
             stage: Stage::WhileReading,
             key_match: None,
             empty_key_looked_up: true,
-            on_missing: Missing::ScriptedTriggerPlaceholder,
+            on_missing: Some(Missing::ScriptedTriggerPlaceholder),
         })
     }
 
