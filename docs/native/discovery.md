@@ -37,7 +37,7 @@ check a method in one task.
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
 | `Native::loader_rules` | `loader-rules/v5` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
-| `Native::derived_names` | `derived-names/v4` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
+| `Native::derived_names` | `derived-names/v5` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
 ## Registry sweep (SDK-553)
@@ -77,7 +77,7 @@ ticket that owns them. The sweep repaired none. SDK-809, SDK-810, SDK-811 and SD
 | SDK-710 | 1,080 | 150 | No shared reader, reader paths that stop, unnamed keys, unreadable input |
 | SDK-807 | 672 | 3 | Reader and read scope of the pre_trigger keys |
 | SDK-809 | 387 | 59 | Numeric conversion: accepted |
-| SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed |
+| SDK-707 | 328 | 116 | `derived_names` paths that stop; [interface callers](derived-names.md#interface-callers-of-name-getters-m452) followed; SDK-820 [repaired `string-object` and named the other obstacles](derived-names.md#paths-that-stop-sdk-820) |
 | SDK-810 | 326 | 58 | `derived_names` conditions, misses and every-item initialization: accepted |
 | SDK-713 | 253 | 179 | `modifier_families` unjoined sites and generation conditions: [repaired in part](modifier-families.md#conditions) |
 | SDK-811 | 252 | 45 | Loader conditions and use-time selections (`UnresolvedCondition`): accepted |
@@ -105,6 +105,17 @@ their return), and their six new sprite names add 12 condition and miss gaps. On
 relationship status changes. The
 [string fields with a lookup claim](derived-names.md#string-fields-with-a-lookup-claim) keep the
 internal path shapes of their registries.
+
+SDK-820 (2026-10-13) groups the 349 `derived_names` path gaps on `main` `af4fb57` by stop reason
+([paths that stop](derived-names.md#paths-that-stop-sdk-820)) and repairs the one shared shape: a
+root's string function that writes an object the run does not know, such as the tooltip that a
+`GetToolTip(CToolTip&, …)` root receives, no longer stops the path. Over static recordings
+(`registry-sweep --record`) at `af4fb57` and after the change, the `string-object` gaps of 45
+registries close and the path gaps go from 349 to 307; open gaps go from 3,399 to 3,357 and
+accepted gaps from 1,158 to 1,202 (the SDK-810 condition and miss gaps of 22 new names). No
+relationship status or rate changes, and `--diff` names 46 registries. The 69 fields of SDK-707's
+third row are [mostly read by no method that the runs follow](derived-names.md#the-fields-in-registries-whose-paths-stop):
+their registries' stops are not their obstacle.
 
 ### Accepted limits (SDK-819)
 
