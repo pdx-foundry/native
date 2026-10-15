@@ -1298,13 +1298,13 @@ on `x1 + 0x2e0`, and `CMission::Start` loads its mission type from `this + 0x18`
 **The method.** A *type pointer* is a register that points at an owner's item at entry: the
 receiver of a member of the owner, by the function's exact qualifier (a member of
 `CAnomalyType::COutcomeEffect` is not a member of `CAnomalyType`); a parameter of type `O const*`,
-`O*`, `O const&` or `O&`; or the word at offset `k` of an object of class `C`, when every
-constructor of `C` decodes, and its constructors and the members of `C` that load
-`TPdxNullObject<O>::_pInstance` store there an item of `O` (a parameter of one of those types, or
-that null object) and no item of another owner or other named value (`CMission` `+0x18`,
-`CResolution` `+0x18`, `CTechnology` `+0x600`, `CGalacticCommunity` `+0x2c0`; SDK-830). A stored
-null, and a value that the name pass does not name, agree with any owner. A parameter's register is known up to the first parameter that one
-general register may not pass (pointers, references, integers, `bool` and `TPdxRef<…>` take one);
+`O*`, `O const&` or `O&`; or the word at offset `k` of an object of class `C`, when the
+constructors of `C` and the members of `C` that load `TPdxNullObject<O>::_pInstance` store there
+an item of `O` (a parameter of one of those types, or that null object) and no item of another
+owner or other named value, and each of them decodes (`CMission` `+0x18`, `CResolution` `+0x18`,
+`CTechnology` `+0x600`, `CGalacticCommunity` `+0x2c0`; SDK-830). A stored null, and a value that
+the name pass does not name, agree with any owner. A parameter's register is known up to the
+first parameter that one general register may not pass (pointers, references, integers, `bool` and `TPdxRef<…>` take one);
 an enumeration, which a demangled name does not tell from a class, ends them, and a function whose
 qualifier is not a known class or `(anonymous namespace)` has none. A class is a qualifier with a vtable, a type info, a
 constructor, a destructor or a `const` member function: `CSubjectSpecialization` has only `const`

@@ -10,7 +10,7 @@
 //! - an object of a class `C` whose word at offset `k` leads to `O`: the constructors of `C`, and
 //!   the members of `C` that load `TPdxNullObject<O>::_pInstance`, store there an item of `O` (a
 //!   parameter of one of those types, or that null object) and no item of another owner or other
-//!   named value, and every constructor of `C` decodes. A stored null, and a value that the name
+//!   named value, and each of these functions decodes. A stored null, and a value that the name
 //!   pass does not name, agree with any owner.
 //!
 //! A buffer of pointers to items of `O` is the word at [`ARRAY_BUFFER`] in a `CPdxArray<O const*,
@@ -93,8 +93,20 @@ impl<'a> TypeOwners<'a> {
         let arrays = member_arrays(text, &constructors, &forming, owners, &evidence);
         let instances = instance_slots(symbols, pointers, &arrays);
         evidence.elements = instance_buffers(&instances, &arrays).collect();
-        let writers = null_object_writers(symbols, &constructors, &forming, &evidence);
-        let members = member_words_of_classes(text, &constructors, &writers, owners, &evidence);
+        let null_loaders: BTreeSet<u64> = forming
+            .iter()
+            .filter(|(_, formed)| formed.iter().any(|slot| evidence.is_null_object(*slot)))
+            .map(|(&function, _)| function)
+            .collect();
+        let writers = null_object_writers(symbols, &constructors, &null_loaders);
+        let members = member_words_of_classes(
+            text,
+            &constructors,
+            &writers,
+            &null_loaders,
+            owners,
+            &evidence,
+        );
         let instance_loads = text
             .functions_forming(&instances.keys().copied().collect())
             .into_iter()
@@ -293,23 +305,17 @@ fn instance_buffers<'s, 'a: 's>(
     })
 }
 
-/// The member functions, other than constructors and destructors, of each class with a
-/// constructor that load an owner's null object.
+/// The member functions of `null_loaders`, other than constructors and destructors, of each class
+/// with a constructor.
 fn null_object_writers<'a>(
     symbols: &'a [Symbol],
     constructors: &ClassFunctions<'a>,
-    forming: &BTreeMap<u64, BTreeSet<u64>>,
-    evidence: &Evidence<'a>,
+    null_loaders: &BTreeSet<u64>,
 ) -> ClassFunctions<'a> {
-    let loads_null_object = |address: &u64| {
-        forming
-            .get(address)
-            .is_some_and(|formed| formed.iter().any(|slot| evidence.is_null_object(*slot)))
-    };
     let mut writers: ClassFunctions = BTreeMap::new();
     for symbol in symbols
         .iter()
-        .filter(|symbol| loads_null_object(&symbol.address))
+        .filter(|symbol| null_loaders.contains(&symbol.address))
     {
         if symbol.name.contains(".cold.") || constructed_class(&symbol.name).is_some() {
             continue;
@@ -330,32 +336,32 @@ fn null_object_writers<'a>(
 }
 
 /// The member words that lead to an owner, by class, from the stores of each class's
-/// constructors and null-object `writers`. A class whose constructors take no owner parameter and
-/// that has no such writer has none.
+/// constructors and null-object `writers`. A class has none when none of its constructors takes
+/// an owner parameter or is one of `null_loaders` and it has no such writer, or when one of these
+/// functions does not decode.
 fn member_words_of_classes<'a>(
     text: &Text,
     constructors: &ClassFunctions<'a>,
     writers: &ClassFunctions<'a>,
+    null_loaders: &BTreeSet<u64>,
     owners: &BTreeSet<&'a str>,
     evidence: &Evidence<'a>,
 ) -> BTreeMap<&'a str, BTreeMap<i64, &'a str>> {
     let buffers: BTreeSet<Buffer> = evidence.elements.keys().copied().collect();
     let mut members = BTreeMap::new();
     for (&class, constructors) in constructors {
-        let typed_parameters = constructors
-            .iter()
-            .any(|(_, name)| !parameter_owners(name, owners).is_empty());
+        let typed = constructors.iter().any(|(address, name)| {
+            null_loaders.contains(address) || !parameter_owners(name, owners).is_empty()
+        });
         let others = writers.get(class).map_or(&[][..], Vec::as_slice);
-        if !typed_parameters && others.is_empty() {
+        if !typed && others.is_empty() {
             continue;
         }
-        let Some(constructors) = stores_of(text, constructors, owners, &buffers) else {
+        let stores = stores_of(text, constructors, owners, &buffers)
+            .zip(stores_of(text, others, owners, &buffers));
+        let Some((constructors, others)) = stores else {
             continue;
         };
-        let others: Vec<Stores> = others
-            .iter()
-            .filter_map(|&writer| stores_of(text, &[writer], owners, &buffers)?.pop())
-            .collect();
 
         let words = member_words(constructors.iter().chain(&others), evidence);
         if !words.is_empty() {
