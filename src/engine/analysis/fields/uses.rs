@@ -741,6 +741,7 @@ mod tests {
                 address: 0x1000,
                 code,
             }],
+            stubs: Default::default(),
             strings: Default::default(),
             read_only_data: vec![],
             objects: vec![],

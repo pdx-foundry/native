@@ -2228,12 +2228,18 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
     assert_eq!(
         names,
         [
+            "icon",
             "key",
+            "custom_tooltip",
             "apply_modifier_to_other_planets",
-            "divide_over_pop_groups"
+            "show_only_custom_tooltip",
+            "icon_frame",
+            "important",
+            "divide_over_pop_groups",
+            "hide_from_country_list"
         ]
     );
-    // Other tokens go to the base class's `ReadMember`, an inherited reader outside the method.
+    // The inherited `CGraphicalModifier::ReadMember` passes its other tokens to a virtual call.
     assert_eq!(answer.completeness, Completeness::Partial);
     let registry = Some(GapSubject::Registry {
         name: "common/static_modifiers".into(),
@@ -2273,6 +2279,38 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
             reason: "2 databases load this directory".into(),
         })
     );
+}
+
+/// Starbase modules and buildings read their shared keys through
+/// `CStarbaseComponent<T>::ReadMember`, which they call through an import stub
+/// (`docs/native/registry-fields.md`, inherited member readers).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn starbase_components_read_their_shared_keys_through_the_inherited_reader() {
+    let native = native();
+    for registry in ["common/starbase_modules", "common/starbase_buildings"] {
+        let answer = native.registry_fields(registry).unwrap();
+        let names: Vec<_> = answer
+            .value
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+
+        for shared in ["icon", "construction_days", "potential", "ship_modifier"] {
+            assert!(
+                names.contains(&shared),
+                "{registry} lacks {shared}: {names:?}"
+            );
+        }
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind != GapKind::UnnamedField),
+            "{registry}: {:?}",
+            answer.gaps
+        );
+    }
 }
 
 /// The derived-name and family methods read a custom loader's owner as they read a template

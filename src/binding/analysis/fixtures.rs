@@ -310,6 +310,7 @@ mod tests {
                 Symbol { address: 0x3000, name: "CReader::Read(fpml::fixed_point<long long, (unsigned char)48, (unsigned char)15>&)".into() },
             ],
             functions: vec![Function { address: 0x1000, name: "Owner::ReadMember(CReader&, int)".into(), code }],
+            stubs: Default::default(),
             strings: Default::default(), read_only_data: vec![], objects: vec![], persistent: None, gaps: vec![], key_readers: Default::default(),
         }
     }
