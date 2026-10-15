@@ -819,9 +819,7 @@ fn apply(
                 }
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
-                if let Some(Value::Converted(converter)) = state.value(operand)
-                    && state.stored.is_none()
-                {
+                if let Some(Value::Converted(converter)) = state.value(operand) {
                     let callee = input.symbol_index.name(input.symbols, converter);
                     let join = ReaderJoin::Stored {
                         callee: callee.unwrap_or_default().into(),
@@ -1256,6 +1254,7 @@ fn explore_member_with_wrapped_owner(
                     .filter(|&name| readers::is_inheritable_member(name));
                 // The owner's inherited reader handles the tokens that this reader passes on.
                 if let Some(inherited) = inherited
+                    && state.stored.is_none()
                     && !input.member_delegates
                     && depth < 8
                     && forwards_member_arguments(&state)

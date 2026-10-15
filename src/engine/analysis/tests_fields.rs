@@ -2239,6 +2239,58 @@ fn a_stored_read_of_an_inherited_reader_that_returns_has_no_repeat() {
 }
 
 #[test]
+fn an_inherited_reader_after_a_pending_stored_read_is_not_followed() {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = compound_fixture(arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1; mov x21, x2;
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        bl extern 0xd000; // emplace
+        ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+        mov w10, #0x28; madd x8, x9, x10, x8;
+        sub x1, x8, #0x28; mov x0, x20;
+        bl extern 0xf000; // CReader::Read(CString&, bool), not a tail call
+        mov x0, x19; mov x1, x20; mov x2, x21;
+        bl extern 0x7800; // CBase::ReadMember
+        ret
+    ));
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0x7800,
+        code: arm64!(at 0x7800;
+            cmp w2, #7; b.eq extern 0x7810;
+            mov w0, #0; ret;
+            add x8, x0, #0x48; // a second member
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000 // CReader::Read
+        ),
+    });
+    input.symbols.push(Symbol {
+        name: inherited.into(),
+        address: 0x7800,
+    });
+
+    let result = derive(input);
+
+    let read: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .map(|path| &path.outcome)
+        .collect();
+    assert!(
+        matches!(
+            read[..],
+            [PathOutcome::Gap(stop)] if stop.reason == "compound-reader-overwrite"
+        ),
+        "{read:?}"
+    );
+}
+
+#[test]
 fn only_a_plain_string_read_gives_a_derived_name_its_storage() {
     use crate::engine::analysis::names::{StoredField, storage};
     let array = arm64!(at 0x1000;

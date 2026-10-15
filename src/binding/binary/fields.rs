@@ -351,8 +351,28 @@ fn push_inherited_readers(
             if body != call.address {
                 stubs.insert(call.address, body);
             }
-            // Another collection step may have added the body already; it is still scanned once.
-            if push_function(text, functions, definition) {
+            // Another collection step may have added the body already, under another name. Dispatch
+            // finds a body by name, so the inherited reader keeps its own copy.
+            let alias = functions
+                .iter()
+                .find(|function| function.address == body && function.name != call.name)
+                .map(|function| Function {
+                    name: call.name.clone(),
+                    ..function.clone()
+                });
+            let named = functions
+                .iter()
+                .any(|function| function.address == body && function.name == call.name);
+            let collected = match alias {
+                _ if named => true,
+                Some(alias) => {
+                    functions.push(alias);
+                    true
+                }
+                None => push_function(text, functions, definition),
+            };
+
+            if collected {
                 callers.push(call.name);
             }
         }
