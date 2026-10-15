@@ -49,7 +49,8 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 [token converters](#keyword-domains-sdk-828) as keyword readers: 14 registries change,
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
-`possible_construction` and `potential_construction`). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+`possible_construction` and `potential_construction`). SDK-823's
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -1874,7 +1875,7 @@ fields. Reopen a field's gaps when the config gives it a claim, or when Atlas ma
 
 | Stop | Disposition | Checked members |
 | --- | --- | --- |
-| Path and loop limits | A larger bound reaches no new evaluation: 1,024 paths take over 20 minutes for one registry and remove one gap. The runs fork on script-profiler and string-length branches. Reopen with a path join that merges states that differ only in dead registers. | astral action `potential`, casus belli `potential`, megastructure `tooltip_system_score` (`BuildBestSystemsText` reaches no evaluation) |
+| Path and loop limits | A larger bound reaches no new evaluation: 1,024 paths take over 20 minutes for one registry and remove one gap. The runs fork on script-profiler and string-length branches. [Path joins](#path-joins-on-m452-sdk-823) (SDK-823) merge those paths. | astral action `potential`, casus belli `potential`, megastructure `tooltip_system_score` (`BuildBestSystemsText` reaches no evaluation) |
 | caller-depth | One more caller turns casus belli `is_valid` into path and loop bounds and an unreadable context (measured at depth 3). | casus belli `is_valid`; astral action `potential` and `is_exhausted` (`GetTooltip`) |
 | No attributed evaluation | [SDK-824](#arrays-and-owner-getters-on-m452-sdk-824) resolves 8 of these claims and [SDK-830](#member-and-database-arrays-on-m452-sdk-830) 3 more; that section names the obstacle of each claim that is left. | tradable action `on_traded_effect`, agreement term value `activate_effect`, terraform `ai_weight` |
 | instruction | The astral `IsAllowed` run from `CAlertManager::Update` stops in floating-point alert arithmetic (`fminnm`, `fmaxnm`, `fcmp`, `fadd`, `fcsel` in turn), and the same run reaches its loop bound, so more instructions change no answer. | astral action `allow`, `potential`, `is_exhausted` |
@@ -1970,6 +1971,89 @@ loads each type from the database's item array and evaluates `+0x58`. No signatu
 arrays' element types. Psionic aura `monthly_decrease` and `monthly_increase` gain an unreadable
 context at the path limit and trait `cost` a country beside a `no-caller` gap; they are outside this
 group.
+
+### Path joins on M452 (SDK-823)
+
+**Atlas need.** After SDK-812 and SDK-824, 30 fields with a field-level `replace_scopes` claim and
+a known read scope kept an entry-context stop at a path, loop or caller bound, an instruction, a
+selected-block identity or an unresolved entry scope (Atlas ledger at config `8574760`): astral
+action `potential`, `allow`, `allow_unlock` and `is_exhausted`; casus belli `potential`, `is_valid`
+and `destroy_if`; building and decision `show_tech_unlock_if`; event chain `abort_trigger`;
+federation law `on_enact`; megastructure `tooltip_system_score` and `tooltip_system_filter`; the
+eight mission blocks; observation mission `valid`; anomaly `on_spawn`; terraform `on_queued`;
+tradition and ascension perk `on_enabled`; opinion modifier `opinion`; councilor
+`ai_hiring_weight`; and psionic aura `monthly_decrease` and `monthly_increase`.
+
+**Repair.** A run of several paths (`run_paths`, `run_paths_to`) drops a path that arrives at a
+join point, an instruction with more than one direct predecessor, in the state of an earlier path
+of the run (`evaluate/joins.rs`). The state leaves out the general registers and flags that no
+path from there reads before writing them, by a backward liveness over the decoded code that
+follows the calling convention (a call reads `x0` to `x8` and the callee-saved registers; a return
+gives `x0` to `x7` and the callee-saved registers), and the stack below the stack pointer. A path
+that has come round each loop at least as often as the earlier path joins it too, so a loop pass
+that changes nothing reaches no loop bound. Profiler and string-length tests (`_g_ScriptProfiler`,
+the long-string bit of a `CString`) split the paths, and the paths meet again after each test with
+the same live state. Rules, each with authored tests:
+
+- Steps are not compared: when the earlier path stops at the step limit, the run reports that
+  bound.
+- A run that joins at loop heads (`run_paths_joining`) does not join paths this way: its paths go
+  on from facts that later arrivals make fewer, so two paths in one state at different times need
+  not run the same way. Joining them lost the silent `{key}_delayed` of traditions.
+- A direct call to code that the run may enter reads what that code reads: a `.cold` clone reads
+  its caller's scratch registers.
+- A run that tracks an owner, watches receiver reads, records decisions or intercepts tail calls
+  keeps every path.
+- When every path of a run joins and none ends, the run gives one path stopped at `loop-limit`.
+- Lane-wise vector `add` and `sub` run (`add v0.2d,v4.2d,v0.2d`): a joined run of
+  `CMegaStructureType::BuildBestSystemsText` reaches one.
+
+**Before and after.** Over the M452 recordings, before at `main` `f06c8a3`, the field sweep's
+entry-context gaps:
+
+| Stop | Before | After |
+| --- | ---: | ---: |
+| path-limit | 67 | 36 |
+| loop-limit | 27 | 14 |
+| some entry scopes unresolved | 51 | 55 |
+| instruction | 6 | 7 |
+
+The other stops do not change. 12 blocks lose every entry gap and 5 gain contexts; `scope_context`
+goes from 1,473 to 1,479 complete fields. Most runs that stopped at a bound now reach their
+evaluation, and where the scope there is not readable the gap becomes the unresolved scope that
+was behind the bound.
+
+Run time, measured before SDK-830 at `a82d1df` in two paired runs on one machine with other work
+beside them: `registry-sweep --record`
+146.2 s and 154.7 s before, 157.4 s and 152.7 s after; `registry-field-sweep` 67.9 s and 66.2 s
+before, 71.0 s and 70.7 s after. The block facts take 19 s before and 24 s after
+(`inspect --entry-contexts common/astral_actions`): the runs that stopped at the path bound now go
+on.
+
+Parity changes, each from paths that the bound cut: megastructure `tooltip_system_score` and
+`tooltip_system_filter` gain a context and `on_build_complete` three more; 15 on_actions gain
+contexts and the on_action gaps go from 241 to 133 ([engine commands](engine-commands.md#on_actions-game-rules-and-their-entry-scopes));
+game rule gaps go from 32 to 25; the 80 table-search defines reach their reader
+([defines](engine-commands.md#defines)); traditions and ascension perks regain a second
+`{tradition_swap/custom_tooltip_with_modifiers}` entry ([derived names](derived-names.md)). The
+command population does not change.
+
+**Credit.** 4 of the 30 claims lose every entry gap: federation law `on_enact` (a federation),
+astral action `allow_unlock` (a country), megastructure `tooltip_system_filter` (a system with a
+country `from`, as the config states) and `tooltip_system_score` (a system; the engine also links
+the country as `from`, which the config does not state).
+
+**Open, with a claim.** The other 26, by what the runs now stop at:
+
+| Obstacle | Claims |
+| --- | --- |
+| The scope comes from a caller that the run cannot read: the evaluation is reached, with an unresolved context beside any known one | anomaly `on_spawn` (`CPlanet::OnSurvey`), casus belli `potential` and `destroy_if` (`UpdateCasusBelliOnlyChangeSafePrivateWithTypeAgainst`), event chain `abort_trigger`, observation mission `valid` (`CObservationMissionFleetOrderButton::IsValid`), opinion modifier `opinion` (`CalcOurOpinionOfOther`), psionic aura `monthly_decrease` and `monthly_increase`, astral action `potential` (`GetTooltip`) |
+| Paths that differ in what later code reads: string temporaries, scope copies, loop iterators | the mission blocks (`CMission::Stop`, after `FillEventScope` gives each of eleven spatial types its own scope), terraform `on_queued` (`AddSpentResourcesToScope`), building and decision `show_tech_unlock_if` (`TechnologyViewAddUnlocks`, whose callee-saved iterators differ) |
+| An instruction and a loop bound | astral action `allow` and `is_exhausted` (`CAlertManager::Update` stops at `fminnm` and the loop bound), councilor `ai_hiring_weight` (`fdiv` in the `CCachedPositionWeights` lambda) |
+| A caller bound | casus belli `is_valid` |
+| The selected block | tradition and ascension perk `on_enabled` (`CTraditionType::OnEnabled`) |
+
+Reopen a row when its obstacle is repaired, not with a larger bound.
 
 ### Member and database arrays on M452 (SDK-830)
 

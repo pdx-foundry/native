@@ -276,13 +276,8 @@ impl<'a> Machine<'a> {
         };
         owner.clobbers_outside = true;
         let (start, end) = (owner.start, owner.end);
-        for (_, byte) in self
-            .memory
-            .iter_mut()
-            .filter(|(address, _)| !(start..end).contains(*address))
-        {
-            *byte = None;
-        }
+        self.memory
+            .forget_where(|address| !(start..end).contains(&address), |_, _| {});
     }
 
     /// The lowest owner address that the call being handled is given: a known owner address

@@ -232,8 +232,10 @@ engine facts above.
   of categories appear a second time with an `Unresolved` miss, each with its gaps. The entry with
   the same name, lookup and stage and an established miss is the one to match. Since SDK-820 the
   `GetTooltip` paths that stopped at its tooltip string go on and spend the path bound first, so
-  the second `{key}_desc` and one `{tradition_swap/custom_tooltip_with_modifiers}` entry without the
-  `inherit_effects` term are gone; the same names and lookups keep their other entries.
+  the second `{key}_desc` is gone. Since SDK-823 those paths
+  [join](registry-fields.md#path-joins-on-m452-sdk-823) and reach the bound later, so a second
+  `{tradition_swap/custom_tooltip_with_modifiers}` entry without the `inherit_effects` term is
+  back; the same names and lookups keep their other entries.
 
 ### Population
 

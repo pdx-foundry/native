@@ -421,7 +421,7 @@ impl Machine<'_> {
         Some(Arrival {
             registers: self.registers,
             flags_known: self.flags.is_some(),
-            memory: self.memory.clone(),
+            memory: (*self.memory).clone(),
             traces,
         })
     }
@@ -464,7 +464,7 @@ impl Machine<'_> {
                 .copied()
                 .unwrap_or_else(|| data.byte(address))
         };
-        for (&address, byte) in &self.memory {
+        for (&address, byte) in self.memory.iter() {
             if byte.is_none() {
                 let trace = joined(
                     byte_in(&kept.memory, address)

@@ -1168,6 +1168,16 @@ fn a_tooltip_builder_that_receives_the_scope_keeps_it_known() {
 }
 
 /// A function at 0x3000 that receives a scope in `x1` and runs `body` on it in `x20`.
+/// From `0x3004`, eight branches whose sides make more distinct paths than a run follows.
+fn eight_distinct_branches() -> Vec<Line> {
+    let mut lines = vec![(0x3004, "mov", "x24,#0")];
+    lines.extend(distinct_branches(
+        0x3008,
+        &["x3", "x4", "x5", "x6", "x7", "x9", "x10", "x11"],
+    ));
+    lines
+}
+
 fn receives_scope(body: &[Line]) -> Vec<Line> {
     let mut lines = vec![(0x3000, "mov", "x20,x1")];
     lines.extend_from_slice(body);
@@ -1263,30 +1273,44 @@ fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
 /// search takes first passes the scope to an unknown call.
 fn branches_before_evaluating(escapes: bool) -> Vec<Line> {
     let escape = if escapes {
-        [(0x2028, "mov", "x0,x20"), (0x202c, "bl", "#0x9900")]
+        [(0x2044, "mov", "x0,x20"), (0x2048, "bl", "#0x9900")]
     } else {
-        [(0x2028, "nop", ""), (0x202c, "nop", "")]
+        [(0x2044, "nop", ""), (0x2048, "nop", "")]
     };
     let mut lines = vec![
         (0x2000, "mov", "x19,x0"),
         (0x2004, "mov", "x20,x1"),
-        (0x2008, "cbz", "x3,#0x200c"),
-        (0x200c, "cbz", "x4,#0x2010"),
-        (0x2010, "cbz", "x5,#0x2014"),
-        (0x2014, "cbz", "x6,#0x2018"),
-        (0x2018, "cbz", "x7,#0x201c"),
-        (0x201c, "cbz", "x9,#0x2020"),
-        (0x2020, "cbz", "x2,#0x2028"),
-        (0x2024, "b", "#0x2030"),
+        (0x2008, "mov", "x24,#0"),
     ];
+    lines.extend(distinct_branches(
+        0x200c,
+        &["x3", "x4", "x5", "x6", "x7", "x9"],
+    ));
+    lines.extend([(0x203c, "cbz", "x2,#0x2044"), (0x2040, "b", "#0x204c")]);
     lines.extend(escape);
     lines.extend([
-        (0x2030, "add", "x0,x19,#0x40"),
-        (0x2034, "mov", "x1,x20"),
-        (0x2038, "bl", "#0x9400"),
-        (0x203c, "ret", ""),
+        (0x204c, "add", "x0,x19,#0x40"),
+        (0x2050, "mov", "x1,x20"),
+        (0x2054, "bl", "#0x9400"),
+        (0x2058, "ret", ""),
     ]);
     lines
+}
+
+/// From `base`, one branch on each register of `tests` around an instruction that sets a bit of
+/// `x24`, so each combination of sides is a path of its own: `x24` is callee-saved, so it stays
+/// live and the paths do not join. The caller sets `x24` to zero first.
+fn distinct_branches(base: u64, tests: &[&str]) -> Vec<Line> {
+    tests
+        .iter()
+        .enumerate()
+        .flat_map(|(index, register)| {
+            let at = base + 8 * index as u64;
+            let branch: &'static str = format!("{register},#{:#x}", at + 8).leak();
+            let bit: &'static str = format!("x24,x24,#{:#x}", 1 << index).leak();
+            [(at, "cbz", branch), (at + 4, "eor", bit)]
+        })
+        .collect()
 }
 
 #[test]
@@ -1332,17 +1356,7 @@ fn a_search_that_ends_at_a_bound_with_no_contradiction_has_no_gap() {
 
 #[test]
 fn a_bound_inside_a_function_that_receives_the_scope_contradicts_a_scope_with_no_this() {
-    let branches = receives_scope(&[
-        (0x3004, "cbz", "x3,#0x3008"),
-        (0x3008, "cbz", "x4,#0x300c"),
-        (0x300c, "cbz", "x5,#0x3010"),
-        (0x3010, "cbz", "x6,#0x3014"),
-        (0x3014, "cbz", "x7,#0x3018"),
-        (0x3018, "cbz", "x9,#0x301c"),
-        (0x301c, "cbz", "x10,#0x3020"),
-        (0x3020, "cbz", "x11,#0x3024"),
-        (0x3024, "nop", ""),
-    ]);
+    let branches = receives_scope(&eight_distinct_branches());
     let run = |typed: (&'static str, &'static str)| {
         let mut caller = builds_a(0x1000, typed);
         caller.extend([(0x1018, "add", "x1,sp,#0x100"), (0x101c, "bl", "#0x3000")]);
@@ -2191,17 +2205,7 @@ fn a_bound_inside_a_scope_builder_contradicts_a_selected_block_with_no_this() {
     assert_eq!(contexts(&straight, POTENTIAL), [fresh(Slot::NotSet)]);
     assert!(gaps(&straight).is_empty());
 
-    let cut = run(&[
-        (0x3004, "cbz", "x3,#0x3008"),
-        (0x3008, "cbz", "x4,#0x300c"),
-        (0x300c, "cbz", "x5,#0x3010"),
-        (0x3010, "cbz", "x6,#0x3014"),
-        (0x3014, "cbz", "x7,#0x3018"),
-        (0x3018, "cbz", "x9,#0x301c"),
-        (0x301c, "cbz", "x10,#0x3020"),
-        (0x3020, "cbz", "x11,#0x3024"),
-        (0x3024, "nop", ""),
-    ]);
+    let cut = run(&eight_distinct_branches());
     assert_eq!(contexts(&cut, POTENTIAL), [fresh(Slot::NotSet)]);
     assert!(gaps(&cut).contains("path-limit"), "{:?}", gaps(&cut));
 }
