@@ -2010,7 +2010,7 @@ counted as field gaps:
 | --- | ---: | ---: |
 | path-limit | 62 | 67 |
 | some entry scopes unresolved | 49 | 51 |
-| no attributed evaluation | 47 | 37 |
+| no attributed evaluation | 47 | 35 |
 | loop-limit | 24 | 27 |
 | unnamed direct evaluations (registry) | 12 | 12 |
 | no-caller | 10 | 11 |
@@ -2020,14 +2020,15 @@ counted as field gaps:
 | branch-value | 2 | 2 |
 | only tooltip calls | 1 | 2 |
 
-Scope context goes from 1,465 to 1,470 complete fields. The command population does not change;
-parity changes in megastructure `outliner_trigger` alone (below). Seventeen fields change; each is
+Scope context goes from 1,465 to 1,473 complete fields. The command population does not change;
+parity changes in megastructure `outliner_trigger` alone (below). Nineteen fields change; each is
 listed here:
 
 - Gain a context and lose their gap: tradable action `ai_weight` (a country with a country `from`,
   as the config states), technology tier `weight_modifier` and galactic focus `effect` (a country,
-  as the config states), first contact `on_roll_failed` (a first contact) and trait
-  `trade_acceptance_weight` (a leader, as the config states).
+  as the config states), first contact `on_roll_failed` (a first contact), trait
+  `trade_acceptance_weight` (a leader, as the config states), and pop faction type `on_create` and
+  `valid` (a pop faction; a `CPopFaction` constructor stores the type's null object).
 - Gain a context, no gap change: greeting overlay sound `possible` and `weight` (a country), and
   megastructure `outliner_trigger`, which `CMegaStructureTypeDatabase::PostReadInit` evaluates on a
   fresh scope with no `this` to check the outliner icons; the config states a megastructure, which
