@@ -26,12 +26,13 @@
 //! is a gap; the method never selects one of several.
 //!
 //! A database with a custom loader has no base-constructor directory. [`loader_directory`] takes
-//! the text literal that the database's own functions pass to the file enumeration instead, under
-//! the same rule: exactly one distinct literal, or a gap. An enumeration call after the stop is
-//! a literal that the scan did not read. The literal can also arrive through a global
-//! `char const*`: an `ldr` from a known address loads the pointer slot, and the slot's rebase
-//! target is the literal. The method takes the slot's initial value as its value when the loader
-//! runs.
+//! the text literal that the database's own functions pass to the file enumeration instead: one
+//! distinct literal names the registry, several literals are [`Directory::Ambiguous`], and an
+//! argument that is not established is a gap. It reads every call with the block scan of
+//! [`enumeration_calls`], so the literal must be set in the call's own basic block, and a call
+//! after a stop is read too. The literal can also arrive through a global `char const*`: an `ldr`
+//! from a known address loads the pointer slot, and the slot's rebase target is the literal. The
+//! method takes the slot's initial value as its value when the loader runs.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
@@ -40,7 +41,7 @@ use super::decode::{
 };
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "registry-directories/v6";
+pub const METHOD: &str = "registry-directories/v7";
 
 /// Base constructor whose `CString` argument is the content directory.
 pub const BASE_CONSTRUCTOR: &str =
@@ -80,7 +81,8 @@ pub enum Directory {
     Named(String),
     /// No base-constructor call, or an argument that the scan could not establish.
     Missing,
-    /// Several distinct directories; none is selected.
+    /// Several distinct directories. A template registry selects none of them; a custom loader
+    /// names each one.
     Ambiguous(Vec<String>),
 }
 
@@ -108,6 +110,10 @@ pub(super) enum Value {
 /// The file-selection argument registers at one file-enumeration call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct EnumerationCall {
+    /// The address of the call.
+    pub address: u64,
+    /// The first argument: the directory.
+    pub directory: Value,
     /// The third argument: the text that a file name must end with.
     pub suffix: Value,
     /// The fourth argument: the text that a file name must contain.
@@ -137,14 +143,9 @@ struct Scan {
     built: Vec<Built>,
     /// Each base-constructor call, with what its argument register holds.
     passed: Vec<Passed>,
-    /// What the first argument holds at each file-enumeration call.
-    enumerated: Vec<Value>,
     /// Whether a base-constructor call follows the stop that ended the scan, so the scan did not
     /// read its argument.
     unread_base_call: bool,
-    /// Whether a file-enumeration call follows the stop that ended the scan, so the scan did not
-    /// read its first argument.
-    unread_enumeration: bool,
 }
 
 /// Linear scan of one function.
@@ -164,9 +165,6 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
             objects.clear();
         }
         if let Some(target) = branch_with_link(word, address) {
-            if anchors.file_enumerations.contains(&target) {
-                found.enumerated.push(registers[0]);
-            }
             if anchors.base_constructors.contains(&target) {
                 found
                     .passed
@@ -196,8 +194,6 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
                     let rest = &words[index + 1..];
                     found.unread_base_call =
                         calls_any(rest, address + 4, &anchors.base_constructors);
-                    found.unread_enumeration =
-                        calls_any(rest, address + 4, &anchors.file_enumerations);
                     break;
                 }
                 // The callee is unknown, so it may receive or change any object.
@@ -235,6 +231,8 @@ pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Ve
         if let Some(target) = branch_with_link(word, address) {
             if anchors.file_enumerations.contains(&target) {
                 calls.push(EnumerationCall {
+                    address,
+                    directory: registers[0],
                     suffix: registers[2],
                     substring: registers[3],
                     depth: registers[4],
@@ -493,29 +491,39 @@ pub fn loader_directory(
     strings: &BTreeMap<u64, String>,
     pointers: &BTreeMap<u64, u64>,
 ) -> Directory {
-    let arguments: Vec<Argument> = functions
-        .iter()
-        .flat_map(|function| {
-            let scan = scan(function, anchors);
-            let unread = scan.unread_enumeration.then_some(Argument::Unknown);
-
-            scan.enumerated
-                .into_iter()
-                .map(|value| {
-                    let literal = match value {
-                        Value::Constant(literal) => Some(literal),
-                        Value::Slot(slot) => pointers.get(&slot).copied(),
-                        Value::Unknown | Value::Stack(_) => None,
-                    };
-                    literal
-                        .and_then(|literal| directory_path(strings, literal))
-                        .map_or(Argument::Unknown, Argument::Literal)
-                })
-                .chain(unread)
-        })
+    let arguments: Vec<Argument> = enumerated_directories(functions, anchors, strings, pointers)
+        .into_iter()
+        .map(|(_, directory)| directory.map_or(Argument::Unknown, Argument::Literal))
         .collect();
 
     directory(&arguments, &BTreeMap::new())
+}
+
+/// The address of every file-enumeration call in `functions`, with the directory literal that
+/// its call block passes, or `None` when the block does not establish one. `pointers` holds the
+/// rebase target of each pointer slot.
+pub fn enumerated_directories(
+    functions: &[Constructor],
+    anchors: &Anchors,
+    strings: &BTreeMap<u64, String>,
+    pointers: &BTreeMap<u64, u64>,
+) -> Vec<(u64, Option<String>)> {
+    functions
+        .iter()
+        .flat_map(|function| enumeration_calls(function, anchors))
+        .map(|call| {
+            let literal = match call.directory {
+                Value::Constant(literal) => Some(literal),
+                Value::Slot(slot) => pointers.get(&slot).copied(),
+                Value::Unknown | Value::Stack(_) => None,
+            };
+
+            (
+                call.address,
+                literal.and_then(|literal| directory_path(strings, literal)),
+            )
+        })
+        .collect()
 }
 
 /// Resolve the directory from the arguments of every constructor body of one database class.
@@ -960,34 +968,34 @@ mod tests {
     }
 
     #[test]
-    fn an_enumeration_call_after_a_stop_leaves_the_loader_unproven() {
+    fn an_enumeration_call_after_a_stop_is_read_in_its_own_block() {
         for stop in STOPS {
-            let mut skipped_call = Arm64::at(0x1000);
-            skipped_call.address(0, EXAMPLES).call(ENUMERATE);
-            stop(&mut skipped_call);
-            skipped_call.address(0, OTHER).call(ENUMERATE);
+            let mut later_call = Arm64::at(0x1000);
+            later_call.address(0, EXAMPLES).call(ENUMERATE);
+            stop(&mut later_call);
+            later_call.address(0, OTHER).call(ENUMERATE);
             assert_eq!(
                 loader_directory(
-                    &[function(skipped_call.bytes())],
+                    &[function(later_call.bytes())],
+                    &anchors(),
+                    &strings(),
+                    &pointers()
+                ),
+                Directory::Ambiguous(vec!["common/examples".into(), "map/other".into()])
+            );
+
+            let mut literal_before_stop = Arm64::at(0x1000);
+            literal_before_stop.address(0, EXAMPLES);
+            stop(&mut literal_before_stop);
+            literal_before_stop.call(ENUMERATE);
+            assert_eq!(
+                loader_directory(
+                    &[function(literal_before_stop.bytes())],
                     &anchors(),
                     &strings(),
                     &pointers()
                 ),
                 Directory::Missing
-            );
-
-            let mut nothing_more = Arm64::at(0x1000);
-            nothing_more.address(0, EXAMPLES).call(ENUMERATE);
-            stop(&mut nothing_more);
-            arm64!(nothing_more; nop);
-            assert_eq!(
-                loader_directory(
-                    &[function(nothing_more.bytes())],
-                    &anchors(),
-                    &strings(),
-                    &pointers()
-                ),
-                Directory::Named("common/examples".into())
             );
         }
     }

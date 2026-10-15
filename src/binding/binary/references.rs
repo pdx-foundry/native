@@ -297,7 +297,7 @@ fn template_directory(candidates: &[NamedCandidate], database: &str) -> Option<D
 }
 
 /// Every function whose name is qualified by `class`.
-fn own_functions(text: &Text<'_>, symbols: &[Symbol], class: &str) -> Vec<Constructor> {
+pub(super) fn own_functions(text: &Text<'_>, symbols: &[Symbol], class: &str) -> Vec<Constructor> {
     let qualifier = format!("{class}::");
 
     symbols
