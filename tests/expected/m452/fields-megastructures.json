@@ -5581,6 +5581,34 @@
      "uses": []
     },
     {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "variable_string",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "requirement": "Unknown",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    },
+    {
      "accepted_categories": "NotApplicable",
      "domain": "Unknown",
      "entry_contexts": [],
@@ -5786,6 +5814,34 @@
      "shape": {
       "repeat": "Replace",
       "value": "Scalar"
+     },
+     "uses": []
+    },
+    {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "variable_string",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "requirement": "Unknown",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
      },
      "uses": []
     },

@@ -15,7 +15,9 @@
 //! attached to that field.
 //!
 //! Limits of this revision:
-//! - Root dispatch stops at the first external delegate. A second bounded pass can prove that
+//! - Root dispatch follows an inherited member reader that receives the owner, reader and token
+//!   unchanged, and goes on after its call where it returns false. It stops at any other
+//!   external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
 //!   every path. Its named child fields are then derived to depth one. So are the keys of an
 //!   embedded object that every path of a field reads, when the constructors agree on its
@@ -78,7 +80,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v45";
+pub const METHOD: &str = "registry-fields/v46";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.

@@ -34,6 +34,8 @@ pub struct FieldInput {
     pub symbols: Vec<Symbol>,
     /// Root, token construction, rejection and bounded owner helper functions.
     pub functions: Vec<Function>,
+    /// Import stubs that the image binds to one of `functions`: stub address to body address.
+    pub stubs: BTreeMap<u64, u64>,
     /// Executable literal strings, indexed by file address.
     pub strings: BTreeMap<u64, String>,
     /// Read-only data sections, which hold the root's jump tables.

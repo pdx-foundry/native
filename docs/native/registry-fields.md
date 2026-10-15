@@ -50,7 +50,10 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against `v45`,
+SDK-838 follows [inherited member readers](#inherited-member-readers-sdk-838) and reads `stur`: 15
+registries change, no field is lost, and `common/colony_automation_exceptions`, `common/decisions`
+and `common/deposits` have no registry-wide path gap left. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -150,9 +153,67 @@ belongs to one row.
 readers through the [allocation rule](#allocations-in-constructor-walks).
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
-unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
+unsupported instructions (`blr`, `ret`, `cset`, `lsr`) and branch conditions (`b.lt`,
 `b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
 input is the twelve owners with no `ReadMember` (`CJobTag`, `CTraitTag`, `CZoneType`, …).
+
+### Inherited member readers (SDK-838)
+
+A member reader can pass the tokens it does not handle to the reader of its base class. On M452,
+`CStarbaseModule::ReadMember` (`0x100c561cc`) and `CStarbaseBuilding::ReadMember` handle a few
+keys each, then call `CStarbaseComponent<T>::ReadMember(CReader&, int)` with `x0`, `x1` and `x2`
+unchanged (`bl` at `0x100c56588`). That template reads the keys that both registries share
+(`icon`, `construction_days`, `potential`, `resources`, `ship_modifier`, ...) and returns false
+(`mov w0,#0` at entry, then `ret`) for any other token. After the call, `tbnz w0,#0` returns on
+true; on false the derived reader tail-calls `CPersistent::ReadMember` on its base subobject at
+`+0x1a18`, the base rejection.
+
+- **Rule.** Registry dispatch follows a direct `bl` or `b` to a `ReadMember(CReader&, int)`
+  other than `CPersistent`'s when the call receives the owner, the reader and the token
+  unchanged (`fields/dispatch.rs`). The inherited reader's paths keep the caller's token domain
+  and conditions. After a `bl`, each path of the inherited reader that returns `x0 = 0` goes on
+  in the caller after the call with `x0 = 0`; a `b` hands that false to the caller's own caller.
+  A read through a `bl` is not a tail call, so its repeat is not examined, and a stored read
+  loses its repeat: the caller's code after the call may write the destination again. Command
+  grammar dispatch is unchanged; it joins member delegates its own way.
+- **Import stubs.** The call reaches the template through an import stub in `__stubs`
+  (`0x102996690`), not its body. The binding (`push_inherited_readers` in
+  `binding/binary/fields.rs`) accepts a stub only when its `adrp x16`, `ldr x16` and `br x16`
+  load a slot that the fixups resolve locally to a text body of the stub's name. On M452 the slot
+  `0x102ffee88` is a `<weak-def-coalesce>` bind of that symbol, which the fixup reader already
+  resolves to the image's own definition. `FieldInput::stubs` carries each accepted stub to the
+  dispatch name lookup; any other symbol of the name away from the body still makes the lookup
+  fail.
+- **Bit tests of a constant.** `tbz` and `tbnz` of a known constant take only the side the bit
+  selects, as `cbz` and `cbnz` do. The resumed false return needs it.
+- **Result on M452.** `common/starbase_modules` goes from 7 to 57 root fields and
+  `common/starbase_buildings` from 4 to 54. Every path is named; the `UnnamedField` gap is gone,
+  and the only registry-wide gaps left are the unnamed evaluation of `GetEquippedComponents` and
+  the `UnresolvedReader` gap that sums up the fields' stopped reads. `common/static_modifiers` goes from 3 to 9 fields through
+  `CGraphicalModifier::ReadMember`, whose other tokens stop at a virtual call (slot `+0x40`).
+  `common/colony_automation_exceptions` gains 7 fields. The `stur` frame stores of the same
+  change add fields to `common/districts` (9), `common/country_focus/focus_cards` (5),
+  `common/economic_plans` (3), `common/decisions`, `common/deposits`, `common/resource_converters`
+  (2 each) and `common/buildings` (`show_in_tech`); the nested `variable_string` key of
+  megastructure `cycle_title` and `cycle_desc` and of the ship-set and species-name fields is
+  now a member with its own gap. The whole-domain path of `common/diplomacy_economy` now stops at
+  `CString(char const*)` on the key text, so it is an `UnnamedField` gap instead of an
+  unfollowed path.
+- **Limits.**
+  - The nested-object pass (`fields/nested.rs`) runs from the owner root, and `collect_objects`
+    scans only the root, so the 9 `triggered_*_modifier` keys of the template are named fields
+    with an `UnresolvedReader` gap, not triggered modifier clauses. A repair runs the nested
+    machine from the inherited reader where every path of the field ends, after the binding
+    collects the template's factories.
+  - The other starbase fields without one shared reader belong to census families above:
+    `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
+    loop), `triggered_component_set` (an inserted struct), `name` and `desc`
+    (`CTriggeredEventDescription`) and `resources` (stack serializer).
+  - A nested owner does not follow its own inherited reader: `nested_owner` collects no
+    inherited readers. Change this when a nested owner needs it.
+- **Pitfall.** A same-name symbol is not proof that a call reaches a body. An import of an
+  unresolved or external symbol can share the name of a local definition; only the fixup slot
+  shows where the stub goes.
 
 ### Allocations in constructor walks
 
@@ -940,8 +1001,10 @@ with the reason, never a choice.
   `CStaticModifier::ReadOnlyKey(CReader&)` and reads no definition. The full-read phase reads
   through `CStaticModifier::ReadMember(CReader&, int)`, the root. That reader handles `key`,
   `apply_modifier_to_other_planets` and `divide_over_pop_groups`, and tail-calls
-  `CGraphicalModifier::ReadMember` for every other token; the method does not follow an inherited
-  reader, so the answer is partial with an `UnresolvedPath` gap on the registry.
+  `CGraphicalModifier::ReadMember` for every other token. The method follows that
+  [inherited reader](#inherited-member-readers-sdk-838) (SDK-838): 6 more fields, such as
+  `icon_frame`. Its other tokens go to a virtual call, so the answer stays partial with an
+  `UnresolvedPath` gap on the registry.
 - **Function budget.** `CTrait` has 174 functions in its field input, above the old limit of 128
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
