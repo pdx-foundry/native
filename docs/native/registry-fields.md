@@ -1969,6 +1969,8 @@ the same live state. Rules, each with authored tests:
 - A run that joins at loop heads (`run_paths_joining`) does not join paths this way: its paths go
   on from facts that later arrivals make fewer, so two paths in one state at different times need
   not run the same way. Joining them lost the silent `{key}_delayed` of traditions.
+- A direct call to code that the run may enter reads what that code reads: a `.cold` clone reads
+  its caller's scratch registers.
 - A run that tracks an owner, watches receiver reads, records decisions or intercepts tail calls
   keeps every path.
 - When every path of a run joins and none ends, the run gives one path stopped at `loop-limit`.
@@ -1980,12 +1982,12 @@ entry-context gaps:
 
 | Stop | Before | After |
 | --- | ---: | ---: |
-| path-limit | 62 | 33 |
+| path-limit | 62 | 35 |
 | loop-limit | 24 | 13 |
 | some entry scopes unresolved | 49 | 52 |
 | instruction | 5 | 6 |
 
-The other stops do not change. 11 blocks lose every entry gap and 4 gain contexts; `scope_context`
+The other stops do not change. 10 blocks lose every entry gap and 4 gain contexts; `scope_context`
 goes from 1,465 to 1,470 complete fields. Most runs that stopped at a bound now reach their
 evaluation, and where the scope there is not readable the gap becomes the unresolved scope that
 was behind the bound.
