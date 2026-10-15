@@ -50,7 +50,7 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against `v45`,
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against `v46`,
 SDK-838 follows [inherited member readers](#inherited-member-readers-sdk-838) and reads `stur`: 15
 registries change, no field is lost, and `common/colony_automation_exceptions`, `common/decisions`
 and `common/deposits` have no registry-wide path gap left. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
@@ -835,7 +835,7 @@ did not run before the startup boundary is not a missing registry.
   registry names (51 literals; 8 of them repeat a directory with a trailing `/`). Find them with
   `inspect -- --strings common/` and remove the 164 names of `registries()`. Examples are
   `common/component_templates`, `common/static_modifiers`, `common/traits` and `common/on_actions`.
-  17 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
+  20 of the 43 are named by their database's own loader ([Custom-loader names](#custom-loader-names)).
   A literal is not a loader: `RunGame` forms the address of 157 of the 158 `common/` template
   directories and of `events`, and for 13 of the 43 (such as `common/agendas`, `common/planet_classes` and `common/subjects`) it is
   the only function that does. The "59" of the M45-observe count had no list.
@@ -914,16 +914,20 @@ and derives the end of the fill from the code; no recipe holds an address.
 
 For each unjoined row, `loader_directory` (`directories.rs`) reads every function qualified by the
 database class (`CTraitDatabase::…`) and takes the literal first argument of each
-`VFSGetEnumeratedFiles` call. The literal can also come through a global `char const*`: an `ldr`
-from a known address loads the pointer slot, and the slot's rebase target is the literal. Exactly
-one distinct literal names the registry; several, none, or an argument that the scan does not
-establish leave the row in the `UnnamedRegistries` gap.
+`VFSGetEnumeratedFiles` call, as the call's own basic block sets it (the block scan that
+[loader rules](loader-rules.md#method) use). The literal can also come through a global
+`char const*`: an `ldr` from a known address loads the pointer slot, and the slot's rebase target
+is the literal. Each distinct literal names one registry, so a loader that enumerates several
+directories names each of them (SDK-843); no literal, or an argument that the scan does not
+establish, leaves the row in the `UnnamedRegistries` gap.
 `registry_fields`, `derived_names` and `modifier_families` read these names through their
 [owner](#custom-loader-owners) ([derived names](derived-names.md#population),
 [modifier families](modifier-families.md#roots)). `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
-On M452, 22 of the 35 rows are named, with 21 names: `common/ambient_objects`, `common/colors`,
+On M452, 23 of the 35 rows are named, with 24 names: `common/ambient_objects`, `common/colors`,
+`common/component_sets`, `common/component_templates` and `common/section_templates`
+(`CShipDesignTemplatesDatabase`, [below](#one-loader-three-directories-sdk-843)),
 `common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
 `common/global_ship_designs` (`CDesignerDatabase`), `common/on_actions`,
 `common/opinion_modifiers`, `common/planet_classes` (through `_PLANET_CLASSES_DIR`),
@@ -947,23 +951,59 @@ On M452, 22 of the 35 rows are named, with 21 names: `common/ambient_objects`, `
 - **The `RunGame` caller is not the loader.** `RunGame` passes `"common/planet_classes"` and
   `_pEMPIRE_FLAG_FOLDER` to `VFSPreEnumerateFiles(char const*, char const*, char const*, int)`, a
   warm-up of the file list; the database's own `Init()` enumerates the files. The ticket's caller
-  shape was therefore not built. Whether a caller supplies the directory of one of the 13 rows
+  shape was therefore not built. Whether a caller supplies the directory of one of the 12 rows
   below was not checked; their obstacles are in their own functions.
-- **The 13 rows that stay gaps**, by obstacle:
+- **The 12 rows that stay gaps**, by obstacle:
   - The directory is the text of a `CString` member or a built path (the short-string `csel` on
     the object): `CGfxCultureDatabase`, `CNameListDatabase`, `CGalaxyTemplateDatabase`
     (`ReadFiles`), `CMessageSystem` (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase`
     (`InitInstance`), `CScriptableLocalizationDatabase` and `CSystemInitializerDataBase`.
-  - Several directories: `CShipDesignTemplatesDatabase::Init(bool)` enumerates
-    `common/section_templates`, `common/component_sets` and `common/component_templates`;
-    `CPortraitDatabase` enumerates a global path, a member path and
-    `gfx/portraits/portraits/substitutions`. One database that loads several config types is not
-    one registry.
+  - A directory that is not a literal: `CPortraitDatabase` enumerates a global path, a member
+    path and `gfx/portraits/portraits/substitutions`.
   - No enumeration call in the class's own functions: `CAdvisorDatabase`, `CAlertSystem` and
     `CGameSettingsDatabase`.
 - Pitfall: a row with one literal is not proof that the database owns the items there; it is the
   directory the loader reads. `prescripted_countries` shows that a directory can feed two
   databases.
+- Pitfall: the linear scan of the base-constructor method stops at the first `b`. Before SDK-843
+  `loader_directory` used it, so `CShipDesignTemplatesDatabase::Init(bool)` stopped at
+  `0x1011d04f0`, after the first of its three calls, and was a gap for an unread call, not for
+  several directories. The block scan reads every call; the literal must be in the call's block.
+
+### One loader, three directories (SDK-843)
+
+`CShipDesignTemplatesDatabase::Init(bool)` (`0x1011d0438`) loads three directories, one after the
+other, in one function. Each phase calls `VFSGetEnumeratedFiles(dir, files, ".txt", null, 0)`,
+skips a file named `sets.txt`, lexes each other file and loops `CReader::ReadSimpleStatement()`
+(reader at `sp+0xa0`); after the read it loads the token at `[sp,#0xd8]` and compares it:
+
+| Call | Directory | Root switch | Built and read through slot `+0x20` |
+| --- | --- | --- | --- |
+| `0x1011d0494` | `common/section_templates` | `cmp w8,w26` (`0x2c60`, `ship_section_template`), `b.ne` back to the statement loop | `CSectionTemplate()` (`new 0x600`) |
+| `0x1011d0908` | `common/component_sets` | `cmp w8,w21` (`0x2dfd`, `component_set`), `b.ne` back | `CComponentSet()` (`new 0xb8`) |
+| `0x1011d0f30` | `common/component_templates` | `cmp w8,w23; b.eq` (`0x2c61`, `weapon_component_template`); `cmp w8,w27; b.eq` (`0x2d1a`, `utility_component_template`); `cmp w8,w21; b.ne` (`0x3230`, `strike_craft_component_template`) to `CReader::ReportUnexpected()` and back | `CWeaponComponentTemplate`, `CUtilityComponentTemplate`, `CStrikeCraftComponentTemplate` |
+
+Each constant is moved after its phase's enumeration call. After the third loop the function
+reads `common/component_templates/*_components.csv` by literal name (`ReadWeaponComponentCSV`
+and the others). Vanilla M452 has 476 `ship_section_template`, 439 `component_set`, 591
+`weapon_component_template`, 854 `utility_component_template` and 61
+`strike_craft_component_template` root statements.
+
+- **Owner of each directory.** `directory_owner` (`loader_owner.rs`) reads the route of one
+  directory from its enumeration call up to the function's next enumeration call (or its end),
+  with the database's own functions that this code calls. Several calls of one directory must give
+  the same owner, or the directory is `Several`. Validated assumption, not a proof: the
+  compiler places each phase's loop after its call and before the next call. The exact-build test
+  `m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates` fixes the three
+  owners; a build that moves a loop changes them.
+- **Names.** Each item is named by its `key` field (`0xdc`), whose hash the directory's lookup
+  compares: `CSectionTemplate::ReadMember` hashes it into `+0x160` (`GetSectionTemplate`),
+  `CComponentSet::ReadMember` into `+0x30` (`GetComponentSet`), and `CComponentTemplate::ReadMember`
+  into `+0x1c8` (`GetComponentTemplate`, over the three template arrays; the subclass readers do
+  not read `key`). `loader_rules` states `RootKey(k)` / `Field("key")` for each root key.
+- **What stays unjoined.** `references` and the modifier-block join map a lookup to a registry by
+  its database. `CShipDesignTemplatesDatabase` names three, so its lookups (`GetComponentTemplate`
+  and the others) stay without a registry target.
 
 ### Custom-loader owners
 
@@ -973,9 +1013,10 @@ template loader names its owner as a template argument. For a custom-loader regi
 database's own functions. The loader route is each of them that calls the file enumeration and
 each of them that the route calls directly. The owner is the one class with a member reader that
 the route builds: it calls the class's constructor or forms its primary vtable address point, as
-an inlined constructor does. Two built classes are owners [by root key](#root-key-owners-sdk-813)
-when one root key selects between them. None, or several in any other shape, is `Unsupported`
-with the reason, never a choice.
+an inlined constructor does. Several built classes are owners [by root key](#root-key-owners-sdk-813)
+when the root keys select between them. A loader of several directories has a route for each
+([one loader, three directories](#one-loader-three-directories-sdk-843)). None, or several in any
+other shape, is `Unsupported` with the reason, never a choice.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -1009,17 +1050,21 @@ with the reason, never a choice.
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 16 of the 21 names join an owner (sweep at `registry-fields/v31`, and `v34` for
-`common/planet_classes`; fields, then the answer):
+On M452, 18 of the 24 names join an owner (sweep at `registry-fields/v31`, `v34` for
+`common/planet_classes`, and SDK-843 for the two ship-design directories; fields, then the
+answer). `common/component_templates` has a class for each root key and no owner
+([root-key owners](#root-key-owners-sdk-813)):
 
 | Registry | Owner | Fields | Answer |
 | --- | --- | --- | --- |
 | `common/ambient_objects` | `CAmbientObjectData` | 7 | partial |
+| `common/component_sets` | `CComponentSet` | 9 | partial |
 | `common/diplo_phrases` | `CDiploPhrase` | 5 | partial |
 | `common/fallen_empires` | `CFallenEmpireType` | 6 | partial |
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
+| `common/section_templates` | `CSectionTemplate` | 19 | partial |
 | `common/planet_classes` | `CPlanetClass`, by root key | 70 | partial |
 | `common/special_projects` | `CSpecialProjectType` | 26 | partial |
 | `common/species_names` | `CSpeciesNames` | 5 | partial |
@@ -1050,14 +1095,18 @@ calls `CPersistent::Read(CReader&)`. The other side builds `CPlanetClass(CString
 the key, or finds the class of that key and reads into it again, and reads through slot `+0x20`.
 Both go back to the statement read.
 
-- **Rule.** `loader_owner` takes two built classes as owners by root key when a route function
-  has one statement read; the next three instructions load the word at the reader argument plus
-  the token offset, compare it with a constant (an immediate, or a register whose last write
-  before the comparison, in code order, is a `mov` of one; a call replaces a caller-saved
-  register) that names a token, and branch on equality; and the code from each side up to the
-  next statement read builds exactly one of the two classes, a different one on each side. Any
-  other shape stays `Several`. Validated on M452 (the exact-build test above), not a proof: the method
-  does not follow a path-dependent write of the constant.
+- **Rule.** `loader_owner` takes several built classes as owners by root key when a route
+  function has one statement read; the next instruction loads the word at the reader argument plus
+  the token offset; then a chain of comparisons follows, each `cmp` of that word with a constant
+  that names a token (an immediate, or a register whose last write before the comparison, in
+  code order, is a `mov` of one; a call replaces a caller-saved register) and a `b.eq` to the
+  key's code, the last one possibly a `b.ne` to the code of every other token; and the code from
+  each key's side up to the next statement read builds exactly one class, a different one for
+  each key, while the other side builds one more class or none. The classes must be all that the
+  route builds. Any other shape stays `Several`. Validated on M452 (the exact-build test above),
+  not a proof: the method does not follow a path-dependent write of the constant. The planet
+  loader is the one-key chain with another class; `common/component_templates` is a three-key
+  chain whose other side reports the key and builds nothing.
 - **Answer.** The registry's owner is the class of every other key (`CPlanetClass`), and its
   fields are the registry's root fields. The reserved key is one more root field, `random_list`:
   a root statement, as an [event kind](#event-kinds) is, not a member of a planet class. Its
@@ -1069,6 +1118,17 @@ Both go back to the statement read.
   `derived_names` and `modifier_families` answer `CPlanetClass` with one `OutsideMethod` gap
   that names the reserved key. Atlas maps `random_list` to `type[planet_class_random_list]` (12
   claims) and the other root fields to `type[planet_class]` (375) in SDK-818.
+- **No owner (SDK-843).** When every class belongs to a key and other keys build nothing, no
+  class owns the registry's items. `registry_fields("common/component_templates")` answers one
+  root statement per key, built as `random_list` is, with the class's fields as members; the
+  method's registry-wide `OutsideMethod` gaps, which an owner answer would carry, stay once on
+  the registry, and a member's at the member below its key. `derived_names` and
+  `modifier_families` are `Unsupported` ("each root key builds its own class …"). Atlas reads
+  key `K` as `type[component_template]/subtype[K]` (SDK-800). The three subclass readers
+  tail-call `CComponentTemplate::ReadMember` (`0x1001dd284`) for every other token, and the field
+  method does not follow an inherited reader (`call not followed` at the tail call), so the base
+  fields (`key`, `size`, `power` and the others) are not listed; each key keeps an
+  `UnresolvedPath` gap for it.
 - **The random list's reader.** `CPlanetClassRandomList::ReadMember` (`0x10115ce44`) first tests
   the sign bit of a string's last byte (`ldrsb w8,[x0,#0x1f]`, `tbnz w8,#31`) and, when its
   location string is empty, sets it from `CReader::GetFileLocationDescription()`; then `planets`

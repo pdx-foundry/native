@@ -1691,16 +1691,19 @@ fn own_native() -> Native {
 }
 
 /// Independent expectation on M452: the registries that only their database's own loader names.
-const LOADER_NAMED: [&str; 21] = [
+const LOADER_NAMED: [&str; 24] = [
     "common/ambient_objects",
     "common/colors",
+    "common/component_sets",
     "common/component_tags",
+    "common/component_templates",
     "common/diplo_phrases",
     "common/fallen_empires",
     "common/global_ship_designs",
     "common/on_actions",
     "common/opinion_modifiers",
     "common/planet_classes",
+    "common/section_templates",
     "common/ship_behaviors",
     "common/special_projects",
     "common/species_names",
@@ -1927,6 +1930,68 @@ fn planet_classes_answer_the_random_list_key_as_a_root_statement() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn component_templates_answer_each_root_key_as_a_root_statement() {
+    let native = native();
+    let answer = native
+        .registry_fields("common/component_templates")
+        .unwrap();
+    let members = |key: &str| -> Vec<String> {
+        let field = answer.value.iter().find(|field| field.name == key).unwrap();
+        let pdx_native::FieldMembers::Fields(members) = &field.members else {
+            panic!("{key}: {:?}", field.members);
+        };
+
+        members.iter().map(|member| member.name.clone()).collect()
+    };
+
+    // Each root key builds its own class, so the answer has no item fields of its own.
+    let keys: Vec<&str> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "strike_craft_component_template",
+            "utility_component_template",
+            "weapon_component_template"
+        ]
+    );
+    assert!(members("strike_craft_component_template").contains(&"launch_time".into()));
+    assert!(members("utility_component_template").contains(&"sensor_range".into()));
+    assert!(members("weapon_component_template").contains(&"missile_speed".into()));
+    assert!(!members("utility_component_template").contains(&"missile_speed".into()));
+
+    // A member's gap is below its key, and the method's limits stay with the registry.
+    let subjects: Vec<_> = answer.gaps.iter().map(|gap| &gap.subject).collect();
+    let field = |name: &str| {
+        Some(GapSubject::Field {
+            name: name.to_owned(),
+        })
+    };
+    assert!(subjects.contains(&&field("weapon_component_template.missile_speed")));
+    assert!(!subjects.contains(&&field("missile_speed")));
+    assert!(answer.gaps.iter().any(|gap| {
+        gap.kind == GapKind::OutsideMethod
+            && gap.subject
+                == Some(GapSubject::Registry {
+                    name: "common/component_templates".into(),
+                })
+    }));
+
+    let Err(Error::Unsupported { reason, .. }) = native.derived_names("common/component_templates")
+    else {
+        panic!("derived names of component templates");
+    };
+    assert!(
+        reason.starts_with("each root key builds its own class"),
+        "{reason}"
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_listed_registry_gets_an_answer_or_unsupported() {
     use std::collections::BTreeSet;
 
@@ -1953,7 +2018,8 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         }
     }
 
-    // Each registry query reads every loader registry whose loader builds one owner.
+    // Each registry query reads every loader registry whose loader builds one owner. The field
+    // query also reads a loader that builds a class for each root key.
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
@@ -1963,17 +2029,15 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     ]
     .map(String::from)
     .into();
-    for operation in [
-        Operation::RegistryFields,
-        Operation::DerivedNames,
-        Operation::ModifierFamilies,
+    let mut keyed_only = without_owner.clone();
+    keyed_only.insert("common/component_templates".into());
+    for (operation, expected) in [
+        (Operation::RegistryFields, &without_owner),
+        (Operation::DerivedNames, &keyed_only),
+        (Operation::ModifierFamilies, &keyed_only),
     ] {
         let operation = operation.to_string();
-        assert_eq!(
-            unsupported.get(&operation),
-            Some(&without_owner),
-            "{operation}"
-        );
+        assert_eq!(unsupported.get(&operation), Some(expected), "{operation}");
     }
     assert!(matches!(
         native.derived_names("common/no_such_registry"),

@@ -2,56 +2,56 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "relationships": {
     "fields": {
-      "complete": 107,
-      "denominator": 185,
-      "partial": 73,
-      "rate": 0.5784,
+      "complete": 106,
+      "denominator": 188,
+      "partial": 77,
+      "rate": 0.5638,
       "unsupported": 5
     },
     "naming_rules": {
-      "denominator": 185,
-      "partial": 180,
+      "denominator": 188,
+      "partial": 182,
       "rate": 0.0,
-      "unsupported": 5
+      "unsupported": 6
     },
     "numerics": {
-      "complete": 240,
-      "denominator": 579,
-      "rate": 0.4145,
-      "undetermined": 339
+      "complete": 237,
+      "denominator": 539,
+      "rate": 0.4397,
+      "undetermined": 302
     },
     "reader_kinds": {
-      "complete": 1679,
-      "denominator": 2067,
-      "failed": 334,
-      "partial": 54,
-      "rate": 0.8123
+      "complete": 1621,
+      "denominator": 1961,
+      "failed": 297,
+      "partial": 43,
+      "rate": 0.8266
     },
     "references": {
-      "complete": 39,
-      "denominator": 378,
-      "rate": 0.1032,
-      "undetermined": 339
+      "complete": 36,
+      "denominator": 338,
+      "rate": 0.1065,
+      "undetermined": 302
     },
     "scope_context": {
-      "complete": 1532,
-      "denominator": 2067,
-      "failed": 394,
-      "partial": 141,
-      "rate": 0.7412
+      "complete": 1495,
+      "denominator": 1961,
+      "failed": 336,
+      "partial": 130,
+      "rate": 0.7624
     },
     "shapes_and_conditions": {
-      "complete": 1515,
-      "denominator": 2067,
-      "failed": 319,
-      "partial": 233,
-      "rate": 0.7329
+      "complete": 1519,
+      "denominator": 1961,
+      "failed": 283,
+      "partial": 159,
+      "rate": 0.7746
     },
     "weights": {
       "complete": 98,
-      "denominator": 532,
-      "rate": 0.1842,
-      "undetermined": 434
+      "denominator": 477,
+      "rate": 0.2055,
+      "undetermined": 379
     }
   }
 }

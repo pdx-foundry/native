@@ -40,13 +40,14 @@ struct Stated {
     rule: Rule,
 }
 
-/// The stated rules of the registry whose loaders are `templates` and the scheduled `databases`,
+/// The stated rules of `registry`, whose loaders are `templates` and the scheduled `databases`,
 /// in rule order: each template's root definitions and then the blocks they hold, then each
-/// database's rules.
+/// database's rules for the registry.
 pub(in crate::binding) fn stated_rules(
     symbols: &[Symbol],
     templates: &[TemplateLoader<'_>],
     databases: &BTreeSet<String>,
+    registry: &str,
 ) -> Vec<StatedRule> {
     let bound: BTreeSet<&str> = symbols.iter().map(|symbol| symbol.name.as_str()).collect();
     let holds = |functions: &[&str]| functions.iter().all(|name| bound.contains(name));
@@ -60,7 +61,7 @@ pub(in crate::binding) fn stated_rules(
     }
 
     for database in databases {
-        rules.extend(database_rules(database).into_iter().map(held));
+        rules.extend(database_rules(database, registry).into_iter().map(held));
     }
 
     rules
@@ -114,7 +115,7 @@ fn item_rules(item: &str) -> Vec<Stated> {
 }
 
 /// The rules of a scheduled database whose own loader enumerates its files.
-fn database_rules(database: &str) -> Vec<Stated> {
+fn database_rules(database: &str, registry: &str) -> Vec<Stated> {
     match database {
         "CEventManager" => vec![
             Stated {
@@ -263,8 +264,55 @@ fn database_rules(database: &str) -> Vec<Stated> {
             functions: &["CEmpireFlagDatabase::Init()"],
             rule: obstructed("definitions are image files named by their file name"),
         }],
+        "CShipDesignTemplatesDatabase" => ship_design_template_rules(registry),
         _ => vec![],
     }
+}
+
+/// The rules of the three directories that `CShipDesignTemplatesDatabase::Init(bool)` loads:
+/// each takes only its root keys and names a definition by its `key` field, whose hash the
+/// directory's lookup compares.
+fn ship_design_template_rules(registry: &str) -> Vec<Stated> {
+    let (functions, root_keys): (&'static [&'static str], &[&str]) = match registry {
+        "common/section_templates" => (
+            &[
+                "CShipDesignTemplatesDatabase::Init(bool)",
+                "CSectionTemplate::ReadMember(CReader&, int)",
+                "CShipDesignTemplatesDatabase::GetSectionTemplate(CString const&) const",
+            ],
+            &["ship_section_template"],
+        ),
+        "common/component_sets" => (
+            &[
+                "CShipDesignTemplatesDatabase::Init(bool)",
+                "CComponentSet::ReadMember(CReader&, int)",
+                "CShipDesignTemplatesDatabase::GetComponentSet(CString const&) const",
+            ],
+            &["component_set"],
+        ),
+        "common/component_templates" => (
+            &[
+                "CShipDesignTemplatesDatabase::Init(bool)",
+                "CComponentTemplate::ReadMember(CReader&, int)",
+                "CShipDesignTemplatesDatabase::GetComponentTemplate(CString const&, bool) const",
+            ],
+            &[
+                "strike_craft_component_template",
+                "utility_component_template",
+                "weapon_component_template",
+            ],
+        ),
+        _ => return vec![],
+    };
+    let forms = root_keys
+        .iter()
+        .map(|root_key| keyed_field(root_key, "key"))
+        .collect();
+
+    vec![Stated {
+        functions,
+        rule: named(forms),
+    }]
 }
 
 fn named(forms: Vec<DefinitionForm>) -> Rule {
@@ -365,14 +413,24 @@ mod tests {
     fn a_template_loader_names_root_definitions_by_their_key() {
         let symbols = symbols(&[&load_from_reader()]);
 
-        let stated = stated_rules(&symbols, &[template("CExample")], &BTreeSet::new());
+        let stated = stated_rules(
+            &symbols,
+            &[template("CExample")],
+            &BTreeSet::new(),
+            "common/examples",
+        );
 
         assert_eq!(stated, [Some(named(vec![root_key()]))]);
     }
 
     #[test]
     fn a_template_loader_without_its_reader_states_no_rule() {
-        let stated = stated_rules(&[], &[template("CExample")], &BTreeSet::new());
+        let stated = stated_rules(
+            &[],
+            &[template("CExample")],
+            &BTreeSet::new(),
+            "common/examples",
+        );
 
         assert_eq!(stated, [None]);
     }
@@ -387,6 +445,7 @@ mod tests {
             &symbols(&names),
             &[template("CTraditionType")],
             &BTreeSet::new(),
+            "common/traditions",
         );
 
         assert_eq!(
@@ -403,7 +462,12 @@ mod tests {
         let loader = load_from_reader();
         let symbols = symbols(&[&loader, "CTechnology::ReadMember(CReader&, int)"]);
 
-        let stated = stated_rules(&symbols, &[template("CTechnology")], &BTreeSet::new());
+        let stated = stated_rules(
+            &symbols,
+            &[template("CTechnology")],
+            &BTreeSet::new(),
+            "common/technology",
+        );
 
         assert_eq!(stated[1], None);
     }
@@ -418,6 +482,7 @@ mod tests {
             &symbols(&names),
             &[template("CGovernmentCivicType")],
             &BTreeSet::new(),
+            "common/governments/civics",
         );
 
         let swap_rule = stated[1].as_ref().expect("the swap rule holds");
@@ -427,10 +492,10 @@ mod tests {
 
     #[test]
     fn the_events_loader_names_namespaces_by_value_and_events_by_id() {
-        let rules = database_rules("CEventManager");
+        let rules = database_rules("CEventManager", "events");
         let symbols = symbols(&functions(&rules));
 
-        let stated = stated_rules(&symbols, &[], &database("CEventManager"));
+        let stated = stated_rules(&symbols, &[], &database("CEventManager"), "events");
 
         assert_eq!(stated.len(), 2);
         assert!(stated.iter().all(Option::is_some));
@@ -438,20 +503,25 @@ mod tests {
 
     #[test]
     fn the_events_loader_without_the_id_reader_misses_only_the_event_rule() {
-        let rules = database_rules("CEventManager");
+        let rules = database_rules("CEventManager", "events");
         let symbols = symbols(rules[0].functions);
 
-        let stated = stated_rules(&symbols, &[], &database("CEventManager"));
+        let stated = stated_rules(&symbols, &[], &database("CEventManager"), "events");
 
         assert_eq!(stated, [Some(rules[0].rule.clone()), None]);
     }
 
     #[test]
     fn a_custom_loader_that_names_by_a_field_of_one_root_key_states_that_form() {
-        let rules = database_rules("CWorldGfxDatabase");
+        let rules = database_rules("CWorldGfxDatabase", "gfx/worldgfx");
         let symbols = symbols(&functions(&rules));
 
-        let stated = stated_rules(&symbols, &[], &database("CWorldGfxDatabase"));
+        let stated = stated_rules(
+            &symbols,
+            &[],
+            &database("CWorldGfxDatabase"),
+            "gfx/worldgfx",
+        );
 
         assert_eq!(
             stated,
@@ -460,35 +530,70 @@ mod tests {
     }
 
     #[test]
+    fn a_loader_of_several_directories_states_the_rule_of_the_asked_directory() {
+        let loader = "CShipDesignTemplatesDatabase";
+        let stated = |registry| {
+            let rules = database_rules(loader, registry);
+            let symbols = symbols(&functions(&rules));
+
+            stated_rules(&symbols, &[], &database(loader), registry)
+        };
+
+        assert_eq!(
+            stated("common/component_sets"),
+            [Some(named(vec![keyed_field("component_set", "key")]))]
+        );
+        assert_eq!(
+            stated("common/component_templates"),
+            [Some(named(vec![
+                keyed_field("strike_craft_component_template", "key"),
+                keyed_field("utility_component_template", "key"),
+                keyed_field("weapon_component_template", "key"),
+            ]))]
+        );
+        assert!(stated("common/other").is_empty());
+    }
+
+    #[test]
     fn a_custom_loader_with_a_renaming_field_states_its_obstacle_and_no_form() {
-        let rules = database_rules("CStaticModifierDatabase");
+        let rules = database_rules("CStaticModifierDatabase", "common/static_modifiers");
         let symbols = symbols(&functions(&rules));
 
-        let stated = stated_rules(&symbols, &[], &database("CStaticModifierDatabase"));
+        let stated = stated_rules(
+            &symbols,
+            &[],
+            &database("CStaticModifierDatabase"),
+            "common/static_modifiers",
+        );
 
         assert_eq!(stated, [Some(obstructed(KEY_FIELD_RENAMES))]);
     }
 
     #[test]
     fn a_custom_loader_that_names_no_definition_states_no_form_and_no_obstacle() {
-        let rules = database_rules("CTerraformDatabase");
+        let rules = database_rules("CTerraformDatabase", "common/terraform");
         let symbols = symbols(&functions(&rules));
 
-        let stated = stated_rules(&symbols, &[], &database("CTerraformDatabase"));
+        let stated = stated_rules(
+            &symbols,
+            &[],
+            &database("CTerraformDatabase"),
+            "common/terraform",
+        );
 
         assert_eq!(stated, [Some(named(vec![]))]);
     }
 
     #[test]
     fn a_custom_loader_without_its_functions_misses_its_rule() {
-        let stated = stated_rules(&[], &[], &database("CTraitDatabase"));
+        let stated = stated_rules(&[], &[], &database("CTraitDatabase"), "common/traits");
 
         assert_eq!(stated, [None]);
     }
 
     #[test]
     fn a_database_with_no_stated_rule_states_nothing() {
-        let stated = stated_rules(&[], &[], &database("CExampleDatabase"));
+        let stated = stated_rules(&[], &[], &database("CExampleDatabase"), "common/examples");
 
         assert!(stated.is_empty());
     }

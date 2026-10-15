@@ -119,6 +119,10 @@
     "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
     "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
+  "common/component_sets": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "component_set"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
   "common/component_slot_templates": {
     "gaps": [["UnresolvedPath", "duplicate_rule", "the loader's code for a key that it already holds has a shape that the method does not read"]],
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
@@ -126,6 +130,10 @@
   "common/component_tags": {
     "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "each token of a file is a definition named by its text"]],
     "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/component_templates": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "strike_craft_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "utility_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "weapon_component_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/council_agendas": {
     "gaps": [],
@@ -498,6 +506,10 @@
   "common/scripted_triggers": {
     "gaps": [],
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/section_templates": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "ship_section_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/sector_types": {
     "gaps": [],
