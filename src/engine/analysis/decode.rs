@@ -305,7 +305,7 @@ pub(crate) fn is_branch(operation: &str) -> bool {
 }
 
 /// How many leading operands an instruction that is not a branch writes.
-fn destination_count(operation: &str) -> usize {
+pub(crate) fn destination_count(operation: &str) -> usize {
     let exclusive_store = ["stxr", "stlxr", "stxp", "stlxp"]
         .iter()
         .any(|prefix| operation.starts_with(prefix));
@@ -326,7 +326,7 @@ fn destination_count(operation: &str) -> usize {
 
 /// An atomic load-and-operate or swap, which reads its first operand and writes the loaded value
 /// to its second. Its store-only form (`stadd`) writes nothing.
-fn is_atomic(operation: &str) -> bool {
+pub(crate) fn is_atomic(operation: &str) -> bool {
     [
         "ldadd", "ldclr", "ldeor", "ldset", "ldsmax", "ldsmin", "ldumax", "ldumin", "swp",
     ]

@@ -21,6 +21,9 @@
 //! case when the compiler's guard proves the index bound ([`Machine::switch_cases`]); one path of
 //! [`Machine::run`] still stops there.
 //!
+//! A run of several paths follows a path that arrives at a join point in the live state of an
+//! earlier path no further: the `joins` module says what that state is.
+//!
 //! [`Machine::run_paths_to`] follows only the paths that can still arrive at one instruction, and
 //! ends each path when it arrives there, before that instruction runs. A caller reads the
 //! arguments of a call site this way. The caller can protect memory ranges from a store to an
@@ -29,11 +32,14 @@
 //! While [`trace_causes`] is on, a machine also records where each unknown value stopped being
 //! known on its path, and a stop at an unknown value carries that trace. See the `trace` module.
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
 
 use super::InputError;
 use super::decode::{Instruction, decode_arm64, general_register};
 use super::stop::{Bound, CauseKind, Obstacle, Unknown, Unresolved};
 
+mod joins;
+use joins::{Arrivals, Bytes};
 mod owner;
 mod provenance;
 mod trace;
@@ -189,6 +195,9 @@ impl ReadOnlyData {
 #[derive(Debug, Clone, Default)]
 pub struct Code {
     rows: BTreeMap<u64, Operation>,
+    /// The registers and flags that may be read at each join point, once a run asks: see the
+    /// `joins` module.
+    live_at_joins: OnceLock<BTreeMap<u64, u32>>,
 }
 
 impl Code {
@@ -280,7 +289,13 @@ impl Code {
                 .into_iter()
                 .map(|row| (row.address, Operation::parse(&row)))
                 .collect(),
+            live_at_joins: OnceLock::new(),
         }
+    }
+
+    fn live_at_joins(&self) -> &BTreeMap<u64, u32> {
+        self.live_at_joins
+            .get_or_init(|| joins::live_at_joins(&self.rows))
     }
 }
 
@@ -317,6 +332,10 @@ pub enum Exit {
 
 /// What [`Machine::run_paths`] does at each call: it receives the target, or `None` for a call
 /// through a register whose value is unknown.
+///
+/// Paths of a run join (see [`Machine::run_paths`]), so the callback must read at a call only the
+/// argument registers `x0` to `x8`, the callee-saved registers and memory, and must answer the same
+/// for two machines that agree in these. A path that joins makes no later call.
 pub type PathCalls<'c, 'a> =
     dyn FnMut(Option<u64>, &mut Machine<'a>) -> Result<Call, Unresolved> + 'c;
 
@@ -341,6 +360,8 @@ enum Walk {
     End(Result<Exit, Unresolved>),
     /// The path can no longer arrive at the site of [`Machine::run_paths_to`].
     Leaves,
+    /// An earlier path arrived at a join point in this path's state: see the `joins` module.
+    Joined,
     /// Continue each branch at its address, with the flag states that remain possible on it
     /// when the decision was on unknown flags.
     Fork {
@@ -363,7 +384,7 @@ pub struct Machine<'a> {
     /// While `flags` is unknown, the flag states that this path has not excluded: bit `n` is
     /// the state `Flags::from_bits(n)`.
     possible_flags: u16,
-    memory: BTreeMap<u64, Option<u8>>,
+    memory: Bytes,
     next_object: u64,
     /// Ranges `(start, end)` that a store to an unknown address leaves known.
     protected: Vec<(u64, u64)>,
@@ -422,6 +443,16 @@ enum Ends {
     Joining(BTreeSet<u64>),
 }
 
+/// What a run keeps to join its paths.
+#[derive(Default)]
+struct RunJoins {
+    /// The facts kept at each loop head of [`Machine::run_paths_joining`].
+    heads: BTreeMap<u64, HeadState>,
+    /// The arrivals at join points of the other runs (see the `joins` module), once the run has
+    /// forked: before the first fork, no other path can arrive where a path did.
+    arrivals: Option<Arrivals>,
+}
+
 /// The facts that every path joined at a loop head knew there, with the flag states that any
 /// of them allowed, and how often a path made them fewer.
 #[derive(Debug, Clone)]
@@ -430,7 +461,7 @@ struct HeadState {
     vectors: [Option<u128>; 32],
     flags: Option<Flags>,
     possible_flags: u16,
-    memory: BTreeMap<u64, Option<u8>>,
+    memory: Bytes,
     register_saves: BTreeSet<u64>,
     stack_pointer: u64,
     frames: Vec<u64>,
@@ -466,7 +497,7 @@ impl<'a> Machine<'a> {
             stack_pointer: STACK_TOP,
             flags: None,
             possible_flags: ALL_FLAG_STATES,
-            memory: BTreeMap::new(),
+            memory: Bytes::default(),
             next_object: OBJECT_BASE,
             protected: Vec::new(),
             register_saves: BTreeSet::new(),
@@ -607,9 +638,7 @@ impl<'a> Machine<'a> {
 
     /// Invalidate every tracked byte after a call whose stores may escape its receiver.
     pub fn forget_memory(&mut self) {
-        for byte in self.memory.values_mut() {
-            *byte = None;
-        }
+        self.memory.forget_where(|_| true, |_, _| {});
     }
 
     /// Store `value` little-endian in `width` bytes.
@@ -957,6 +986,14 @@ impl<'a> Machine<'a> {
     ///
     /// `calls` receives the target of each call and tail call; see [`PathCalls`]. At most [`PATH_LIMIT`] paths are followed; a path that would
     /// exceed the limit ends as `path-limit`. Each path has its own step limit.
+    ///
+    /// A path that arrives where an earlier path of the run arrived, in a state that differs only
+    /// in what no later instruction reads, with at least as many loop arrivals, ends
+    /// there without a result: the earlier path follows everything that it would, up to that
+    /// path's own step limit. When the earlier path stops at the step limit first, the run reports
+    /// that bound in place of what the joined path would have reached. A joined path counts toward
+    /// no limit. When every path joins and none ends, the run gives one path stopped at
+    /// `loop-limit`. The `joins` module states what the state is.
     pub fn run_paths(self, entry: u64, calls: &mut PathCalls<'_, 'a>) -> Vec<Path<'a>> {
         self.follow(entry, &Ends::Unbounded, calls)
     }
@@ -984,7 +1021,8 @@ impl<'a> Machine<'a> {
     /// [`Machine::run_paths`] does.
     ///
     /// A path ends as [`Exit::Reached`] when it arrives at `site`, before `site` runs, so the
-    /// registers hold the arguments of a call there. A path that can no longer arrive, by the
+    /// registers hold the arguments of a call there. Paths join as in [`Machine::run_paths`],
+    /// except that an empty run is an answer here. A path that can no longer arrive, by the
     /// direct branches of the decoded code, is dropped and counts toward no limit. A branch
     /// through a register may go anywhere, so every instruction before one can arrive. Inside a
     /// call that the run enters, a path is neither dropped nor at the site until it returns.
@@ -1014,7 +1052,8 @@ impl<'a> Machine<'a> {
             resumes_flag_split: false,
         }];
         let mut ended = Vec::new();
-        let mut joined = BTreeMap::new();
+        let mut joins = RunJoins::default();
+        let mut last_joined = None;
         // Paths that a joined state covers end at once and add no work, so they do not count.
         let mut covered = 0;
 
@@ -1025,12 +1064,14 @@ impl<'a> Machine<'a> {
             resumes_flag_split,
         }) = pending.pop()
         {
-            match machine.walk(pc, steps, resumes_flag_split, ends, &mut joined, calls) {
+            let walk = machine.walk(pc, steps, resumes_flag_split, ends, &mut joins, calls);
+            match walk {
                 Walk::End(end) => {
                     covered += usize::from(end == Ok(Exit::Looped));
                     ended.push(Path { end, machine });
                 }
                 Walk::Leaves => {}
+                Walk::Joined => last_joined = Some(machine),
                 Walk::Fork {
                     at,
                     branches,
@@ -1046,6 +1087,11 @@ impl<'a> Machine<'a> {
                         continue;
                     }
 
+                    // A joining run's path goes on from facts that later arrivals make fewer, so
+                    // two paths in one state at different times need not run the same way.
+                    if !matches!(ends, Ends::Joining(_)) {
+                        joins.arrivals.get_or_insert_with(Arrivals::new);
+                    }
                     for (side, (states, pc)) in branches.into_iter().enumerate().rev() {
                         let mut branch = machine.clone();
                         branch.record_decision(at, side, states.is_some());
@@ -1063,6 +1109,17 @@ impl<'a> Machine<'a> {
             }
         }
 
+        // A run to a site drops paths that leave it, so an empty run is already an answer there.
+        if ended.is_empty()
+            && !matches!(ends, Ends::Site(_))
+            && let Some(machine) = last_joined
+        {
+            let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
+            ended.push(Path {
+                end: Err(machine.stop(machine.pc, "loop-limit", limit)),
+                machine,
+            });
+        }
         ended
     }
 
@@ -1073,7 +1130,7 @@ impl<'a> Machine<'a> {
         mut steps: usize,
         mut resumes_flag_split: bool,
         ends: &Ends,
-        joined: &mut BTreeMap<u64, HeadState>,
+        joins: &mut RunJoins,
         calls: &mut PathCalls<'_, 'a>,
     ) -> Walk {
         while steps < STEP_LIMIT {
@@ -1095,13 +1152,19 @@ impl<'a> Machine<'a> {
                 Ends::Site(_) => {}
                 // A walk that resumes a split on flags has joined at its instruction already.
                 Ends::Joining(heads) if heads.contains(&pc) && !resumes_flag_split => {
-                    match self.join(pc, joined) {
+                    match self.join(pc, &mut joins.heads) {
                         Ok(true) => {}
                         Ok(false) => return Walk::End(Ok(Exit::Looped)),
                         Err(unresolved) => return Walk::End(Err(unresolved)),
                     }
                 }
                 Ends::Joining(_) => {}
+            }
+            if !resumes_flag_split
+                && let Some(arrivals) = &mut joins.arrivals
+                && self.joins_earlier_path(pc, arrivals)
+            {
+                return Walk::Joined;
             }
             resumes_flag_split = false;
 
@@ -1430,9 +1493,9 @@ impl<'a> Machine<'a> {
         let mnemonic = ordered_access(mnemonic);
         let operands = operands.as_slice();
         if self.step_move(mnemonic, operands)?
+            || self.step_vector(mnemonic, operands)?
             || self.step_integer(mnemonic, operands)?
             || self.step_condition(mnemonic, operands)?
-            || self.step_vector(mnemonic, operands)?
             || self.step_atomic(mnemonic, operands)?
             || self.step_memory(mnemonic, operands)?
         {
@@ -1897,6 +1960,43 @@ impl<'a> Machine<'a> {
             ) => {
                 let value = self.operand(source)?;
                 self.vectors[*index] = value.map(|value| replicate(value, *lane, *bytes));
+            }
+            (
+                "add" | "sub",
+                [
+                    Operand::Register(Register {
+                        name: Name::Vector(index),
+                        bytes,
+                        lane,
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(left),
+                        ..
+                    }),
+                    Operand::Register(Register {
+                        name: Name::Vector(right),
+                        ..
+                    }),
+                ],
+            ) => {
+                let lane_bits = *lane * 8;
+                let mask = u128::from(low_bits(lane_bits));
+                let lanes = |left: u128, right: u128| {
+                    (0..*bytes / *lane).fold(0, |sum, at| {
+                        let shift = at * lane_bits;
+                        let (left, right) = (left >> shift & mask, right >> shift & mask);
+                        let value = match mnemonic {
+                            "add" => left.wrapping_add(right),
+                            _ => left.wrapping_sub(right),
+                        };
+                        sum | (value & mask) << shift
+                    })
+                };
+                self.vectors[*index] = self
+                    .vector(*left)
+                    .zip(self.vector(*right))
+                    .map(|(left, right)| lanes(left, right));
             }
             (
                 "ext",
@@ -2627,17 +2727,18 @@ impl<'a> Machine<'a> {
         let protected = &self.protected;
         let tracing = self.traces.is_some();
         let mut overwritten = Vec::new();
-        for (address, byte) in self.memory.iter_mut() {
-            if !protected
-                .iter()
-                .any(|(start, end)| (*start..*end).contains(address))
-            {
+        self.memory.forget_where(
+            |address| {
+                !protected
+                    .iter()
+                    .any(|(start, end)| (*start..*end).contains(&address))
+            },
+            |address, known| {
                 if tracing {
-                    overwritten.push((*address, byte.is_some()));
+                    overwritten.push((address, known));
                 }
-                *byte = None;
-            }
-        }
+            },
+        );
         let inherited = self.inherited_unknown_bytes(|address| {
             !self
                 .protected
@@ -3017,7 +3118,7 @@ fn store_width(mnemonic: &str, source: &Operand) -> Result<u64, Halt> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Flags {
     negative: bool,
     zero: bool,
@@ -4075,6 +4176,26 @@ mod tests {
     }
 
     #[test]
+    fn a_vector_add_adds_each_lane_within_its_width() {
+        let code = rows(&[
+            (0x100, "add", "v0.2d,v1.2d,v2.2d"),
+            (0x104, "sub", "v3.4s,v1.4s,v2.4s"),
+            (0x108, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.vectors[1] = Some(u128::from(u64::MAX) | 5 << 64);
+        machine.vectors[2] = Some(1 | 7 << 64);
+        machine.run(0x100, &mut |_, _| Ok(Call::Stop)).unwrap();
+
+        assert_eq!(machine.vectors[0], Some(12 << 64));
+        assert_eq!(
+            machine.vectors[3],
+            Some(u128::from(u32::MAX - 1) | u128::from(u32::MAX) << 32 | 0xffff_fffe << 64)
+        );
+    }
+
+    #[test]
     fn decoded_movi_fills_every_lane() {
         let bytes = arm64!(at 0x100;
             movi v0.d2, #0xffffffffffffffff;
@@ -4952,17 +5073,19 @@ mod tests {
     #[test]
     fn a_path_that_loops_too_often_ends_so_that_other_paths_reach_the_site() {
         let code = rows(&[
-            (0x100, "cbz", "x3,#0x110"),
+            (0x100, "cbz", "x3,#0x114"),
             (0x104, "ldr", "x3,[x3]"),
-            (0x108, "cbnz", "x4,#0x100"),
-            (0x10c, "b", "#0x100"),
-            (0x110, "mov", "x1,#1"),
-            (0x114, "bl", "#0x900"),
-            (0x118, "ret", ""),
+            (0x108, "add", "x19,x19,#1"), // a new count on each pass, so no pass joins another
+            (0x10c, "cbnz", "x4,#0x100"),
+            (0x110, "b", "#0x100"),
+            (0x114, "mov", "x1,#1"),
+            (0x118, "bl", "#0x900"),
+            (0x11c, "ret", ""),
         ]);
         let data = ReadOnlyData::default();
-        let paths = Machine::new(&code, &data)
-            .run_paths_to(0x100, 0x114, &mut |_, _| Ok(Call::Return(None)));
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(19, 0);
+        let paths = machine.run_paths_to(0x100, 0x118, &mut |_, _| Ok(Call::Return(None)));
 
         assert!(paths.iter().any(|path| path.end == Ok(Exit::Reached)));
         let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
@@ -4976,9 +5099,16 @@ mod tests {
 
     #[test]
     fn paths_stop_at_the_path_limit() {
-        let code = rows(&[(0x100, "cbz", "x3,#0x100"), (0x104, "b", "#0x100")]);
+        let code = rows(&[
+            (0x100, "cbz", "x3,#0x10c"),
+            (0x104, "add", "x0,x0,#1"), // a new count on each pass, so no pass joins another
+            (0x108, "b", "#0x100"),
+            (0x10c, "ret", ""),
+        ]);
         let data = ReadOnlyData::default();
-        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+        let mut machine = Machine::new(&code, &data);
+        machine.set_register(0, 0);
+        let paths = machine.run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
 
         assert!(paths.len() <= PATH_LIMIT);
         let limit = Obstacle::Bound(Bound::Paths(PATH_LIMIT));
@@ -4987,6 +5117,188 @@ mod tests {
                 .iter()
                 .any(|path| path.end == Err(stop_at("path-limit", 0x100, limit)))
         );
+    }
+
+    /// Two branches on unknown values, each around `sides`, then `tail`.
+    fn two_branches(
+        sides: [(&'static str, &'static str); 2],
+        tail: &[(u64, &'static str, &'static str)],
+    ) -> Code {
+        let mut lines = vec![
+            (0x100, "cbz", "x1,#0x108"),
+            (0x104, sides[0].0, sides[0].1),
+            (0x108, "cbz", "x2,#0x110"),
+            (0x10c, sides[1].0, sides[1].1),
+        ];
+        lines.extend_from_slice(tail);
+        rows(&lines)
+    }
+
+    fn path_ends(machine: Machine<'_>) -> Vec<Result<Exit, Unresolved>> {
+        machine
+            .run_paths(0x100, &mut |_, _| Ok(Call::Return(None)))
+            .into_iter()
+            .map(|path| path.end)
+            .collect()
+    }
+
+    #[test]
+    fn paths_that_differ_only_in_dead_registers_and_flags_join() {
+        let data = ReadOnlyData::default();
+        let rewritten = two_branches(
+            [("mov", "x9,#1"), ("cmp", "x9,#1")],
+            &[(0x110, "mov", "x9,#0"), (0x114, "ret", "")],
+        );
+        let kept = two_branches(
+            [("mov", "x19,#1"), ("mov", "x20,#2")],
+            &[(0x110, "ret", "")],
+        );
+
+        assert_eq!(
+            path_ends(Machine::new(&rewritten, &data)),
+            [Ok(Exit::Returned)]
+        );
+        assert_eq!(path_ends(Machine::new(&kept, &data)).len(), 4);
+    }
+
+    #[test]
+    fn a_call_reads_its_argument_registers_but_not_the_scratch_registers() {
+        let data = ReadOnlyData::default();
+        let call = [(0x110, "bl", "#0x900"), (0x114, "ret", "")];
+        let result_address = two_branches([("mov", "x8,#1"), ("nop", "")], &call);
+        let scratch = two_branches([("mov", "x9,#1"), ("nop", "")], &call);
+
+        assert_eq!(path_ends(Machine::new(&result_address, &data)).len(), 2);
+        assert_eq!(
+            path_ends(Machine::new(&scratch, &data)),
+            [Ok(Exit::Returned)]
+        );
+    }
+
+    #[test]
+    fn branches_that_join_again_reach_a_site_past_the_path_limit() {
+        let mut lines: Vec<(u64, &str, &str)> = (0..7u64)
+            .flat_map(|index| {
+                let at = 0x100 + index * 8;
+                let branch: &'static str = format!("x{},#{:#x}", index + 1, at + 8).leak();
+                [(at, "cbz", branch), (at + 4, "mov", "x9,#1")]
+            })
+            .collect();
+        lines.extend([
+            (0x138, "nop", ""),
+            (0x13c, "bl", "#0x900"),
+            (0x140, "ret", ""),
+        ]);
+        let code = rows(&lines);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x13c, &mut |_, _| Ok(Call::Return(None)));
+
+        let ends: Vec<_> = paths.into_iter().map(|path| path.end).collect();
+        assert_eq!(ends, [Ok(Exit::Reached)]);
+    }
+
+    #[test]
+    fn a_pass_round_a_loop_that_changes_nothing_joins_the_pass_before() {
+        let code = rows(&[
+            (0x100, "nop", ""),
+            (0x104, "cbz", "x3,#0x110"),
+            (0x108, "ldr", "x3,[x3]"),
+            (0x10c, "b", "#0x104"),
+            (0x110, "bl", "#0x900"),
+            (0x114, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data)
+            .run_paths_to(0x100, 0x110, &mut |_, _| Ok(Call::Return(None)));
+
+        // The first pass and the second reach the site; the third joins the second at the loop
+        // head, before the loop bound.
+        let ends: Vec<_> = paths.into_iter().map(|path| path.end).collect();
+        assert_eq!(ends, [Ok(Exit::Reached), Ok(Exit::Reached)]);
+    }
+
+    #[test]
+    fn a_path_that_joins_one_cut_at_the_step_limit_leaves_that_bound() {
+        let code = rows(&[
+            (0x100, "cbz", "x1,#0x108"),
+            (0x104, "b", "#0x118"),
+            (0x108, "mov", "x9,#9998"),
+            (0x10c, "sub", "x9,x9,#1"),
+            (0x110, "cbnz", "x9,#0x10c"),
+            (0x114, "nop", ""), // the long side, followed first, arrives a step before the limit
+            (0x118, "nop", ""),
+            (0x11c, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let ends = path_ends(Machine::new(&code, &data));
+
+        let limit = Obstacle::Bound(Bound::Steps(STEP_LIMIT));
+        assert_eq!(ends, [Err(stop_at("step-limit", 0x11c, limit))]);
+    }
+
+    #[test]
+    fn an_intercepted_tail_call_keeps_paths_apart() {
+        let code = rows(&[
+            (0x100, "cbz", "x1,#0x10c"),
+            (0x104, "mov", "x0,#1"),
+            (0x108, "b", "#0x110"),
+            (0x10c, "mov", "x0,#2"),
+            (0x110, "b", "#0x200"),
+            (0x200, "mov", "x0,#0"),
+            (0x204, "ret", ""),
+        ]);
+        let data = ReadOnlyData::default();
+        let mut machine = Machine::new(&code, &data);
+        machine.intercept_tail_calls(BTreeSet::from([0x200]));
+        let mut arguments = BTreeSet::new();
+        machine.run_paths(0x100, &mut |_, machine| {
+            arguments.insert(machine.register(0));
+            Ok(Call::Return(None))
+        });
+
+        assert_eq!(arguments, BTreeSet::from([Some(1), Some(2)]));
+    }
+
+    #[test]
+    fn a_frame_below_the_stack_pointer_does_not_keep_paths_apart() {
+        let data = ReadOnlyData::default();
+        let below = two_branches(
+            [("str", "x1,[sp,#-0x10]"), ("nop", "")],
+            &[(0x110, "ret", "")],
+        );
+        let above = two_branches(
+            [("str", "xzr,[sp,#0x10]"), ("nop", "")],
+            &[(0x110, "ret", "")],
+        );
+
+        assert_eq!(path_ends(Machine::new(&below, &data)), [Ok(Exit::Returned)]);
+        assert_eq!(path_ends(Machine::new(&above, &data)).len(), 2);
+    }
+
+    #[test]
+    fn a_run_that_watches_reads_keeps_every_path() {
+        let data = ReadOnlyData::default();
+        let code = two_branches(
+            [("mov", "x9,#1"), ("mov", "x9,#2")],
+            &[(0x110, "mov", "x9,#0"), (0x114, "ret", "")],
+        );
+        let mut watched = Machine::new(&code, &data);
+        let object = watched.allocate(16);
+        watched.watch_reads(object, 16);
+
+        assert_eq!(path_ends(watched).len(), 4);
+    }
+
+    #[test]
+    fn a_loop_that_changes_nothing_ends_at_the_loop_bound() {
+        let code = rows(&[(0x100, "cbz", "x3,#0x100"), (0x104, "b", "#0x100")]);
+        let data = ReadOnlyData::default();
+        let paths = Machine::new(&code, &data).run_paths(0x100, &mut |_, _| Ok(Call::Return(None)));
+
+        let limit = Obstacle::Bound(Bound::LoopArrivals(LOOP_LIMIT));
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0].end, Err(stop_at("loop-limit", 0x100, limit)));
     }
 
     #[test]

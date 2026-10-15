@@ -1,15 +1,14 @@
 {
-  "count": 2306,
+  "count": 2386,
   "gaps": {
-    "OutsideMethod": 1,
-    "UnresolvedReader": 80
+    "OutsideMethod": 1
   },
   "types": {
     "Boolean": 8,
     "FixedPoint": 1092,
     "Float": 172,
     "Integer": 672,
-    "List": 23,
+    "List": 103,
     "String": 326,
     "Vector": 13
   },

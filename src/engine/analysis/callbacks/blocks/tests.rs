@@ -1263,30 +1263,44 @@ fn a_call_through_a_pointer_reads_the_registers_that_the_binding_states() {
 /// search takes first passes the scope to an unknown call.
 fn branches_before_evaluating(escapes: bool) -> Vec<Line> {
     let escape = if escapes {
-        [(0x2028, "mov", "x0,x20"), (0x202c, "bl", "#0x9900")]
+        [(0x2044, "mov", "x0,x20"), (0x2048, "bl", "#0x9900")]
     } else {
-        [(0x2028, "nop", ""), (0x202c, "nop", "")]
+        [(0x2044, "nop", ""), (0x2048, "nop", "")]
     };
     let mut lines = vec![
         (0x2000, "mov", "x19,x0"),
         (0x2004, "mov", "x20,x1"),
-        (0x2008, "cbz", "x3,#0x200c"),
-        (0x200c, "cbz", "x4,#0x2010"),
-        (0x2010, "cbz", "x5,#0x2014"),
-        (0x2014, "cbz", "x6,#0x2018"),
-        (0x2018, "cbz", "x7,#0x201c"),
-        (0x201c, "cbz", "x9,#0x2020"),
-        (0x2020, "cbz", "x2,#0x2028"),
-        (0x2024, "b", "#0x2030"),
+        (0x2008, "mov", "x21,#0"),
     ];
+    lines.extend(distinct_branches(
+        0x200c,
+        &["x3", "x4", "x5", "x6", "x7", "x9"],
+    ));
+    lines.extend([(0x203c, "cbz", "x2,#0x2044"), (0x2040, "b", "#0x204c")]);
     lines.extend(escape);
     lines.extend([
-        (0x2030, "add", "x0,x19,#0x40"),
-        (0x2034, "mov", "x1,x20"),
-        (0x2038, "bl", "#0x9400"),
-        (0x203c, "ret", ""),
+        (0x204c, "add", "x0,x19,#0x40"),
+        (0x2050, "mov", "x1,x20"),
+        (0x2054, "bl", "#0x9400"),
+        (0x2058, "ret", ""),
     ]);
     lines
+}
+
+/// From `base`, one branch on each register of `tests` around an instruction that sets a bit of
+/// `x21`, so each combination of sides is a path of its own: `x21` is callee-saved, so it stays
+/// live and the paths do not join.
+fn distinct_branches(base: u64, tests: &[&str]) -> Vec<Line> {
+    tests
+        .iter()
+        .enumerate()
+        .flat_map(|(index, register)| {
+            let at = base + 8 * index as u64;
+            let branch: &'static str = format!("{register},#{:#x}", at + 8).leak();
+            let bit: &'static str = format!("x21,x21,#{:#x}", 1 << index).leak();
+            [(at, "cbz", branch), (at + 4, "eor", bit)]
+        })
+        .collect()
 }
 
 #[test]

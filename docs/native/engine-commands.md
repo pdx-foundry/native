@@ -404,8 +404,8 @@ as at every call that the pass does not follow, that memory becomes unknown at t
 
 **Result on M452.** `tools/population/callbacks.py` gives these counts and the gap counts below
 from the parity files ([method authoring](method-authoring.md#run-over-the-whole-population)).
-294 on_actions; 285 have at least one context and 259 have at least one context with no
-unresolved scope. 14 names keep several contexts with no unresolved scope: for example, a fleet
+294 on_actions; 291 have at least one context and 266 have at least one context with no
+unresolved scope. 22 names keep several contexts with no unresolved scope: for example, a fleet
 enters `on_fleet_enter_orbit` with a megastructure, a planet, a starbase or an astral rift as from.
 Three name a typed prev: `on_modification_complete`, `on_subspecies_integration_step` and
 `on_subspecies_integration_complete` link the colony as prev. 223 game rules (209 scripted, 14
@@ -439,6 +439,13 @@ gap to the reasons that the runs from the callers state:
 - `on_operation_chapter_finished`: an espionage operation whose from has a type that the caller
   sets at run time (`CEspionageOperationManager::HandleStageFinished`; its callers link a scope
   built with `Set(EScopeType, …)` from the operation's target, as for `on_operation_finished`).
+
+SDK-823, which [joins paths](registry-fields.md#path-joins-on-m452-sdk-823) that arrive at one
+instruction in the same live state, gave 15 on_actions contexts that the path bound had cut; none
+lost one. Five had none: `on_building_ruined`, `on_colony_attackers_win`,
+`on_colony_defenders_lose`, `on_gaining_station_control` and `on_pop_purged`. The on_action gaps go
+from 241 to 133 and the game rule gaps from 32 to 25; no rule's contexts change. The counts in the
+gap list below are after SDK-823; its lists of names are from before.
 
 SDK-736, which runs the atomic read-modify-write instructions (`ldadd`, `swp`, `cas` and the
 other forms, with any ordering and size) as a load, an operation and a store, changed one rule and
@@ -515,9 +522,9 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
   (`on_add_to_imperial_council` or `on_remove_from_imperial_council`), a name that a wrapper that
   is not pinned receives (`CArmy::PerformBuildingOnAction`), or a name built at run time
   (`_queued`). One list site fires a list that an object holds.
-- 9 on_actions have no context: 8 reach the path limit, and `on_press_begin`'s command builds its
+- 3 on_actions have no context: 2 reach the loop limit, and `on_press_begin`'s command builds its
   own scope.
-- 26 on_actions have only unresolved contexts:
+- 25 on_actions have only unresolved contexts:
   - 9 fill or type the scope with a run-time value: `CDepositHolderRefCaster::FillEventScope` (the
     survey names, including `on_planet_surveyed`, whose fires are arms of one switch, not a reused
     scope), `CScopeObjectReference::SetColonyCarrierRef` (`on_arkship_encamped`,
@@ -557,11 +564,14 @@ and `can_scavenge_debris`. Most on_actions that only the config has are fired by
 ## Defines
 
 On M452, `Native::defines()` finds 2,386 compiled `NDefines` and `NUncheckedDefines`
-`ReadDefine` helpers and follows 2,306 of them to a literal namespace, a literal name and a typed
-engine reader; `tests/expected/m452/defines.json` holds the counts by type. The other 80 named
-helpers use a table-search loop that exceeds the path search; they are `UnresolvedReader` gaps,
-including `NGraphics.ORBIT_HSV` (SDK-610). A reader path that stops at any search bound (steps,
-loop arrivals, paths or joins) gets that gap. No helper fails or is unnamed.
+`ReadDefine` helpers and follows each to a literal namespace, a literal name and a typed engine
+reader; `tests/expected/m452/defines.json` holds the counts by type. 80 helpers, including
+`NGraphics.ORBIT_HSV` (SDK-610), use a table-search loop whose passes change nothing that the
+rest of the path reads; since SDK-823 a pass joins the pass before it
+([path joins](registry-fields.md#path-joins-on-m452-sdk-823)), and all 80 read a `List`. 74 of
+them are `{ … }` lists in the shipped `common/defines`; the other 6 have no shipped entry. A
+reader path that stops at any search bound (steps, loop arrivals, paths or joins) gets the
+`UnresolvedReader` gap. No helper fails or is unnamed.
 
 The method classifies the target of each direct `GetValue`, `GetArrayValue` or
 `ReadDefinesValue` call. `GetValue` takes namespace and name arguments; `GetArrayValue` reads a

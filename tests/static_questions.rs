@@ -601,10 +601,13 @@ fn defines_match_the_recorded_m452_boundary() {
     let answer = native.defines().unwrap();
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
     assert_eq!(answer.source.method, DEFINES_METHOD);
-    assert_eq!(answer.completeness, Completeness::Partial);
-    assert!(answer.gaps.iter().any(|gap| {
-        gap.subject.as_ref().map(|subject| subject.name()) == Some("NGraphics.ORBIT_HSV")
-            && gap.detail == "reader path exceeds the table-search limit"
+    // The table-search loop of `NGraphics.ORBIT_HSV` and 79 other helpers joins its earlier
+    // passes (SDK-823), so every helper reaches its reader.
+    assert_eq!(answer.completeness, Completeness::Complete);
+    assert!(answer.value.iter().any(|define| {
+        define.namespace == "NGraphics"
+            && define.name == "ORBIT_HSV"
+            && define.value_type == pdx_native::DefineValueType::List
     }));
 }
 

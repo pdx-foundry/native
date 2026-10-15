@@ -160,23 +160,27 @@ fn a_destructor_that_clears_the_pointer_keeps_the_proof() {
     assert_eq!(prove(&[INITIALIZES, destroys]), [(POINTER, POINT)].into());
 }
 
-/// Loads the object, branches on seven unknown values, which make more paths than a run follows,
-/// and then runs `last`.
+/// Loads the object, branches on seven unknown values around an instruction that sets a bit of
+/// the callee-saved `x21`, which make more distinct paths than a run follows, and then runs
+/// `last`.
 fn branches_then(last: (&'static str, &'static str)) -> Vec<(u64, &'static str, &'static str)> {
-    vec![
+    let mut lines = vec![
         (0x2000, "adrp", "x19,#0x7000"),
         (0x2004, "ldr", "x19,[x19]"),
         (0x2008, "ldr", "x8,[x19]"),
-        (0x200c, "cbz", "x1,#0x2010"),
-        (0x2010, "cbz", "x2,#0x2014"),
-        (0x2014, "cbz", "x3,#0x2018"),
-        (0x2018, "cbz", "x4,#0x201c"),
-        (0x201c, "cbz", "x5,#0x2020"),
-        (0x2020, "cbz", "x6,#0x2024"),
-        (0x2024, "cbz", "x7,#0x2028"),
-        (0x2028, last.0, last.1),
-        (0x202c, "ret", ""),
-    ]
+        (0x200c, "mov", "x21,#0"),
+    ];
+    for (index, register) in ["x1", "x2", "x3", "x4", "x5", "x6", "x7"]
+        .iter()
+        .enumerate()
+    {
+        let at = 0x2010 + 8 * index as u64;
+        let branch: &'static str = format!("{register},#{:#x}", at + 8).leak();
+        let bit: &'static str = format!("x21,x21,#{:#x}", 1 << index).leak();
+        lines.extend([(at, "cbz", branch), (at + 4, "eor", bit)]);
+    }
+    lines.extend([(0x2048, last.0, last.1), (0x204c, "ret", "")]);
+    lines
 }
 
 #[test]

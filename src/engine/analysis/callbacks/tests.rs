@@ -1392,13 +1392,14 @@ fn a_scope_that_the_site_does_not_hold_is_unresolved() {
 
 #[test]
 fn branches_before_the_site_that_exceed_the_path_limit_keep_the_name() {
-    let diamonds: Vec<(u64, &str, &str)> = (0..8u64)
-        .flat_map(|index| {
-            let at = 0x1020 + index * 8;
-            let target: &'static str = Box::leak(format!("x19,#0x{:x}", at + 8).into_boxed_str());
-            [(at, "cbz", target), (at + 4, "nop", "")]
-        })
-        .collect();
+    let mut diamonds: Vec<(u64, &str, &str)> = vec![(0x1020, "mov", "x21,#0")];
+    diamonds.extend((0..8u64).flat_map(|index| {
+        let at = 0x1024 + index * 8;
+        let target: &'static str = Box::leak(format!("x19,#0x{:x}", at + 8).into_boxed_str());
+        let bit: &'static str = Box::leak(format!("x21,x21,#{:#x}", 1 << index).into_boxed_str());
+        // Each side leaves `x21`, a callee-saved register, with its own bits, so paths do not join.
+        [(at, "cbz", target), (at + 4, "eor", bit)]
+    }));
     let result = fire_country(&diamonds);
 
     let findings = &result.on_actions["on_test"];

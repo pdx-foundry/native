@@ -2414,6 +2414,111 @@
        "name": "megastructure"
       }
      },
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     {
+      "Scope": {
+       "id": "a28a4564ee636659",
+       "name": "starbase"
+      }
+     },
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     {
+      "Scope": {
+       "id": "6dafeb9bcf25b500",
+       "name": "fleet"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     {
+      "Scope": {
+       "id": "a28a4564ee636659",
+       "name": "starbase"
+      }
+     },
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   },
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     {
+      "Scope": {
+       "id": "8bb6b317643be13a",
+       "name": "megastructure"
+      }
+     },
      "SelfLink"
     ],
     "prev": [
@@ -2853,7 +2958,29 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   }
+  ],
   "members": {
    "WeightBlock": "f08cb83d92484a89"
   },
@@ -3204,7 +3331,29 @@
  {
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
-  "entry_contexts": [],
+  "entry_contexts": [
+   {
+    "from": [
+     {
+      "Scope": {
+       "id": "44b5e21fe5e593d7",
+       "name": "country"
+      }
+     },
+     "SelfLink"
+    ],
+    "prev": [
+     "SelfLink"
+    ],
+    "root": "SelfLink",
+    "this": {
+     "Scope": {
+      "id": "5ab5fc854e81e429",
+      "name": "galactic_object"
+     }
+    }
+   }
+  ],
   "members": "Unresolved",
   "name": "tooltip_system_filter",
   "read": [
