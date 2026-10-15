@@ -102,10 +102,10 @@ name with no diagnostic ([keyword domains](registry-fields.md#keyword-domains-sd
 
 SDK-823 (2026-10-14) joins paths of the shared evaluator that arrive at one instruction in the
 same live state ([path joins](registry-fields.md#path-joins-on-m452-sdk-823)). Over static
-recordings at `main` `a82d1df` and after the change, open gaps go from 3,309 to 3,291 and accepted
-gaps from 1,203 to 1,188: the entry-context path-limit gaps fall from 62 to 35 and the loop-limit
-gaps from 24 to 13, and `scope_context` rises from 1,465 to 1,470 complete fields.
-`registry-sweep --diff` names 25 registries and `registry-field-sweep --diff` 19.
+recordings at `main` `f06c8a3` and after the change, open gaps go from 3,309 to 3,291 and accepted
+gaps from 1,205 to 1,185: the entry-context path-limit gaps fall from 67 to 36 and the loop-limit
+gaps from 27 to 14, and `scope_context` rises from 1,473 to 1,479 complete fields.
+`registry-sweep --diff` names 28 registries and `registry-field-sweep --diff` 22.
 
 SDK-707 (2026-10-13) follows the interface callers of item getters. A static recording on M452
 gives `derived_names` 346 `UnresolvedPath` gaps in 117 registries (SDK-707) and 300 other gaps in

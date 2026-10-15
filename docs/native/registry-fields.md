@@ -50,7 +50,7 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 19 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -2008,22 +2008,23 @@ the same live state. Rules, each with authored tests:
 - Lane-wise vector `add` and `sub` run (`add v0.2d,v4.2d,v0.2d`): a joined run of
   `CMegaStructureType::BuildBestSystemsText` reaches one.
 
-**Before and after.** Over the M452 recordings, before at `main` `a82d1df`, the field sweep's
+**Before and after.** Over the M452 recordings, before at `main` `f06c8a3`, the field sweep's
 entry-context gaps:
 
 | Stop | Before | After |
 | --- | ---: | ---: |
-| path-limit | 62 | 35 |
-| loop-limit | 24 | 13 |
-| some entry scopes unresolved | 49 | 52 |
-| instruction | 5 | 6 |
+| path-limit | 67 | 36 |
+| loop-limit | 27 | 14 |
+| some entry scopes unresolved | 51 | 55 |
+| instruction | 6 | 7 |
 
-The other stops do not change. 10 blocks lose every entry gap and 4 gain contexts; `scope_context`
-goes from 1,465 to 1,470 complete fields. Most runs that stopped at a bound now reach their
+The other stops do not change. 12 blocks lose every entry gap and 5 gain contexts; `scope_context`
+goes from 1,473 to 1,479 complete fields. Most runs that stopped at a bound now reach their
 evaluation, and where the scope there is not readable the gap becomes the unresolved scope that
 was behind the bound.
 
-Run time, two paired runs on one machine with other work beside them: `registry-sweep --record`
+Run time, measured before SDK-830 at `a82d1df` in two paired runs on one machine with other work
+beside them: `registry-sweep --record`
 146.2 s and 154.7 s before, 157.4 s and 152.7 s after; `registry-field-sweep` 67.9 s and 66.2 s
 before, 71.0 s and 70.7 s after. The block facts take 19 s before and 24 s after
 (`inspect --entry-contexts common/astral_actions`): the runs that stopped at the path bound now go
