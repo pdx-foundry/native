@@ -11,7 +11,7 @@ check a method in one task.
 
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
-| `Native::registries` | `registry-directories/v6` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
+| `Native::registries` | `registry-directories/v7` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v45` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v45`, `command-grammar/v22` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v45`, `command-grammar/v22` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
@@ -127,6 +127,14 @@ accepted gaps from 1,158 to 1,202 (the SDK-810 condition and miss gaps of 22 new
 relationship status or rate changes, and `--diff` names 46 registries. The 69 fields of SDK-707's
 third row are [mostly read by no method that the runs follow](derived-names.md#the-fields-in-registries-whose-paths-stop):
 their registries' stops are not their obstacle.
+
+SDK-843 (2026-10-15) names the three directories of `CShipDesignTemplatesDatabase`
+([one loader, three directories](registry-fields.md#one-loader-three-directories-sdk-843)):
+`common/section_templates` (19 fields) and `common/component_sets` (9) with one owner each, and
+`common/component_templates` with one root statement per root key. The listed registries go from
+185 to 188 and `UnnamedRegistries` from 13 to 12 rows; `--diff` names only the three new
+registries. `naming_rules` counts `common/component_templates` as unsupported, since no one class
+owns its items.
 
 ### Accepted limits (SDK-819)
 

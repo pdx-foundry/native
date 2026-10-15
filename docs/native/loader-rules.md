@@ -50,8 +50,8 @@ The callers:
   `CDesignerDatabase::Init` (`common/global_ship_designs`) and `CTerraformDatabase::InitInstance`
   pass `".txt"` and `-1`. `CWeaponTagDatabase`, `CAmbientObjectDatabase`, `CShipBehaviorDatabase`,
   `CStartScreenMessageDatabase`, `CWorldGfxDatabase`, `CPrescriptedSpeciesDatabase`,
-  `CEmpireDesignDatabase`, `CPlanetClassDatabase` and `CEventManager::ReadEvents` pass `".txt"`
-  and `0`. `CEmpireFlagDatabase` (`flags`) passes `null`, `null` and `-1`. The others pass
+  `CEmpireDesignDatabase`, `CPlanetClassDatabase`, `CEventManager::ReadEvents` and the three calls
+  of `CShipDesignTemplatesDatabase::Init(bool)` pass `".txt"` and `0`. `CEmpireFlagDatabase` (`flags`) passes `null`, `null` and `-1`. The others pass
   `null`, `null` and `0`.
 
 ## Method
@@ -60,6 +60,11 @@ The loaders of a registry are each template candidate that it names (the functio
 loader class and the database class) and each scheduled database whose own loader enumerates it.
 `prescripted_countries` has two (`CEmpireDesignDatabase`, `CPrescriptedSpeciesDatabase`); both
 pass `".txt"` and `0`.
+
+A database that loads several directories is a loader of each, and the method reads all of its
+enumeration calls: the three directories of `CShipDesignTemplatesDatabase` share its three calls.
+Calls that agree give the property; calls that differ leave it `Unresolved`, never another
+directory's value. Its definition-name rule is stated per directory.
 
 For each call, `directories::enumeration_calls` keeps the values that the call's own basic block
 sets in `x2`, `x3` and `w4`: an `adrp` and `add` to a string literal, `mov xN, #0` or
@@ -267,7 +272,13 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     `+8`, which the second pass of `Init` compares. `CWorldGfxDatabase::ReadMember`
     (`0x101bc252c`) takes only `gfx_settings` (`0x2e6f`); `CWorldGraphicalMapData::ReadMember`
     reads `world` (`0x3fe8`) into `+8` and its hash into `+0x30`, which `GetWorldGfxIndex`
-    compares. Other root keys are skipped, or reported for `gfx_settings`.
+    compares. `CShipDesignTemplatesDatabase::Init(bool)` (`0x1011d0438`) takes only
+    `ship_section_template` in `common/section_templates`, only `component_set` in
+    `common/component_sets`, and `weapon_component_template`, `utility_component_template` and
+    `strike_craft_component_template` in `common/component_templates`; each item's reader hashes
+    `key` (`0xdc`) into the member that the directory's lookup compares
+    ([one loader, three directories](registry-fields.md#one-loader-three-directories-sdk-843)).
+    Other root keys are skipped, or reported for `gfx_settings` and the component templates.
   - No name: `CColorsDatabase::Init` (`0x1012fb45c`) reads six fixed keys (`species`, `country`,
     …) of anonymous `rgb`/`hsv` entries, read by index. `CStartScreenMessageDatabase::InitInstance`
     (`0x100c5db64`) reads `part` blocks into an array by their `location`; `localization` is text

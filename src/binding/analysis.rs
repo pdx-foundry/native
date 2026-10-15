@@ -90,8 +90,9 @@ pub(crate) struct ScheduledDatabases {
     pub inventory: ScheduleInventory,
     /// The directory of each unjoined database, keyed by its type.
     pub loader_directories: BTreeMap<String, crate::engine::analysis::directories::Directory>,
-    /// The owner that the loader of each named unjoined database builds, keyed by its type.
-    pub loader_owners: Result<BTreeMap<String, LoaderOwner>, AnalysisError>,
+    /// The owner that the loader of each unjoined database builds for each directory that it
+    /// names, keyed by its type and the directory.
+    pub loader_owners: Result<BTreeMap<(String, String), LoaderOwner>, AnalysisError>,
     /// Why each listed loader builds no item, on the bound build.
     pub(in crate::binding) loader_reasons: &'static [super::groups::LoaderReason],
 }
@@ -116,14 +117,25 @@ impl ScheduledDatabases {
             }
         };
 
-        Some(match owners.get(database) {
-            Some(LoaderOwner::Owner(owner) | LoaderOwner::ByRootKey { other: owner, .. }) => {
-                Ok(NamedRegistry {
-                    name,
-                    database,
-                    owner,
-                })
-            }
+        Some(match owners.get(&(database.clone(), name.clone())) {
+            Some(
+                LoaderOwner::Owner(owner)
+                | LoaderOwner::ByRootKey {
+                    other: Some(owner), ..
+                },
+            ) => Ok(NamedRegistry {
+                name,
+                database,
+                owner,
+            }),
+            Some(LoaderOwner::ByRootKey { keyed, other: None }) => Err(format!(
+                "each root key builds its own class ({}), so no one class owns the items",
+                keyed
+                    .iter()
+                    .map(|(key, class)| format!("`{key}`: {class}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
             Some(LoaderOwner::Several(classes)) => Err(format!(
                 "the loader builds several classes with a member reader: {}",
                 classes.join(", ")
@@ -140,48 +152,66 @@ impl ScheduledDatabases {
         })
     }
 
-    /// The root key that the loader of `registry` reserves for another class than its owner, with
-    /// that class. `None` when the registry's one loader reserves no key.
-    pub(crate) fn keyed_class(&self, registry: &str) -> Option<(&str, &str)> {
-        let [(database, _)] = self.loading_databases(registry)[..] else {
-            return None;
+    /// The root keys that the loader of `registry` reserves for other classes than its owner,
+    /// each with its class. Empty when the registry's one loader reserves no key.
+    pub(crate) fn keyed_classes(&self, registry: &str) -> Vec<(&str, &str)> {
+        let [(database, name)] = self.loading_databases(registry)[..] else {
+            return Vec::new();
+        };
+        let Some(LoaderOwner::ByRootKey { keyed, .. }) = self
+            .loader_owners
+            .as_ref()
+            .ok()
+            .and_then(|owners| owners.get(&(database.clone(), name.clone())))
+        else {
+            return Vec::new();
         };
 
-        match self.loader_owners.as_ref().ok()?.get(database)? {
-            LoaderOwner::ByRootKey { key, keyed, .. } => Some((key, keyed)),
-            _ => None,
-        }
+        keyed
+            .iter()
+            .map(|(key, class)| (key.as_str(), class.as_str()))
+            .collect()
     }
 
     /// Each unjoined database whose loader enumerates `registry`, with the registry's name.
     fn loading_databases(&self, registry: &str) -> Vec<(&String, &String)> {
-        use crate::engine::analysis::directories::Directory;
-
         self.loader_directories
             .iter()
-            .filter_map(|(database, directory)| match directory {
-                Directory::Named(name) if name == registry => Some((database, name)),
-                _ => None,
+            .filter_map(|(database, directory)| {
+                loader_names(directory)
+                    .iter()
+                    .find(|name| name.as_str() == registry)
+                    .map(|name| (database, name))
             })
             .collect()
     }
 
     /// Every registry that an unjoined database's loader names and whose loaders build one owner.
     fn loader_registries(&self) -> impl Iterator<Item = NamedRegistry<'_>> {
-        use crate::engine::analysis::directories::Directory;
-
         let names: std::collections::BTreeSet<&str> = self
             .loader_directories
             .values()
-            .filter_map(|directory| match directory {
-                Directory::Named(name) => Some(name.as_str()),
-                _ => None,
-            })
+            .flat_map(loader_names)
+            .map(String::as_str)
             .collect();
 
         names
             .into_iter()
             .filter_map(|name| self.loader_registry(name)?.ok())
+    }
+}
+
+/// The registries that an unjoined database's own loader names: its one directory, or each of
+/// several directories that its enumeration calls pass as literals.
+pub(crate) fn loader_names(
+    directory: &crate::engine::analysis::directories::Directory,
+) -> &[String] {
+    use crate::engine::analysis::directories::Directory;
+
+    match directory {
+        Directory::Named(name) => std::slice::from_ref(name),
+        Directory::Ambiguous(names) => names,
+        Directory::Missing => &[],
     }
 }
 
@@ -546,7 +576,9 @@ impl VerifiedAnalysis<'_> {
                 schedule
                     .loader_directories
                     .iter()
-                    .filter(|(_, directory)| names_registry(directory))
+                    .filter(|(_, directory)| {
+                        loader_names(directory).iter().any(|name| name == registry)
+                    })
                     .map(|(database, _)| database.clone())
                     .collect()
             })
@@ -585,6 +617,7 @@ impl VerifiedAnalysis<'_> {
                 &self.catalog.symbols,
                 &templates,
                 &databases,
+                registry,
             ),
         }))
     }
@@ -600,8 +633,6 @@ impl VerifiedAnalysis<'_> {
     }
 
     fn read_database_schedule(&self) -> Result<ScheduledDatabases, ScheduleGap> {
-        use crate::engine::analysis::directories::Directory;
-
         let symbols = &self.catalog.symbols;
         let addresses: std::collections::BTreeSet<u64> = symbols
             .iter()
@@ -637,13 +668,12 @@ impl VerifiedAnalysis<'_> {
             &self.catalog.candidates,
             inventory.unjoined.iter().cloned().collect(),
         );
-        let named = loader_directories
-            .iter()
-            .filter(|(_, directory)| matches!(directory, Directory::Named(_)))
-            .map(|(database, _)| database.clone())
-            .collect();
-        let loader_owners =
-            binary::loader_owners::loader_owners(&text, &image, &named, self.reader_token_offset);
+        let loader_owners = binary::loader_owners::loader_owners(
+            &text,
+            &image,
+            &loader_directories,
+            self.reader_token_offset,
+        );
 
         Ok(ScheduledDatabases {
             inventory,
@@ -684,7 +714,9 @@ impl VerifiedAnalysis<'_> {
             .flat_map(BTreeMap::values)
             .flat_map(|owner| match owner {
                 LoaderOwner::Owner(owner) => vec![owner.as_str()],
-                LoaderOwner::ByRootKey { keyed, other, .. } => vec![keyed.as_str(), other.as_str()],
+                LoaderOwner::ByRootKey { keyed, other } => {
+                    keyed.values().chain(other).map(String::as_str).collect()
+                }
                 LoaderOwner::NoOwner | LoaderOwner::Several(_) => vec![],
             })
     }
@@ -856,24 +888,33 @@ impl BoundAnalysis {
         Ok(Some((owner, result)))
     }
 
-    /// The root key that the loader of `registry` reserves for another class than its owner, that
-    /// class, and the field method's result for it. `None` when the loader reserves no key.
-    pub(crate) fn keyed_field_result(
+    /// Each root key that the loader of `registry` reserves for another class than its owner,
+    /// with that class and the field method's result for it. Empty when the loader reserves no
+    /// key.
+    pub(crate) fn keyed_field_results(
         &self,
         registry: &str,
-    ) -> Result<Option<(String, String, Arc<RegistryFieldResult>)>, AnalysisError> {
+    ) -> Result<Vec<(String, String, Arc<RegistryFieldResult>)>, AnalysisError> {
         let verified = self.verified()?;
-        let Some((key, class)) = verified
+        let keyed: Vec<(String, String)> = verified
             .database_schedule()
-            .ok()
-            .and_then(|schedule| schedule.keyed_class(registry))
-        else {
-            return Ok(None);
-        };
-        let (key, class) = (key.to_owned(), class.to_owned());
-        let result = self.owner_field_result(&verified, registry, &class)?;
+            .map(|schedule| {
+                schedule
+                    .keyed_classes(registry)
+                    .into_iter()
+                    .map(|(key, class)| (key.to_owned(), class.to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default();
 
-        Ok(Some((key, class, result)))
+        keyed
+            .into_iter()
+            .map(|(key, class)| {
+                let result = self.owner_field_result(&verified, registry, &class)?;
+
+                Ok((key, class, result))
+            })
+            .collect()
     }
 
     /// The field method's result for the items of `owner` in `registry`, run once.
