@@ -130,6 +130,10 @@ pub(super) fn discover(
                 if object.constructors.contains(&target) {
                     let at = machine.known_register(0, "constructed-object")?;
                     if machine.labelled(ALLOCATED | at).is_none() {
+                        // A member of an object that the root constructs inline.
+                        if initialized_members(machine, objects, &zero_fill, target).is_some() {
+                            break;
+                        }
                         return Err(Unresolved::new("object-not-allocated"));
                     }
                     if machine.labelled(INSERTED_OBJECT) == Some(at) {

@@ -1308,6 +1308,14 @@ fn an_object_built_inline_joins_when_its_primary_address_point_is_in_place() {
     let mut not_an_initializer = inline_nested_fixture();
     not_an_initializer.objects[0].initializers.clear();
 
+    // The member's class is itself an object that the root may construct and insert.
+    let mut member_object = inline_nested_fixture();
+    let mut member = member_object.objects[0].clone();
+    member.class = "CMember".into();
+    member.constructors = vec![0x9400];
+    member_object.objects.push(member);
+    assert_eq!(derive(member_object).collections.len(), 1);
+
     for (case, input) in [
         ("another address point", other_point),
         ("no address point", no_point),
