@@ -5,10 +5,10 @@
 //! scope object to a trigger evaluator, an effect executor or a weight evaluator, directly or
 //! through the block object's own vtable. A *type pointer* is a register that points at an
 //! owner's item: the receiver of the owner's methods, a parameter of an owner pointer or reference
-//! type, or a member that the constructors of the parameter's class fill only with such a
-//! parameter. An item is also an element of a parameter of type `CPdxArray<O const*, int>`, and
-//! the receiver of an *owner getter*, an offset getter that is a member of the owner's class,
-//! whatever register holds it. The binding decides which registers of a function lead to which
+//! type, or a member that the writers of the parameter's class fill only with such an item. An
+//! item is also an element of a buffer of owner pointers, which a register or a global instance
+//! leads to ([`Buffer`]), and the receiver of an *owner getter*, an offset getter that is a member
+//! of the owner's class, whatever register holds it. The binding decides which registers of a function lead to which
 //! owner, and which vtable slots evaluate a block of which family. The method then works in two
 //! steps.
 //!
@@ -28,6 +28,9 @@
 //! - The **context pass** runs each entry's function to the entry call, then through it. Every
 //!   wrapper on the way runs inline, with its caller's arguments and memory, so the context of
 //!   each evaluation that the entry reaches is read from the scope that its caller built.
+//!   A bound of the search is a gap only on a contradiction: no evaluation reached, an unreadable
+//!   scope, or a scope with no `this` beside a bound inside a function, other than a wrapper,
+//!   that receives the scope.
 //! - An entry function can link its one scope parameter into the scope that it builds, so the
 //!   run cannot read that link. When a run reads such an unread slot and stops at nothing but a
 //!   bound, the method retries from the function's callers, with the function as a wrapper on that
@@ -60,7 +63,7 @@ use super::contexts::{
     CallReads, EVALUATED_SCOPE, EntryCalls, Read, Runner, ScopeFunctions, Selected, Subject,
 };
 use super::instances;
-use super::names::{self, Fact, OffsetGetter, Root, State, StringFunctions};
+use super::names::{self, Buffer, Fact, OffsetGetter, Root, State, StoredWord, StringFunctions};
 use super::{CallbackLayout, Context, Findings, Slot};
 use crate::BlockFamily;
 use crate::engine::analysis::decode::Instruction;
@@ -173,9 +176,10 @@ pub struct TypePointers {
     pub registers: BTreeMap<usize, String>,
     /// The owner type that the word at each register plus an offset points at.
     pub members: BTreeMap<(usize, i64), String>,
-    /// The owner type of the elements of the buffer that the word at each register plus an offset
-    /// points at, a buffer of pointers to items of that owner.
-    pub elements: BTreeMap<(usize, i64), String>,
+    /// The owner type of the elements of each buffer of pointers to items of that owner: a buffer
+    /// that the word at a register plus an offset points at, or one that the word at an offset of
+    /// a global object points at.
+    pub elements: BTreeMap<Buffer, String>,
     /// The registers of the function's `CEventScope&` and `CEventScope const&` parameters.
     pub scope_parameters: BTreeSet<usize>,
 }
@@ -344,11 +348,15 @@ pub fn named_functions(
     named
 }
 
-/// The argument registers whose values at entry `rows`, one whole function, stores unchanged into
-/// the object that `x0` addresses at entry, by the offset of each 64-bit store in that object. The
-/// binding reads a constructor's stores of its parameters with it.
-pub fn receiver_stores(rows: &[Instruction]) -> BTreeMap<i64, BTreeSet<usize>> {
-    names::receiver_stores(rows, &StringFunctions::default())
+/// The values that `rows`, one whole function, stores into the object that `x0` addresses at
+/// entry, by the offset of each 64-bit store in that object; a load from a word of `buffers` names
+/// an element. The binding reads the member words of a class from the stores of its constructors
+/// and member functions with it.
+pub fn receiver_stores(
+    rows: &[Instruction],
+    buffers: &BTreeSet<Buffer>,
+) -> BTreeMap<i64, BTreeSet<StoredWord>> {
+    names::receiver_stores(rows, &StringFunctions::default(), buffers)
 }
 
 /// What makes a call an evaluation of a block of some family, or a tooltip call on one.
@@ -427,12 +435,15 @@ impl TypePointers {
     fn leads(&self, register: usize) -> bool {
         self.registers.contains_key(&register)
             || self.members.keys().any(|(holder, _)| *holder == register)
-            || self.elements.keys().any(|(holder, _)| *holder == register)
+            || self
+                .elements
+                .keys()
+                .any(|buffer| matches!(buffer, Buffer::Argument(holder, _) if *holder == register))
     }
 }
 
 /// The buffer words of each function's arrays of owner pointers, which the name pass types.
-fn buffers(type_pointers: &BTreeMap<u64, TypePointers>) -> BTreeMap<u64, BTreeSet<(usize, i64)>> {
+fn buffers(type_pointers: &BTreeMap<u64, TypePointers>) -> BTreeMap<u64, BTreeSet<Buffer>> {
     type_pointers
         .iter()
         .filter(|(_, pointers)| !pointers.elements.is_empty())
@@ -455,9 +466,7 @@ fn stored_block<'a>(
         Fact::Address(Root::Getter(getter), offset) => {
             (offset_getters.get(&getter)?.owner.as_ref()?, offset)
         }
-        Fact::Address(Root::Element(register, buffer), offset) => {
-            (pointers.elements.get(&(register, buffer))?, offset)
-        }
+        Fact::Address(Root::Element(buffer), offset) => (pointers.elements.get(&buffer)?, offset),
         Fact::Member(Root::Argument(register), member, offset) => {
             (pointers.members.get(&(register, member))?, offset)
         }
@@ -728,6 +737,7 @@ fn collect_contexts(
         never_return: &input.never_return,
     };
     let entered: BTreeSet<u64> = wrappers.union(&input.receivers).copied().collect();
+    let builders: BTreeSet<u64> = input.receivers.difference(wrappers).copied().collect();
     let run = |entry: Entry<Block>,
                entered: &BTreeSet<u64>,
                evaluations: &BTreeMap<u64, Block>,
@@ -742,11 +752,11 @@ fn collect_contexts(
                     &calls,
                     &entry.reads(reads),
                 );
-                entry_run(entry, found, evaluations)
+                entry_run(entry, found, evaluations, &builders)
             }
             None => EntryRun {
                 unresolved: vec![Unresolved::new("site-not-decoded")],
-                ..entry_run(entry, CallReads::default(), evaluations)
+                ..entry_run(entry, CallReads::default(), evaluations, &builders)
             },
         }
     };
@@ -800,7 +810,7 @@ fn collect_contexts(
             &calls,
             selections::RECEIVER_BYTES,
         );
-        record(result, selected_run(selection, receiver, found));
+        record(result, selected_run(selection, receiver, found, &builders));
     }
     // A helper runs only as the selected call of a call that passes it a block, so it is not a
     // wrapper that other runs enter. Its evaluations read as the blocks that this call passes.
@@ -893,7 +903,12 @@ fn fills(partial: &Context, read: &Context) -> bool {
 
 /// Match each arriving receiver to its candidate block before giving it the path's context.
 /// An unknown identity remains a gap even if another arrival gives a readable context.
-fn selected_run(selection: selections::Selection, receiver: u64, found: CallReads) -> EntryRun {
+fn selected_run(
+    selection: selections::Selection,
+    receiver: u64,
+    found: CallReads,
+    builders: &BTreeSet<u64>,
+) -> EntryRun {
     let mut reached = BTreeSet::new();
     let mut unresolved = found.unresolved;
     for (site, pointer, context) in found.reached {
@@ -925,6 +940,7 @@ fn selected_run(selection: selections::Selection, receiver: u64, found: CallRead
     }
     sort_and_dedup(&mut unresolved);
     let contradicted = !unresolved.is_empty()
+        || unset_beside_a_cut_builder(&reached, &found.bounded, builders)
         || reached
             .iter()
             .any(|(_, _, context)| !context.is_established());
@@ -978,6 +994,7 @@ fn entry_run(
     entry: Entry<Block>,
     found: CallReads,
     evaluations: &BTreeMap<u64, Block>,
+    builders: &BTreeSet<u64>,
 ) -> EntryRun {
     let reached: BTreeSet<(u64, Block, Context)> = found
         .reached
@@ -987,6 +1004,7 @@ fn entry_run(
         })
         .collect();
     let contradicted = reached.is_empty()
+        || unset_beside_a_cut_builder(&reached, &found.bounded, builders)
         || reached
             .iter()
             .any(|(_, _, context)| !context.is_established());
@@ -1003,6 +1021,27 @@ fn entry_run(
         bounded: found.bounded,
         contradicted,
     }
+}
+
+/// Whether a run that reached `reached` reached a scope with no `this` and has one of `bounded`
+/// inside one of `builders`, the functions other than wrappers that receive a scope. That bound
+/// contradicts the run: the path that it cut may have set the scope, as a switch on a spatial
+/// object's type in `CSpatialObjectRefCaster::FillEventScope` does.
+fn unset_beside_a_cut_builder(
+    reached: &BTreeSet<(u64, Block, Context)>,
+    bounded: &[Unresolved],
+    builders: &BTreeSet<u64>,
+) -> bool {
+    let unset = reached
+        .iter()
+        .any(|(_, _, context)| context.this == Slot::NotSet);
+    let cut = bounded.iter().any(|bound| {
+        bound
+            .stop
+            .is_some_and(|stop| builders.contains(&stop.entry))
+    });
+
+    unset && cut
 }
 
 /// Record that the contexts of `blocks` are incomplete, for `reason`.

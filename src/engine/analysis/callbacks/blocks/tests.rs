@@ -1168,6 +1168,16 @@ fn a_tooltip_builder_that_receives_the_scope_keeps_it_known() {
 }
 
 /// A function at 0x3000 that receives a scope in `x1` and runs `body` on it in `x20`.
+/// From `0x3004`, eight branches whose sides make more distinct paths than a run follows.
+fn eight_distinct_branches() -> Vec<Line> {
+    let mut lines = vec![(0x3004, "mov", "x24,#0")];
+    lines.extend(distinct_branches(
+        0x3008,
+        &["x3", "x4", "x5", "x6", "x7", "x9", "x10", "x11"],
+    ));
+    lines
+}
+
 fn receives_scope(body: &[Line]) -> Vec<Line> {
     let mut lines = vec![(0x3000, "mov", "x20,x1")];
     lines.extend_from_slice(body);
@@ -1270,7 +1280,7 @@ fn branches_before_evaluating(escapes: bool) -> Vec<Line> {
     let mut lines = vec![
         (0x2000, "mov", "x19,x0"),
         (0x2004, "mov", "x20,x1"),
-        (0x2008, "mov", "x21,#0"),
+        (0x2008, "mov", "x24,#0"),
     ];
     lines.extend(distinct_branches(
         0x200c,
@@ -1288,8 +1298,8 @@ fn branches_before_evaluating(escapes: bool) -> Vec<Line> {
 }
 
 /// From `base`, one branch on each register of `tests` around an instruction that sets a bit of
-/// `x21`, so each combination of sides is a path of its own: `x21` is callee-saved, so it stays
-/// live and the paths do not join.
+/// `x24`, so each combination of sides is a path of its own: `x24` is callee-saved, so it stays
+/// live and the paths do not join. The caller sets `x24` to zero first.
 fn distinct_branches(base: u64, tests: &[&str]) -> Vec<Line> {
     tests
         .iter()
@@ -1297,7 +1307,7 @@ fn distinct_branches(base: u64, tests: &[&str]) -> Vec<Line> {
         .flat_map(|(index, register)| {
             let at = base + 8 * index as u64;
             let branch: &'static str = format!("{register},#{:#x}", at + 8).leak();
-            let bit: &'static str = format!("x21,x21,#{:#x}", 1 << index).leak();
+            let bit: &'static str = format!("x24,x24,#{:#x}", 1 << index).leak();
             [(at, "cbz", branch), (at + 4, "eor", bit)]
         })
         .collect()
@@ -1342,6 +1352,30 @@ fn a_search_that_ends_at_a_bound_with_no_contradiction_has_no_gap() {
         bounds(&contradicted),
         BTreeSet::from([("path-limit", true, true)])
     );
+}
+
+#[test]
+fn a_bound_inside_a_function_that_receives_the_scope_contradicts_a_scope_with_no_this() {
+    let branches = receives_scope(&eight_distinct_branches());
+    let run = |typed: (&'static str, &'static str)| {
+        let mut caller = builds_a(0x1000, typed);
+        caller.extend([(0x1018, "add", "x1,sp,#0x100"), (0x101c, "bl", "#0x3000")]);
+        caller.extend(calls_with_a(0x1020, "#0x2000"));
+        caller.push((0x102c, "ret", ""));
+        Program::new()
+            .function(&caller)
+            .receiver(&branches)
+            .method(&wrapper(0x2000, POTENTIAL_OF_X19))
+            .analyze()
+    };
+
+    let country = run(COUNTRY_TYPE);
+    assert_eq!(contexts(&country, POTENTIAL), [fresh(COUNTRY)]);
+    assert!(unresolved(&country, POTENTIAL).is_empty());
+
+    let unset = run(NO_TYPE);
+    assert_eq!(contexts(&unset, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert_eq!(unresolved(&unset, POTENTIAL), ["path-limit"]);
 }
 
 #[test]
@@ -1765,12 +1799,17 @@ fn a_constructor_stores_its_parameters_in_its_object() {
         (0x1020, "ret", ""),
     ];
 
+    let parameter = |register| BTreeSet::from([StoredWord::Parameter(register)]);
+    let unknown = || BTreeSet::from([StoredWord::Unknown]);
     assert_eq!(
-        receiver_stores(&rows(&lines)),
+        receiver_stores(&rows(&lines), &BTreeSet::new()),
         BTreeMap::from([
-            (0x18, BTreeSet::from([2])),
-            (0x28, BTreeSet::from([1])),
-            (0x38, BTreeSet::from([3])),
+            (0x10, unknown()),
+            (0x18, parameter(2)),
+            (0x28, parameter(1)),
+            (0x30, unknown()),
+            (0x38, parameter(3)),
+            (0x40, unknown()),
         ])
     );
 }
@@ -1848,7 +1887,7 @@ fn an_element_of_a_typed_array_parameter_names_the_block_at_its_offset() {
             ("b.ne", "#0x1020"),
         ],
     );
-    let run = |elements: BTreeMap<(usize, i64), String>| {
+    let run = |elements: BTreeMap<Buffer, String>| {
         let pointers = TypePointers {
             elements,
             ..TypePointers::default()
@@ -1856,7 +1895,7 @@ fn an_element_of_a_typed_array_parameter_names_the_block_at_its_offset() {
         Program::new().pointing(pointers, &lines).analyze()
     };
 
-    let typed = run(BTreeMap::from([((0, 8), OWNER.into())]));
+    let typed = run(BTreeMap::from([(Buffer::Argument(0, 8), OWNER.into())]));
     let untyped = run(BTreeMap::new());
 
     assert_eq!(lines[8], (0x1020, "ldr", "x8,[x19]"));
@@ -2126,6 +2165,49 @@ fn a_conditional_selection_keeps_each_blocks_country_or_planet_context() {
             .values()
             .all(|finding| finding.unresolved.is_empty())
     );
+}
+
+#[test]
+fn a_bound_inside_a_scope_builder_contradicts_a_selected_block_with_no_this() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        mov x22, x2;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x1, sp, #0x100;
+        bl extern 0x3000;
+        cmp x22, #0;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        ldr x8, [x0];
+        ldr x8, [x8, #0x10];
+        blr x8;
+        ret
+    );
+    let run = |body: &[Line]| {
+        authored_selection(&bytes)
+            .receiver(&receives_scope(body))
+            .analyze()
+    };
+    let gaps = |result: &BlockEntries| -> BTreeSet<&'static str> {
+        result
+            .blocks
+            .values()
+            .flat_map(|finding| finding.unresolved.iter().copied())
+            .collect()
+    };
+
+    let straight = run(&[(0x3004, "nop", "")]);
+    assert_eq!(contexts(&straight, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert!(gaps(&straight).is_empty());
+
+    let cut = run(&eight_distinct_branches());
+    assert_eq!(contexts(&cut, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert!(gaps(&cut).contains("path-limit"), "{:?}", gaps(&cut));
 }
 
 #[test]

@@ -1899,8 +1899,8 @@ fn fixture_constructor_joins_only_one_direct_or_matching_new_entry_route() {
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     use crate::BlockFamily::{Effect, Trigger, Weight};
-    use crate::engine::analysis::callbacks::OffsetGetter;
     use crate::engine::analysis::callbacks::blocks::TypePointers;
+    use crate::engine::analysis::callbacks::{Buffer, OffsetGetter};
 
     let binding = crate::session::installed_native().bound();
     let analysis = &binding.analysis;
@@ -1955,10 +1955,18 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
         Some([(1, "CEdict".into())].into())
     );
     // CGalacticCommunity::PassResolution(CResolution&, bool, bool): the resolution's type is the
-    // word at x1 + 0x18.
+    // word at x1 + 0x18. Members of CGalacticCommunity store the null objects of CGalacticFocus
+    // at this + 0x2c0 and of COwnershipLimits at this + 0x348.
     assert_eq!(
         pointers(0x10055ce08).map(|pointers| pointers.members),
-        Some([((1, 0x18), "CResolutionType".into())].into())
+        Some(
+            [
+                ((0, 0x2c0), "CGalacticFocus".into()),
+                ((0, 0x348), "COwnershipLimits".into()),
+                ((1, 0x18), "CResolutionType".into())
+            ]
+            .into()
+        )
     );
     // CSubjectSpecialization::FinishConversion(CSpecialistSubjectType const&, CAgreement const&):
     // the class has no vtable, type info, constructor or destructor, but a `const` member.
@@ -1969,8 +1977,32 @@ fn m452_block_evaluations_derive_their_slots_and_type_pointers() {
     // (anonymous namespace)::TradeActions(CPdxArray<CTradableAction const*, int> const&, …): the
     // buffer at x0 + 8 holds tradable actions.
     assert_eq!(
-        pointers(0x100cd2790).map(|pointers| pointers.elements),
-        Some([((0, 8), "CTradableAction".into())].into())
+        pointers(0x100cd2790)
+            .map(|pointers| pointers.elements.get(&Buffer::Argument(0, 8)).cloned()),
+        Some(Some("CTradableAction".into()))
+    );
+    // CTradeDealSide::CalcValueFor: CTradeDealSide() stores the vtable of a
+    // CPdxArray<CTradableAction const*, int> at this + 0xa0, so its buffer is at this + 0xa8.
+    assert_eq!(
+        pointers(0x100ccbfd4)
+            .map(|pointers| pointers.elements.get(&Buffer::Argument(0, 0xa8)).cloned()),
+        Some(Some("CTradableAction".into()))
+    );
+    // CTechnologyStatus::GetTechWeight(CTechnology const*): CTechnology::ReadMember stores
+    // TPdxNullObject<CTechnologyTier>::_pInstance at + 0x600.
+    assert_eq!(
+        pointers(0x100ca3290).map(|pointers| pointers.members.get(&(1, 0x600)).cloned()),
+        Some(Some("CTechnologyTier".into()))
+    );
+    // CArchaeologicalSiteManager::CreateRandomSite loads the database instance through the slot
+    // 0x102ffba68; CArchaeologicalSiteTypeDatabase() stores the vtable of a
+    // CPdxArray<CArchaeologicalSiteType const*, int> at + 0x40.
+    assert_eq!(
+        pointers(0x100088528).map(|pointers| pointers
+            .elements
+            .get(&Buffer::Instance(0x102ffba68, 0x48))
+            .cloned()),
+        Some(Some("CArchaeologicalSiteType".into()))
     );
 }
 

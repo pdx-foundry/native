@@ -10,7 +10,10 @@ use object::{Object, ObjectSection, SectionKind};
 use crate::engine::analysis::{
     InputError,
     declarations::{CALLER_DEPTH, Composition, DeclarationInput, Function, ScopeSlots},
-    decode::{Instruction, blr_register, call_or_jump_target, call_target, decode_arm64},
+    decode::{
+        Instruction, add_immediate, adrp, blr_register, call_or_jump_target, call_target,
+        decode_arm64, is_branch, ldr_immediate, written_registers,
+    },
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{DataSection, Token, recover_decoded},
@@ -23,6 +26,10 @@ use super::super::targets::DeclarationRecipe;
 /// The most bytes of one function that the declaration and grammar readers keep. A longer body is
 /// cut at this length, and the grammar reader records it as a cut body.
 pub(super) const FUNCTION_BODY_LIMIT: u64 = 65_536;
+
+/// How many words after an `adrp` [`Text::functions_forming`] looks for the instruction that
+/// completes an address on its page.
+const ADDRESS_WINDOW: usize = 4;
 
 /// Read every registration call in executable text, including tail calls and calls in compiler
 /// outlined regions that have no reliable symbol boundary, with the code that composes run-time
@@ -396,6 +403,80 @@ impl<'a> Text<'a> {
             .collect()
     }
 
+    /// The functions that form one of `addresses`, each with those that it forms: an `adrp` of the
+    /// address's page, then, within the next [`ADDRESS_WINDOW`] instructions of the same function,
+    /// an `add` or a 64-bit `ldr` with an immediate on that `adrp`'s register that gives the
+    /// address. The window ends at a branch and at another write of the register.
+    pub fn functions_forming(&self, addresses: &BTreeSet<u64>) -> BTreeMap<u64, BTreeSet<u64>> {
+        let pages: BTreeSet<u64> = addresses.iter().map(|address| address & !0xfff).collect();
+        let words: Vec<u32> = self
+            .code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
+            .collect();
+        let mut forming: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
+        for (index, &word) in words.iter().enumerate() {
+            let at = self.address + index as u64 * 4;
+            let Some((page_register, page)) =
+                adrp(word, at).filter(|(_, page)| pages.contains(page))
+            else {
+                continue;
+            };
+            let Some(&function) = self.starts.range(..=at).next_back() else {
+                continue;
+            };
+
+            let formed: BTreeSet<u64> = self
+                .page_uses(at, page_register)
+                .into_iter()
+                .map(|offset| page + offset)
+                .filter(|address| addresses.contains(address))
+                .collect();
+            if !formed.is_empty() {
+                forming.entry(function).or_default().extend(formed);
+            }
+        }
+        forming
+    }
+
+    /// The immediates that the `add` and 64-bit `ldr` instructions after the `adrp` at `at` add
+    /// to its `register`, up to [`ADDRESS_WINDOW`] instructions, the end of the function, a
+    /// branch, or another write of the register.
+    fn page_uses(&self, at: u64, register: usize) -> Vec<u64> {
+        let end = self
+            .starts
+            .range(at + 1..)
+            .next()
+            .copied()
+            .unwrap_or_else(|| self.end());
+        let length = (ADDRESS_WINDOW as u64 * 4).min(end - at - 4);
+        let Ok(code) = self.bytes(at + 4, length) else {
+            return Vec::new();
+        };
+        let Ok(rows) = decode_arm64(code, at + 4) else {
+            return Vec::new();
+        };
+
+        let mut uses = Vec::new();
+        for (row, word) in rows.iter().zip(code.as_chunks::<4>().0) {
+            let word = u32::from_le_bytes(*word);
+            let used = add_immediate(word)
+                .or_else(|| ldr_immediate(word))
+                .filter(|&(_, base, _)| base == register);
+            if let Some((_, _, offset)) = used {
+                uses.push(offset);
+            }
+            if is_branch(&row.operation)
+                || written_registers(&row.operation, &row.operands).contains(&register)
+            {
+                break;
+            }
+        }
+        uses
+    }
+
     /// Every `blr` in address order, with the register that it calls through.
     pub fn register_calls(&self) -> Vec<(u64, usize)> {
         self.code
@@ -580,6 +661,33 @@ pub(super) fn read_only_data(bytes: &[u8]) -> Result<ReadOnlyData, AnalysisError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_address_is_formed_only_until_its_page_register_is_written() {
+        use crate::engine::analysis::assembler::arm64;
+        let code = arm64!(at 0x1000;
+            adrp x8, #0x5000; // the page 0x6000
+            ldr x9, [x8, #0x40];
+            adrp x8, #0x5000;
+            mov x8, x0;
+            ldr x9, [x8, #0x48];
+            adrp x8, #0x5000;
+            b >next;
+            next:;
+            add x9, x8, #0x50;
+            ret
+        );
+        let text = Text {
+            address: 0x1000,
+            code: &code,
+            starts: BTreeSet::from([0x1000]),
+        };
+
+        assert_eq!(
+            text.functions_forming(&BTreeSet::from([0x6040, 0x6048, 0x6050])),
+            BTreeMap::from([(0x1000, BTreeSet::from([0x6040]))])
+        );
+    }
 
     #[test]
     fn data_symbols_are_not_function_bodies() {
