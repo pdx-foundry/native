@@ -134,7 +134,8 @@ SDK-843 (2026-10-15) names the three directories of `CShipDesignTemplatesDatabas
 `common/component_templates` with one root statement per root key. The listed registries go from
 185 to 188 and `UnnamedRegistries` from 13 to 12 rows; `--diff` names only the three new
 registries. `naming_rules` counts `common/component_templates` as unsupported, since no one class
-owns its items.
+owns its items, and so does `registry-field-sweep`: its run (`registry_field_stops::run`) reads
+one owner's method result, and this registry has a result for each key.
 
 ### Accepted limits (SDK-819)
 
