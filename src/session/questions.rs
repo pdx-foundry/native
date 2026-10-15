@@ -263,12 +263,13 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
-    /// Two shapes of custom loader give root statements instead of item fields. Where the loader
+    /// Three shapes of custom loader give root statements instead of item fields. Where the loader
     /// selects a scope by the root key, as the events loader does, every root field is a root
-    /// statement whose members are the item's fields. Where the loader reserves one root key for
+    /// statement whose members are the item's fields. Where the loader reserves a root key for
     /// another class, the root fields are the items of every other key, and one more root field
-    /// named for the reserved key is a root statement whose members are the other class's
-    /// fields.
+    /// named for each reserved key is a root statement whose members are that class's fields.
+    /// Where every accepted root key builds its own class and other keys build none, as in
+    /// `common/component_templates`, every root field is such a root statement.
     ///
     /// ```no_run
     /// # fn example(native: &pdx_native::Native) -> Result<(), pdx_native::Error> {
@@ -284,8 +285,8 @@ impl Native {
     /// ```
     ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
-    /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
-    /// [`Error::UnknownRegistry`].
+    /// loader builds no one owner, and no class for each root key, is [`Error::Unsupported`] with
+    /// the reason; another name is [`Error::UnknownRegistry`].
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::RegistryFields, Some(registry), || {

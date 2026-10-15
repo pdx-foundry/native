@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v5`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v6`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
