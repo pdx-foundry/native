@@ -712,13 +712,9 @@ impl VerifiedAnalysis<'_> {
             .and_then(|schedule| schedule.loader_owners.as_ref().ok())
             .into_iter()
             .flat_map(BTreeMap::values)
-            .flat_map(|owner| match owner {
-                LoaderOwner::Owner(owner) => vec![owner.as_str()],
-                LoaderOwner::ByRootKey { keyed, other } => {
-                    keyed.values().chain(other).map(String::as_str).collect()
-                }
-                LoaderOwner::NoOwner | LoaderOwner::Several(_) => vec![],
-            })
+            .filter(|owner| !matches!(owner, LoaderOwner::Several(_)))
+            .flat_map(LoaderOwner::classes)
+            .map(String::as_str)
     }
 
     /// Read fields for the items of `owner`; reject a class that owns no registry of this

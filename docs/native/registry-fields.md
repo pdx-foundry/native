@@ -930,7 +930,8 @@ and the others). Vanilla M452 has 476 `ship_section_template`, 439 `component_se
 
 - **Owner of each directory.** `directory_owner` (`loader_owner.rs`) reads the route of one
   directory from its enumeration call up to the function's next enumeration call (or its end),
-  with the database's own functions that this code calls. Validated assumption, not a proof: the
+  with the database's own functions that this code calls. Several calls of one directory must give
+  the same owner, or the directory is `Several`. Validated assumption, not a proof: the
   compiler places each phase's loop after its call and before the next call. The exact-build test
   `m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates` fixes the three
   owners; a build that moves a loop changes them.

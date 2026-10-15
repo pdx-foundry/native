@@ -48,6 +48,18 @@ pub enum LoaderOwner {
     Several(Vec<String>),
 }
 
+impl LoaderOwner {
+    /// Every class that the loader builds with a member reader.
+    pub(crate) fn classes(&self) -> Vec<&String> {
+        match self {
+            Self::Owner(owner) => vec![owner],
+            Self::ByRootKey { keyed, other } => keyed.values().chain(other).collect(),
+            Self::NoOwner => vec![],
+            Self::Several(classes) => classes.iter().collect(),
+        }
+    }
+}
+
 /// The calls that a custom loader makes to read its files.
 pub struct LoaderReads<'a> {
     /// Entry addresses of the file enumeration.
@@ -82,25 +94,49 @@ pub fn loader_owner(
 }
 
 /// The owner that the loader in `functions` builds for the directory that the enumeration calls
-/// at `calls` pass: the route starts at each call and ends at the next enumeration call of the
-/// same function.
+/// at `calls` pass: the route of each call starts at the call and ends at the next enumeration
+/// call of the same function. Calls whose routes give different owners are
+/// [`LoaderOwner::Several`], with every class that they build.
 pub fn directory_owner(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
     calls: &[u64],
 ) -> LoaderOwner {
-    let mut route_functions = functions.clone();
-    for &call in calls {
-        if let Some(code) = functions
-            .values()
-            .find_map(|rows| directory_code(rows, reads, call))
-        {
-            route_functions.insert(call, code.to_vec());
+    let owners: Vec<LoaderOwner> = calls
+        .iter()
+        .map(|&call| call_owner(functions, reads, builders, call))
+        .collect();
+
+    match owners.split_first() {
+        None => LoaderOwner::NoOwner,
+        Some((first, rest)) if rest.iter().all(|owner| owner == first) => first.clone(),
+        Some(_) => {
+            let classes: BTreeSet<&String> = owners.iter().flat_map(LoaderOwner::classes).collect();
+
+            LoaderOwner::Several(classes.into_iter().cloned().collect())
         }
     }
+}
 
-    route_owner(&route_functions, calls.to_vec(), reads, builders)
+/// The owner that the route from the enumeration call at `call` builds; no owner when no
+/// function of `functions` makes that call.
+fn call_owner(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    reads: &LoaderReads<'_>,
+    builders: &BTreeMap<u64, String>,
+    call: u64,
+) -> LoaderOwner {
+    let Some(code) = functions
+        .values()
+        .find_map(|rows| directory_code(rows, reads, call))
+    else {
+        return LoaderOwner::NoOwner;
+    };
+    let mut route_functions = functions.clone();
+    route_functions.insert(call, code.to_vec());
+
+    route_owner(&route_functions, vec![call], reads, builders)
 }
 
 /// The rows of `rows` from the enumeration call at `call` up to the next enumeration call.
@@ -578,7 +614,7 @@ mod tests {
         code.call(ENUMERATE).call(OTHER_CONSTRUCTOR);
         arm64!(code; ret);
         let functions = BTreeMap::from([decoded(code, LOADER)]);
-        let directory = |call| {
+        let directory = |calls: &[u64]| {
             directory_owner(
                 &functions,
                 &LoaderReads {
@@ -588,12 +624,22 @@ mod tests {
                     token_names: &BTreeMap::new(),
                 },
                 &builders(),
-                &[call],
+                calls,
             )
         };
 
-        assert_eq!(directory(LOADER), LoaderOwner::Owner("COwner".into()));
-        assert_eq!(directory(second_call), LoaderOwner::Owner("COther".into()));
+        assert_eq!(directory(&[LOADER]), LoaderOwner::Owner("COwner".into()));
+        assert_eq!(
+            directory(&[second_call]),
+            LoaderOwner::Owner("COther".into())
+        );
+        // Two calls of one directory that build different classes select neither.
+        assert_eq!(
+            directory(&[LOADER, second_call]),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
+        );
+        // A call that no decoded function makes builds nothing.
+        assert_eq!(directory(&[QUERY]), LoaderOwner::NoOwner);
         assert_eq!(
             owner(functions.clone()),
             LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
