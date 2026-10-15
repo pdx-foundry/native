@@ -367,7 +367,7 @@ pub(in crate::binding) fn block_evaluations(
         .copied()
         .filter(|owner| unique(symbols, &format!("vtable for {owner}")).is_ok())
         .collect();
-    let type_owners = TypeOwners::read(&text, symbols, &polymorphic);
+    let type_owners = TypeOwners::read(&text, symbols, pointers, &polymorphic);
     let owner_getters = owner_getters(&text, symbols, &names, &type_owners);
     let string_functions = string_functions(symbols, recipe);
     let evaluation = Evaluation {
@@ -392,7 +392,7 @@ pub(in crate::binding) fn block_evaluations(
         .collect();
     for &caller in &calling {
         if let std::collections::btree_map::Entry::Vacant(entry) = type_pointers.entry(caller)
-            && let Some(pointers) = type_owners.of(names.of(caller))
+            && let Some(pointers) = type_owners.of(caller, names.of(caller))
         {
             entry.insert(pointers);
         }
@@ -578,7 +578,9 @@ fn candidates(
     let mut found: BTreeMap<u64, Option<TypePointers>> = BTreeMap::new();
     for (address, _) in text.calls_into(&owner_getters) {
         if let Some(&function) = text.starts.range(..=address).next_back() {
-            let pointers = type_owners.of(names.of(function)).unwrap_or_default();
+            let pointers = type_owners
+                .of(function, names.of(function))
+                .unwrap_or_default();
             found.insert(function, Some(pointers));
         }
     }
@@ -589,7 +591,7 @@ fn candidates(
         };
         let pointers = found
             .entry(function)
-            .or_insert_with(|| type_owners.of(names.of(function)));
+            .or_insert_with(|| type_owners.of(function, names.of(function)));
         if pointers.is_some() {
             sites.push(EvaluationSite {
                 address,

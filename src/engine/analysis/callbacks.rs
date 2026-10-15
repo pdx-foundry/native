@@ -41,7 +41,7 @@ use super::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
 use super::stop::Unresolved;
 
 pub use contexts::ScopeFunctions;
-pub use names::{OffsetGetter, StringFunctions};
+pub use names::{Buffer, OffsetGetter, StoredWord, StringFunctions};
 
 use climb::{CallSite, Decoded, Wrapper};
 use contexts::{CallReads, EntryCalls, Read, Runner, SiteContexts, Subject};

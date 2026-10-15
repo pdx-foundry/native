@@ -1331,6 +1331,40 @@ fn a_search_that_ends_at_a_bound_with_no_contradiction_has_no_gap() {
 }
 
 #[test]
+fn a_bound_inside_a_function_that_receives_the_scope_contradicts_a_scope_with_no_this() {
+    let branches = receives_scope(&[
+        (0x3004, "cbz", "x3,#0x3008"),
+        (0x3008, "cbz", "x4,#0x300c"),
+        (0x300c, "cbz", "x5,#0x3010"),
+        (0x3010, "cbz", "x6,#0x3014"),
+        (0x3014, "cbz", "x7,#0x3018"),
+        (0x3018, "cbz", "x9,#0x301c"),
+        (0x301c, "cbz", "x10,#0x3020"),
+        (0x3020, "cbz", "x11,#0x3024"),
+        (0x3024, "nop", ""),
+    ]);
+    let run = |typed: (&'static str, &'static str)| {
+        let mut caller = builds_a(0x1000, typed);
+        caller.extend([(0x1018, "add", "x1,sp,#0x100"), (0x101c, "bl", "#0x3000")]);
+        caller.extend(calls_with_a(0x1020, "#0x2000"));
+        caller.push((0x102c, "ret", ""));
+        Program::new()
+            .function(&caller)
+            .receiver(&branches)
+            .method(&wrapper(0x2000, POTENTIAL_OF_X19))
+            .analyze()
+    };
+
+    let country = run(COUNTRY_TYPE);
+    assert_eq!(contexts(&country, POTENTIAL), [fresh(COUNTRY)]);
+    assert!(unresolved(&country, POTENTIAL).is_empty());
+
+    let unset = run(NO_TYPE);
+    assert_eq!(contexts(&unset, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert_eq!(unresolved(&unset, POTENTIAL), ["path-limit"]);
+}
+
+#[test]
 fn a_scope_pointer_kept_in_the_callers_stack_escapes_only_to_a_call_that_can_reach_it() {
     let run = |unknown_call_receives: (&'static str, &'static str)| {
         let mut lines = builds_a(0x1000, COUNTRY_TYPE);
@@ -1751,12 +1785,17 @@ fn a_constructor_stores_its_parameters_in_its_object() {
         (0x1020, "ret", ""),
     ];
 
+    let parameter = |register| BTreeSet::from([StoredWord::Parameter(register)]);
+    let unknown = || BTreeSet::from([StoredWord::Unknown]);
     assert_eq!(
-        receiver_stores(&rows(&lines)),
+        receiver_stores(&rows(&lines), &BTreeSet::new()),
         BTreeMap::from([
-            (0x18, BTreeSet::from([2])),
-            (0x28, BTreeSet::from([1])),
-            (0x38, BTreeSet::from([3])),
+            (0x10, unknown()),
+            (0x18, parameter(2)),
+            (0x28, parameter(1)),
+            (0x30, unknown()),
+            (0x38, parameter(3)),
+            (0x40, unknown()),
         ])
     );
 }
@@ -1834,7 +1873,7 @@ fn an_element_of_a_typed_array_parameter_names_the_block_at_its_offset() {
             ("b.ne", "#0x1020"),
         ],
     );
-    let run = |elements: BTreeMap<(usize, i64), String>| {
+    let run = |elements: BTreeMap<Buffer, String>| {
         let pointers = TypePointers {
             elements,
             ..TypePointers::default()
@@ -1842,7 +1881,7 @@ fn an_element_of_a_typed_array_parameter_names_the_block_at_its_offset() {
         Program::new().pointing(pointers, &lines).analyze()
     };
 
-    let typed = run(BTreeMap::from([((0, 8), OWNER.into())]));
+    let typed = run(BTreeMap::from([(Buffer::Argument(0, 8), OWNER.into())]));
     let untyped = run(BTreeMap::new());
 
     assert_eq!(lines[8], (0x1020, "ldr", "x8,[x19]"));
@@ -2112,6 +2151,59 @@ fn a_conditional_selection_keeps_each_blocks_country_or_planet_context() {
             .values()
             .all(|finding| finding.unresolved.is_empty())
     );
+}
+
+#[test]
+fn a_bound_inside_a_scope_builder_contradicts_a_selected_block_with_no_this() {
+    use crate::engine::analysis::assembler::arm64;
+    let bytes = arm64!(at 0x1000;
+        mov x21, x0;
+        mov x22, x2;
+        sub sp, sp, #0x200;
+        add x0, sp, #0x100;
+        bl extern FRESH as usize;
+        add x1, sp, #0x100;
+        bl extern 0x3000;
+        cmp x22, #0;
+        add x8, x21, #0x40;
+        add x9, x21, #0x48;
+        csel x0, x8, x9, eq;
+        add x1, sp, #0x100;
+        ldr x8, [x0];
+        ldr x8, [x8, #0x10];
+        blr x8;
+        ret
+    );
+    let run = |body: &[Line]| {
+        authored_selection(&bytes)
+            .receiver(&receives_scope(body))
+            .analyze()
+    };
+    let gaps = |result: &BlockEntries| -> BTreeSet<&'static str> {
+        result
+            .blocks
+            .values()
+            .flat_map(|finding| finding.unresolved.iter().copied())
+            .collect()
+    };
+
+    let straight = run(&[(0x3004, "nop", "")]);
+    assert_eq!(contexts(&straight, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert!(gaps(&straight).is_empty());
+
+    let cut = run(&[
+        (0x3004, "cbz", "x3,#0x3008"),
+        (0x3008, "cbz", "x4,#0x300c"),
+        (0x300c, "cbz", "x5,#0x3010"),
+        (0x3010, "cbz", "x6,#0x3014"),
+        (0x3014, "cbz", "x7,#0x3018"),
+        (0x3018, "cbz", "x9,#0x301c"),
+        (0x301c, "cbz", "x10,#0x3020"),
+        (0x3020, "cbz", "x11,#0x3024"),
+        (0x3024, "nop", ""),
+    ]);
+    assert_eq!(contexts(&cut, POTENTIAL), [fresh(Slot::NotSet)]);
+    assert!(gaps(&cut).contains("path-limit"), "{:?}", gaps(&cut));
 }
 
 #[test]

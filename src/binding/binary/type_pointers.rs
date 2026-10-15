@@ -7,12 +7,17 @@
 //!   member of a nested class such as `CAnomalyType::COutcomeEffect` is not a member of
 //!   `CAnomalyType`;
 //! - a parameter of type `O const*`, `O*`, `O const&` or `O&`;
-//! - an object of a class `C` whose word at offset `k` leads to `O`: some constructor of `C`
-//!   stores there a parameter of one of those types, no constructor stores a parameter of another
-//!   type there, and every constructor of `C` decodes.
+//! - an object of a class `C` whose word at offset `k` leads to `O`: the constructors of `C`, and
+//!   the members of `C` that load `TPdxNullObject<O>::_pInstance`, store there an item of `O` (a
+//!   parameter of one of those types, or that null object) and no item of another owner or other
+//!   named value, and each of these functions decodes. A stored null, and a value that the name
+//!   pass does not name, agree with any owner.
 //!
-//! A parameter of type `CPdxArray<O const*, int>` by pointer or reference holds pointers to items
-//! of `O`: the word at [`ARRAY_BUFFER`] in the array points at its buffer, one pointer per element.
+//! A buffer of pointers to items of `O` is the word at [`ARRAY_BUFFER`] in a `CPdxArray<O const*,
+//! int>`: a parameter of that type by pointer or reference; a member array of a class `C` at `k`,
+//! when every constructor of `C` decodes and every store that they make at `k` is that array
+//! class's vtable; or such a member array of a database `D`, in a function that loads
+//! `TGameDatabase<D>::_pInstance` or `D::_pInstance` through its pointer slot.
 //!
 //! A parameter's register is known up to the first parameter that one general register may not
 //! pass: each pointer, reference, integer, `bool` and `TPdxRef<…>` takes the next register,
@@ -25,17 +30,22 @@
 //! as taking its receiver in `x0`.
 //!
 //! Stated assumption: every function that writes a member word that leads to `O` keeps the
-//! registry owner's layout: it stores an `O`, a null object of `O`, or null. Checked by hand on
-//! M452 for `CMission` (its constructors, and `ReadMember`, which stores a lookup result or
-//! `TPdxNullObject<CMissionType>::_pInstance` at `+0x18`), `CResolution` (its constructor from a
-//! `CResolutionType const&`, its default constructor, which stores
-//! `TPdxNullObject<CResolutionType>::_pInstance`, and `ReadMember`, which stores a lookup result)
-//! and `CCosmicStorm` (`+0x328`, which `ReadMember`
-//! fills with a lookup result or `TPdxNullObject<CCosmicStormType>::_pInstance`). Remove the
-//! assumption with a writer check that covers every function that stores the word.
+//! registry owner's layout: it stores an `O`, a null object of `O`, or null. The reader checks the
+//! constructors and the members that load an owner's null object; a writer that does neither is
+//! taken on the assumption. Checked by hand on M452 for `CMission` (its constructors, and
+//! `ReadMember`, which stores a lookup result or `TPdxNullObject<CMissionType>::_pInstance` at
+//! `+0x18`), `CResolution` (its constructor from a `CResolutionType const&`, its default
+//! constructor, which stores `TPdxNullObject<CResolutionType>::_pInstance`, and `ReadMember`,
+//! which stores a lookup result), `CCosmicStorm` (`+0x328`, which `ReadMember` fills with a lookup
+//! result or `TPdxNullObject<CCosmicStormType>::_pInstance`), `CTechnology` (`+0x600`, which
+//! `ReadMember` fills with a tier database element or `TPdxNullObject<CTechnologyTier>::_pInstance`)
+//! and `CGalacticCommunity` (`+0x2c0`, which `DailyUpdate` fills with the chosen focus or
+//! `TPdxNullObject<CGalacticFocus>::_pInstance`). Remove the assumption with a writer check that
+//! covers every function that stores the word.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::callbacks::blocks::{TypePointers, receiver_stores};
+use crate::engine::analysis::callbacks::{Buffer, StoredWord};
 use crate::engine::analysis::discovery::Symbol;
 
 use super::callbacks::{INTEGERS, decoded, signature, top_level};
@@ -45,6 +55,10 @@ use super::declarations::Text;
 /// size `+0x14`. Checked on M452 in `TradeActions`, `CAgreementManager::CreateAgreement` and
 /// `CScriptableValue::GetValue`.
 const ARRAY_BUFFER: i64 = 8;
+
+/// The offset of a vtable's address point, which an object's vtable word holds, from the
+/// `vtable for` symbol: the offset to top and the type info come first.
+const VTABLE_ADDRESS_POINT: u64 = 0x10;
 
 /// The qualifier of a free function in a translation unit's own namespace.
 const ANONYMOUS_NAMESPACE: &str = "(anonymous namespace)";
@@ -56,64 +70,86 @@ pub(super) struct TypeOwners<'a> {
     classes: BTreeSet<&'a str>,
     /// The owner that each member word of a class leads to, by class and offset.
     members: BTreeMap<&'a str, BTreeMap<i64, &'a str>>,
+    /// The element owner of each member array of a class, by class and the offset of the array's
+    /// buffer word.
+    arrays: BTreeMap<&'a str, BTreeMap<i64, &'a str>>,
+    /// The element owner of each buffer of a global instance's arrays, by each function that loads
+    /// the instance.
+    instance_loads: BTreeMap<u64, BTreeMap<Buffer, &'a str>>,
 }
 
 impl<'a> TypeOwners<'a> {
-    /// Read the classes and the member words that lead to one of `owners`.
-    pub(super) fn read(text: &Text, symbols: &'a [Symbol], owners: &'a BTreeSet<&'a str>) -> Self {
-        let functions = || {
-            symbols
-                .iter()
-                .filter(|symbol| !symbol.name.contains(".cold."))
-        };
-        let mut classes: BTreeSet<&str> = symbols
+    /// Read the classes, the member words and the member arrays that lead to one of `owners`.
+    /// `pointers` gives the target of each pointer slot, such as a GOT slot.
+    pub(super) fn read(
+        text: &Text,
+        symbols: &'a [Symbol],
+        pointers: &BTreeMap<u64, u64>,
+        owners: &'a BTreeSet<&'a str>,
+    ) -> Self {
+        let (classes, constructors) = classes_and_constructors(symbols);
+        let mut evidence = Evidence::read(symbols, pointers, owners);
+        let forming = text.functions_forming(&evidence.formed_addresses());
+        let arrays = member_arrays(text, &constructors, &forming, owners, &evidence);
+        let instances = instance_slots(symbols, pointers, &arrays);
+        evidence.elements = instance_buffers(&instances, &arrays).collect();
+        let null_loaders: BTreeSet<u64> = forming
             .iter()
-            .filter_map(|symbol| {
-                let name = symbol.name.as_str();
-                name.strip_prefix("vtable for ")
-                    .or_else(|| name.strip_prefix("typeinfo for "))
-            })
+            .filter(|(_, formed)| formed.iter().any(|slot| evidence.is_null_object(*slot)))
+            .map(|(&function, _)| function)
             .collect();
-        classes.extend(functions().filter_map(|symbol| const_member_class(&symbol.name)));
-        let mut constructors: BTreeMap<&str, Vec<(u64, &str)>> = BTreeMap::new();
-        for symbol in functions() {
-            let Some((class, destructor)) = constructed_class(&symbol.name) else {
-                continue;
-            };
-            classes.insert(class);
-            if !destructor {
-                constructors
-                    .entry(class)
-                    .or_default()
-                    .push((symbol.address, &symbol.name));
-            }
-        }
-
-        let members = constructors
+        let writers = null_object_writers(symbols, &constructors, &null_loaders);
+        let members = member_words_of_classes(
+            text,
+            &constructors,
+            &writers,
+            &null_loaders,
+            owners,
+            &evidence,
+        );
+        let instance_loads = text
+            .functions_forming(&instances.keys().copied().collect())
             .into_iter()
-            .filter(|(_, constructors)| {
-                constructors
-                    .iter()
-                    .any(|(_, name)| !constructor_owners(name, owners).is_empty())
-            })
-            .filter_map(|(class, constructors)| {
-                let members = member_owners(text, &constructors, owners)?;
-                (!members.is_empty()).then_some((class, members))
+            .map(|(function, slots)| {
+                let loaded = slots.into_iter().map(|slot| (slot, instances[&slot]));
+                (
+                    function,
+                    instance_buffers(&loaded.collect(), &arrays).collect(),
+                )
             })
             .collect();
+
         Self {
             owners,
             classes,
             members,
+            arrays,
+            instance_loads,
         }
     }
 
-    /// The type pointers of the function that `names` name, when every name gives the same.
-    pub(super) fn of<'n>(&self, mut names: impl Iterator<Item = &'n str>) -> Option<TypePointers> {
-        let first = self.function(names.next()?)?;
-        names
-            .all(|name| self.function(name).as_ref() == Some(&first))
-            .then_some(first)
+    /// The type pointers of `function`, whose names are `names`: those of its signature, when
+    /// every name gives the same, and the buffers of the global instances that it loads.
+    pub(super) fn of<'n>(
+        &self,
+        function: u64,
+        mut names: impl Iterator<Item = &'n str>,
+    ) -> Option<TypePointers> {
+        let signed = names.next().and_then(|first| {
+            let first = self.function(first)?;
+            names
+                .all(|name| self.function(name).as_ref() == Some(&first))
+                .then_some(first)
+        });
+        let Some(loaded) = self.instance_loads.get(&function) else {
+            return signed;
+        };
+
+        let mut pointers = signed.unwrap_or_default();
+        for (&buffer, owner) in loaded {
+            pointers.elements.insert(buffer, (*owner).to_owned());
+        }
+        Some(pointers)
     }
 
     /// The owner whose member function the function that `names` name is, when every name gives
@@ -158,9 +194,10 @@ impl<'a> TypeOwners<'a> {
             };
             self.lead(&mut pointers, register, class);
             if let Some(owner) = element_class(class).and_then(|class| self.owners.get(class)) {
-                pointers
-                    .elements
-                    .insert((register, ARRAY_BUFFER), (*owner).to_owned());
+                pointers.elements.insert(
+                    Buffer::Argument(register, ARRAY_BUFFER),
+                    (*owner).to_owned(),
+                );
             }
         }
         if pointers == TypePointers::default() {
@@ -185,61 +222,363 @@ impl<'a> TypeOwners<'a> {
                 .members
                 .insert((register, offset), (*owner).to_owned());
         }
+        for (&buffer, owner) in self.arrays.get(class).into_iter().flatten() {
+            pointers
+                .elements
+                .insert(Buffer::Argument(register, buffer), (*owner).to_owned());
+        }
     }
 }
 
-/// The member words of a class that lead to an owner, from all of its `constructors`. `None` when
-/// a constructor does not decode.
-fn member_owners<'a>(
+/// The member functions of a class, by class.
+type ClassFunctions<'a> = BTreeMap<&'a str, Vec<(u64, &'a str)>>;
+
+/// The classes that `symbols` name, and the constructors of each.
+fn classes_and_constructors(symbols: &[Symbol]) -> (BTreeSet<&str>, ClassFunctions<'_>) {
+    let functions = || {
+        symbols
+            .iter()
+            .filter(|symbol| !symbol.name.contains(".cold."))
+    };
+    let mut classes: BTreeSet<&str> = symbols
+        .iter()
+        .filter_map(|symbol| {
+            let name = symbol.name.as_str();
+            name.strip_prefix("vtable for ")
+                .or_else(|| name.strip_prefix("typeinfo for "))
+        })
+        .collect();
+    classes.extend(functions().filter_map(|symbol| const_member_class(&symbol.name)));
+    let mut constructors: ClassFunctions = BTreeMap::new();
+    for symbol in functions() {
+        let Some((class, destructor)) = constructed_class(&symbol.name) else {
+            continue;
+        };
+        classes.insert(class);
+        if !destructor {
+            constructors
+                .entry(class)
+                .or_default()
+                .push((symbol.address, &symbol.name));
+        }
+    }
+    (classes, constructors)
+}
+
+/// The member arrays of owner pointers of each class whose constructors form an array vtable, by
+/// the offset of each array's buffer word.
+fn member_arrays<'a>(
     text: &Text,
-    constructors: &[(u64, &str)],
+    constructors: &ClassFunctions<'a>,
+    forming: &BTreeMap<u64, BTreeSet<u64>>,
     owners: &BTreeSet<&'a str>,
-) -> Option<BTreeMap<i64, &'a str>> {
-    let mut stores = Vec::new();
-    for &(address, name) in constructors {
-        let rows = decoded(text, address)?;
-        stores.push(ConstructorStores {
-            registers: receiver_stores(&rows),
-            owners: constructor_owners(name, owners),
-        });
+    evidence: &Evidence<'a>,
+) -> BTreeMap<&'a str, BTreeMap<i64, &'a str>> {
+    let mut arrays = BTreeMap::new();
+    for (&class, constructors) in constructors {
+        if !constructors
+            .iter()
+            .any(|(address, _)| forming.contains_key(address))
+        {
+            continue;
+        }
+        let Some(stores) = stores_of(text, constructors, owners, &BTreeSet::new()) else {
+            continue;
+        };
+        let buffers = array_buffers(&stores, evidence);
+        if !buffers.is_empty() {
+            arrays.insert(class, buffers);
+        }
     }
-    Some(sole_owners(&stores))
+    arrays
 }
 
-/// What one constructor stores in its object.
-struct ConstructorStores<'a> {
-    /// The parameter registers that it stores, by offset.
-    registers: BTreeMap<i64, BTreeSet<usize>>,
-    /// The owner that each of its parameter registers points at.
-    owners: BTreeMap<usize, &'a str>,
+/// The element owner of each buffer of the member arrays of the global instances `instances`.
+fn instance_buffers<'s, 'a: 's>(
+    instances: &'s BTreeMap<u64, &'a str>,
+    arrays: &'s BTreeMap<&'a str, BTreeMap<i64, &'a str>>,
+) -> impl Iterator<Item = (Buffer, &'a str)> + 's {
+    instances.iter().flat_map(move |(&slot, class)| {
+        arrays[class]
+            .iter()
+            .map(move |(&buffer, &owner)| (Buffer::Instance(slot, buffer), owner))
+    })
 }
 
-/// By offset, the owner of each member word that some constructor fills with a parameter that
-/// points at that owner and no constructor fills with another parameter.
-fn sole_owners<'a>(constructors: &[ConstructorStores<'a>]) -> BTreeMap<i64, &'a str> {
-    let mut stored: BTreeMap<i64, BTreeSet<Option<&'a str>>> = BTreeMap::new();
-    for constructor in constructors {
-        for (&offset, registers) in &constructor.registers {
-            let owners = registers
-                .iter()
-                .map(|register| constructor.owners.get(register).copied());
-            stored.entry(offset).or_default().extend(owners);
+/// The member functions of `null_loaders`, other than constructors and destructors, of each class
+/// with a constructor.
+fn null_object_writers<'a>(
+    symbols: &'a [Symbol],
+    constructors: &ClassFunctions<'a>,
+    null_loaders: &BTreeSet<u64>,
+) -> ClassFunctions<'a> {
+    let mut writers: ClassFunctions = BTreeMap::new();
+    for symbol in symbols
+        .iter()
+        .filter(|symbol| null_loaders.contains(&symbol.address))
+    {
+        if symbol.name.contains(".cold.") || constructed_class(&symbol.name).is_some() {
+            continue;
+        }
+        let Some((qualified, _)) = signature(&symbol.name) else {
+            continue;
+        };
+        if let Some((&class, _)) =
+            qualifier(qualified).and_then(|class| constructors.get_key_value(class))
+        {
+            writers
+                .entry(class)
+                .or_default()
+                .push((symbol.address, &symbol.name));
+        }
+    }
+    writers
+}
+
+/// The member words that lead to an owner, by class, from the stores of each class's
+/// constructors and null-object `writers`. A class has none when none of its constructors takes
+/// an owner parameter or is one of `null_loaders` and it has no such writer, or when one of these
+/// functions does not decode.
+fn member_words_of_classes<'a>(
+    text: &Text,
+    constructors: &ClassFunctions<'a>,
+    writers: &ClassFunctions<'a>,
+    null_loaders: &BTreeSet<u64>,
+    owners: &BTreeSet<&'a str>,
+    evidence: &Evidence<'a>,
+) -> BTreeMap<&'a str, BTreeMap<i64, &'a str>> {
+    let buffers: BTreeSet<Buffer> = evidence.elements.keys().copied().collect();
+    let mut members = BTreeMap::new();
+    for (&class, constructors) in constructors {
+        let typed = constructors.iter().any(|(address, name)| {
+            null_loaders.contains(address) || !parameter_owners(name, owners).is_empty()
+        });
+        let others = writers.get(class).map_or(&[][..], Vec::as_slice);
+        if !typed && others.is_empty() {
+            continue;
+        }
+        let stores = stores_of(text, constructors, owners, &buffers)
+            .zip(stores_of(text, others, owners, &buffers));
+        let Some((constructors, others)) = stores else {
+            continue;
+        };
+
+        let words = member_words(constructors.iter().chain(&others), evidence);
+        if !words.is_empty() {
+            members.insert(class, words);
+        }
+    }
+    members
+}
+
+/// What the stored words of a class's writers say about the owners of its members.
+struct Evidence<'a> {
+    /// The owner of each null object, by the pointer slot that holds the null object's address.
+    null_objects: BTreeMap<u64, &'a str>,
+    /// The element owner of each array of owner pointers, by its vtable's address point.
+    arrays: BTreeMap<u64, &'a str>,
+    /// The element owner of each buffer of a global instance's arrays.
+    elements: BTreeMap<Buffer, &'a str>,
+}
+
+impl<'a> Evidence<'a> {
+    /// Read the slots of the null objects `TPdxNullObject<O>::_pInstance` and the vtables of the
+    /// arrays `CPdxArray<O const*, int>` and `CPdxArray<O*, int>` of each of `owners`.
+    fn read(
+        symbols: &'a [Symbol],
+        pointers: &BTreeMap<u64, u64>,
+        owners: &BTreeSet<&'a str>,
+    ) -> Self {
+        let mut null_object_addresses: BTreeMap<u64, &str> = BTreeMap::new();
+        let mut arrays = BTreeMap::new();
+        for symbol in symbols {
+            let name = symbol.name.as_str();
+            let null_object = name
+                .strip_prefix("TPdxNullObject<")
+                .and_then(|name| name.strip_suffix(">::_pInstance"));
+            if let Some(owner) = null_object.and_then(|class| owners.get(class)) {
+                null_object_addresses.insert(symbol.address, owner);
+            }
+            let array = name.strip_prefix("vtable for ").and_then(element_class);
+            if let Some(owner) = array.and_then(|class| owners.get(class)) {
+                arrays.insert(symbol.address + VTABLE_ADDRESS_POINT, *owner);
+            }
+        }
+
+        let null_objects = pointers
+            .iter()
+            .filter_map(|(&slot, target)| Some((slot, *null_object_addresses.get(target)?)))
+            .collect();
+        Self {
+            null_objects,
+            arrays,
+            elements: BTreeMap::new(),
         }
     }
 
+    /// The addresses whose forming marks a function as a possible writer: each null object's
+    /// slot and each array vtable's symbol.
+    fn formed_addresses(&self) -> BTreeSet<u64> {
+        self.null_objects
+            .keys()
+            .copied()
+            .chain(self.arrays.keys().map(|point| point - VTABLE_ADDRESS_POINT))
+            .collect()
+    }
+
+    fn is_null_object(&self, slot: u64) -> bool {
+        self.null_objects.contains_key(&slot)
+    }
+
+    /// What a word that a writer with `parameters` stores says: the owner of its item, a null
+    /// pointer, an array of an owner's pointers, or another value.
+    fn word(&self, stored: StoredWord, parameters: &BTreeMap<usize, &'a str>) -> Word<'a> {
+        match stored {
+            StoredWord::Parameter(register) => parameters
+                .get(&register)
+                .map_or(Word::Other, |owner| Word::Item(owner)),
+            StoredWord::Loaded(slot) => self
+                .null_objects
+                .get(&slot)
+                .map_or(Word::Other, |owner| Word::Item(owner)),
+            StoredWord::Constant(0) => Word::Null,
+            StoredWord::Constant(point) => self
+                .arrays
+                .get(&point)
+                .map_or(Word::Other, |owner| Word::Array(owner)),
+            StoredWord::Element(buffer) => self
+                .elements
+                .get(&buffer)
+                .map_or(Word::Unknown, |owner| Word::Item(owner)),
+            StoredWord::Unknown => Word::Unknown,
+        }
+    }
+}
+
+/// What one stored word says about the member that holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Word<'a> {
+    /// An item of this owner: a parameter that points at one, or the owner's null object.
+    Item(&'a str),
+    Null,
+    /// The vtable of an array of this owner's pointers.
+    Array(&'a str),
+    /// A value that the name pass does not name.
+    Unknown,
+    Other,
+}
+
+/// What one function stores in its receiver.
+struct Stores<'a> {
+    /// The words that it stores, by offset.
+    words: BTreeMap<i64, BTreeSet<StoredWord>>,
+    /// The owner that each of its parameter registers points at.
+    parameters: BTreeMap<usize, &'a str>,
+}
+
+/// The stores of each of a class's member functions `functions`, which name the elements of
+/// `buffers`. `None` when one does not decode.
+fn stores_of<'a>(
+    text: &Text,
+    functions: &[(u64, &str)],
+    owners: &BTreeSet<&'a str>,
+    buffers: &BTreeSet<Buffer>,
+) -> Option<Vec<Stores<'a>>> {
+    functions
+        .iter()
+        .map(|&(address, name)| {
+            Some(Stores {
+                words: receiver_stores(&decoded(text, address)?, buffers),
+                parameters: parameter_owners(name, owners),
+            })
+        })
+        .collect()
+}
+
+/// The pointer slot of each global database instance, `TGameDatabase<D>::_pInstance` or
+/// `D::_pInstance`, whose class `D` has a member array of owner pointers, with that class.
+fn instance_slots<'a>(
+    symbols: &[Symbol],
+    pointers: &BTreeMap<u64, u64>,
+    arrays: &BTreeMap<&'a str, BTreeMap<i64, &'a str>>,
+) -> BTreeMap<u64, &'a str> {
+    let instances: BTreeMap<u64, &str> = symbols
+        .iter()
+        .filter_map(|symbol| {
+            let class = symbol.name.strip_suffix("::_pInstance")?;
+            let class = class
+                .strip_prefix("TGameDatabase<")
+                .and_then(|class| class.strip_suffix('>'))
+                .unwrap_or(class);
+            let (&class, _) = arrays.get_key_value(class)?;
+            Some((symbol.address, class))
+        })
+        .collect();
+    pointers
+        .iter()
+        .filter_map(|(&slot, target)| Some((slot, *instances.get(target)?)))
+        .collect()
+}
+
+/// What `writers` store at each offset of their receiver.
+fn words_by_offset<'w, 'a: 'w>(
+    writers: impl IntoIterator<Item = &'w Stores<'a>>,
+    evidence: &Evidence<'a>,
+) -> BTreeMap<i64, BTreeSet<Word<'a>>> {
+    let mut stored: BTreeMap<i64, BTreeSet<Word<'a>>> = BTreeMap::new();
+    for writer in writers {
+        for (&offset, words) in &writer.words {
+            let words = words
+                .iter()
+                .map(|&word| evidence.word(word, &writer.parameters));
+            stored.entry(offset).or_default().extend(words);
+        }
+    }
     stored
+}
+
+/// By offset, the owner of each member word that some writer fills with an item of that owner and
+/// no writer fills with an item of another owner or another named value. A null pointer and a
+/// value that the name pass does not name agree with any owner: the stated assumption at the top
+/// of this module covers them.
+fn member_words<'w, 'a: 'w>(
+    writers: impl IntoIterator<Item = &'w Stores<'a>>,
+    evidence: &Evidence<'a>,
+) -> BTreeMap<i64, &'a str> {
+    words_by_offset(writers, evidence)
+        .into_iter()
+        .filter_map(|(offset, words)| {
+            let mut named = words
+                .into_iter()
+                .filter(|word| !matches!(word, Word::Null | Word::Unknown));
+            match (named.next(), named.next()) {
+                (Some(Word::Item(owner)), None) => Some((offset, owner)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// By the offset of its buffer word, the element owner of each member array whose vtable word
+/// every store of `constructors` fills with the vtable of one owner's array.
+fn array_buffers<'a>(
+    constructors: &[Stores<'a>],
+    evidence: &Evidence<'a>,
+) -> BTreeMap<i64, &'a str> {
+    words_by_offset(constructors, evidence)
         .into_iter()
         .filter_map(
-            |(offset, owners)| match owners.into_iter().collect::<Vec<_>>()[..] {
-                [Some(owner)] => Some((offset, owner)),
+            |(offset, words)| match words.into_iter().collect::<Vec<_>>()[..] {
+                [Word::Array(owner)] => Some((offset + ARRAY_BUFFER, owner)),
                 _ => None,
             },
         )
         .collect()
 }
 
-/// The owner that each parameter register of the constructor `name` points at.
-fn constructor_owners<'a>(name: &str, owners: &BTreeSet<&'a str>) -> BTreeMap<usize, &'a str> {
+/// The owner that each parameter register of the member function `name` points at. Its receiver
+/// takes `x0`.
+fn parameter_owners<'a>(name: &str, owners: &BTreeSet<&'a str>) -> BTreeMap<usize, &'a str> {
     let Some((_, parameters)) = signature(name) else {
         return BTreeMap::new();
     };
@@ -413,6 +752,8 @@ mod tests {
             owners: &owners,
             classes: BTreeSet::from(["CAnomalyType", "CAnomalyType::COutcomeEffect", "CCountry"]),
             members: BTreeMap::new(),
+            arrays: BTreeMap::new(),
+            instance_loads: BTreeMap::new(),
         };
 
         assert_eq!(
@@ -460,6 +801,8 @@ mod tests {
             owners: &owners,
             classes: BTreeSet::new(),
             members: BTreeMap::new(),
+            arrays: BTreeMap::new(),
+            instance_loads: BTreeMap::new(),
         };
         let elements = |name: &str| reader.function(name).map(|pointers| pointers.elements);
 
@@ -467,11 +810,17 @@ mod tests {
             elements(
                 "(anonymous namespace)::TradeActions(CPdxArray<CTradableAction const*, int> const&, CCountry const&, CCountry const&)"
             ),
-            Some(BTreeMap::from([((0, 8), "CTradableAction".into())]))
+            Some(BTreeMap::from([(
+                Buffer::Argument(0, 8),
+                "CTradableAction".into()
+            )]))
         );
         assert_eq!(
             elements("Run(CCountry const&, CPdxArray<CTradableAction*, int>*)"),
-            Some(BTreeMap::from([((1, 8), "CTradableAction".into())]))
+            Some(BTreeMap::from([(
+                Buffer::Argument(1, 8),
+                "CTradableAction".into()
+            )]))
         );
         assert_eq!(elements("Run(CPdxArray<int, int> const&)"), None);
         assert_eq!(
@@ -485,12 +834,14 @@ mod tests {
     }
 
     #[test]
-    fn a_member_word_leads_through_the_register_of_its_class() {
+    fn a_member_word_and_a_member_array_lead_through_the_register_of_their_class() {
         let owners = BTreeSet::from(["CMissionType"]);
         let reader = TypeOwners {
             owners: &owners,
             classes: BTreeSet::from(["CMission"]),
             members: BTreeMap::from([("CMission", BTreeMap::from([(0x18, "CMissionType")]))]),
+            arrays: BTreeMap::from([("CMission", BTreeMap::from([(0xa8, "CEdict")]))]),
+            instance_loads: BTreeMap::new(),
         };
 
         assert_eq!(
@@ -499,7 +850,7 @@ mod tests {
                 method_of: None,
                 registers: BTreeMap::new(),
                 members: BTreeMap::from([((0, 0x18), "CMissionType".into())]),
-                elements: BTreeMap::new(),
+                elements: BTreeMap::from([(Buffer::Argument(0, 0xa8), "CEdict".into())]),
                 scope_parameters: BTreeSet::new(),
             })
         );
@@ -510,39 +861,91 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_member_word_leads_to_the_one_owner_that_its_constructors_store() {
-        let constructor = |stores: &[(i64, usize)], owners: &[(usize, &'static str)]| {
-            let mut stored: BTreeMap<i64, BTreeSet<usize>> = BTreeMap::new();
-            for &(offset, register) in stores {
-                stored.entry(offset).or_default().insert(register);
-            }
-            ConstructorStores {
-                registers: stored,
-                owners: owners.iter().copied().collect(),
-            }
-        };
+    /// The null object of `CMissionType` is at slot `0x5000`, of `CEdict` at `0x5008`; the array
+    /// of `CEdict` pointers has its address point at `0x6010`.
+    fn evidence() -> Evidence<'static> {
+        Evidence {
+            null_objects: BTreeMap::from([(0x5000, "CMissionType"), (0x5008, "CEdict")]),
+            arrays: BTreeMap::from([(0x6010, "CEdict")]),
+            elements: BTreeMap::new(),
+        }
+    }
 
-        let mission = [
-            constructor(&[(0x18, 2)], &[(2, "CMissionType")]),
-            constructor(&[(0x18, 3)], &[(3, "CMissionType")]),
+    /// A writer that stores `words` and whose parameter registers point at `parameters`.
+    fn writer(
+        words: &[(i64, StoredWord)],
+        parameters: &[(usize, &'static str)],
+    ) -> Stores<'static> {
+        let mut stored: BTreeMap<i64, BTreeSet<StoredWord>> = BTreeMap::new();
+        for &(offset, word) in words {
+            stored.entry(offset).or_default().insert(word);
+        }
+        Stores {
+            words: stored,
+            parameters: parameters.iter().copied().collect(),
+        }
+    }
+
+    #[test]
+    fn a_member_word_leads_to_the_one_owner_that_its_writers_store() {
+        use StoredWord::{Constant, Loaded, Parameter, Unknown};
+        let mission = || BTreeMap::from([(0x18, "CMissionType")]);
+
+        let constructors = [
+            writer(&[(0x18, Parameter(2))], &[(2, "CMissionType")]),
+            writer(&[(0x18, Parameter(3))], &[(3, "CMissionType")]),
         ];
-        assert_eq!(
-            sole_owners(&mission),
-            BTreeMap::from([(0x18, "CMissionType")])
-        );
+        assert_eq!(member_words(&constructors, &evidence()), mission());
+
+        let null_or_unknown = [
+            writer(&[(0x18, Loaded(0x5000))], &[]),
+            writer(&[(0x18, Constant(0)), (0x18, Unknown)], &[]),
+        ];
+        assert_eq!(member_words(&null_or_unknown, &evidence()), mission());
 
         let two_owners = [
-            constructor(&[(0x18, 1)], &[(1, "CMissionType")]),
-            constructor(&[(0x18, 1)], &[(1, "CEdict")]),
+            writer(&[(0x18, Parameter(1))], &[(1, "CMissionType")]),
+            writer(&[(0x18, Parameter(1))], &[(1, "CEdict")]),
         ];
-        assert!(sole_owners(&two_owners).is_empty());
+        assert!(member_words(&two_owners, &evidence()).is_empty());
+
+        let another_null_object = [
+            writer(&[(0x18, Parameter(1))], &[(1, "CMissionType")]),
+            writer(&[(0x18, Loaded(0x5008))], &[]),
+        ];
+        assert!(member_words(&another_null_object, &evidence()).is_empty());
 
         let another_type = [
-            constructor(&[(0x18, 1)], &[(1, "CMissionType")]),
-            constructor(&[(0x18, 2)], &[]),
+            writer(&[(0x18, Parameter(1))], &[(1, "CMissionType")]),
+            writer(&[(0x18, Parameter(2))], &[]),
         ];
-        assert!(sole_owners(&another_type).is_empty());
+        assert!(member_words(&another_type, &evidence()).is_empty());
+    }
+
+    #[test]
+    fn a_member_array_leads_to_the_owner_whose_array_vtable_every_constructor_stores() {
+        use StoredWord::{Constant, Unknown};
+
+        let constructors = [
+            writer(&[(0xa0, Constant(0x6010)), (0xa8, Constant(0))], &[]),
+            writer(&[(0xa0, Constant(0x6010))], &[]),
+        ];
+        assert_eq!(
+            array_buffers(&constructors, &evidence()),
+            BTreeMap::from([(0xa8, "CEdict")])
+        );
+
+        let overwritten = [
+            writer(&[(0xa0, Constant(0x6010))], &[]),
+            writer(&[(0xa0, Unknown)], &[]),
+        ];
+        assert!(array_buffers(&overwritten, &evidence()).is_empty());
+
+        let another_vtable = [writer(
+            &[(0xa0, Constant(0x6010)), (0xa0, Constant(0x7010))],
+            &[],
+        )];
+        assert!(array_buffers(&another_vtable, &evidence()).is_empty());
     }
 
     #[test]
