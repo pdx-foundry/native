@@ -50,7 +50,8 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. SDK-848's
+[inline-constructed objects](#inline-constructed-objects-sdk-848) change five registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -134,7 +135,7 @@ belongs to one row.
 | --- | ---: | ---: | --- |
 | `CReader::ReadUniform<T>` lists | 98 → 0 | 41 → 0 | Resolved: [uniform lists](#uniform-lists). |
 | Boolean stack temporaries (identity, repeat `Unknown`) | 240 → 2 root | | Resolved: [bit fields](#bit-fields); two named obstacles remain. |
-| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap. The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
+| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap; five fields that the root constructs inline joined since ([SDK-848](#inline-constructed-objects-sdk-848)). The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
@@ -211,6 +212,59 @@ Remaining obstacles of the persistent fields that the rule does not repair:
   virtual allocate of `NExperimental::PdxGetNewDeleteAllocator()` (`blr`) and copies into its
   result. The summary-only run loses them at `CPdxCommonStringAllocator::deallocate` of the default
   constructor's stack string.
+
+### Inline-constructed objects (SDK-848)
+
+The collection pass (`fields/nested.rs`) joins an object that the root allocates, reads and
+inserts. The binding finds its class through a direct constructor or `PdxMakeScopedPtr` call, or
+through a direct call to the insertion of a `Class*` or a `CPdxScopedPtrImpl<Class, false>`. The
+last form finds a class whose constructor the compiler put inline, with no constructor symbol. The
+walk accepts such an object at its virtual read by a validated rule: **an `operator new` allocation
+that no constructor built, whose word at `+0` is the class's primary address point, is that
+object.** While the root builds it, two kinds of call may write the allocation and nothing else:
+
+- a constructor that the root calls directly and whose parameters are all arithmetic types or
+  `EScopeType`, so `this` in `x0` is its only address; the walk forgets the allocation from `x0` to
+  its end;
+- `_bzero` with a known length that ends inside the allocation; the walk forgets those bytes.
+
+Any other call on the way still stops the path. The nested owner's constructor evidence is the
+inline code: from the allocation's return to the read, with a `ret` in place of the read. The
+binding takes it before each insertion of the class when nothing between the allocation and the
+read branches or calls indirectly, and nothing but register moves lies between the read and the
+insertion. The walk uses that evidence only when every joined path's object was allocated where
+one of those bodies starts; otherwise the owner keeps no constructor evidence and its persistent
+members stay unjoined.
+
+On M452 (`registry-fields/v46`):
+
+| Field | Site | Class | Insertion |
+| --- | --- | --- | --- |
+| `common/technology` `technology_swap` | `CTechnology::ReadMember` `0x100c811b8` | `CTechnologySwap` (`0x350` bytes) | `CPdxArray<CTechnologySwap*>` at `+0x930` |
+| `common/governments/civics` `swap_type` | `CGovernmentCivicType::ReadMember` `0x1007fc77c` | `CGovernmentCivicTypeSwap` (`0x1f8` bytes) | scoped pointer array at `+0x548` |
+| `common/buildings`, `common/traits` `triggered_desc`; `common/situations` `triggered_blocked_desc` | `CBuildingType::ReadMember` `0x1000d12d4`, … | `CTriggeredEventDescriptionOption` | |
+
+The inline calls are `_bzero`, `CRootTrigger::CRootTrigger(bool)`,
+`CScriptableValue::CScriptableValue(EScopeType, bool)` and
+`CCustomDescriptionModifier::CCustomDescriptionModifier()`. `technology_swap` now reads a block
+(`Accumulate`) of nine members: `name`, `weight` (weight grammar), `category`, `trigger`,
+`prereqfor_desc`, `inherit_effects`, `inherit_icon`, `area` and `modifier` (modifier grammar).
+`prereqfor_desc` has no shared reader and `category` no repeat rule. `swap_type` reads a block of
+all six config members (`name`, `trigger`, `description`, `negative_description`,
+`hide_modifiers`, `modifier`) with no gap but `OutsideMethod` and the registry-wide use-time
+condition that every nested owner carries. The three description fields read five members each;
+`text` and `exclusive_trigger` have no shared reader, and one root path stays unfollowed.
+
+Remove the rule, or limit it, when a build's inline construction passes an address other than the
+object to a member constructor, when a scalar-parameter constructor writes through a global into
+the owner, or when the walk can run member constructors itself.
+
+`common/pop_jobs` `swappable_data` is not this shape. `CJobType::ReadMember` reads it through a
+stack `CSwapCollection<SPopJobTypeSwap, …>::CSerializer` at `0x1008b45ec`; its `ReadMember`
+(`0x1008bea40`) reads `default` through a stack `SPopJobTypeSwap::CSerializer` and each `swap_type`
+into a new `CSwappable<SPopJobTypeSwap>` through two more stack serializers. That is the "Stack
+serializers" row above, three levels deep; `common/pop_categories` has the same chain. SDK-866
+owns it.
 
 ## Repeat behavior
 

@@ -1190,6 +1190,7 @@ fn nested_fixture() -> FieldInput {
         pointers: [(0xa020, 0x9200)].into(),
         read: 0x9200,
         factories: vec![],
+        initializers: vec![],
         insert: vec![0x9300],
         moving_insert: vec![],
         data_offset: Some(8),
@@ -1215,6 +1216,143 @@ fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
         replace(&mut input, address, arm64!(at address; mov x0, x3));
         assert!(derive(input).collections.is_empty(), "{address:#x}");
     }
+}
+
+/// The nested fixture with `CChild` built inline: `_bzero` on the object, a member constructor on
+/// `+0x10`, then the primary address point stored at `+0`, as `CTechnology::ReadMember` builds
+/// `CTechnologySwap` on M452. The read's vtable slot is a constant pointer of the image.
+fn inline_nested_fixture() -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        mov x0, x21;
+        mov x1, #0x40; // the object's size
+        bl extern 0x9500; // _bzero
+        add x0, x21, #0x10; // member at +0x10
+        bl extern 0x9400; // member constructor
+        mov x8, #0xa000; // CChild's primary address point
+        str x8, [x21];
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9300; // append same object
+        ret
+    );
+    input.symbols.extend([
+        Symbol {
+            name: "CMember::CMember()".into(),
+            address: 0x9400,
+        },
+        Symbol {
+            name: "_bzero".into(),
+            address: 0x9500,
+        },
+    ]);
+    let mut image = modifier_binding(0);
+    image.constructors.clear();
+    image.pointers = std::mem::take(&mut input.objects[0].pointers);
+    input.persistent = Some(image);
+    input.objects[0].constructors = vec![];
+    input.objects[0].initializers = vec![0x9400];
+    input
+}
+
+#[test]
+fn an_object_built_inline_joins_when_its_primary_address_point_is_in_place() {
+    let result = derive(inline_nested_fixture());
+    assert_eq!(result.collections.len(), 1);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert_eq!(
+        result.collections[0].fields.fields[0].name,
+        "new_engine_field"
+    );
+
+    // The read is called directly, so only the address point tells the class.
+    let read_directly = |point: Option<&[u8]>| {
+        let mut input = inline_nested_fixture();
+        replace(&mut input, 0x1050, arm64!(at 0x1050; bl extern 0x9200));
+        match point {
+            Some(store) => replace(&mut input, 0x1034, store.to_vec()),
+            None => replace(&mut input, 0x1038, arm64!(at 0x1038; nop)),
+        }
+        input
+    };
+    let own_point = read_directly(Some(&arm64!(at 0x1034; mov x8, #0xa000)));
+    assert_eq!(derive(own_point).collections.len(), 1);
+    let other_point = read_directly(Some(&arm64!(at 0x1034; mov x8, #0xb000)));
+    let no_point = read_directly(None);
+    let mut member_of_the_owner = inline_nested_fixture();
+    replace(
+        &mut member_of_the_owner,
+        0x102c,
+        arm64!(at 0x102c; add x0, x19, #8),
+    );
+    let mut zero_fill_past_the_object = inline_nested_fixture();
+    replace(
+        &mut zero_fill_past_the_object,
+        0x1024,
+        arm64!(at 0x1024; mov x1, #0x20000),
+    );
+    let mut not_an_initializer = inline_nested_fixture();
+    not_an_initializer.objects[0].initializers.clear();
+
+    for (case, input) in [
+        ("another address point", other_point),
+        ("no address point", no_point),
+        ("an initializer on the owner", member_of_the_owner),
+        ("a zero fill past the allocation", zero_fill_past_the_object),
+        ("a call that initializes nothing", not_an_initializer),
+    ] {
+        assert!(derive(input).collections.is_empty(), "{case}");
+    }
+}
+
+#[test]
+fn an_inline_owner_joins_its_members_only_from_the_construction_that_every_path_runs() {
+    // The constructor evidence of `CChild`: the root's code from `start` to `end`, then a return.
+    // The member constructor installs a modifier reader's address point at `+0x10`.
+    let points = |start: u64, end: u64| {
+        let mut input = inline_nested_fixture();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0x4000)
+            .unwrap()
+            .name = "CReader::Read(CPersistent&)".into();
+        let root = &input.functions[0];
+        let mut code =
+            root.code[(start - root.address) as usize..(end - root.address) as usize].to_vec();
+        code.extend(arm64!(at end; ret));
+        let mut evidence = modifier_binding(0);
+        evidence.constructors = vec![Function {
+            name: String::new(),
+            address: start,
+            code,
+        }];
+        evidence.summaries = BTreeMap::from([(0x9400, BTreeMap::from([(0, 0xb000)]))]);
+        input.objects[0].persistent = Some(evidence);
+        let result = derive(input);
+        assert_eq!(result.collections.len(), 1);
+
+        result.collections[0].fields.persistent_points.clone()
+    };
+
+    // The allocation returns to 0x101c, and the virtual read is at 0x1050.
+    assert_eq!(points(0x101c, 0x1050), BTreeMap::from([(0x10, 0xb000)]));
+    assert!(points(0x1020, 0x1050).is_empty(), "another start");
+    assert!(points(0x101c, 0x104c).is_empty(), "another read");
 }
 
 #[test]
