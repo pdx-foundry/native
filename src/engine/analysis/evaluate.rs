@@ -5261,6 +5261,26 @@ mod tests {
     }
 
     #[test]
+    fn a_call_into_the_code_reads_what_the_callee_reads() {
+        let data = ReadOnlyData::default();
+        let call = [(0x110, "bl", "#0x200"), (0x114, "ret", "")];
+        let mut cold = two_branches([("mov", "x9,#1"), ("nop", "")], &call);
+        cold.rows.extend(
+            rows(&[(0x200, "mov", "x0,x9"), (0x204, "ret", "")]) // a cold clone reads x9
+                .rows,
+        );
+        let mut machine = Machine::new(&cold, &data);
+        machine.set_register(9, 2);
+        let mut entered = 0;
+        machine.run_paths(0x100, &mut |_, _| {
+            entered += 1;
+            Ok(Call::Enter)
+        });
+
+        assert_eq!(entered, 2);
+    }
+
+    #[test]
     fn a_frame_below_the_stack_pointer_does_not_keep_paths_apart() {
         let data = ReadOnlyData::default();
         let below = two_branches(

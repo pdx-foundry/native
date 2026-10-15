@@ -9,7 +9,8 @@
 //! A register is *dead* at an instruction when every path from it writes the register before it
 //! reads it. The liveness relies on the calling convention, as callers of the run already do: a
 //! call reads `x0` to `x8` and the callee-saved registers and leaves `x0` to `x18` and the flags
-//! unknown to its caller, and a return gives `x0` to `x7` and the callee-saved registers. A
+//! unknown to its caller, and a return gives `x0` to `x7` and the callee-saved registers. A direct
+//! call to code that the run may enter also reads what that code reads. A
 //! callback of the run reads no caller-saved register other than these at a call. Compiled code
 //! for this target keeps nothing below the stack pointer, since it has no red zone.
 //!
@@ -82,7 +83,8 @@ pub(super) fn live_at_joins(rows: &BTreeMap<u64, Operation>) -> BTreeMap<u64, Re
             let after = effect.successors.iter().fold(0, |after, successor| {
                 after | successor.map_or(EVERYTHING, |successor| live[successor])
             });
-            let before = after & !effect.writes | effect.reads;
+            let entered = effect.callee.map_or(0, |callee| live[callee]);
+            let before = after & !effect.writes | effect.reads | entered;
             if before != live[index] {
                 live[index] = before;
                 changed = true;
@@ -103,6 +105,10 @@ struct Effect {
     reads: Registers,
     writes: Registers,
     successors: Vec<Option<usize>>,
+    /// The target of a direct call in the rows, which a run may enter: the call reads what the
+    /// target reads. A compiler-split part of a function, such as a `.cold` clone, reads its
+    /// caller's scratch registers.
+    callee: Option<usize>,
 }
 
 fn effect(address: u64, operation: &Operation, position: &BTreeMap<u64, usize>) -> Effect {
@@ -112,6 +118,7 @@ fn effect(address: u64, operation: &Operation, position: &BTreeMap<u64, usize>) 
             reads: EVERYTHING,
             writes: 0,
             successors: vec![at(address + 4)],
+            callee: None,
         };
     };
 
@@ -131,6 +138,10 @@ fn effect(address: u64, operation: &Operation, position: &BTreeMap<u64, usize>) 
             )
         }
     };
+    let callee = match (Branch::of(mnemonic), operands.as_slice()) {
+        (Some(Branch::Call), [Operand::Immediate(target)]) => at(*target as u64),
+        _ => None,
+    };
     let successors = operation
         .successors(address)
         .map(|targets| targets.into_iter().map(at).collect())
@@ -141,6 +152,7 @@ fn effect(address: u64, operation: &Operation, position: &BTreeMap<u64, usize>) 
         reads,
         writes,
         successors,
+        callee,
     }
 }
 
@@ -281,6 +293,7 @@ impl Machine<'_> {
         self.labels.hash(&mut hasher);
         self.unknown_stores.hash(&mut hasher);
         self.frames.hash(&mut hasher);
+        self.path_limit.hash(&mut hasher);
         self.callees.hash(&mut hasher);
         self.frame_tops.hash(&mut hasher);
         self.entry.hash(&mut hasher);
