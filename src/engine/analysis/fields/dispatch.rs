@@ -2102,13 +2102,18 @@ fn bit_test_branch(
         return Branching::gap(state, row.address, unsupported);
     }
 
-    let set = match (state.value(tested), number(bit)) {
-        (Some(Value::Constant(value)), Some(bit)) => Some(value >> bit & 1 == 1),
+    // `tbnz` branches when the bit is set, `tbz` when it is clear.
+    let known_taken = match (state.value(tested), number(bit)) {
+        (Some(Value::Constant(value)), Some(bit)) => {
+            let set = value >> bit & 1 == 1;
+
+            Some(set == (row.operation == "tbnz"))
+        }
         _ => None,
     };
     let continued = [false, true]
         .into_iter()
-        .filter(|&taken| set.is_none_or(|set| set == (taken == (row.operation == "tbnz"))))
+        .filter(|&taken| known_taken.is_none_or(|known| known == taken))
         .map(|taken| {
             let mut next = state.clone();
             next.pc = if taken { target } else { state.pc };

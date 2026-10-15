@@ -305,8 +305,12 @@ fn push_inherited_readers(
     let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
     let mut stubs = BTreeMap::new();
     let mut callers = vec![root.to_owned()];
+    let mut scanned = BTreeSet::new();
 
     while let Some(caller) = callers.pop() {
+        if !scanned.insert(caller.clone()) {
+            continue;
+        }
         let Some(function) = functions.iter().find(|function| function.name == caller) else {
             continue;
         };
@@ -347,9 +351,8 @@ fn push_inherited_readers(
             if body != call.address {
                 stubs.insert(call.address, body);
             }
-            let known = functions.iter().any(|function| function.address == body);
-
-            if !known && push_function(text, functions, definition) {
+            // Another collection step may have added the body already; it is still scanned once.
+            if push_function(text, functions, definition) {
                 callers.push(call.name);
             }
         }
