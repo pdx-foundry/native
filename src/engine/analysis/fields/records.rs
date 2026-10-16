@@ -144,7 +144,9 @@ pub enum ReaderJoin {
         callee: String,
         /// Proven argument values at the call boundary.
         arguments: BTreeMap<String, Value>,
-        /// The root returns through this call, with no unexamined continuation.
+        /// The root returns through this call, with no unexamined continuation. For an
+        /// immediate reference reader, which returns its item: the caller stores the item to an
+        /// owner member, then returns.
         tail: bool,
     },
     /// A compound reader whose input and destination are established on this path.

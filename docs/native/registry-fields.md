@@ -50,7 +50,9 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against
+`v46`, SDK-854 gave 69 fields of 12 registries their repeat: the planet-class Boolean bits and
+the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -228,6 +230,7 @@ function whose body is only `ret`, counts as a tail call (`fields/dispatch.rs`).
 | `CReader::Read(CPersistent&)` of a weight block | `Merges` | The persistent read (`0x1025b820c`) tail-calls the virtual `Read` at slot `+0x20`. `CMeanTimeToHappen::Read(CReader&)` (`0x10092e3f4`) reads a bare value into `base` or calls `CPersistent::Read`, so `base` is replaced and earlier entries stay. |
 | `CPreTriggers::ReadValue(CReader&, EPreTriggers)` | `Merges` | `0x1004d0008` logs `Pre-trigger "%s" is specified more than once` and still ORs the key's bit into the `yes` or `no` mask; no bit is cleared ([pre-trigger blocks](#pre-trigger-blocks)). |
 | `CReader::Read(CPersistent&)` of a modifier block | `Merges` | All four variants reach `CPdxModifier<…>::Read` (`0x100071fcc`). It deletes the child array and clears the entry counts at `+0x1c`, `+0x44` and `+0x9c`, then calls `CPersistent::Read`. Fixed keys are written only when present, so an omitted icon, tooltip or flag stays; `description_parameters` appends. |
+| `ReadKeyReference<D>` whose caller stores the item to an owner member, then returns | `Replace` | The immediate reader returns the item or the null object ([references](references.md#reference-readers)). Every M452 call is a `bl` followed by `str x0,[x19,#off]` (or `x20`) and the frame restore, directly or through a local `b` (`CShipSize` `ship_category`, `0x1011ec8c0`). The walk follows that continuation (`fields/dispatch.rs`, `stores_item_and_returns`), so the store is the path's last write. A tail call gives the item to the loader's caller and stores nothing; no M452 loader has one. |
 | `ReadKeyReferenceDeferred<D>` with an established lookup | `Replace` | Each occurrence registers its key and a lambda that writes the destination on a hit and on a miss. The resolver runs registrations in order ([references](references.md#reference-readers)), so the last occurrence's item is stored. |
 | `CTrigger::Read(CReader&, EScopeType)`, `CEffect::Read(CReader&, EScopeType)` | `Merges` | `0x100d07f98` and `0x100456ae4` clear nothing: they read each statement and add its child to the block they receive, so a second block's children join the first's. Contrast `ReadTrigger<T>`, which clears first. |
 | `CReader::ReadUniform<T>(CPdxArray<T, int>&)` ([uniform lists](#uniform-lists)) | `Accumulate` | Each value is appended at the array's count: `InsertAtEmplace(count)` for an object element, and a grow-and-copy that keeps the old elements for an enumeration or `int` element. No instantiation clears the array (`CString` `0x10004e608`, `EScopeType` `0x100cb7588` and six more read). |
@@ -250,12 +253,46 @@ Every other reader keeps `Unknown`, and the storage gap names why:
 
 | Detail | Fields (M452) | Cause |
 | --- | ---: | --- |
-| "waits for one shared reader" | 764 | No shared reader ([fields with no shared reader](#fields-with-no-shared-reader)). |
-| "the read is not a tail call" | 49 | A primitive or scoped reader whose caller continues after it returns. |
-| "…or its lookup does not store every resolution" | 39 | An immediate reference reader, whose caller stores the result; a deferred reader without an established lookup. |
-| "no stated rule for this block reader, or the read is not a tail call" | 26 | A list or block read with a continuation, a weight block that is not a tail call, an overridden hook, an unexamined persistent read. |
+| "waits for one shared reader" | 766 | No shared reader ([fields with no shared reader](#fields-with-no-shared-reader)). |
+| "the read is not a tail call" | 22 | A primitive or scoped reader whose caller continues after it returns ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). |
+| "…or its lookup does not store every resolution" | 2 | An immediate reference reader whose caller does more than store the item; a deferred reader without an established lookup or a deferred list. |
+| "no stated rule for this block reader, or the read is not a tail call" | 28 | A list or block read with a continuation, a weight block that is not a tail call, an overridden hook, an unexamined persistent read. |
 | "waits for the reader's value form" | 5 | `CReader::Read(CColor&)`, `CReader::Read(CVector2FixedPoint&)`. |
 | "belongs to the loader" | 22 | The [event kinds](#event-kinds): each statement builds a new `CEvent`, and the loader's duplicate handling decides which one is kept ([loader rules](loader-rules.md)). |
+
+The counts are gaps at `registry-fields/v47`, all registries and nesting depths.
+
+### Repeat gaps of gate registries (SDK-854)
+
+Atlas credits a config `cardinality` maximum only from an unconditional read with a known repeat.
+Over the 218 D1 gate types (config `8574760`), 287 such claims kept a repeat gap at pin move B
+(Native `2c94b30`); 248 keep one at `registry-fields/v47`. The 39 credited are 28 planet-class
+Boolean bits ([bit fields](#bit-fields)) and 11 immediate reference fields
+([rule table](#repeat-behavior)). The open claims, by the shape of their field:
+
+| Shape | Gate claims | Examples |
+| --- | ---: | --- |
+| No shared reader: a stack serializer (`CEconomicUnitTemplate::CSerializer` and other `X::CSerializer` constructors), or `CReader::Read(CPersistent&)` of a stack object with a vtable constant (`CStatInterval<int>::CSerializer`) | 63 | `country_type.resources`, `planet_class.planet_size` |
+| No shared reader: an owned object (`operator new`, `InsertAtEmplace`, `SetSizeAndEmplace`, `PdxMakeScopedPtr`, `make_shared`) | 51 | `patron_type.passive_accord`, `archaeological_site_type.stage` |
+| No shared reader: value text (`CString::CString(char const*)`, `strlen`, `CReader::Read(CString&, bool)` into a non-owner destination) | 21 | `job.purge`, `building.ruined_icon` |
+| No shared reader: a persistent read with no constructor-agreed reader | 21 | `global_ship_design.name`, `ship_size.map_icon_override` |
+| No shared reader: triggered descriptions (`CTriggeredEventDescription<…>::ReadEntry`) | 19 | `situation_type.title`, `building.desc` |
+| No shared reader: alternatives that stop at a `blr` or join different readers | 18 | `country_type.modules`, `ship_size.graphical_culture` |
+| No shared reader: one idiom each (log helpers, `SkipBody`, `COnActionList`, `CObjectiveCounterSet`, singletons) | 29 | `special_project.on_success`, `on_action.events` |
+| Known reader, continuation: every `CAgreementPreset::ReadMember` path calls `CAgreementTermData::SetPresetData` before it returns | 8 | `agreement_preset.hidden`, `agreement_preset.potential` |
+| Known reader, a block read with no stated rule (a list loop after `ReadUniform<CString>`, a presence byte, a persistent object whose reader has no rule) | 7 | `technology.feature_flags`, `situation_type.total_progress` |
+| Known reader with no value form (`CColor`, `CVector2FixedPoint`) | 4 | `patron_type.color` |
+| Known reader, other continuations: a derived path, a presence byte, `NShipMovement::UnscaleShipSpeed`, a second read, a deferred list | 6 | `building.icon`, `special_project.energy`, `ship_size.max_speed`, `planet_class.planet_custom_label_offset`, `ship_size.scripted_action` |
+| The config field is not a root field of the registry | 1 | `resource.prerequisites` |
+
+A field with no shared reader gets its repeat from the reader rule once its reader is known; the
+sweep's `reader_identity_stops` names its stop ([fields with no shared reader](#fields-with-no-shared-reader)).
+The resource tables are SDK-849's. A continuation that only writes other members (the preset
+pointer, a presence byte) could earn `Replace` by a continuation shape like the one for immediate
+references; each such shape is small.
+Reproduce the claim set with Atlas `ledger` and `compare` from the pin move B snapshot, then join
+each `cardinality_maximum` claim with the gap "Native did not establish unconditional repeat
+behavior" to the Native field by the config type's `path`.
 
 **A recorded manual exception.** The rules are stated per reader, not derived: the method reads no
 reader or resolver body for storage. Conditions: the exact M452 build and a tail call. Obstacle:
@@ -574,6 +611,11 @@ as a test of the bit. Any other instruction on the way, a call, a second store t
 register loaded from the temporary before the call, an `ldp` that moves the stack pointer, or a
 path bound keeps the plain join at the call. Root Boolean fields with repeat `Unknown` fall from
 243 to 5.
+
+`CPlanetClass::ReadMember` keeps its temporary at `sp + 0` (`strb w8,[sp]; mov x1,sp`) and merges
+64-bit words (`ldr x9`, `and x9,x9,#~(1 << k)`, `str x8`). The call forgets the registers that
+hold a value loaded from the temporary, but keeps one that holds its address, such as `sp`; the 32
+planet-class Boolean fields join their bits (SDK-854).
 
 Two temporaries keep the join at the call, with a `Repeat behavior remains unresolved.` gap:
 

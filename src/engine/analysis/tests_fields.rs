@@ -3605,3 +3605,97 @@ fn a_pointer_converter_reads_the_stack_word_that_holds_the_value_token() {
         overwritten.fields[0].readers
     );
 }
+
+#[test]
+fn a_boolean_temporary_at_the_stack_pointer_merges_into_its_bit() {
+    use crate::{ReaderKind, RepeatBehavior};
+
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CReader::Read(bool&)".into();
+    // CPlanetClass::ReadMember on M452 keeps the temporary at `sp + 0`.
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x20, x1; // the reader
+        mov x19, x0; // the owner
+        strb w8, [sp];
+        mov x1, sp;
+        mov x0, x20;
+        bl extern 0x4000; // CReader::Read(bool&)
+        ldrb w8, [sp];
+        ldr x9, [x19, #0x4a0];
+        and x9, x9, #0xfffffffffffffbff; // clear bit 10
+        orr x8, x9, x8, lsl #10;
+        str x8, [x19, #0x4a0];
+        ret
+    );
+    assert_eq!(
+        derive(input).fields[0].readers,
+        [ReaderJoin::Stored {
+            callee: "CReader::Read(bool&)".into(),
+            kind: ReaderKind::Boolean,
+            destination: None,
+            repeat: RepeatBehavior::Replace,
+        }]
+    );
+}
+
+#[test]
+fn an_immediate_reference_read_ends_the_path_only_when_its_item_is_stored() {
+    let mut input = fixture();
+    input
+        .symbols
+        .iter_mut()
+        .find(|symbol| symbol.address == 0x4000)
+        .unwrap()
+        .name = "CExampleDatabase::ValueType const* NParserUtil::ReadKeyReference<CExampleDatabase>(CReader&, CExampleDatabase const&, bool)".into();
+    let tail_of = |continuation: Vec<u8>| {
+        let mut input = input.clone();
+        let mut code = arm64!(at 0x1000;
+            cmp w2, #7; // token 7
+            b.eq extern 0x1010;
+            add x0, x0, #0x38;
+            b extern 0x5000; // CPersistent::ReadMember
+            mov x19, x0; // the owner
+            mov x8, x0; // the owner, in a register that the call may overwrite
+            mov x0, x1; // the reader
+            mov w2, #0;
+            bl extern 0x4000 // ReadKeyReference
+        );
+        code.extend(continuation);
+        input.functions[0].code = code;
+
+        match &derive(input).fields[0].readers[..] {
+            [ReaderJoin::Joined { tail, .. }] => *tail,
+            readers => panic!("{readers:?}"),
+        }
+    };
+
+    assert!(tail_of(arm64!(at 0x1024;
+        str x0, [x19, #0x50];
+        b extern 0x102c;
+        ldp x29, x30, [sp, #0x10];
+        add sp, sp, #0x20;
+        ret
+    )));
+    assert!(!tail_of(arm64!(at 0x1024;
+        str x0, [x19, #0x50];
+        bl extern 0x4000; // a call after the store
+        ret
+    )));
+    assert!(!tail_of(arm64!(at 0x1024;
+        str x0, [sp, #0x50]; // a stack slot, not a member
+        ret
+    )));
+    assert!(!tail_of(arm64!(at 0x1024;
+        str x0, [x8, #0x50]; // x8 held the owner before the call, which may overwrite it
+        ret
+    )));
+}

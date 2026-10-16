@@ -41,11 +41,11 @@
       "rate": 0.7624
     },
     "shapes_and_conditions": {
-      "complete": 1519,
+      "complete": 1565,
       "denominator": 1961,
       "failed": 283,
-      "partial": 159,
-      "rate": 0.7746
+      "partial": 113,
+      "rate": 0.7981
     },
     "weights": {
       "complete": 98,

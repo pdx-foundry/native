@@ -6,6 +6,7 @@ use super::{
 use crate::engine::analysis::decode::Instruction;
 use crate::engine::analysis::discovery::{Symbol, SymbolIndex};
 use crate::engine::analysis::readers::{self, ConverterArgument};
+use crate::engine::analysis::references::{self, ReaderForm};
 use crate::engine::analysis::stop::{Bound, Obstacle, Unknown, Unresolved};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -1401,15 +1402,22 @@ fn explore_member_with_wrapped_owner(
                     let at_call = state.finish(row.address, outcome);
                     state.clobber_call();
                     // A register loaded from the temporary before the call holds the old value.
-                    state
-                        .registers
-                        .retain(|_, value| !mentions_stack(value, slot));
+                    // A register that holds its address, such as `sp`, still reaches the new one.
+                    state.registers.retain(|_, value| !loads_stack(value, slot));
                     state.temporary = Some(Temporary {
                         at_call,
                         slot,
                         merged: None,
                     });
                     continue;
+                }
+                // An immediate reference reader returns its item: a tail call gives the item to
+                // the loader's caller, and a store after the call is the path's last write.
+                if name.is_some_and(returns_item)
+                    && let PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) = &mut outcome
+                {
+                    *tail = row.operation == "bl"
+                        && stores_item_and_returns(&rows, state.pc, &indexes, &state);
                 }
                 if row.operation == "bl"
                     && target == input.key_readers.string_read
@@ -1484,6 +1492,63 @@ fn returns_through_empty_call(continuation: &[Instruction], input: &DispatchInpu
     false
 }
 
+/// Whether `callee` looks up one key while it reads and returns the item in `x0`.
+fn returns_item(callee: &str) -> bool {
+    references::reader(callee).is_some_and(|reader| reader.form == ReaderForm::Immediate)
+}
+
+/// Whether the code from `rows[next]` stores the item that an immediate reference reader returns
+/// in `x0` to an owner member, then only restores the frame and returns, following local
+/// branches. The store is then the path's last write, as a tail-called read is.
+fn stores_item_and_returns(
+    rows: &[Instruction],
+    next: usize,
+    indexes: &BTreeMap<u64, usize>,
+    state: &State,
+) -> bool {
+    let Some(store) = rows.get(next) else {
+        return false;
+    };
+    // The reader may overwrite the caller-saved registers, so only a preserved owner base holds.
+    let mut after_call = state.clone();
+    after_call.clobber_call();
+    let stores_item = store.operation == "str"
+        && store
+            .operands
+            .split_once(',')
+            .and_then(|(source, address)| Some((source, memory(address)?)))
+            .is_some_and(|(source, (base, _))| {
+                source == "x0" && matches!(after_call.value(base), Some(Value::Owner(_)))
+            });
+    if !stores_item {
+        return false;
+    }
+
+    let mut at = next + 1;
+    // A bound on the steps keeps a branch cycle from looping.
+    for _ in 0..32 {
+        let Some(row) = rows.get(at) else {
+            return false;
+        };
+        match row.operation.as_str() {
+            "ret" => return true,
+            "ldp" | "ldr" if row.operands.contains("[sp") => at += 1,
+            "add" if row.operands.starts_with("sp,sp,") => at += 1,
+            "b" => {
+                let Some(&index) =
+                    number(&row.operands).and_then(|target| indexes.get(&(target as u64)))
+                else {
+                    return false;
+                };
+                at = index;
+            }
+            _ => return false,
+        }
+    }
+
+    false
+}
+
 /// The stack offset that a joined `CReader::Read(bool&)` writes, when its destination is a stack
 /// temporary.
 fn boolean_temporary(outcome: &PathOutcome) -> Option<i64> {
@@ -1509,6 +1574,19 @@ fn mentions_stack(value: &Value, slot: i64) -> bool {
         Value::ClearedBit(load, _) | Value::InsertedBit(load, _) => mentions_stack(load, slot),
         Value::Indexed(base, index, _) | Value::SumProduct(base, index, _) => {
             mentions_stack(base, slot) || mentions_stack(index, slot)
+        }
+        _ => false,
+    }
+}
+
+/// Whether `value` derives from a load at the stack address `slot`, not only from the address.
+fn loads_stack(value: &Value, slot: i64) -> bool {
+    match value {
+        Value::Load(base, _) => mentions_stack(base, slot),
+        Value::Offset(base, _) => loads_stack(base, slot),
+        Value::ClearedBit(load, _) | Value::InsertedBit(load, _) => loads_stack(load, slot),
+        Value::Indexed(base, index, _) | Value::SumProduct(base, index, _) => {
+            loads_stack(base, slot) || loads_stack(index, slot)
         }
         _ => false,
     }
