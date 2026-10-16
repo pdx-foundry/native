@@ -130,8 +130,9 @@ fn shape(
 
 /// How a second occurrence read by `join` affects storage. Each rule is a stated fact about one
 /// shared reader on M452; the method reads no reader body for it. A call with an unexamined
-/// continuation proves no final storage, so only a tail call earns a rule. `persistent` is the
-/// concrete reader of the object that a persistent read fills.
+/// continuation proves no final storage, so only a join marked `tail` earns a rule: a tail call,
+/// or a call whose continuation the walk examined (an empty return, an immediate reader's item
+/// store). `persistent` is the concrete reader of the object that a persistent read fills.
 fn repeat(
     join: &ReaderJoin,
     reader: &Reader,
@@ -164,6 +165,9 @@ fn repeat(
             RepeatBehavior::Replace
         }
         ReaderKind::Reference if appends_each_key(callee) => RepeatBehavior::Accumulate,
+        // The caller stores the returned item, or the null object for a miss, to its member and
+        // returns.
+        ReaderKind::Reference if returns_one_item(callee) => RepeatBehavior::Replace,
         // A literal replaces the literal slot; variable, trigger and script-value slots stay.
         ReaderKind::ScopedNumeric if callee == "CVariableValue::Read(CReader&, EScopeType)" => {
             RepeatBehavior::Merges
@@ -210,6 +214,13 @@ fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
 fn appends_each_key(callee: &str) -> bool {
     references::reader(callee)
         .is_some_and(|reader| reader.form == references::ReaderForm::ImmediateList)
+}
+
+/// Whether `callee` looks up one key while it reads and returns the item, for its caller to
+/// store.
+fn returns_one_item(callee: &str) -> bool {
+    references::reader(callee)
+        .is_some_and(|reader| reader.form == references::ReaderForm::Immediate)
 }
 
 /// Why a field whose reader is `reader` keeps an `Unknown` repeat behavior.
@@ -1190,7 +1201,20 @@ mod tests {
         let strings = "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)";
         let ethics = "void NParserUtil::ReadKeyReferenceUniform<CEthicDatabase, CPdxArray<CEthic const*, int> >(CReader&, CEthicDatabase const&, CPdxArray<CEthic const*, int>&)";
         let scoped = "CVariableValue::Read(CReader&, EScopeType)";
+        let category = "CShipCategoryDatabase::ValueType const* NParserUtil::ReadKeyReference<CShipCategoryDatabase>(CReader&, CShipCategoryDatabase const&, bool)";
         let cases = [
+            (
+                category,
+                true,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Replace,
+            ),
+            (
+                category,
+                false,
+                BlockFamily::NotApplicable,
+                RepeatBehavior::Unknown,
+            ),
             (
                 "CReader::Read(int&)",
                 true,
