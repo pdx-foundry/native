@@ -256,11 +256,15 @@ fn graph(
     sites.sort_by_key(|site| site.call);
 
     let roots = roots(symbols, &registries);
+    // The climb goes on above a root of unnamed content: its callers' classes tell which
+    // registries an unjoined call may belong to. A context still ends at that root.
+    let registry_root =
+        |function: &u64| matches!(roots.get(function), Some(RootOf::Registry { .. }));
     let mut callers: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
     let mut level: BTreeSet<u64> = sites
         .iter()
         .map(|site| site.function)
-        .filter(|function| !roots.contains_key(function))
+        .filter(|function| !registry_root(function))
         .collect();
     let mut seen = level.clone();
     for _ in 0..DEPTH {
@@ -270,7 +274,7 @@ fn graph(
                 continue;
             };
             callers.entry(target).or_default().insert(caller);
-            if !roots.contains_key(&caller) && seen.insert(caller) {
+            if !registry_root(&caller) && seen.insert(caller) {
                 next.insert(caller);
             }
         }
@@ -281,7 +285,20 @@ fn graph(
     let graph_functions: BTreeSet<u64> = callers
         .iter()
         .flat_map(|(callee, callers)| callers.iter().chain([callee]))
+        .chain(sites.iter().map(|site| &site.function))
         .copied()
+        .collect();
+    let chain_registries = graph_functions
+        .iter()
+        .filter_map(|&function| {
+            let classes: BTreeSet<String> = registries
+                .iter()
+                .filter(|registry| names.of(function).any(|name| of_registry(name, registry)))
+                .map(|registry| registry.name.to_owned())
+                .collect();
+
+            (!classes.is_empty()).then_some((function, classes))
+        })
         .collect();
     let second_inputs = graph_functions
         .into_iter()
@@ -310,6 +327,7 @@ fn graph(
         callers,
         roots,
         second_inputs,
+        registries: chain_registries,
     })
 }
 
@@ -332,6 +350,41 @@ fn second_input_classes<'a>(
             (class, loader.map(|registry| registry.name))
         })
         .collect()
+}
+
+/// Whether the function `name` is a member of a class of `registry`, or of a class nested in one,
+/// or takes one of its items.
+fn of_registry(name: &str, registry: &NamedRegistry) -> bool {
+    let nested = |class: &str| {
+        [registry.owner, registry.database]
+            .iter()
+            .any(|outer| class.starts_with(&format!("{outer}::")))
+    };
+    let member = member_class(name).is_some_and(|class| owns(registry, class) || nested(class));
+
+    member || class_argument(name, registry.owner).is_some()
+}
+
+/// The class of the member function `name`, without a leading return type: `void A::B::F<C>(…)`
+/// gives `A::B`.
+fn member_class(name: &str) -> Option<&str> {
+    let (qualified, _) = super::callbacks::signature(name)?;
+    let mut depth = 0usize;
+    let mut start = 0;
+    let mut end = None;
+
+    for (at, character) in qualified.char_indices() {
+        match character {
+            '<' | '(' => depth += 1,
+            '>' | ')' => depth = depth.saturating_sub(1),
+            ' ' if depth == 0 => start = at + 1,
+            ':' if depth == 0 && qualified[at..].starts_with("::") => end = Some(at),
+            _ => {}
+        }
+    }
+
+    end.filter(|&end| end > start)
+        .map(|end| &qualified[start..end])
 }
 
 /// Whether `class` is the database or item class of `registry`, or a class over its database.
@@ -1318,6 +1371,31 @@ mod tests {
                 (0x50, RootOf::UnnamedContent),
             ])
         );
+    }
+
+    #[test]
+    fn a_function_belongs_to_the_registry_of_its_class_nested_class_or_item_parameter() {
+        let zones = NamedRegistry {
+            name: "common/zones",
+            database: "CZoneTypeDatabase",
+            owner: "CZoneType",
+        };
+
+        for name in [
+            "CZoneType::CSerializer::InitPostRead(CString const&, int, int)",
+            "void CZoneType::Fill<true>(CString const&, bool)",
+            "TSingleObjectGameDatabase<CZoneTypeDatabase, CZoneType, false>::PostReadInit()",
+            "CPlanet::AddZone(CZoneType const&)",
+        ] {
+            assert!(of_registry(name, &zones), "{name}");
+        }
+        for name in [
+            "CZoneTypeModifierGenerator::CreateMaxModifier() const",
+            "CShipClassModifierHelper::Init()",
+            "InitZones()",
+        ] {
+            assert!(!of_registry(name, &zones), "{name}");
+        }
     }
 
     #[test]

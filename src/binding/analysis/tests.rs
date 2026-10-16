@@ -2252,3 +2252,52 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_unjoined_generation_calls_count_in_the_registries_of_their_classes() {
+    use crate::engine::analysis::families::joins::{Reason, SiteJoin};
+
+    let binding = crate::session::installed_native().bound();
+    let index = binding.analysis.family_index().unwrap();
+    let unjoined = index
+        .joins
+        .sites
+        .values()
+        .filter(|join| matches!(join, SiteJoin::Unjoined(_)))
+        .count();
+    let attributed: BTreeMap<&str, BTreeMap<u64, Reason>> = index
+        .joins
+        .registries
+        .iter()
+        .filter(|(_, join)| !join.unjoined.is_empty())
+        .map(|(registry, join)| (registry.as_str(), join.unjoined.clone()))
+        .collect();
+    let triggered_tables = BTreeMap::from([
+        (0x101c3cff8, Reason::UnnamedContent),
+        (0x101c3d4f0, Reason::UnnamedContent),
+    ]);
+
+    // The registration function, the ten ship-class calls and the weapon-tag call reach no class
+    // of a named registry.
+    assert_eq!(unjoined, 17);
+    assert_eq!(
+        attributed,
+        BTreeMap::from([
+            ("common/economic_categories", triggered_tables),
+            (
+                "common/leader_classes",
+                BTreeMap::from([(0x1008f8d5c, Reason::NoRoot), (0x1008f8eb0, Reason::NoRoot),])
+            ),
+            // `FillResourceModifierMatrix(CStrategicResource const&)` reaches `FillModifierTable<false>`.
+            (
+                "common/strategic_resources",
+                BTreeMap::from([(0x101c3d4f0, Reason::UnnamedContent)])
+            ),
+            (
+                "common/zones",
+                BTreeMap::from([(0x100d465f0, Reason::UnnamedContent)])
+            ),
+        ])
+    );
+}

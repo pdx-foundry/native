@@ -75,7 +75,7 @@ pub use joins::Receiver;
 pub use loading::{Loading, NotEstablished};
 
 /// Name and revision of the modifier-family method.
-pub const METHOD: &str = "modifier-families/v4";
+pub const METHOD: &str = "modifier-families/v5";
 
 /// The long key: longer than the longest short string, so the engine stores it in a buffer.
 const LONG_KEY: &str = "generatedmodifierfamilyitemkey01";
