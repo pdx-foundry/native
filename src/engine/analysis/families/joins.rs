@@ -251,17 +251,20 @@ fn takes(graph: &Graph, registry: &str, path: &[u64]) -> Takes {
     takes
 }
 
-/// The registries whose classes `function` or one of its callers is a member of or takes.
+/// The registries whose classes `function` or one of its callers within [`DEPTH`] calls is a
+/// member of or takes.
 fn chain_registries(graph: &Graph, function: u64) -> BTreeSet<&String> {
     let mut seen = BTreeSet::from([function]);
-    let mut pending = vec![function];
+    let mut level = vec![function];
 
-    while let Some(callee) = pending.pop() {
-        for &caller in graph.callers.get(&callee).into_iter().flatten() {
-            if seen.insert(caller) {
-                pending.push(caller);
-            }
-        }
+    for _ in 0..DEPTH {
+        let callers: Vec<u64> = level
+            .iter()
+            .flat_map(|callee| graph.callers.get(callee).into_iter().flatten())
+            .copied()
+            .filter(|&caller| seen.insert(caller))
+            .collect();
+        level = callers;
     }
 
     seen.iter()
@@ -439,6 +442,30 @@ mod tests {
         let a = &joins.registries["common/a"];
         assert!(a.second_input);
         assert!(a.inputs.is_empty());
+    }
+
+    #[test]
+    fn an_unjoined_call_takes_registries_only_from_callers_within_the_depth() {
+        let mut graph = graph();
+        graph.sites = vec![site(0x604, 0x600)];
+        let chain = [0x600, 0x610, 0x620, 0x630, 0x640, 0x650];
+        for pair in chain.windows(2) {
+            graph.callers.insert(pair[0], BTreeSet::from([pair[1]]));
+        }
+        graph
+            .registries
+            .insert(0x640, BTreeSet::from(["common/near".into()]));
+        graph
+            .registries
+            .insert(0x650, BTreeSet::from(["common/far".into()]));
+        let joins = join(&graph);
+
+        assert!(
+            joins.registries["common/near"]
+                .unjoined
+                .contains_key(&0x604)
+        );
+        assert!(!joins.registries.contains_key("common/far"));
     }
 
     #[test]
