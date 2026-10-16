@@ -9,9 +9,10 @@
       "unsupported": 5
     },
     "naming_rules": {
+      "complete": 60,
       "denominator": 188,
-      "partial": 182,
-      "rate": 0.0,
+      "partial": 122,
+      "rate": 0.3191,
       "unsupported": 6
     },
     "numerics": {

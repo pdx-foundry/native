@@ -31,7 +31,7 @@ check a method in one task.
 | `Native::localization_declarations` | `localization-declarations/v1` | `localization.rs` | [Localization contexts, commands and links](engine-commands.md#localization-contexts-commands-and-links) |
 | `Native::on_actions`, `Native::game_rules` | `callbacks/v5` | `callbacks.rs`, `callbacks/names.rs`, `callbacks/contexts.rs`, `callbacks/climb.rs`, `src/binding/binary/callbacks.rs` | [On_actions, game rules and entry scopes](engine-commands.md#on_actions-game-rules-and-their-entry-scopes) |
 | `Native::defines` | `defines/v1` | `defines.rs` | [Defines](engine-commands.md#defines) |
-| `Native::modifier_families` | `modifier-families/v4` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
+| `Native::modifier_families` | `modifier-families/v5` | `families.rs`, `families/joins.rs`, `families/loading.rs`, `strings.rs` | [Generation calls and roots](modifier-families.md#engine-code) |
 | `Field.accepted_categories` in `registry_fields` | `registry-fields/v47` | `fields/containers.rs`, `fields/persistent.rs`, `fields/nested.rs`, `src/binding/binary/receivers.rs`, `src/session/container_masks.rs` | [Modifier masks](modifier-masks.md#container-masks) |
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
@@ -61,8 +61,9 @@ Against the baseline before SDK-676 (4,483 of 7,268 units, 61.68%; 4,283 open ga
 joined 19 root fields: nine weights complete their weight unit, and nine modifier fields, which an
 unknown family had left undetermined for weights, leave the weight denominator. It removed 43 of
 the 45 container gaps: 4,243 open gaps, and SDK-739 accepts 48 more weight-key ranges (687
-accepted in all). No naming rule is complete because every `modifier_families` answer keeps
-one `UnnamedDeclaration` gap. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
+accepted in all). No naming rule was complete because every `modifier_families` answer kept
+one `UnnamedDeclaration` gap; SDK-858 [counts each unjoined site only in its registries](derived-names.md#naming-rules-and-generation-sites-sdk-858)
+and completes 60. The rates leave out [accepted limits](#accepted-limits-sdk-819); the
 SDK-553 run counted them, with numerics at 206 (34.45%), weights at 0 and all units at 3,985
 (53.06%).
 

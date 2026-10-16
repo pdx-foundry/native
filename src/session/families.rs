@@ -22,9 +22,9 @@ impl Native {
     /// as `planet_{key}_build_speed_mult` for `common/buildings`.
     ///
     /// Each family is a name template with the place of the item key, the category tags, and
-    /// whether every item that a content file defines generates it. Apply [`ModifierFamily::name_for`] to item keys. Code that
-    /// generates modifiers from content that is not joined to this registry, such as code of
-    /// content that Native does not name as a registry, is counted in an
+    /// whether every item that a content file defines generates it. Apply [`ModifierFamily::name_for`] to item keys. Code of
+    /// this registry's classes that generates modifiers and is not joined to a family, such as a
+    /// post-read function of a class nested in the item class, is counted in an
     /// [`GapKind::UnnamedDeclaration`] gap, so the answer is partial while such code exists. Where
     /// a modifier takes effect is outside this method.
     ///
@@ -53,17 +53,15 @@ impl Native {
                 .flat_map(|result| &result.families)
                 .filter_map(|family| family.mask);
             let categories = modifiers::category_names(&modifier_input.categories, masks);
-            let second_input = index
-                .joins
-                .registries
-                .get(registry)
-                .is_some_and(|join| join.second_input);
+            let join = index.joins.registries.get(registry);
+            let second_input = join.is_some_and(|join| join.second_input);
+            let unjoined = join.map(|join| join.unjoined.clone()).unwrap_or_default();
 
             let mut answer = normalized_families(
                 registry,
                 result.as_ref(),
                 second_input,
-                &unjoined_sites(&index.joins),
+                &unjoined,
                 &categories,
                 self.build(),
             );
@@ -75,11 +73,17 @@ impl Native {
 
 /// The generation calls that are not joined to a registry, by reason.
 pub(super) fn unjoined_sites(joins: &Joins) -> BTreeMap<Reason, usize> {
+    reason_counts(joins.sites.values().filter_map(|join| match join {
+        SiteJoin::Unjoined(reason) => Some(reason),
+        SiteJoin::Joined => None,
+    }))
+}
+
+/// The number of calls with each reason.
+fn reason_counts<'a>(reasons: impl Iterator<Item = &'a Reason>) -> BTreeMap<Reason, usize> {
     let mut counts = BTreeMap::new();
-    for join in joins.sites.values() {
-        if let SiteJoin::Unjoined(reason) = join {
-            *counts.entry(*reason).or_default() += 1;
-        }
+    for reason in reasons {
+        *counts.entry(*reason).or_default() += 1;
     }
     counts
 }
@@ -108,19 +112,24 @@ pub(super) fn unjoined_summary(unjoined: &BTreeMap<Reason, usize>) -> Option<Str
             format!("{count} {reason}")
         })
         .collect();
+    let sites = if total == 1 {
+        "site that composes modifier names at run time is"
+    } else {
+        "sites that compose modifier names at run time are"
+    };
     Some(format!(
-        "{total} sites that compose modifier names at run time are not joined to a registry ({})",
+        "{total} {sites} not joined to a registry ({})",
         reasons.join("; ")
     ))
 }
 
-/// The families of one registry, sorted by template. `unjoined` counts the code that generates
-/// modifier names and is not joined to any registry.
+/// The families of one registry, sorted by template. `unjoined` holds each generation call of the
+/// registry's classes that is not joined, with its reason.
 fn normalized_families(
     registry: &str,
     result: Option<&FamilyResult>,
     second_input: bool,
-    unjoined: &BTreeMap<Reason, usize>,
+    unjoined: &BTreeMap<u64, Reason>,
     categories: &CategoryNames,
     build: BuildId,
 ) -> Answer<Vec<ModifierFamily>> {
@@ -193,11 +202,11 @@ fn normalized_families(
             "names that combine this registry's keys with the keys of other content are not returned",
         ));
     }
-    if let Some(summary) = unjoined_summary(unjoined) {
+    if let Some(summary) = unjoined_summary(&reason_counts(unjoined.values())) {
         gaps.push(registry_gap(
             GapKind::UnnamedDeclaration,
-            None,
-            format!("{summary}; some may generate this registry's modifiers"),
+            subject,
+            format!("{summary}; code of this registry's classes reaches them, so they may generate its modifiers"),
         ));
     }
     gaps.push(registry_gap(
@@ -326,7 +335,7 @@ mod tests {
     fn answer(
         result: Option<&FamilyResult>,
         second_input: bool,
-        unjoined: &[(Reason, usize)],
+        unjoined: &[(u64, Reason)],
     ) -> Answer<Vec<ModifierFamily>> {
         normalized_families(
             "common/x",
@@ -414,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn unjoined_generation_keeps_every_answer_partial() {
+    fn unjoined_generation_of_the_registry_keeps_its_answer_partial() {
         let complete = answer(None, false, &[]);
         assert!(complete.value.is_empty());
         assert_eq!(complete.completeness, Completeness::Complete);
@@ -422,14 +431,24 @@ mod tests {
         let partial = answer(
             None,
             false,
-            &[(Reason::UnnamedContent, 2), (Reason::NoRoot, 1)],
+            &[
+                (0x14, Reason::UnnamedContent),
+                (0x10, Reason::UnnamedContent),
+                (0x20, Reason::NoRoot),
+            ],
         );
         assert_eq!(partial.completeness, Completeness::Partial);
         let gap = &partial.gaps[0];
         assert_eq!(gap.kind, GapKind::UnnamedDeclaration);
+        assert_eq!(gap.subject, Some(GapSubject::registry("common/x")));
         assert!(gap.detail.starts_with("3 sites"), "{}", gap.detail);
         assert!(gap.detail.contains("2 reached from the post-read code"));
         assert!(gap.detail.contains("1 reached by no chain"));
+        assert!(
+            gap.detail.ends_with("may generate its modifiers"),
+            "{}",
+            gap.detail
+        );
 
         let matrix = answer(None, true, &[]);
         assert_eq!(matrix.completeness, Completeness::Partial);

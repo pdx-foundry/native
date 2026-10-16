@@ -11,6 +11,12 @@
 //! registry. A second content object is one that no template registry owns and that is no item of
 //! the root's own registry. A generation call is joined only when every context is joined. Every
 //! other call keeps one reason, so each is accounted for.
+//!
+//! An unjoined call may generate the names of a registry only when that registry's classes are on
+//! its chains: the function that contains the call, or one of its callers, is a member of the
+//! registry's item or database class or takes one of its items. The call is counted in that
+//! registry's join and in no other. The call inside the registration function registers the names
+//! that its callers compose, so it counts in no registry.
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The most calls between a root and a generation call.
@@ -28,6 +34,8 @@ pub struct Graph {
     /// registry whose items they take, when there is one: for that registry's own contexts the
     /// object is no second input.
     pub second_inputs: BTreeMap<u64, Option<String>>,
+    /// The named registries whose classes each function of the graph is a member of or takes.
+    pub registries: BTreeMap<u64, BTreeSet<String>>,
 }
 
 /// One call that generates a modifier name.
@@ -82,6 +90,9 @@ pub struct RegistryJoin {
     /// A context of this registry takes a second content object that is no item of one named
     /// registry.
     pub second_input: bool,
+    /// Each call that is not joined and that a function of this registry's classes contains or
+    /// reaches, with the reason that it keeps.
+    pub unjoined: BTreeMap<u64, Reason>,
 }
 
 /// A function that takes an item of another named registry: the first such function on a joined
@@ -190,12 +201,20 @@ pub fn join(graph: &Graph) -> Joins {
             registry.path.extend(context.path);
         }
 
-        let kept = reasons.into_iter().min_by_key(|reason| reason.precedence());
-        let join = match kept {
-            Some(reason) => SiteJoin::Unjoined(reason),
-            None => SiteJoin::Joined,
+        let Some(reason) = reasons.into_iter().min_by_key(|reason| reason.precedence()) else {
+            joins.sites.insert(site.call, SiteJoin::Joined);
+            continue;
         };
-        joins.sites.insert(site.call, join);
+
+        joins.sites.insert(site.call, SiteJoin::Unjoined(reason));
+        for registry in chain_registries(graph, site.function) {
+            joins
+                .registries
+                .entry(registry.clone())
+                .or_default()
+                .unjoined
+                .insert(site.call, reason);
+        }
     }
 
     joins
@@ -230,6 +249,25 @@ fn takes(graph: &Graph, registry: &str, path: &[u64]) -> Takes {
     }
 
     takes
+}
+
+/// The registries whose classes `function` or one of its callers is a member of or takes.
+fn chain_registries(graph: &Graph, function: u64) -> BTreeSet<&String> {
+    let mut seen = BTreeSet::from([function]);
+    let mut pending = vec![function];
+
+    while let Some(callee) = pending.pop() {
+        for &caller in graph.callers.get(&callee).into_iter().flatten() {
+            if seen.insert(caller) {
+                pending.push(caller);
+            }
+        }
+    }
+
+    seen.iter()
+        .filter_map(|function| graph.registries.get(function))
+        .flatten()
+        .collect()
 }
 
 /// Every chain from a root down to `function`.
@@ -308,6 +346,7 @@ mod tests {
                 (0x3000, RootOf::UnnamedContent),
             ]),
             second_inputs: BTreeMap::new(),
+            registries: BTreeMap::new(),
         }
     }
 
@@ -421,5 +460,33 @@ mod tests {
 
         graph.callers.insert(0x1000, BTreeSet::from([0x3000]));
         assert_eq!(join(&graph).sites[&0x604], SiteJoin::Joined);
+    }
+
+    #[test]
+    fn an_unjoined_call_counts_only_in_the_registries_of_its_chains() {
+        let mut graph = graph();
+        // A named class above the root of unnamed content.
+        graph.callers.insert(0x3000, BTreeSet::from([0x3100]));
+        graph
+            .registries
+            .insert(0x3100, BTreeSet::from(["common/c".into()]));
+        graph
+            .registries
+            .insert(0x500, BTreeSet::from(["common/d".into()]));
+        graph
+            .registries
+            .insert(REGISTRATION, BTreeSet::from(["common/a".into()]));
+        let joins = join(&graph);
+
+        assert_eq!(
+            joins.registries["common/c"].unjoined,
+            BTreeMap::from([(0x304, Reason::UnnamedContent)])
+        );
+        assert_eq!(
+            joins.registries["common/d"].unjoined,
+            BTreeMap::from([(0x504, Reason::NoRoot)])
+        );
+        assert!(joins.registries["common/a"].unjoined.is_empty());
+        assert!(joins.registries["common/b"].unjoined.is_empty());
     }
 }

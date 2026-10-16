@@ -713,8 +713,19 @@ fn modifier_families_match_the_recorded_m452_generators() {
     for registry in expected.keys() {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-        assert_eq!(answer.completeness, Completeness::Partial);
     }
+    // Only code of its own classes that generates names and is not joined keeps an answer partial.
+    let anomalies = native.modifier_families("common/anomalies").unwrap();
+    assert_eq!(anomalies.completeness, Completeness::Complete);
+    let zones = native.modifier_families("common/zones").unwrap();
+    assert_eq!(zones.completeness, Completeness::Partial);
+    assert!(zones.gaps.iter().any(|gap| {
+        gap.kind == GapKind::UnnamedDeclaration
+            && gap.subject
+                == Some(pdx_native::GapSubject::Registry {
+                    name: "common/zones".into(),
+                })
+    }));
 
     let bypass = native.modifier_families("common/bypass").unwrap();
     let names: Vec<_> = bypass
@@ -2339,14 +2350,8 @@ fn a_custom_loader_registry_answers_derived_names_and_modifier_families() {
     // No generation call is reached from `CStaticModifier`'s code, so the method does not run.
     let families = native.modifier_families("common/static_modifiers").unwrap();
     assert!(families.value.is_empty());
-    assert_eq!(families.completeness, Completeness::Partial);
+    assert_eq!(families.completeness, Completeness::Complete);
     assert!(!key_place(&families.gaps), "{:?}", families.gaps);
-    assert!(
-        families
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::UnnamedDeclaration && gap.subject.is_none())
-    );
 }
 
 #[test]

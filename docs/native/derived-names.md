@@ -504,6 +504,37 @@ accepted gaps from 853 to 1,158. No relationship status or rate changes: a namin
 completeness of the answer, which the limit does not change. `registry-sweep --diff` from the
 tracked baseline names the 57 registries whose open and accepted gaps changed.
 
+## Naming rules and generation sites (SDK-858)
+
+The sweep's naming rule of a registry is complete when its `derived_names` and its
+`modifier_families` answers are both complete (`examples/registry-sweep.rs`, `naming_status`).
+Until SDK-858 every `modifier_families` answer carried one `UnnamedDeclaration` gap that counted
+all 17 unjoined generation sites of M452, so no naming rule was complete.
+
+**The join rule.** An unjoined site counts only in the registries whose classes are on its
+chains: the function that holds the call, or one of its callers within `DEPTH` calls, is a member
+of the registry's item or database class, of a class nested in one or of a template over its
+database, or takes one of its items. The call inside the registration function belongs to no
+registry. The [modifier families](modifier-families.md#which-registries-an-unjoined-site-belongs-to-sdk-858)
+page lists each site, its registries, the assumption and its three checks. On M452 the sites keep
+gaps on `common/zones`, `common/economic_categories`, `common/strategic_resources` and
+`common/leader_classes`; twelve belong to no registry. `Game::loaded_modifiers` still counts all
+17: it answers for the whole table.
+
+**Result.** `registry-sweep --diff` from `main` `6be53fd` (static recording, M452) changes only
+naming rules: 60 registries become complete, 122 stay partial and 6 are `Unsupported`. Against
+the pin move B sweep (Atlas `.local/sdk-818/after.json`, Native `2c94b30`) the same 60 go from
+partial to complete. Each of the 60 has a complete `derived_names` answer with no name. The other
+122 keep their own `derived_names` or `modifier_families` gaps; no `derived_names` gap is about
+generation sites.
+
+**Atlas need.** A complete naming rule credits no config claim by itself. Atlas joins a
+`localisation` or `images` line only to a derived name with the same rendered name (Atlas
+`src/coverage/language_subject.rs`, `Joins::derived_name`). Over the pin move B snapshot at Atlas
+`583d82d`, 461 naming-line claims (`naming_rule`, `naming_requirement`) are uncovered with "No
+qualified answer"; 56 of them are of types whose registry is now complete, and those registries
+return no name to join.
+
 ## Pitfalls
 
 - **A registry's stop gap is not a field's obstacle.** SDK-707 sorted unreached fields by their
