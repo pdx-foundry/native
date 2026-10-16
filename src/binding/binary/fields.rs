@@ -1,6 +1,7 @@
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
-    decode::call_target,
+    declarations,
+    decode::{Instruction, call_or_jump_target, call_target, is_branch},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
@@ -139,6 +140,7 @@ pub(in crate::binding) fn read(
         persistent_recipe,
     )?;
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
+    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     push_converters(&text, indexed, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
@@ -148,6 +150,7 @@ pub(in crate::binding) fn read(
         owner: owner.into(),
         symbols: symbols.to_vec(),
         functions,
+        stubs,
         strings: strings.clone(),
         read_only_data: read_only_sections(bytes)?,
         gaps,
@@ -288,6 +291,124 @@ fn push_embedded_readers(
     }
 }
 
+/// The member readers that `root` and the readers it reaches call directly, which dispatch
+/// follows as inherited readers, and the import stubs among those calls with the body that each
+/// reaches. A stub counts only when the image's fixups resolve its pointer slot to a text body of
+/// the stub's name, as same-image weak coalescing does.
+fn push_inherited_readers(
+    image: &Image<'_>,
+    text: &Text,
+    root: &str,
+    functions: &mut Vec<Function>,
+) -> Result<BTreeMap<u64, u64>, AnalysisError> {
+    let symbols = image.index.over(image.symbols);
+    let slice = super::selected_slice(image.bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    let mut stubs = BTreeMap::new();
+    let mut callers = vec![root.to_owned()];
+    let mut scanned = BTreeSet::new();
+
+    while let Some(caller) = callers.pop() {
+        if !scanned.insert(caller.clone()) {
+            continue;
+        }
+        let Some(function) = functions.iter().find(|function| function.name == caller) else {
+            continue;
+        };
+        let targets: BTreeSet<u64> = function
+            .code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, word)| {
+                call_or_jump_target(
+                    u32::from_le_bytes(*word),
+                    function.address + 4 * index as u64,
+                )
+            })
+            .collect();
+        let calls: Vec<Symbol> = symbols
+            .at(&targets)
+            .filter(|symbol| readers::is_inheritable_member(&symbol.name))
+            .cloned()
+            .collect();
+
+        for call in calls {
+            let body = if text.starts.contains(&call.address) {
+                Some(call.address)
+            } else {
+                stub_slot(&file, call.address).and_then(|slot| image.pointers.get(&slot).copied())
+            };
+            let Some(definition) = body.and_then(|body| {
+                symbols
+                    .named(&call.name)
+                    .find(|symbol| symbol.address == body && text.starts.contains(&body))
+            }) else {
+                continue;
+            };
+            let body = definition.address;
+
+            if body != call.address {
+                stubs.insert(call.address, body);
+            }
+            // Another collection step may have added the body already, under another name. Dispatch
+            // finds a body by name, so the inherited reader keeps its own copy.
+            let alias = functions
+                .iter()
+                .find(|function| function.address == body && function.name != call.name)
+                .map(|function| Function {
+                    name: call.name.clone(),
+                    ..function.clone()
+                });
+            let named = functions
+                .iter()
+                .any(|function| function.address == body && function.name == call.name);
+            let collected = match alias {
+                _ if named => true,
+                Some(alias) => {
+                    functions.push(alias);
+                    true
+                }
+                None => push_function(text, functions, definition),
+            };
+
+            if collected {
+                callers.push(call.name);
+            }
+        }
+    }
+
+    Ok(stubs)
+}
+
+/// The pointer slot that the import stub at `stub` jumps through: `adrp x16`, `ldr x16, [x16, #n]`
+/// and `br x16`.
+fn stub_slot(file: &object::File<'_>, stub: u64) -> Option<u64> {
+    use object::{Object, ObjectSection};
+
+    let bytes = file
+        .sections()
+        .find_map(|section| section.data_range(stub, 12).ok().flatten())?;
+    let rows = crate::engine::analysis::decode::decode_arm64(bytes, stub).ok()?;
+    let [page, load, jump] = rows.as_slice() else {
+        return None;
+    };
+    let page_address = page
+        .operands
+        .strip_prefix("x16,#0x")
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        .filter(|_| page.operation == "adrp")?;
+    let offset = load
+        .operands
+        .strip_prefix("x16,[x16,#0x")
+        .and_then(|rest| rest.strip_suffix(']'))
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        .filter(|_| load.operation == "ldr")?;
+
+    (jump.operation == "br" && jump.operands == "x16").then_some(page_address + offset)
+}
+
 /// The token converters that the collected member readers call directly, which the keyword
 /// domain method runs.
 fn push_converters(text: &Text, symbols: IndexedSymbols<'_>, functions: &mut Vec<Function>) {
@@ -334,7 +455,11 @@ fn collect_objects(
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
     let symbols = image.index.over(image.symbols);
     let pointers = image.pointers;
-    let Some(root) = functions.iter().find(|function| function.name == root) else {
+    let Some(root) = functions
+        .iter()
+        .find(|function| function.name == root)
+        .cloned()
+    else {
         return Ok(Vec::new());
     };
     let rows = crate::engine::analysis::decode::decode_arm64(&root.code, root.address)
@@ -351,6 +476,8 @@ fn collect_objects(
             classes.entry(class.to_owned()).or_default();
         } else if let Some(class) = factory_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default().push(symbol);
+        } else if let Some(class) = inserted_class(&symbol.name) {
+            classes.entry(class.to_owned()).or_default();
         }
     }
 
@@ -358,8 +485,17 @@ fn collect_objects(
         return Ok(Vec::new());
     }
 
+    let initializers: Vec<_> = symbols
+        .at(&calls)
+        .filter(|symbol| is_scalar_constructor(&symbol.name))
+        .map(|symbol| symbol.address)
+        .collect();
+
     let names = Names::new(symbols.symbols);
     let unique_name = |address: u64| names.unique(address).map(str::to_owned);
+    let operator_new: BTreeSet<_> = addresses(symbols, "operator new(unsigned long)")
+        .into_iter()
+        .collect();
     let mut objects = Vec::new();
 
     for (class, factories) in classes {
@@ -405,27 +541,27 @@ fn collect_objects(
                 }
             }
         }
-        let insert = addresses(
-            symbols,
-            &format!(
-                "{class}*& CPdxArray<{class}*, int>::InsertAtEmplace<{class}* const&>(int, {class}* const&)"
-            ),
-        );
-        let scoped = format!("CPdxScopedPtrImpl<{class}, false>");
-        let moving_insert = addresses(
-            symbols,
-            &format!(
-                "{scoped}& CPdxArray<{scoped}, int>::InsertAtEmplace<{scoped} >(int, {scoped}&&)"
-            ),
-        )
-        .into_iter()
-        .filter(|&start| clears_moved_source_at(text, start))
-        .collect();
+        let insert = addresses(symbols, &pointer_insertion(&class));
+        let moving_insert = addresses(symbols, &scoped_insertion(&class))
+            .into_iter()
+            .filter(|&start| clears_moved_source_at(text, start))
+            .collect();
         let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
         let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
         let owner_of_keys = reader
             .as_ref()
             .is_none_or(|bound| bound.reader.family == BlockFamily::Unknown);
+        let constructors: Vec<_> = symbols
+            .constructors_of(&class)
+            .iter()
+            .map(|symbol| symbol.address)
+            .collect();
+        let inline = if constructors.is_empty() {
+            let insertions: Vec<_> = insert.iter().chain(&moving_insert).copied().collect();
+            inline_constructions(&root, &rows, &operator_new, &insertions)
+        } else {
+            Vec::new()
+        };
         let (persistent, nested_objects) = match nested.filter(|_| owner_of_keys) {
             Some(shared) => nested_owner(
                 image,
@@ -434,6 +570,7 @@ fn collect_objects(
                 shared,
                 recipe,
                 &class,
+                inline,
                 &member_name,
                 functions,
                 gaps,
@@ -443,12 +580,9 @@ fn collect_objects(
         objects.push(ObjectReader {
             data_offset,
             count_offset,
-            constructors: symbols
-                .constructors_of(&class)
-                .iter()
-                .map(|symbol| symbol.address)
-                .collect(),
+            constructors,
             factories: factories.iter().map(|symbol| symbol.address).collect(),
+            initializers: initializers.clone(),
             insert,
             moving_insert,
             class,
@@ -473,11 +607,17 @@ fn nested_owner(
     shared: &SharedPersistent,
     recipe: &PersistentRecipe,
     class: &str,
+    inline: Vec<declarations::Function>,
     member: &str,
     functions: &mut Vec<Function>,
     gaps: &mut Vec<String>,
 ) -> Result<(Option<PersistentInput>, Vec<ObjectReader>), AnalysisError> {
-    let persistent = match super::receivers::persistent(image, text, data, shared, class, recipe) {
+    let persistent = if inline.is_empty() {
+        super::receivers::persistent(image, text, data, shared, class, recipe)
+    } else {
+        super::receivers::persistent_from(image, text, data, shared, recipe, inline)
+    };
+    let persistent = match persistent {
         Ok(persistent) => {
             push_embedded_readers(
                 text,
@@ -497,6 +637,105 @@ fn nested_owner(
     Ok((persistent, objects))
 }
 
+/// Parameter types that carry no address: the arithmetic types and the engine's scope enum.
+const SCALAR_PARAMETERS: [&str; 15] = [
+    "bool",
+    "char",
+    "signed char",
+    "unsigned char",
+    "short",
+    "unsigned short",
+    "int",
+    "unsigned int",
+    "long",
+    "unsigned long",
+    "long long",
+    "unsigned long long",
+    "float",
+    "double",
+    "EScopeType",
+];
+
+/// Whether `name` is a constructor whose only address argument is the object it builds: every
+/// parameter is one of [`SCALAR_PARAMETERS`].
+fn is_scalar_constructor(name: &str) -> bool {
+    let Some(class) = super::receivers::constructor_class(name) else {
+        return false;
+    };
+    let method = &name[class.len() + 2..];
+    let Some(parameters) = method
+        .split_once('(')
+        .and_then(|(_, rest)| rest.strip_suffix(')'))
+    else {
+        return false;
+    };
+
+    parameters.is_empty()
+        || parameters
+            .split(", ")
+            .all(|parameter| SCALAR_PARAMETERS.contains(&parameter))
+}
+
+/// The constructor bodies of an object that `root` constructs inline: the construction before
+/// each call in `rows` to one of its `insertions`, where there is one. The method uses them only
+/// when every joined path allocates the object at the start of one of them.
+fn inline_constructions(
+    root: &Function,
+    rows: &[Instruction],
+    operator_new: &BTreeSet<u64>,
+    insertions: &[u64],
+) -> Vec<declarations::Function> {
+    rows.iter()
+        .enumerate()
+        .filter(|(_, row)| calls_one_of(row, insertions))
+        .filter_map(|(at, _)| inline_construction_before(root, &rows[..at], operator_new))
+        .collect()
+}
+
+/// The inline construction that ends just before an insertion, as a constructor body: the code
+/// from the return of the last `operator new` call to the object's virtual read, the last indirect
+/// call, with a return in place of the read. Nothing between the allocation and the read may branch
+/// or call indirectly, and no call or branch may follow the read.
+fn inline_construction_before(
+    root: &Function,
+    rows: &[Instruction],
+    operator_new: &BTreeSet<u64>,
+) -> Option<declarations::Function> {
+    const RET: [u8; 4] = 0xd65f_03c0_u32.to_le_bytes();
+    let transfers =
+        |row: &Instruction| is_branch(&row.operation) || row.operation.starts_with("bl");
+    let read = rows.iter().rposition(|row| row.operation == "blr")?;
+    if rows[read + 1..].iter().any(transfers) {
+        return None;
+    }
+    let allocation = rows[..read]
+        .iter()
+        .rposition(|row| calls_one_of(row, operator_new))?;
+    let construction = &rows[allocation + 1..read];
+    if construction
+        .iter()
+        .any(|row| is_branch(&row.operation) || row.operation == "blr")
+    {
+        return None;
+    }
+    let start = rows[allocation + 1].address;
+    let offset = |address: u64| (address - root.address) as usize;
+    let mut code = root.code[offset(start)..offset(rows[read].address)].to_vec();
+
+    code.extend(RET);
+    Some(declarations::Function {
+        address: start,
+        code,
+    })
+}
+
+/// Whether `row` is a direct call to one of `targets`.
+fn calls_one_of<'a>(row: &Instruction, targets: impl IntoIterator<Item = &'a u64>) -> bool {
+    row.operation == "bl"
+        && call_target(u32::from_le_bytes(row.bytes), row.address)
+            .is_some_and(|target| targets.into_iter().any(|&known| known == target))
+}
+
 /// The class that a `PdxMakeScopedPtr<Class, …>` factory allocates and constructs.
 fn factory_class(name: &str) -> Option<&str> {
     let (_, arguments) = name.split_once(" PdxMakeScopedPtr<")?;
@@ -513,6 +752,31 @@ fn factory_class(name: &str) -> Option<&str> {
     }
 
     None
+}
+
+/// The class whose pointer an insertion into a `CPdxArray` of `Class*` or of
+/// `CPdxScopedPtrImpl<Class, false>` takes.
+fn inserted_class(name: &str) -> Option<&str> {
+    let class = match name.strip_prefix("CPdxScopedPtrImpl<") {
+        Some(scoped) => scoped.split_once(", false>& CPdxArray<")?.0,
+        None => name.split_once("*& CPdxArray<")?.0,
+    };
+
+    (name == pointer_insertion(class) || name == scoped_insertion(class)).then_some(class)
+}
+
+/// The insertion of a `Class*` into a `CPdxArray`.
+fn pointer_insertion(class: &str) -> String {
+    format!(
+        "{class}*& CPdxArray<{class}*, int>::InsertAtEmplace<{class}* const&>(int, {class}* const&)"
+    )
+}
+
+/// The insertion that moves a `CPdxScopedPtrImpl<Class, false>` into a `CPdxArray`.
+fn scoped_insertion(class: &str) -> String {
+    let scoped = format!("CPdxScopedPtrImpl<{class}, false>");
+
+    format!("{scoped}& CPdxArray<{scoped}, int>::InsertAtEmplace<{scoped} >(int, {scoped}&&)")
 }
 
 fn addresses(symbols: IndexedSymbols<'_>, name: &str) -> Vec<u64> {
@@ -1145,6 +1409,87 @@ mod tests {
             Some("A")
         );
         assert_eq!(factory_class("A::A(int)"), None);
+    }
+
+    #[test]
+    fn an_insertion_names_the_class_of_the_pointer_it_takes() {
+        assert_eq!(inserted_class(&pointer_insertion("A<B>")), Some("A<B>"));
+        assert_eq!(inserted_class(&scoped_insertion("A")), Some("A"));
+        assert_eq!(
+            inserted_class("A*& CPdxArray<A*, int>::InsertAtEmplace<A*>(int, A*&&)"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_member_initializer_is_a_constructor_that_takes_no_address_but_its_object() {
+        assert!(is_scalar_constructor("CRootTrigger::CRootTrigger(bool)"));
+        assert!(is_scalar_constructor(
+            "CScriptableValue::CScriptableValue(EScopeType, bool)"
+        ));
+        assert!(is_scalar_constructor("A<B*>::A()"));
+        assert!(!is_scalar_constructor("CString::CString(char const*)"));
+        assert!(!is_scalar_constructor("A::A(B const&)"));
+        assert!(!is_scalar_constructor("A::A(COwnerHandle)"));
+        assert!(!is_scalar_constructor("A::A(int, ...)"));
+        assert!(!is_scalar_constructor("A::Read(bool)"));
+    }
+
+    #[test]
+    fn an_inline_construction_runs_from_the_allocation_to_the_read_of_the_inserted_object() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+
+        let root = |code: Vec<u8>| Function {
+            name: "C::ReadMember(CReader&, int)".into(),
+            address: 0x1000,
+            code,
+        };
+        let constructions = |root: &Function| {
+            let rows = decode_arm64(&root.code, root.address).unwrap();
+            inline_constructions(root, &rows, &BTreeSet::from([0x9000]), &[0x9300])
+        };
+        let straight = root(arm64!(at 0x1000;
+            bl extern 0x9000; // operator new
+            mov x21, x0;
+            bl extern 0x9400; // member constructor
+            str x8, [x21];
+            blr x8; // the read
+            mov x2, sp;
+            bl extern 0x9300; // the insertion
+            ret
+        ));
+        let bodies = constructions(&straight);
+        assert_eq!(bodies.len(), 1);
+        assert_eq!(bodies[0].address, 0x1004);
+        assert_eq!(
+            bodies[0].code,
+            [&straight.code[4..16], &arm64!(at 0x1010; ret)[..]].concat()
+        );
+
+        let branching = root(arm64!(at 0x1000;
+            bl extern 0x9000;
+            cbz x0, extern 0x1010;
+            blr x8;
+            bl extern 0x9300;
+            ret
+        ));
+        let call_after_the_read = root(arm64!(at 0x1000;
+            bl extern 0x9000;
+            blr x8;
+            bl extern 0x9400;
+            bl extern 0x9300;
+            ret
+        ));
+        for (case, root) in [
+            ("a branch in the construction", branching),
+            (
+                "a call between the read and the insertion",
+                call_after_the_read,
+            ),
+        ] {
+            assert!(constructions(&root).is_empty(), "{case}");
+        }
     }
 
     #[test]

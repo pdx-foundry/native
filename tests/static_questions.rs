@@ -713,8 +713,19 @@ fn modifier_families_match_the_recorded_m452_generators() {
     for registry in expected.keys() {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-        assert_eq!(answer.completeness, Completeness::Partial);
     }
+    // Only code of its own classes that generates names and is not joined keeps an answer partial.
+    let anomalies = native.modifier_families("common/anomalies").unwrap();
+    assert_eq!(anomalies.completeness, Completeness::Complete);
+    let zones = native.modifier_families("common/zones").unwrap();
+    assert_eq!(zones.completeness, Completeness::Partial);
+    assert!(zones.gaps.iter().any(|gap| {
+        gap.kind == GapKind::UnnamedDeclaration
+            && gap.subject
+                == Some(pdx_native::GapSubject::Registry {
+                    name: "common/zones".into(),
+                })
+    }));
 
     let bypass = native.modifier_families("common/bypass").unwrap();
     let names: Vec<_> = bypass
@@ -2228,12 +2239,18 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
     assert_eq!(
         names,
         [
+            "icon",
             "key",
+            "custom_tooltip",
             "apply_modifier_to_other_planets",
-            "divide_over_pop_groups"
+            "show_only_custom_tooltip",
+            "icon_frame",
+            "important",
+            "divide_over_pop_groups",
+            "hide_from_country_list"
         ]
     );
-    // Other tokens go to the base class's `ReadMember`, an inherited reader outside the method.
+    // The inherited `CGraphicalModifier::ReadMember` passes its other tokens to a virtual call.
     assert_eq!(answer.completeness, Completeness::Partial);
     let registry = Some(GapSubject::Registry {
         name: "common/static_modifiers".into(),
@@ -2275,6 +2292,38 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
     );
 }
 
+/// Starbase modules and buildings read their shared keys through
+/// `CStarbaseComponent<T>::ReadMember`, which they call through an import stub
+/// (`docs/native/registry-fields.md`, inherited member readers).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn starbase_components_read_their_shared_keys_through_the_inherited_reader() {
+    let native = native();
+    for registry in ["common/starbase_modules", "common/starbase_buildings"] {
+        let answer = native.registry_fields(registry).unwrap();
+        let names: Vec<_> = answer
+            .value
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+
+        for shared in ["icon", "construction_days", "potential", "ship_modifier"] {
+            assert!(
+                names.contains(&shared),
+                "{registry} lacks {shared}: {names:?}"
+            );
+        }
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind != GapKind::UnnamedField),
+            "{registry}: {:?}",
+            answer.gaps
+        );
+    }
+}
+
 /// The derived-name and family methods read a custom loader's owner as they read a template
 /// owner. `CStaticModifier` has no template key constructor, so the key place stays a gap
 /// (`docs/native/derived-names.md`).
@@ -2301,14 +2350,8 @@ fn a_custom_loader_registry_answers_derived_names_and_modifier_families() {
     // No generation call is reached from `CStaticModifier`'s code, so the method does not run.
     let families = native.modifier_families("common/static_modifiers").unwrap();
     assert!(families.value.is_empty());
-    assert_eq!(families.completeness, Completeness::Partial);
+    assert_eq!(families.completeness, Completeness::Complete);
     assert!(!key_place(&families.gaps), "{:?}", families.gaps);
-    assert!(
-        families
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::UnnamedDeclaration && gap.subject.is_none())
-    );
 }
 
 #[test]

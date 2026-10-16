@@ -50,8 +50,12 @@ registries become complete, and `UnresolvedStorage` gaps fall from 1,054 in 116 
 `common/scripted_modifiers` becomes complete, and four fields that a `movk`, `csel` or `tst` used
 to stop join their readers (`common/deposits` `potential` and `resources`, `common/ship_sizes`
 `possible_construction` and `potential_construction`). SDK-823's
-[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against
-`v46`, SDK-854 gave 69 fields of 12 registries their repeat: the planet-class Boolean bits and
+[path joins](#path-joins-on-m452-sdk-823) change the entry contexts of 22 registries. Against `v46`,
+SDK-838 follows [inherited member readers](#inherited-member-readers-sdk-838) and reads `stur`: 15
+registries change, no field is lost, and `common/colony_automation_exceptions`, `common/decisions`
+and `common/deposits` have no registry-wide path gap left. Against `v47`, SDK-848's
+[inline-constructed objects](#inline-constructed-objects-sdk-848) change five registries. Against
+`v48`, SDK-854 gave 70 fields of 13 registries their repeat: the planet-class Boolean bits and
 the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -136,7 +140,7 @@ belongs to one row.
 | --- | ---: | ---: | --- |
 | `CReader::ReadUniform<T>` lists | 98 → 0 | 41 → 0 | Resolved: [uniform lists](#uniform-lists). |
 | Boolean stack temporaries (identity, repeat `Unknown`) | 240 → 2 root | | Resolved: [bit fields](#bit-fields); two named obstacles remain. |
-| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap. The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
+| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap; five fields that the root constructs inline joined since ([SDK-848](#inline-constructed-objects-sdk-848)). The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
 | Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
@@ -152,9 +156,67 @@ belongs to one row.
 readers through the [allocation rule](#allocations-in-constructor-walks).
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
-unsupported instructions (`blr`, `ret`, `cset`, `lsr`, `stur`) and branch conditions (`b.lt`,
+unsupported instructions (`blr`, `ret`, `cset`, `lsr`) and branch conditions (`b.lt`,
 `b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
 input is the twelve owners with no `ReadMember` (`CJobTag`, `CTraitTag`, `CZoneType`, …).
+
+### Inherited member readers (SDK-838)
+
+A member reader can pass the tokens it does not handle to the reader of its base class. On M452,
+`CStarbaseModule::ReadMember` (`0x100c561cc`) and `CStarbaseBuilding::ReadMember` handle a few
+keys each, then call `CStarbaseComponent<T>::ReadMember(CReader&, int)` with `x0`, `x1` and `x2`
+unchanged (`bl` at `0x100c56588`). That template reads the keys that both registries share
+(`icon`, `construction_days`, `potential`, `resources`, `ship_modifier`, ...) and returns false
+(`mov w0,#0` at entry, then `ret`) for any other token. After the call, `tbnz w0,#0` returns on
+true; on false the derived reader tail-calls `CPersistent::ReadMember` on its base subobject at
+`+0x1a18`, the base rejection.
+
+- **Rule.** Registry dispatch follows a direct `bl` or `b` to a `ReadMember(CReader&, int)`
+  other than `CPersistent`'s when the call receives the owner, the reader and the token
+  unchanged (`fields/dispatch.rs`). The inherited reader's paths keep the caller's token domain
+  and conditions. After a `bl`, each path of the inherited reader that returns `x0 = 0` goes on
+  in the caller after the call with `x0 = 0`; a `b` hands that false to the caller's own caller.
+  A read through a `bl` is not a tail call, so its repeat is not examined, and a stored read
+  loses its repeat: the caller's code after the call may write the destination again. Command
+  grammar dispatch is unchanged; it joins member delegates its own way.
+- **Import stubs.** The call reaches the template through an import stub in `__stubs`
+  (`0x102996690`), not its body. The binding (`push_inherited_readers` in
+  `binding/binary/fields.rs`) accepts a stub only when its `adrp x16`, `ldr x16` and `br x16`
+  load a slot that the fixups resolve locally to a text body of the stub's name. On M452 the slot
+  `0x102ffee88` is a `<weak-def-coalesce>` bind of that symbol, which the fixup reader already
+  resolves to the image's own definition. `FieldInput::stubs` carries each accepted stub to the
+  dispatch name lookup; any other symbol of the name away from the body still makes the lookup
+  fail.
+- **Bit tests of a constant.** `tbz` and `tbnz` of a known constant take only the side the bit
+  selects, as `cbz` and `cbnz` do. The resumed false return needs it.
+- **Result on M452.** `common/starbase_modules` goes from 7 to 57 root fields and
+  `common/starbase_buildings` from 4 to 54. Every path is named; the `UnnamedField` gap is gone,
+  and the only registry-wide gaps left are the unnamed evaluation of `GetEquippedComponents` and
+  the `UnresolvedReader` gap that sums up the fields' stopped reads. `common/static_modifiers` goes from 3 to 9 fields through
+  `CGraphicalModifier::ReadMember`, whose other tokens stop at a virtual call (slot `+0x40`).
+  `common/colony_automation_exceptions` gains 7 fields. The `stur` frame stores of the same
+  change add fields to `common/districts` (9), `common/country_focus/focus_cards` (5),
+  `common/economic_plans` (3), `common/decisions`, `common/deposits`, `common/resource_converters`
+  (2 each) and `common/buildings` (`show_in_tech`); the nested `variable_string` key of
+  megastructure `cycle_title` and `cycle_desc` and of the ship-set and species-name fields is
+  now a member with its own gap. The whole-domain path of `common/diplomacy_economy` now stops at
+  `CString(char const*)` on the key text, so it is an `UnnamedField` gap instead of an
+  unfollowed path.
+- **Limits.**
+  - The nested-object pass (`fields/nested.rs`) runs from the owner root, and `collect_objects`
+    scans only the root, so the 9 `triggered_*_modifier` keys of the template are named fields
+    with an `UnresolvedReader` gap, not triggered modifier clauses. A repair runs the nested
+    machine from the inherited reader where every path of the field ends, after the binding
+    collects the template's factories.
+  - The other starbase fields without one shared reader belong to census families above:
+    `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
+    loop), `triggered_component_set` (an inserted struct), `name` and `desc`
+    (`CTriggeredEventDescription`) and `resources` (stack serializer).
+  - A nested owner does not follow its own inherited reader: `nested_owner` collects no
+    inherited readers. Change this when a nested owner needs it.
+- **Pitfall.** A same-name symbol is not proof that a call reaches a body. An import of an
+  unresolved or external symbol can share the name of a local definition; only the fixup slot
+  shows where the stub goes.
 
 ### Allocations in constructor walks
 
@@ -214,6 +276,59 @@ Remaining obstacles of the persistent fields that the rule does not repair:
   result. The summary-only run loses them at `CPdxCommonStringAllocator::deallocate` of the default
   constructor's stack string.
 
+### Inline-constructed objects (SDK-848)
+
+The collection pass (`fields/nested.rs`) joins an object that the root allocates, reads and
+inserts. The binding finds its class through a direct constructor or `PdxMakeScopedPtr` call, or
+through a direct call to the insertion of a `Class*` or a `CPdxScopedPtrImpl<Class, false>`. The
+last form finds a class whose constructor the compiler put inline, with no constructor symbol. The
+walk accepts such an object at its virtual read by a validated rule: **an `operator new` allocation
+that no constructor built, whose word at `+0` is the class's primary address point, is that
+object.** While the root builds it, two kinds of call may write the allocation and nothing else:
+
+- a constructor that the root calls directly and whose parameters are all arithmetic types or
+  `EScopeType`, so `this` in `x0` is its only address; the walk forgets the allocation from `x0` to
+  its end;
+- `_bzero` with a known length that ends inside the allocation; the walk forgets those bytes.
+
+Any other call on the way still stops the path. The nested owner's constructor evidence is the
+inline code: from the allocation's return to the read, with a `ret` in place of the read. The
+binding takes it before each insertion of the class when nothing between the allocation and the
+read branches or calls indirectly, and nothing but register moves lies between the read and the
+insertion. The walk uses that evidence only when every joined path's object was allocated where
+one of those bodies starts; otherwise the owner keeps no constructor evidence and its persistent
+members stay unjoined.
+
+On M452 (`registry-fields/v48`):
+
+| Field | Site | Class | Insertion |
+| --- | --- | --- | --- |
+| `common/technology` `technology_swap` | `CTechnology::ReadMember` `0x100c811b8` | `CTechnologySwap` (`0x350` bytes) | `CPdxArray<CTechnologySwap*>` at `+0x930` |
+| `common/governments/civics` `swap_type` | `CGovernmentCivicType::ReadMember` `0x1007fc77c` | `CGovernmentCivicTypeSwap` (`0x1f8` bytes) | scoped pointer array at `+0x548` |
+| `common/buildings`, `common/traits` `triggered_desc`; `common/situations` `triggered_blocked_desc` | `CBuildingType::ReadMember` `0x1000d12d4`, … | `CTriggeredEventDescriptionOption` | |
+
+The inline calls are `_bzero`, `CRootTrigger::CRootTrigger(bool)`,
+`CScriptableValue::CScriptableValue(EScopeType, bool)` and
+`CCustomDescriptionModifier::CCustomDescriptionModifier()`. `technology_swap` now reads a block
+(`Accumulate`) of nine members: `name`, `weight` (weight grammar), `category`, `trigger`,
+`prereqfor_desc`, `inherit_effects`, `inherit_icon`, `area` and `modifier` (modifier grammar).
+`prereqfor_desc` has no shared reader and `category` no repeat rule. `swap_type` reads a block of
+all six config members (`name`, `trigger`, `description`, `negative_description`,
+`hide_modifiers`, `modifier`) with no gap but `OutsideMethod` and the registry-wide use-time
+condition that every nested owner carries. The three description fields read five members each;
+`text` and `exclusive_trigger` have no shared reader, and one root path stays unfollowed.
+
+Remove the rule, or limit it, when a build's inline construction passes an address other than the
+object to a member constructor, when a scalar-parameter constructor writes through a global into
+the owner, or when the walk can run member constructors itself.
+
+`common/pop_jobs` `swappable_data` is not this shape. `CJobType::ReadMember` reads it through a
+stack `CSwapCollection<SPopJobTypeSwap, …>::CSerializer` at `0x1008b45ec`; its `ReadMember`
+(`0x1008bea40`) reads `default` through a stack `SPopJobTypeSwap::CSerializer` and each `swap_type`
+into a new `CSwappable<SPopJobTypeSwap>` through two more stack serializers. That is the "Stack
+serializers" row above, three levels deep; `common/pop_categories` has the same chain. SDK-866
+owns it.
+
 ## Repeat behavior
 
 `FieldShape.repeat` comes from one rule for each shared reader, in `session/fields.rs::repeat`.
@@ -253,27 +368,29 @@ Every other reader keeps `Unknown`, and the storage gap names why:
 
 | Detail | Fields (M452) | Cause |
 | --- | ---: | --- |
-| "waits for one shared reader" | 766 | No shared reader ([fields with no shared reader](#fields-with-no-shared-reader)). |
-| "the read is not a tail call" | 22 | A primitive or scoped reader whose caller continues after it returns ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). |
-| "…or its lookup does not store every resolution" | 2 | An immediate reference reader whose caller does more than store the item; a deferred reader without an established lookup or a deferred list. |
-| "no stated rule for this block reader, or the read is not a tail call" | 28 | A list or block read with a continuation, a weight block that is not a tail call, an overridden hook, an unexamined persistent read. |
-| "waits for the reader's value form" | 5 | `CReader::Read(CColor&)`, `CReader::Read(CVector2FixedPoint&)`. |
+| "waits for one shared reader" | 855 | No shared reader ([fields with no shared reader](#fields-with-no-shared-reader)). |
+| "the read is not a tail call" | 51 | A primitive or scoped reader whose caller continues after it returns ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). |
+| "…or its lookup does not store every resolution" | 5 | An immediate reference reader whose caller does more than store the item; a deferred reader without an established lookup or a deferred list. |
+| "no stated rule for this block reader, or the read is not a tail call" | 53 | A list or block read with a continuation, a weight block that is not a tail call, an overridden hook, an unexamined persistent read. |
+| "waits for the reader's value form" | 7 | `CReader::Read(CColor&)`, `CReader::Read(CVector2FixedPoint&)`. |
 | "belongs to the loader" | 22 | The [event kinds](#event-kinds): each statement builds a new `CEvent`, and the loader's duplicate handling decides which one is kept ([loader rules](loader-rules.md)). |
 
-The counts are gaps at `registry-fields/v47`, all registries and nesting depths.
+The counts are gaps at `registry-fields/v49`, all registries and nesting depths.
 
 ### Repeat gaps of gate registries (SDK-854)
 
 Atlas credits a config `cardinality` maximum only from an unconditional read with a known repeat.
 Over the 218 D1 gate types (config `8574760`), 287 such claims kept a repeat gap at pin move B
-(Native `2c94b30`); 248 keep one at `registry-fields/v47`. The 39 credited are 28 planet-class
+(Native `2c94b30`); 244 keep one at `registry-fields/v49`. SDK-854 credits 39: 28 planet-class
 Boolean bits ([bit fields](#bit-fields)) and 11 immediate reference fields
-([rule table](#repeat-behavior)). The open claims, by the shape of their field:
+([rule table](#repeat-behavior)). SDK-848's [inline-constructed
+objects](#inline-constructed-objects-sdk-848) credit 4 more. The open claims, by the shape of
+their field:
 
 | Shape | Gate claims | Examples |
 | --- | ---: | --- |
 | No shared reader: a stack serializer (`CEconomicUnitTemplate::CSerializer` and other `X::CSerializer` constructors), or `CReader::Read(CPersistent&)` of a stack object with a vtable constant (`CStatInterval<int>::CSerializer`) | 63 | `country_type.resources`, `planet_class.planet_size` |
-| No shared reader: an owned object (`operator new`, `InsertAtEmplace`, `SetSizeAndEmplace`, `PdxMakeScopedPtr`, `make_shared`) | 51 | `patron_type.passive_accord`, `archaeological_site_type.stage` |
+| No shared reader: an owned object (`operator new`, `InsertAtEmplace`, `SetSizeAndEmplace`, `PdxMakeScopedPtr`, `make_shared`) | 47 | `patron_type.passive_accord`, `archaeological_site_type.stage` |
 | No shared reader: value text (`CString::CString(char const*)`, `strlen`, `CReader::Read(CString&, bool)` into a non-owner destination) | 21 | `job.purge`, `building.ruined_icon` |
 | No shared reader: a persistent read with no constructor-agreed reader | 21 | `global_ship_design.name`, `ship_size.map_icon_override` |
 | No shared reader: triggered descriptions (`CTriggeredEventDescription<…>::ReadEntry`) | 19 | `situation_type.title`, `building.desc` |
@@ -1023,8 +1140,10 @@ other shape, is `Unsupported` with the reason, never a choice.
   `CStaticModifier::ReadOnlyKey(CReader&)` and reads no definition. The full-read phase reads
   through `CStaticModifier::ReadMember(CReader&, int)`, the root. That reader handles `key`,
   `apply_modifier_to_other_planets` and `divide_over_pop_groups`, and tail-calls
-  `CGraphicalModifier::ReadMember` for every other token; the method does not follow an inherited
-  reader, so the answer is partial with an `UnresolvedPath` gap on the registry.
+  `CGraphicalModifier::ReadMember` for every other token. The method follows that
+  [inherited reader](#inherited-member-readers-sdk-838) (SDK-838): 6 more fields, such as
+  `icon_frame`. Its other tokens go to a virtual call, so the answer stays partial with an
+  `UnresolvedPath` gap on the registry.
 - **Function budget.** `CTrait` has 174 functions in its field input, above the old limit of 128
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.

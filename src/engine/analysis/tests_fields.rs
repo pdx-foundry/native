@@ -25,6 +25,7 @@ fn fixture() -> FieldInput {
         strings: BTreeMap::from([(0x8000, "new_engine_field".into())]),
         read_only_data: vec![],
         gaps: vec![],
+        stubs: BTreeMap::new(),
         functions: vec![
             Function {
                 name: root.into(),
@@ -590,6 +591,190 @@ fn a_bit_test_of_the_token_is_a_gap() {
     assert!(result.fields.is_empty());
     assert!(result.paths.iter().any(
         |path| matches!(&path.outcome, PathOutcome::Gap(gap) if gap.reason == "token-bit-test")
+    ));
+}
+
+/// The fixture's owner calls an inherited reader through a stub of the same name at `0x9000`.
+/// The inherited reader at `0xa000` reads token 8 and returns false for every other token; the
+/// owner then rejects the token through its base.
+fn inherited_fixture() -> FieldInput {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        mov x19, x0; // the owner
+        mov x20, x1; // the reader
+        mov x21, x2; // the token
+        cmp w2, #7; // token 7
+        b.eq extern 0x1034;
+        bl extern 0x9000; // the stub of CBase::ReadMember
+        tbnz w0, #0, extern 0x1030; // handled
+        mov x0, x19;
+        mov x1, x20;
+        mov x2, x21;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0xa000,
+        code: arm64!(at 0xa000;
+            cmp w2, #8; // token 8
+            b.eq extern 0xa010;
+            mov w0, #0; // not handled
+            ret;
+            add x8, x0, #0x48; // the inherited member
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000 // CReader::Read
+        ),
+    });
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7; // token 7
+        adrp x2, extern 0x8000; // "new_engine_field"
+        add x2, x2, #0;
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #8; // token 8
+        adrp x2, extern 0x8000; // "inherited_field"
+        add x2, x2, #0x10;
+        bl extern 0x3000; // CToken::CToken
+        ret
+    );
+    input.strings.insert(0x8010, "inherited_field".into());
+    input.stubs.insert(0x9000, 0xa000);
+    input.symbols.extend([
+        Symbol {
+            name: inherited.into(),
+            address: 0x9000,
+        },
+        Symbol {
+            name: inherited.into(),
+            address: 0xa000,
+        },
+    ]);
+
+    input
+}
+
+#[test]
+fn an_inherited_reader_reads_the_tokens_that_its_caller_passes_on() {
+    use crate::engine::analysis::readers::destination;
+
+    let result = derive(inherited_fixture());
+
+    let names: Vec<_> = result
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["new_engine_field", "inherited_field"],
+        "{:?}",
+        result.gaps
+    );
+    let inherited = &result.fields[1].readers;
+    assert_eq!(inherited.len(), 1);
+    assert_eq!(destination(&inherited[0]), Some(0x48));
+    assert!(matches!(
+        inherited[0],
+        ReaderJoin::Joined { tail: false, .. }
+    ));
+    assert!(result.partition_accounted);
+    assert!(
+        result
+            .paths
+            .iter()
+            .filter(|path| ![[7, 7], [8, 8]].contains(&path.domain))
+            .all(|path| path.outcome == PathOutcome::Rejected),
+        "a token that the inherited reader declines reaches the owner's base rejection: {:?}",
+        result.paths
+    );
+}
+
+#[test]
+fn a_false_return_through_a_tail_called_ancestor_reaches_the_owner() {
+    let ancestor = "CAncestor::ReadMember(CReader&, int)";
+    let mut input = inherited_fixture();
+    replace(&mut input, 0xa008, arm64!(at 0xa008; b extern 0xb000)); // CAncestor::ReadMember
+    input.functions.push(Function {
+        name: ancestor.into(),
+        address: 0xb000,
+        code: arm64!(at 0xb000; mov w0, #0; ret),
+    });
+    input.symbols.push(Symbol {
+        name: ancestor.into(),
+        address: 0xb000,
+    });
+
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 2, "{:?}", result.gaps);
+    assert!(
+        result
+            .paths
+            .iter()
+            .filter(|path| ![[7, 7], [8, 8]].contains(&path.domain))
+            .all(|path| path.outcome == PathOutcome::Rejected),
+        "{:?}",
+        result.paths
+    );
+}
+
+#[test]
+fn a_stub_that_the_image_does_not_bind_is_no_inherited_read() {
+    let mut input = inherited_fixture();
+    input.stubs.clear();
+
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 1);
+    assert!(result.paths.iter().any(|path| matches!(
+        &path.outcome,
+        PathOutcome::Reader(ReaderJoin::Missing(stop)) if stop.reason == "reader-routing"
+    )));
+}
+
+#[test]
+fn a_call_that_changes_the_token_is_no_inherited_read() {
+    let mut input = inherited_fixture();
+    replace(&mut input, 0x100c, arm64!(at 0x100c; add w2, w2, #1));
+    replace(&mut input, 0x1010, arm64!(at 0x1010; nop));
+
+    let result = derive(input);
+
+    assert!(result.fields.is_empty());
+    assert!(result.paths.iter().any(|path| matches!(
+        &path.outcome,
+        PathOutcome::Reader(ReaderJoin::Missing(stop)) if stop.reason == "reader-routing"
+    )));
+}
+
+#[test]
+fn an_unscaled_store_to_the_frame_keeps_the_path_to_its_reader() {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x100c;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x29, sp;
+        stur w2, [x29, #-0x10];
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.paths);
+    assert!(matches!(
+        result.fields[0].readers[0],
+        ReaderJoin::Joined { .. }
     ));
 }
 
@@ -1190,6 +1375,7 @@ fn nested_fixture() -> FieldInput {
         pointers: [(0xa020, 0x9200)].into(),
         read: 0x9200,
         factories: vec![],
+        initializers: vec![],
         insert: vec![0x9300],
         moving_insert: vec![],
         data_offset: Some(8),
@@ -1215,6 +1401,151 @@ fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
         replace(&mut input, address, arm64!(at address; mov x0, x3));
         assert!(derive(input).collections.is_empty(), "{address:#x}");
     }
+}
+
+/// The nested fixture with `CChild` built inline: `_bzero` on the object, a member constructor on
+/// `+0x10`, then the primary address point stored at `+0`, as `CTechnology::ReadMember` builds
+/// `CTechnologySwap` on M452. The read's vtable slot is a constant pointer of the image.
+fn inline_nested_fixture() -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        mov x0, x21;
+        mov x1, #0x40; // the object's size
+        bl extern 0x9500; // _bzero
+        add x0, x21, #0x10; // member at +0x10
+        bl extern 0x9400; // member constructor
+        mov x8, #0xa000; // CChild's primary address point
+        str x8, [x21];
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9300; // append same object
+        ret
+    );
+    input.symbols.extend([
+        Symbol {
+            name: "CMember::CMember()".into(),
+            address: 0x9400,
+        },
+        Symbol {
+            name: "_bzero".into(),
+            address: 0x9500,
+        },
+    ]);
+    let mut image = modifier_binding(0);
+    image.constructors.clear();
+    image.pointers = std::mem::take(&mut input.objects[0].pointers);
+    input.persistent = Some(image);
+    input.objects[0].constructors = vec![];
+    input.objects[0].initializers = vec![0x9400];
+    input
+}
+
+#[test]
+fn an_object_built_inline_joins_when_its_primary_address_point_is_in_place() {
+    let result = derive(inline_nested_fixture());
+    assert_eq!(result.collections.len(), 1);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert_eq!(
+        result.collections[0].fields.fields[0].name,
+        "new_engine_field"
+    );
+
+    // The read is called directly, so only the address point tells the class.
+    let read_directly = |point: Option<&[u8]>| {
+        let mut input = inline_nested_fixture();
+        replace(&mut input, 0x1050, arm64!(at 0x1050; bl extern 0x9200));
+        match point {
+            Some(store) => replace(&mut input, 0x1034, store.to_vec()),
+            None => replace(&mut input, 0x1038, arm64!(at 0x1038; nop)),
+        }
+        input
+    };
+    let own_point = read_directly(Some(&arm64!(at 0x1034; mov x8, #0xa000)));
+    assert_eq!(derive(own_point).collections.len(), 1);
+    let other_point = read_directly(Some(&arm64!(at 0x1034; mov x8, #0xb000)));
+    let no_point = read_directly(None);
+    let mut member_of_the_owner = inline_nested_fixture();
+    replace(
+        &mut member_of_the_owner,
+        0x102c,
+        arm64!(at 0x102c; add x0, x19, #8),
+    );
+    let mut zero_fill_past_the_object = inline_nested_fixture();
+    replace(
+        &mut zero_fill_past_the_object,
+        0x1024,
+        arm64!(at 0x1024; mov x1, #0x20000),
+    );
+    let mut not_an_initializer = inline_nested_fixture();
+    not_an_initializer.objects[0].initializers.clear();
+
+    // The member's class is itself an object that the root may construct and insert.
+    let mut member_object = inline_nested_fixture();
+    let mut member = member_object.objects[0].clone();
+    member.class = "CMember".into();
+    member.constructors = vec![0x9400];
+    member_object.objects.push(member);
+    assert_eq!(derive(member_object).collections.len(), 1);
+
+    for (case, input) in [
+        ("another address point", other_point),
+        ("no address point", no_point),
+        ("an initializer on the owner", member_of_the_owner),
+        ("a zero fill past the allocation", zero_fill_past_the_object),
+        ("a call that initializes nothing", not_an_initializer),
+    ] {
+        assert!(derive(input).collections.is_empty(), "{case}");
+    }
+}
+
+#[test]
+fn an_inline_owner_joins_its_members_only_from_the_construction_that_every_path_runs() {
+    // The constructor evidence of `CChild`: the root's code from `start` to `end`, then a return.
+    // The member constructor installs a modifier reader's address point at `+0x10`.
+    let points = |start: u64, end: u64| {
+        let mut input = inline_nested_fixture();
+        input
+            .symbols
+            .iter_mut()
+            .find(|symbol| symbol.address == 0x4000)
+            .unwrap()
+            .name = "CReader::Read(CPersistent&)".into();
+        let root = &input.functions[0];
+        let mut code =
+            root.code[(start - root.address) as usize..(end - root.address) as usize].to_vec();
+        code.extend(arm64!(at end; ret));
+        let mut evidence = modifier_binding(0);
+        evidence.constructors = vec![Function {
+            name: String::new(),
+            address: start,
+            code,
+        }];
+        evidence.summaries = BTreeMap::from([(0x9400, BTreeMap::from([(0, 0xb000)]))]);
+        input.objects[0].persistent = Some(evidence);
+        let result = derive(input);
+        assert_eq!(result.collections.len(), 1);
+
+        result.collections[0].fields.persistent_points.clone()
+    };
+
+    // The allocation returns to 0x101c, and the virtual read is at 0x1050.
+    assert_eq!(points(0x101c, 0x1050), BTreeMap::from([(0x10, 0xb000)]));
+    assert!(points(0x1020, 0x1050).is_empty(), "another start");
+    assert!(points(0x101c, 0x104c).is_empty(), "another read");
 }
 
 #[test]
@@ -1999,6 +2330,110 @@ fn compound_array_requires_emplace_before_reading_last_string() {
             callee == 0xd000
         );
     }
+}
+
+#[test]
+fn a_stored_read_of_an_inherited_reader_that_returns_has_no_repeat() {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = compound_fixture(arm64!(at 0x1000;
+        mov x19, x0; // the owner
+        mov x20, x1; // the reader
+        mov x21, x2; // the token
+        bl extern 0x7800; // CBase::ReadMember
+        tbnz w0, #0, extern 0x1024; // handled
+        mov x0, x19;
+        mov x1, x20;
+        mov x2, x21;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret
+    ));
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0x7800,
+        code: arm64!(at 0x7800;
+            cmp w2, #7; b.eq extern 0x7810;
+            mov w0, #0; ret;
+            mov x19, x0; mov x20, x1;
+            add x0, x19, #0x80;
+            ldr w8, [x19, #0x94]; add w1, w8, #1;
+            bl extern 0xd000; // emplace
+            ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+            mov w10, #0x28; madd x8, x9, x10, x8;
+            sub x1, x8, #0x28; mov x0, x20; b extern 0xf000 // CReader::Read(CString&, bool)
+        ),
+    });
+    input.symbols.push(Symbol {
+        name: inherited.into(),
+        address: 0x7800,
+    });
+
+    let result = derive(input);
+
+    assert!(
+        matches!(
+            result.fields[0].readers[..],
+            [ReaderJoin::Stored {
+                kind: crate::ReaderKind::String,
+                repeat: crate::RepeatBehavior::Unknown,
+                destination: Some(0x80),
+                ..
+            }]
+        ),
+        "{:?}",
+        result.fields
+    );
+}
+
+#[test]
+fn an_inherited_reader_after_a_pending_stored_read_is_not_followed() {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = compound_fixture(arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1; mov x21, x2;
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        bl extern 0xd000; // emplace
+        ldr x8, [x19, #0x88]; ldrsw x9, [x19, #0x94];
+        mov w10, #0x28; madd x8, x9, x10, x8;
+        sub x1, x8, #0x28; mov x0, x20;
+        bl extern 0xf000; // CReader::Read(CString&, bool), not a tail call
+        mov x0, x19; mov x1, x20; mov x2, x21;
+        bl extern 0x7800; // CBase::ReadMember
+        ret
+    ));
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0x7800,
+        code: arm64!(at 0x7800;
+            cmp w2, #7; b.eq extern 0x7810;
+            mov w0, #0; ret;
+            add x8, x0, #0x48; // a second member
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000 // CReader::Read
+        ),
+    });
+    input.symbols.push(Symbol {
+        name: inherited.into(),
+        address: 0x7800,
+    });
+
+    let result = derive(input);
+
+    let read: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .map(|path| &path.outcome)
+        .collect();
+    assert!(
+        matches!(
+            read[..],
+            [PathOutcome::Gap(stop)] if stop.reason == "compound-reader-overwrite"
+        ),
+        "{read:?}"
+    );
 }
 
 #[test]

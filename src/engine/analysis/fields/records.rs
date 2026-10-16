@@ -34,6 +34,8 @@ pub struct FieldInput {
     pub symbols: Vec<Symbol>,
     /// Root, token construction, rejection and bounded owner helper functions.
     pub functions: Vec<Function>,
+    /// Import stubs that the image binds to one of `functions`: stub address to body address.
+    pub stubs: BTreeMap<u64, u64>,
     /// Executable literal strings, indexed by file address.
     pub strings: BTreeMap<u64, String>,
     /// Read-only data sections, which hold the root's jump tables.
@@ -340,6 +342,11 @@ pub struct ObjectReader {
     pub read: u64,
     /// Entry addresses of factories that allocate, construct and return the object through `x8`.
     pub factories: Vec<u64>,
+    /// Entry addresses of the constructors that the root calls directly and whose parameters are
+    /// all arithmetic types or `EScopeType`, so `this` in `x0` is their only address argument. On
+    /// an object that the root constructs inline, the method takes each to write only from `x0`
+    /// to the end of that object's allocation.
+    pub initializers: Vec<u64>,
     /// Entry addresses of insertion specializations accepting this object's pointer.
     pub insert: Vec<u64>,
     /// Entry addresses of insertion specializations that take the object from a scoped pointer

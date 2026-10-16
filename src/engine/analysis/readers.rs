@@ -119,6 +119,13 @@ pub(crate) fn is_member(callee: &str) -> bool {
         || callee.ends_with("::ReadMember(CReader&, int, EScopeType)")
 }
 
+/// Whether `callee` is a member reader that another member reader can continue in for the tokens
+/// it does not handle: every `ReadMember(CReader&, int)` except the base rejection.
+pub(crate) fn is_inheritable_member(callee: &str) -> bool {
+    callee.ends_with("::ReadMember(CReader&, int)")
+        && callee != "CPersistent::ReadMember(CReader&, int)"
+}
+
 /// The function that the thunk symbol `name` runs, or `None` when `name` is not a thunk. A thunk
 /// is `non-virtual thunk to <target>` or `{virtual override thunk(<offset>, <target>)}`; a
 /// covariant return adds a second offset before the target.
