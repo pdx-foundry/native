@@ -230,7 +230,6 @@ pub(super) fn persistent(
     owner: &str,
     recipe: &PersistentRecipe,
 ) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
-    use crate::engine::analysis::fields::PersistentInput;
     let symbols = image.index.over(image.symbols);
     let names = Names::new(symbols.symbols);
     let entries: BTreeSet<_> = symbols
@@ -280,6 +279,23 @@ pub(super) fn persistent(
         !branch_alias(&rows)
             .is_some_and(|target| full_entries.contains(&target) || full_stub(target))
     });
+
+    persistent_from(image, text, data, shared, recipe, bodies)
+}
+
+/// The persistent input whose constructor bodies are `bodies`: each runs with the object in `x0`
+/// and returns once the object is built.
+pub(super) fn persistent_from(
+    image: &Image<'_>,
+    text: &Text<'_>,
+    data: &ReadOnlyData,
+    shared: &SharedPersistent,
+    recipe: &PersistentRecipe,
+    bodies: Vec<Function>,
+) -> Result<crate::engine::analysis::fields::PersistentInput, AnalysisError> {
+    use crate::engine::analysis::fields::PersistentInput;
+    let symbols = image.index.over(image.symbols);
+    let names = Names::new(symbols.symbols);
     let roots: Vec<_> = bodies.iter().collect();
     let summaries = constructors(text, symbols, data, &roots)?;
     let mut constructor_bodies = BTreeMap::new();

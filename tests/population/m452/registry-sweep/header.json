@@ -17,36 +17,36 @@
     },
     "numerics": {
       "complete": 244,
-      "denominator": 592,
-      "rate": 0.4122,
-      "undetermined": 348
+      "denominator": 587,
+      "rate": 0.4157,
+      "undetermined": 343
     },
     "reader_kinds": {
-      "complete": 1695,
+      "complete": 1697,
       "denominator": 2098,
-      "failed": 343,
-      "partial": 60,
-      "rate": 0.8079
+      "failed": 338,
+      "partial": 63,
+      "rate": 0.8089
     },
     "references": {
       "complete": 39,
-      "denominator": 387,
-      "rate": 0.1008,
-      "undetermined": 348
+      "denominator": 382,
+      "rate": 0.1021,
+      "undetermined": 343
     },
     "scope_context": {
       "complete": 1548,
       "denominator": 2098,
-      "failed": 406,
-      "partial": 144,
+      "failed": 401,
+      "partial": 149,
       "rate": 0.7378
     },
     "shapes_and_conditions": {
-      "complete": 1529,
+      "complete": 1534,
       "denominator": 2098,
-      "failed": 328,
+      "failed": 323,
       "partial": 241,
-      "rate": 0.7288
+      "rate": 0.7312
     },
     "weights": {
       "complete": 98,

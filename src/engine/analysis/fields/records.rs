@@ -340,6 +340,11 @@ pub struct ObjectReader {
     pub read: u64,
     /// Entry addresses of factories that allocate, construct and return the object through `x8`.
     pub factories: Vec<u64>,
+    /// Entry addresses of the constructors that the root calls directly and whose parameters are
+    /// all arithmetic types or `EScopeType`, so `this` in `x0` is their only address argument. On
+    /// an object that the root constructs inline, the method takes each to write only from `x0`
+    /// to the end of that object's allocation.
+    pub initializers: Vec<u64>,
     /// Entry addresses of insertion specializations accepting this object's pointer.
     pub insert: Vec<u64>,
     /// Entry addresses of insertion specializations that take the object from a scoped pointer

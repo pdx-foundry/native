@@ -13,8 +13,10 @@ use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData}
 use crate::engine::analysis::receivers::ConstructorImage;
 use crate::engine::analysis::stop::Unresolved;
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
 
 const OBJECT: u64 = 1 << 62;
+/// The label of an `operator new` allocation, at its address: the allocation call's return.
 const ALLOCATED: u64 = 1 << 60;
 const READ: u64 = 1 << 61;
 const INSERTED_CLASS: u64 = 1;
@@ -23,6 +25,10 @@ const INSERTED_OBJECT: u64 = 3;
 const SPAN: u64 = 0x10000;
 /// The label of the scope that an object's constructor receives, at the object's address.
 const SCOPE: u64 = 1 << 58;
+/// The labels of an object that the root constructed inline, at its address: its allocation's
+/// return, where the code that constructs it starts, and the call that first reads it.
+const INLINE_START: u64 = 1 << 57;
+const INLINE_READ: u64 = 1 << 56;
 /// A constructor scope argument that is not known on the path.
 const UNKNOWN_SCOPE: u64 = u64::MAX;
 
@@ -83,6 +89,12 @@ pub(super) fn discover(
         .filter(|symbol| symbol.name == "operator new(unsigned long)")
         .map(|symbol| symbol.address)
         .collect();
+    let zero_fill: Vec<_> = input
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "_bzero")
+        .map(|symbol| symbol.address)
+        .collect();
     let scope_registers = scope_registers(&input.symbols, objects);
     let mut collections = Vec::new();
     for field in fields.iter().filter(|field| {
@@ -105,7 +117,7 @@ pub(super) fn discover(
             let target = target.ok_or_else(|| Unresolved::new("nested-indirect-call"))?;
             if allocate.contains(&target) {
                 let at = machine.reserve(SPAN);
-                machine.label(ALLOCATED | at, 1);
+                machine.label(ALLOCATED | at, machine.pc() + 4);
                 return Ok(Call::Return(Some(at)));
             }
             if objects
@@ -117,7 +129,11 @@ pub(super) fn discover(
             for (index, object) in objects.iter().enumerate() {
                 if object.constructors.contains(&target) {
                     let at = machine.known_register(0, "constructed-object")?;
-                    if machine.labelled(ALLOCATED | at) != Some(1) {
+                    if machine.labelled(ALLOCATED | at).is_none() {
+                        // A member of an object that the root constructs inline.
+                        if initialized_members(machine, objects, &zero_fill, target).is_some() {
+                            break;
+                        }
                         return Err(Unresolved::new("object-not-allocated"));
                     }
                     if machine.labelled(INSERTED_OBJECT) == Some(at) {
@@ -146,9 +162,15 @@ pub(super) fn discover(
                 }
                 if target == object.read {
                     let at = machine.known_register(0, "read-object")?;
-                    if machine.labelled(OBJECT | at) == Some(index as u64)
-                        && machine.register(1) == Some(reader)
+                    let inline = constructed_inline(machine, object, at);
+                    if machine.register(1) == Some(reader)
+                        && (machine.labelled(OBJECT | at) == Some(index as u64) || inline)
                     {
+                        if let Some(start) = machine.labelled(ALLOCATED | at).filter(|_| inline) {
+                            machine.label(INLINE_START | at, start);
+                            machine.label(INLINE_READ | at, machine.pc());
+                        }
+                        machine.label(OBJECT | at, index as u64);
                         machine.label(READ | at, index as u64);
                         return Ok(Call::Return(None));
                     }
@@ -175,6 +197,10 @@ pub(super) fn discover(
                     }
                 }
             }
+            if let Some(initialized) = initialized_members(machine, objects, &zero_fill, target) {
+                machine.forget_known_bytes(initialized.start, initialized.end - initialized.start);
+                return Ok(Call::Return(None));
+            }
             Err(Unresolved::new("nested-unmodelled-call"))
         });
         let joined: Option<Vec<_>> = paths
@@ -194,6 +220,9 @@ pub(super) fn discover(
                     inserted,
                     path.machine.labelled(containers::LABEL | object),
                     path.machine.labelled(SCOPE | object),
+                    path.machine
+                        .labelled(INLINE_START | object)
+                        .zip(path.machine.labelled(INLINE_READ | object)),
                 ))
             })
             .collect();
@@ -201,19 +230,24 @@ pub(super) fn discover(
             continue;
         };
         let first = joined[0].0;
-        if joined.iter().any(|(other, _, _)| *other != first) {
+        if joined.iter().any(|(other, ..)| *other != first) {
             continue;
         }
-        let container_mask = joined.iter().any(|(_, mask, _)| mask.is_some()).then(|| {
+        let container_mask = joined.iter().any(|(_, mask, ..)| mask.is_some()).then(|| {
             let mut masks = PathMasks::default();
-            for (_, mask, _) in &joined {
+            for (_, mask, ..) in &joined {
                 masks.add(*mask);
             }
 
             masks.agreed()
         });
-        let construction_scopes = construction_scopes(joined.iter().map(|(_, _, scope)| *scope));
+        let construction_scopes = construction_scopes(joined.iter().map(|(_, _, scope, _)| *scope));
         let object = &objects[first.0 as usize];
+        let inline_constructions = joined.iter().filter_map(|(.., construction)| *construction);
+        let persistent = object
+            .persistent
+            .as_ref()
+            .filter(|evidence| constructs_every_path(evidence, inline_constructions));
         let reader = object
             .reader
             .clone()
@@ -226,7 +260,7 @@ pub(super) fn discover(
                 &Owner {
                     class: &object.class,
                     objects: &object.objects,
-                    persistent: object.persistent.as_ref(),
+                    persistent,
                 },
                 names,
             ),
@@ -244,6 +278,70 @@ pub(super) fn discover(
         });
     }
     collections
+}
+
+/// Whether the constructor evidence of a nested owner holds the code of every inline
+/// construction that a joined path ran, given as its allocation's return and its first read. Each
+/// body runs straight from the one to a return in place of the other, so a path that allocates
+/// and reads there runs exactly that body.
+fn constructs_every_path(
+    evidence: &super::PersistentInput,
+    mut constructions: impl Iterator<Item = (u64, u64)>,
+) -> bool {
+    constructions.all(|(start, read)| {
+        evidence
+            .constructors
+            .iter()
+            .any(|body| body.address == start && body.address + body.code.len() as u64 - 4 == read)
+    })
+}
+
+/// Whether the allocation at `at` holds `object`, which the root constructed inline: no
+/// constructor of the method's built it, and its primary address point is in place.
+fn constructed_inline(machine: &Machine<'_>, object: &super::ObjectReader, at: u64) -> bool {
+    machine.labelled(ALLOCATED | at).is_some()
+        && machine.labelled(OBJECT | at).is_none()
+        && object
+            .vtables
+            .get(&0)
+            .is_some_and(|&point| machine.read(at, 8) == Some(point))
+}
+
+/// The bytes that `target` initializes in an allocation that no object constructor has built,
+/// while the root constructs an object there inline. A member constructor in an object's
+/// `initializers` takes no address but `x0`, so it writes at most from `x0` to the allocation's
+/// end. `_bzero` writes the `x1` bytes at `x0`, which must lie in the allocation.
+fn initialized_members(
+    machine: &Machine<'_>,
+    objects: &[super::ObjectReader],
+    zero_fill: &[u64],
+    target: u64,
+) -> Option<Range<u64>> {
+    let start = machine.register(0)?;
+    let allocation = allocation_containing(machine, start)?;
+    if machine.labelled(OBJECT | allocation).is_some() {
+        return None;
+    }
+    let end = allocation + SPAN;
+
+    if zero_fill.contains(&target) {
+        let length = machine.register(1)?;
+        return (length <= end - start).then_some(start..start + length);
+    }
+    objects
+        .iter()
+        .any(|object| object.initializers.contains(&target))
+        .then_some(start..end)
+}
+
+/// The start of the `operator new` allocation that holds `address`.
+fn allocation_containing(machine: &Machine<'_>, address: u64) -> Option<u64> {
+    machine
+        .labels()
+        .range(ALLOCATED..=ALLOCATED | address)
+        .next_back()
+        .map(|(&key, _)| key & !ALLOCATED)
+        .filter(|&start| (start..start + SPAN).contains(&address))
 }
 
 /// The register of each object constructor's scope parameter, for constructors whose last
