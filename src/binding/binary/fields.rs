@@ -1,7 +1,7 @@
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     declarations,
-    decode::{Instruction, call_target, is_branch},
+    decode::{Instruction, call_or_jump_target, call_target, is_branch},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
@@ -140,6 +140,7 @@ pub(in crate::binding) fn read(
         persistent_recipe,
     )?;
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
+    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     push_converters(&text, indexed, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
@@ -149,6 +150,7 @@ pub(in crate::binding) fn read(
         owner: owner.into(),
         symbols: symbols.to_vec(),
         functions,
+        stubs,
         strings: strings.clone(),
         read_only_data: read_only_sections(bytes)?,
         gaps,
@@ -287,6 +289,124 @@ fn push_embedded_readers(
             push_function(text, functions, symbol);
         }
     }
+}
+
+/// The member readers that `root` and the readers it reaches call directly, which dispatch
+/// follows as inherited readers, and the import stubs among those calls with the body that each
+/// reaches. A stub counts only when the image's fixups resolve its pointer slot to a text body of
+/// the stub's name, as same-image weak coalescing does.
+fn push_inherited_readers(
+    image: &Image<'_>,
+    text: &Text,
+    root: &str,
+    functions: &mut Vec<Function>,
+) -> Result<BTreeMap<u64, u64>, AnalysisError> {
+    let symbols = image.index.over(image.symbols);
+    let slice = super::selected_slice(image.bytes).map_err(|_| AnalysisError::InvalidRange)?;
+    let file = object::File::parse(slice).map_err(|_| AnalysisError::InvalidRange)?;
+    let mut stubs = BTreeMap::new();
+    let mut callers = vec![root.to_owned()];
+    let mut scanned = BTreeSet::new();
+
+    while let Some(caller) = callers.pop() {
+        if !scanned.insert(caller.clone()) {
+            continue;
+        }
+        let Some(function) = functions.iter().find(|function| function.name == caller) else {
+            continue;
+        };
+        let targets: BTreeSet<u64> = function
+            .code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, word)| {
+                call_or_jump_target(
+                    u32::from_le_bytes(*word),
+                    function.address + 4 * index as u64,
+                )
+            })
+            .collect();
+        let calls: Vec<Symbol> = symbols
+            .at(&targets)
+            .filter(|symbol| readers::is_inheritable_member(&symbol.name))
+            .cloned()
+            .collect();
+
+        for call in calls {
+            let body = if text.starts.contains(&call.address) {
+                Some(call.address)
+            } else {
+                stub_slot(&file, call.address).and_then(|slot| image.pointers.get(&slot).copied())
+            };
+            let Some(definition) = body.and_then(|body| {
+                symbols
+                    .named(&call.name)
+                    .find(|symbol| symbol.address == body && text.starts.contains(&body))
+            }) else {
+                continue;
+            };
+            let body = definition.address;
+
+            if body != call.address {
+                stubs.insert(call.address, body);
+            }
+            // Another collection step may have added the body already, under another name. Dispatch
+            // finds a body by name, so the inherited reader keeps its own copy.
+            let alias = functions
+                .iter()
+                .find(|function| function.address == body && function.name != call.name)
+                .map(|function| Function {
+                    name: call.name.clone(),
+                    ..function.clone()
+                });
+            let named = functions
+                .iter()
+                .any(|function| function.address == body && function.name == call.name);
+            let collected = match alias {
+                _ if named => true,
+                Some(alias) => {
+                    functions.push(alias);
+                    true
+                }
+                None => push_function(text, functions, definition),
+            };
+
+            if collected {
+                callers.push(call.name);
+            }
+        }
+    }
+
+    Ok(stubs)
+}
+
+/// The pointer slot that the import stub at `stub` jumps through: `adrp x16`, `ldr x16, [x16, #n]`
+/// and `br x16`.
+fn stub_slot(file: &object::File<'_>, stub: u64) -> Option<u64> {
+    use object::{Object, ObjectSection};
+
+    let bytes = file
+        .sections()
+        .find_map(|section| section.data_range(stub, 12).ok().flatten())?;
+    let rows = crate::engine::analysis::decode::decode_arm64(bytes, stub).ok()?;
+    let [page, load, jump] = rows.as_slice() else {
+        return None;
+    };
+    let page_address = page
+        .operands
+        .strip_prefix("x16,#0x")
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        .filter(|_| page.operation == "adrp")?;
+    let offset = load
+        .operands
+        .strip_prefix("x16,[x16,#0x")
+        .and_then(|rest| rest.strip_suffix(']'))
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        .filter(|_| load.operation == "ldr")?;
+
+    (jump.operation == "br" && jump.operands == "x16").then_some(page_address + offset)
 }
 
 /// The token converters that the collected member readers call directly, which the keyword

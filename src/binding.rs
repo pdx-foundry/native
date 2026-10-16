@@ -1,7 +1,7 @@
 mod analysis;
 pub(crate) use analysis::{
     BlockFacts, BoundAnalysis, FixtureRegistryFields, NamedCandidate, PreparedDurations,
-    VerifiedAnalysis, scoped_operand_decoder, unique_named_candidate,
+    VerifiedAnalysis, loader_names, scoped_operand_decoder, unique_named_candidate,
 };
 mod binary;
 mod compose;

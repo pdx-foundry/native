@@ -164,6 +164,20 @@ pub(super) fn reserved_key_field(
     (field, field_gaps)
 }
 
+/// The gaps outside the method that [`reserved_key_field`] leaves out of `gaps`, the answer for
+/// the class of the root key `key`: a member's gap at the same member below the key, and every
+/// other gap as it is. A registry with no owner answer to repeat them keeps these.
+pub(super) fn class_limits(gaps: &[Gap], key: &str) -> Vec<Gap> {
+    gaps.iter()
+        .filter(|gap| gap.kind == GapKind::OutsideMethod)
+        .cloned()
+        .map(|gap| match member_subject(&gap) {
+            Some(_) => under_key(gap, key),
+            None => gap,
+        })
+        .collect()
+}
+
 /// The owner's own fields in `fields`, an answer of `result`: the members of each root key when
 /// the loader builds the owner, else the answer itself.
 pub(super) fn owner_fields<'a>(

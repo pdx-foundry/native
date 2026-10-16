@@ -47,8 +47,8 @@ pub(crate) struct DispatchInput<'a> {
 enum Bodies<'a> {
     /// Bodies by entry address, named by every symbol at that address, from command discovery.
     ByAddress(&'a BTreeMap<u64, crate::engine::analysis::declarations::Function>),
-    /// Named bodies from registry discovery.
-    Named(&'a [Function]),
+    /// Named bodies from registry discovery, and the import stubs that the image binds to them.
+    Named(&'a [Function], &'a BTreeMap<u64, u64>),
 }
 
 impl<'a> DispatchInput<'a> {
@@ -104,8 +104,18 @@ impl<'a> DispatchInput<'a> {
 
                 function(views, named, name)
             }
-            Bodies::Named(functions) => {
-                function(functions.iter().map(FunctionView::from), named, name)
+            // A symbol of the name at an import stub that the image binds to the body names it.
+            Bodies::Named(functions, stubs) => {
+                let entries = named.map(|symbol| Symbol {
+                    address: stubs
+                        .get(&symbol.address)
+                        .copied()
+                        .unwrap_or(symbol.address),
+                    ..symbol.clone()
+                });
+                let entries: Vec<_> = entries.collect();
+
+                function(functions.iter().map(FunctionView::from), &entries, name)
             }
         }
     }
@@ -606,7 +616,7 @@ fn apply(
     input: &DispatchInput<'_>,
     wrapped_owner: Option<(i64, i64)>,
 ) -> Result<(), Unresolved> {
-    if matches!(row.operation.as_str(), "str" | "strb" | "stp") {
+    if matches!(row.operation.as_str(), "str" | "stur" | "strb" | "stp") {
         state.serializer = None;
     }
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
@@ -714,7 +724,12 @@ fn apply(
             };
             state.assign(destination, Some(value));
         }
-        ("ldr" | "ldrb" | "ldrsb" | "ldrsw" | "ldur" | "str" | "strb", _) => {
+        ("ldr" | "ldrb" | "ldrsb" | "ldrsw" | "ldur" | "str" | "stur" | "strb", _) => {
+            // An unscaled store writes as `str` does.
+            let operation = match row.operation.as_str() {
+                "stur" => "str",
+                operation => operation,
+            };
             let Some((operand, address)) = row.operands.split_once(',') else {
                 return Err(unsupported("memory-operands"));
             };
@@ -723,7 +738,7 @@ fn apply(
                 return Err(unsupported("addressing"));
             };
             let location = state.value(base).and_then(|v| offset(v, amount));
-            let width = if row.operation == "strb" {
+            let width = if operation == "strb" {
                 1
             } else if operand.starts_with('q') {
                 16
@@ -732,7 +747,7 @@ fn apply(
             } else {
                 4
             };
-            if row.operation.starts_with("str")
+            if operation.starts_with("str")
                 && let Some(Value::Owner(at)) = &location
             {
                 let overlaps = |slot: i64| *at < slot + 8 && at.saturating_add(width) > slot;
@@ -743,17 +758,17 @@ fn apply(
                     return Err(unsupported("owner-vtable-overwrite"));
                 }
             }
-            if row.operation.starts_with("str")
+            if operation.starts_with("str")
                 && location
                     .as_ref()
                     .is_some_and(|at| state.overlaps_stored(at, width))
             {
                 return Err(unsupported("compound-reader-overwrite"));
             }
-            if row.operation.starts_with("ld") {
-                let width = if matches!(row.operation.as_str(), "ldrb" | "ldrsb") {
+            if operation.starts_with("ld") {
+                let width = if matches!(operation, "ldrb" | "ldrsb") {
                     1
-                } else if row.operation == "ldrsw" {
+                } else if operation == "ldrsw" {
                     4
                 } else if operand.starts_with('x') {
                     8
@@ -791,22 +806,20 @@ fn apply(
                 state.targets.clear();
                 state.stack.clear();
                 state.value_token_words.clear();
-                if row.operation == "str"
+                if operation == "str"
                     && operand.starts_with('x')
                     && let Some(value) = state.value(operand)
                 {
                     state.stack.insert(at, value);
                 }
-                if row.operation == "str"
+                if operation == "str"
                     && state.value(operand) == Some(value_token_word(input.key_readers))
                 {
                     state.value_token_words.insert(at);
                 }
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
-                if let Some(Value::Converted(converter)) = state.value(operand)
-                    && state.stored.is_none()
-                {
+                if let Some(Value::Converted(converter)) = state.value(operand) {
                     let callee = input.symbol_index.name(input.symbols, converter);
                     let join = ReaderJoin::Stored {
                         callee: callee.unwrap_or_default().into(),
@@ -915,7 +928,7 @@ pub(super) fn explore_owner(
         &DispatchInput {
             scope: None,
             key_readers: &input.key_readers,
-            bodies: Bodies::Named(&input.functions),
+            bodies: Bodies::Named(&input.functions, &input.stubs),
             symbols: &input.symbols,
             symbol_index,
             read_only_data: &input.read_only_data,
@@ -944,7 +957,7 @@ pub(super) fn explore_loader(
         &DispatchInput {
             scope: None,
             key_readers: &input.key_readers,
-            bodies: Bodies::Named(&input.functions),
+            bodies: Bodies::Named(&input.functions, &input.stubs),
             symbols: &input.symbols,
             symbol_index,
             read_only_data: &input.read_only_data,
@@ -964,14 +977,17 @@ pub(crate) fn explore_member(
     input: &DispatchInput<'_>,
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    explore_member_with_wrapped_owner(input, root, None, 0)
+    explore_member_with_wrapped_owner(input, root, None, 0, None)
 }
 
+/// The token paths through `root`. With `declined`, a path that returns false there instead,
+/// so that the caller of an inherited reader goes on after its call.
 fn explore_member_with_wrapped_owner(
     input: &DispatchInput<'_>,
     root: &str,
     wrapped_owner: Option<(i64, i64)>,
     depth: usize,
+    mut declined: Option<&mut Vec<TokenPath>>,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
     let mut initial = State {
         stack: BTreeMap::new(),
@@ -1126,6 +1142,13 @@ fn explore_member_with_wrapped_owner(
                 leaves.push(state.finish(row.address, outcome));
                 break;
             }
+            if row.operation == "ret"
+                && state.value("x0") == Some(Value::Constant(0))
+                && let Some(declined) = declined.as_deref_mut()
+            {
+                declined.push(state.finish(row.address, PathOutcome::Rejected));
+                break;
+            }
             if row.operation == "ret" && state.converted.is_some() {
                 let unstored = stop("keyword-store", Obstacle::Unsupported);
                 leaves.push(state.finish(row.address, PathOutcome::Gap(unstored)));
@@ -1211,24 +1234,10 @@ fn explore_member_with_wrapped_owner(
                             name.unwrap(),
                             Some((slot, owner)),
                             depth + 1,
+                            None,
                         );
                         tables.extend(gaps);
-                        for child in children {
-                            let Some(mut child) = super::member::inherit_path(
-                                child,
-                                state.domain,
-                                &state.conditions,
-                                &state.path,
-                            ) else {
-                                continue;
-                            };
-                            if let PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) =
-                                &mut child.outcome
-                            {
-                                *tail &= row.operation == "b";
-                            }
-                            leaves.push(child);
-                        }
+                        leaves.extend(continued(children, &state, row.operation == "b"));
                     } else {
                         leaves.push(state.finish(
                             row.address,
@@ -1237,6 +1246,48 @@ fn explore_member_with_wrapped_owner(
                                 Obstacle::Call,
                             ))),
                         ));
+                    }
+                    break;
+                }
+                let inherited = target
+                    .and_then(|address| input.symbol_index.name(input.symbols, address))
+                    .filter(|&name| readers::is_inheritable_member(name));
+                // The owner's inherited reader handles the tokens that this reader passes on.
+                if let Some(inherited) = inherited
+                    && state.stored.is_none()
+                    && !input.member_delegates
+                    && depth < 8
+                    && forwards_member_arguments(&state)
+                    && input.function(inherited).is_some()
+                {
+                    let returns = row.operation == "bl";
+                    // A tail call returns the inherited reader's false to this reader's caller.
+                    let mut inherited_declined = Vec::new();
+                    let collects = returns || declined.is_some();
+                    let (children, gaps) = explore_member_with_wrapped_owner(
+                        input,
+                        inherited,
+                        wrapped_owner,
+                        depth + 1,
+                        collects.then_some(&mut inherited_declined),
+                    );
+                    tables.extend(gaps);
+                    leaves.extend(continued(children, &state, !returns));
+                    let inherited_declined = continued(inherited_declined, &state, false);
+                    if !returns {
+                        if let Some(declined) = declined.as_deref_mut() {
+                            declined.extend(inherited_declined);
+                        }
+                        break;
+                    }
+                    for path in inherited_declined {
+                        let mut after = state.clone();
+                        after.domain = path.domain;
+                        after.conditions = path.conditions;
+                        after.path = path.instructions;
+                        after.clobber_call();
+                        after.assign("x0", Some(Value::Constant(0)));
+                        pending.push(after);
                     }
                     break;
                 }
@@ -1431,9 +1482,9 @@ fn explore_member_with_wrapped_owner(
             {
                 zero_test_branch(row, tested, target, &state, &indexes, entry)
             } else if matches!(row.operation.as_str(), "tbz" | "tbnz")
-                && let [tested, _, target] = args.as_slice()
+                && let [tested, bit, target] = args.as_slice()
             {
-                bit_test_branch(row, tested, target, &state, &indexes, entry)
+                bit_test_branch(row, tested, bit, target, &state, &indexes, entry)
             } else if row.operation == "br" {
                 table_jump(row, &state, &rows, &indexes, input.read_only_data, entry)
             } else {
@@ -1763,6 +1814,30 @@ fn call_outcome(
     }
 }
 
+/// The paths of a member reader that `state` calls, limited to its token domain and preceded by
+/// its conditions and instructions. A reader join is a tail call, and a stored read keeps its
+/// repeat behavior, only when the call is a tail call.
+fn continued(
+    children: Vec<TokenPath>,
+    state: &State,
+    tail_call: bool,
+) -> impl Iterator<Item = TokenPath> {
+    children.into_iter().filter_map(move |child| {
+        let mut child =
+            super::member::inherit_path(child, state.domain, &state.conditions, &state.path)?;
+        match &mut child.outcome {
+            PathOutcome::Reader(ReaderJoin::Joined { tail, .. }) => *tail &= tail_call,
+            // The caller's continuation after the call may change the destination again.
+            PathOutcome::Reader(ReaderJoin::Stored { repeat, .. }) if !tail_call => {
+                *repeat = crate::RepeatBehavior::Unknown;
+            }
+            _ => {}
+        }
+
+        Some(child)
+    })
+}
+
 /// Whether `x0` to `x2` still hold the member reader's owner, reader and token.
 fn forwards_member_arguments(state: &State) -> bool {
     state.registers.get("x0") == Some(&Value::Owner(0))
@@ -2001,12 +2076,13 @@ fn zero_test_branch(
     }
 }
 
-/// Both paths of a bit test of a value that is not the token, each under a condition that no
-/// field states. A bit test of the token would split its domain by a bit, which the token
-/// intervals cannot hold, so it is a gap.
+/// The paths of a bit test of a value that is not the token, each under a condition that no
+/// field states: the feasible one for a known constant, otherwise both. A bit test of the token
+/// would split its domain by a bit, which the token intervals cannot hold, so it is a gap.
 fn bit_test_branch(
     row: &Instruction,
     tested: &str,
+    bit: &str,
     target: &str,
     state: &State,
     indexes: &BTreeMap<u64, usize>,
@@ -2025,8 +2101,18 @@ fn bit_test_branch(
         return Branching::gap(state, row.address, unsupported);
     }
 
+    // `tbnz` branches when the bit is set, `tbz` when it is clear.
+    let known_taken = match (state.value(tested), number(bit)) {
+        (Some(Value::Constant(value)), Some(bit)) => {
+            let set = value >> bit & 1 == 1;
+
+            Some(set == (row.operation == "tbnz"))
+        }
+        _ => None,
+    };
     let continued = [false, true]
         .into_iter()
+        .filter(|&taken| known_taken.is_none_or(|known| known == taken))
         .map(|taken| {
             let mut next = state.clone();
             next.pc = if taken { target } else { state.pc };
@@ -2700,7 +2786,7 @@ mod tests {
     }
 
     #[test]
-    fn a_function_lookup_needs_one_body_and_every_symbol_of_its_name_at_that_body() {
+    fn a_function_lookup_needs_one_body_and_every_symbol_of_its_name_at_or_bound_to_that_body() {
         let symbol = |name: &str, address| Symbol {
             name: name.into(),
             address,
@@ -2727,19 +2813,42 @@ mod tests {
         ]);
         let readers = super::super::KeyReaders::default();
         let command = DispatchInput::command(&bodies, &symbols, &symbol_index, &[], 0x38, &readers);
-        let named = [super::super::Function {
-            name: "twin".into(),
-            address: 0x10,
-            code: vec![0; 4],
-        }];
+        let named = [
+            super::super::Function {
+                name: "twin".into(),
+                address: 0x10,
+                code: vec![0; 4],
+            },
+            super::super::Function {
+                name: "split".into(),
+                address: 0x20,
+                code: vec![0; 4],
+            },
+        ];
+        let no_stubs = BTreeMap::new();
         let registry = DispatchInput {
-            bodies: Bodies::Named(&named),
+            bodies: Bodies::Named(&named, &no_stubs),
+            ..command.clone()
+        };
+        let bound_stub = BTreeMap::from([(0x30, 0x20)]);
+        let registry_with_stub = DispatchInput {
+            bodies: Bodies::Named(&named, &bound_stub),
             ..command.clone()
         };
         let found = |input: &DispatchInput<'_>, name| input.function(name).map(|f| f.address);
 
         assert_eq!(found(&command, "twin"), None, "one view per twin symbol");
         assert_eq!(found(&registry, "twin"), Some(0x10));
+        assert_eq!(
+            found(&registry, "split"),
+            None,
+            "an unbound symbol away from the body"
+        );
+        assert_eq!(
+            found(&registry_with_stub, "split"),
+            Some(0x20),
+            "a stub that the image binds to the body"
+        );
         assert_eq!(
             found(&command, "split"),
             None,

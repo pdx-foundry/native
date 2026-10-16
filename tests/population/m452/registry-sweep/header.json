@@ -2,56 +2,57 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "relationships": {
     "fields": {
-      "complete": 104,
-      "denominator": 185,
-      "partial": 76,
-      "rate": 0.5622,
+      "complete": 109,
+      "denominator": 188,
+      "partial": 74,
+      "rate": 0.5798,
       "unsupported": 5
     },
     "naming_rules": {
-      "denominator": 185,
-      "partial": 180,
-      "rate": 0.0,
-      "unsupported": 5
+      "complete": 60,
+      "denominator": 188,
+      "partial": 122,
+      "rate": 0.3191,
+      "unsupported": 6
     },
     "numerics": {
-      "complete": 233,
-      "denominator": 526,
-      "rate": 0.443,
-      "undetermined": 293
+      "complete": 244,
+      "denominator": 587,
+      "rate": 0.4157,
+      "undetermined": 343
     },
     "reader_kinds": {
-      "complete": 1605,
-      "denominator": 1930,
-      "failed": 288,
-      "partial": 37,
-      "rate": 0.8316
+      "complete": 1697,
+      "denominator": 2098,
+      "failed": 338,
+      "partial": 63,
+      "rate": 0.8089
     },
     "references": {
-      "complete": 36,
-      "denominator": 329,
-      "rate": 0.1094,
-      "undetermined": 293
+      "complete": 39,
+      "denominator": 382,
+      "rate": 0.1021,
+      "undetermined": 343
     },
     "scope_context": {
-      "complete": 1479,
-      "denominator": 1930,
-      "failed": 324,
-      "partial": 127,
-      "rate": 0.7663
+      "complete": 1548,
+      "denominator": 2098,
+      "failed": 401,
+      "partial": 149,
+      "rate": 0.7378
     },
     "shapes_and_conditions": {
-      "complete": 1505,
-      "denominator": 1930,
-      "failed": 274,
-      "partial": 151,
-      "rate": 0.7798
+      "complete": 1534,
+      "denominator": 2098,
+      "failed": 323,
+      "partial": 241,
+      "rate": 0.7312
     },
     "weights": {
       "complete": 98,
-      "denominator": 462,
-      "rate": 0.2121,
-      "undetermined": 364
+      "denominator": 547,
+      "rate": 0.1792,
+      "undetermined": 449
     }
   }
 }

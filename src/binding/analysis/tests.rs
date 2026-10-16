@@ -268,7 +268,7 @@ fn field_input_refuses_an_owner_that_no_registry_has() {
                 Directory::Named("common/loader".into()),
             )]),
             loader_owners: Ok(BTreeMap::from([(
-                "CLoaderDatabase".into(),
+                ("CLoaderDatabase".into(), "common/loader".into()),
                 LoaderOwner::Owner("CLoaderItem".into()),
             )])),
             loader_reasons: &[],
@@ -302,11 +302,10 @@ fn a_root_key_owner_answers_for_the_other_class_and_names_the_keyed_class() {
             Directory::Named("common/planets".into()),
         )]),
         loader_owners: Ok(BTreeMap::from([(
-            "CPlanetDatabase".into(),
+            ("CPlanetDatabase".into(), "common/planets".into()),
             LoaderOwner::ByRootKey {
-                key: "random_list".into(),
-                keyed: "CRandomList".into(),
-                other: "CPlanet".into(),
+                keyed: BTreeMap::from([("random_list".into(), "CRandomList".into())]),
+                other: Some("CPlanet".into()),
             },
         )])),
         loader_reasons: &[],
@@ -320,8 +319,8 @@ fn a_root_key_owner_answers_for_the_other_class_and_names_the_keyed_class() {
         "CPlanet"
     );
     assert_eq!(
-        schedule.keyed_class("common/planets"),
-        Some(("random_list", "CRandomList"))
+        schedule.keyed_classes("common/planets"),
+        [("random_list", "CRandomList")]
     );
 
     let catalog = Catalog {
@@ -405,12 +404,35 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         loader_directories,
         loader_owners: Ok(BTreeMap::from([
             (
-                "COneDatabase".into(),
+                ("COneDatabase".into(), "common/one".into()),
                 LoaderOwner::Several(vec!["CFirst".into(), "CSecond".into()]),
             ),
-            ("CLeftDatabase".into(), LoaderOwner::Owner("CLeft".into())),
-            ("CRightDatabase".into(), LoaderOwner::Owner("CRight".into())),
-            ("CColorsDatabase".into(), LoaderOwner::NoOwner),
+            (
+                ("CLeftDatabase".into(), "common/pair".into()),
+                LoaderOwner::Owner("CLeft".into()),
+            ),
+            (
+                ("CRightDatabase".into(), "common/pair".into()),
+                LoaderOwner::Owner("CRight".into()),
+            ),
+            (
+                ("CColorsDatabase".into(), "common/colors".into()),
+                LoaderOwner::NoOwner,
+            ),
+            (
+                ("CTwoDatabase".into(), "common/first".into()),
+                LoaderOwner::ByRootKey {
+                    keyed: BTreeMap::from([
+                        ("first_a".into(), "CFirstA".into()),
+                        ("first_b".into(), "CFirstB".into()),
+                    ]),
+                    other: None,
+                },
+            ),
+            (
+                ("CTwoDatabase".into(), "common/second".into()),
+                LoaderOwner::Owner("CSecondItem".into()),
+            ),
         ])),
         loader_reasons: &[crate::binding::groups::LoaderReason {
             database: "CColorsDatabase",
@@ -451,8 +473,10 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         names,
         [
             "common/colors",
+            "common/first",
             "common/one",
             "common/pair",
+            "common/second",
             "common/traditions"
         ]
     );
@@ -461,7 +485,7 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
         .iter()
         .find(|gap| gap.kind == GapKind::UnnamedRegistries)
         .unwrap();
-    assert!(unnamed.detail.starts_with("2 of 7 scheduled databases"));
+    assert!(unnamed.detail.starts_with("1 of 7 scheduled databases"));
 
     let unsupported = |registry: &str| match native.registry_fields(registry) {
         Err(Error::Unsupported {
@@ -491,12 +515,21 @@ fn a_custom_loader_registry_without_one_owner_is_unsupported_with_the_reason() {
             }
         );
     }
-    for unlisted in ["common/first", "common/second"] {
+    // One database names two directories, each joined to its own owner.
+    let verified = native.bound().analysis.verified().unwrap();
+    assert_eq!(
+        verified.registry_owner("common/second"),
+        Some(Ok("CSecondItem"))
+    );
+    for operation in [Operation::DerivedNames, Operation::ModifierFamilies] {
         assert_eq!(
-            native.registry_fields(unlisted),
-            Err(Error::UnknownRegistry {
-                name: unlisted.into()
-            })
+            native.unanswered_registry(operation, "common/first"),
+            Error::Unsupported {
+                operation,
+                reason: "each root key builds its own class (`first_a`: CFirstA, `first_b`: \
+                         CFirstB), so no one class owns the items"
+                    .into(),
+            }
         );
     }
 }
@@ -2069,7 +2102,19 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
     );
 
     let owners = schedule.loader_owners.as_ref().unwrap();
-    let owner = |database: &str| match &owners[database] {
+    let joined = |database: &str| -> &LoaderOwner {
+        let [owner] = owners
+            .iter()
+            .filter(|((loader, _), _)| loader == database)
+            .map(|(_, owner)| owner)
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("{database}: not one directory");
+        };
+
+        owner
+    };
+    let owner = |database: &str| match joined(database) {
         LoaderOwner::Owner(owner) => owner.as_str(),
         other => panic!("{database}: {other:?}"),
     };
@@ -2101,18 +2146,58 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         "CShipBehaviorDatabase",
         "CWorldGfxDatabase",
     ] {
-        assert_eq!(owners[database], LoaderOwner::NoOwner, "{database}");
+        assert_eq!(*joined(database), LoaderOwner::NoOwner, "{database}");
     }
     // `random_list` builds the random list, inlined; every other key builds a planet class.
     assert_eq!(
-        owners["CPlanetClassDatabase"],
+        *joined("CPlanetClassDatabase"),
         LoaderOwner::ByRootKey {
-            key: "random_list".into(),
-            keyed: "CPlanetClassRandomList".into(),
-            other: "CPlanetClass".into(),
+            keyed: BTreeMap::from([("random_list".into(), "CPlanetClassRandomList".into())]),
+            other: Some("CPlanetClass".into()),
         }
     );
-    assert_eq!(owners.len(), 22);
+
+    // One loader enumerates three directories, each with its own statement loop.
+    let ship_designs = "CShipDesignTemplatesDatabase";
+    assert_eq!(
+        directory(ship_designs),
+        Directory::Ambiguous(vec![
+            "common/component_sets".into(),
+            "common/component_templates".into(),
+            "common/section_templates".into(),
+        ])
+    );
+    let design_owner = |directory: &str| &owners[&(ship_designs.to_owned(), directory.to_owned())];
+    assert_eq!(
+        *design_owner("common/section_templates"),
+        LoaderOwner::Owner("CSectionTemplate".into())
+    );
+    assert_eq!(
+        *design_owner("common/component_sets"),
+        LoaderOwner::Owner("CComponentSet".into())
+    );
+    // Each root key builds its own class; any other key is reported and builds none.
+    assert_eq!(
+        *design_owner("common/component_templates"),
+        LoaderOwner::ByRootKey {
+            keyed: BTreeMap::from([
+                (
+                    "strike_craft_component_template".into(),
+                    "CStrikeCraftComponentTemplate".into()
+                ),
+                (
+                    "utility_component_template".into(),
+                    "CUtilityComponentTemplate".into()
+                ),
+                (
+                    "weapon_component_template".into(),
+                    "CWeaponComponentTemplate".into()
+                ),
+            ]),
+            other: None,
+        }
+    );
+    assert_eq!(owners.len(), 25);
 }
 
 #[test]
@@ -2166,4 +2251,53 @@ fn m452_list_readers_and_getter_readers_establish_their_lookups() {
             "{database}"
         );
     }
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn m452_unjoined_generation_calls_count_in_the_registries_of_their_classes() {
+    use crate::engine::analysis::families::joins::{Reason, SiteJoin};
+
+    let binding = crate::session::installed_native().bound();
+    let index = binding.analysis.family_index().unwrap();
+    let unjoined = index
+        .joins
+        .sites
+        .values()
+        .filter(|join| matches!(join, SiteJoin::Unjoined(_)))
+        .count();
+    let attributed: BTreeMap<&str, BTreeMap<u64, Reason>> = index
+        .joins
+        .registries
+        .iter()
+        .filter(|(_, join)| !join.unjoined.is_empty())
+        .map(|(registry, join)| (registry.as_str(), join.unjoined.clone()))
+        .collect();
+    let triggered_tables = BTreeMap::from([
+        (0x101c3cff8, Reason::UnnamedContent),
+        (0x101c3d4f0, Reason::UnnamedContent),
+    ]);
+
+    // The registration function, the ten ship-class calls and the weapon-tag call reach no class
+    // of a named registry.
+    assert_eq!(unjoined, 17);
+    assert_eq!(
+        attributed,
+        BTreeMap::from([
+            ("common/economic_categories", triggered_tables),
+            (
+                "common/leader_classes",
+                BTreeMap::from([(0x1008f8d5c, Reason::NoRoot), (0x1008f8eb0, Reason::NoRoot),])
+            ),
+            // `FillResourceModifierMatrix(CStrategicResource const&)` reaches `FillModifierTable<false>`.
+            (
+                "common/strategic_resources",
+                BTreeMap::from([(0x101c3d4f0, Reason::UnnamedContent)])
+            ),
+            (
+                "common/zones",
+                BTreeMap::from([(0x100d465f0, Reason::UnnamedContent)])
+            ),
+        ])
+    );
 }

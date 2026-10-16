@@ -1,6 +1,6 @@
 # Modifier families
 
-`Native::modifier_families(registry)` (`modifier-families/v4`) gives the modifier names that a
+`Native::modifier_families(registry)` (`modifier-families/v5`) gives the modifier names that a
 registry's code registers for each item. `Game::loaded_modifiers` (`loaded-modifiers/v1`) gives
 the modifier table after all content loads, and joins each entry to a declaration or a family.
 The module comments of `engine/analysis/families.rs`, `families/joins.rs`, `families/loading.rs`,
@@ -307,8 +307,8 @@ their constructor default.
 families are now `Always`, and six `pop_jobs` gaps name the assumed text. The `derived_names` gaps
 went from 654 to 616: the every-item gap from 36 registries to 4, and six name conditions that it
 blocked are now established. No registry's sweep status changed (`registry-sweep --diff` against
-`tests/population/m452/registry-sweep/`): every family answer keeps the `UnnamedDeclaration`
-gap of the unjoined sites.
+`tests/population/m452/registry-sweep/`): every family answer kept the `UnnamedDeclaration`
+gap of the unjoined sites until [SDK-858](#which-registries-an-unjoined-site-belongs-to-sdk-858).
 
 ### Why a condition stays `Unresolved`
 
@@ -336,16 +336,48 @@ gap of the unjoined sites.
   database to start from (`NoDatabaseConstructor`). `CStrategicResourceDatabase::Init` constructs
   each item and calls its `Read` through the vtable; running `CreateInstance` as the database
   constructor, with the database layout above, is the change when Atlas needs `Always` here.
+
 ### Gaps
 
-The `UnnamedDeclaration` gap counts the 18 generation sites (M452) that are not joined to a
-registry:
+17 generation sites (M452) are not joined to a registry. Each counts in the `UnnamedDeclaration`
+gap of the registries whose classes are on its chains, and in no other answer
+([the rule](#which-registries-an-unjoined-site-belongs-to-sdk-858)):
 
-| Reason | Sites | Code |
-| --- | ---: | --- |
-| Inside the registration function | 1 | The `AddDefinition` in `CModifier::TryAddDynamicModifier` |
-| Unnamed content | 4 | `CPlanetClassModifierGenerator::CreateModifier`, `CZoneTypeModifierGenerator::CreateMaxModifier` (from `CZoneType::CSerializer`), `CEconomicCategory::FillModifierTable<true>` and `<false>` (also from the triggered-table serializers) |
-| No root | 13 | Ten `AddDefinition` calls in `CShipClassModifierHelper::Init` (from `CModifier::InitDefinitions`: the engine's ship-class enum, before content), `CWeaponTagModifierHelper::CreateModifierType` (from `CWeaponTagDatabase::InitInstance`), two in `CLeaderClass::CreateStartingAgeModifiers` (no direct caller) |
+| Reason | Sites | Code | Registries |
+| --- | ---: | --- | --- |
+| Inside the registration function | 1 | The `AddDefinition` in `CModifier::TryAddDynamicModifier` (`0x100973278`) | None |
+| Unnamed content | 1 | `CZoneTypeModifierGenerator::CreateMaxModifier` (`0x100d465f0`), from `CZoneType::CSerializer::InitPostRead` | `common/zones` |
+| Unnamed content | 2 | `CEconomicCategory::FillModifierTable<true>` (`0x101c3cff8`) and `<false>` (`0x101c3d4f0`), also from the triggered-table serializers | `common/economic_categories`; `<false>` also `common/strategic_resources`, through `FillResourceModifierMatrix(CStrategicResource const&)` |
+| No root | 10 | `AddDefinition` calls in `CShipClassModifierHelper::Init`, from `CModifier::InitDefinitions` and `InitShipClassModifiers` (the engine's ship-class enum, before content) | None |
+| No root | 1 | `CWeaponTagModifierHelper::CreateModifierType` (`0x1001d9e34`), from `SComponentTag::RegisterTag` and `CWeaponTagDatabase::InitInstance` | None. Its names come from the tag text; `common/component_tags` is `Unsupported` |
+| No root | 2 | `CLeaderClass::CreateStartingAgeModifiers` (`0x1008f8d5c`, `0x1008f8eb0`), no direct caller | `common/leader_classes` |
+
+#### Which registries an unjoined site belongs to (SDK-858)
+
+Before SDK-858 every answer carried one gap that counted all 17 sites, so no family answer and no
+naming rule of the sweep was complete. The rule (`families/joins.rs`, `chain_registries`): a site
+may generate the names of a registry only when the function that holds the call, or one of its
+callers within `DEPTH` calls, is a member of the registry's item or database class (or of a class
+nested in one, or of a template over its database) or takes one of its items. The climb goes on
+above a root of unnamed content, which a context does not. The call inside the registration
+function registers the names that its callers compose and composes none, so it belongs to no
+registry.
+
+**Assumption:** code that composes a registry's names runs in that registry's classes or receives
+its items. Three checks by hand on M452:
+
+1. The ten ship-class calls compose names from the engine's ship-class enum in
+   `CModifier::InitDefinitions`, which runs from `CGameApplication::InitGame` before content loads.
+2. The weapon-tag call receives the tag text as `char const*` from `SComponentTag::RegisterTag`,
+   which `CWeaponTagDatabase::InitInstance` calls; no registry item is on the chain.
+3. The zone call is reached only from `CZoneType::CSerializer::InitPostRead`, a class nested in
+   the zones item class, so `common/zones` keeps it and no other answer does.
+
+The assumption fails for code of an unrelated class that reads a registry's database through its
+global instance, as `CEconomicCategory::GenerateModifiers` reads
+`CStrategicResourceDatabase::_pInstance`. Read the global instances of a site's chain when a new
+site appears. The climb also ends at `DEPTH`; the ship-class chains reach application startup
+within it.
 
 Gaps in joined registries:
 

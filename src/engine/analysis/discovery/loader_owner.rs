@@ -1,5 +1,6 @@
 //! The owner of a registry that its database's own loader names: the one class with a member
-//! reader that the loader builds, or the two classes that one root key selects between.
+//! reader that the loader builds, or the classes that the root key of each statement selects
+//! between.
 //!
 //! A template registry's owner is a template argument of its loader. A custom loader has no such
 //! argument, so the method reads the loader's code. The loader route is every function of the
@@ -9,13 +10,17 @@
 //! does. Only classes with a member reader count; the binding gives their constructors and
 //! address points.
 //!
-//! Exactly one built class is the owner. Two built classes are owners by root key when a route
-//! function compares the token of each statement that it reads with one constant, and the code
-//! that follows the comparison up to the next statement read builds one class when the token is
-//! that constant and the other class when it is not. None, or several in any other shape, is a
-//! gap; the method never selects one of several. A class that the database builds outside the
-//! route, such as a scope object on the stack of a query function, is not on the route and does
-//! not count.
+//! A loader that enumerates several directories builds the items of each in its own code:
+//! [`directory_owner`] reads the route from one enumeration call up to the next enumeration call
+//! of the same function. This assumes that the compiler places each directory's loop after its
+//! call and before the next one, as it does on M452.
+//!
+//! Exactly one built class is the owner. Several built classes are owners by root key when a route
+//! function compares the token of each statement that it reads with a chain of constants, and the
+//! code that each comparison selects, up to the next statement read, builds one class for each
+//! constant and one class or none for every other token. Any other shape is a gap; the method
+//! never selects one of several. A class that the database builds outside the route, such as a
+//! scope object on the stack of a query function, is not on the route and does not count.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::decode::{
@@ -27,21 +32,32 @@ use crate::engine::analysis::decode::{
 pub enum LoaderOwner {
     /// Exactly one class with a member reader.
     Owner(String),
-    /// One class for root statements with the key `key`, and another for every other key.
+    /// A class for each of some root keys, and one class or none for every other key.
     ByRootKey {
-        /// The root key that selects `keyed`.
-        key: String,
-        /// The class that the loader builds for a statement with that key.
-        keyed: String,
-        /// The class that the loader builds for a statement with any other key.
-        other: String,
+        /// The class that the loader builds for a statement with each key, by key.
+        keyed: BTreeMap<String, String>,
+        /// The class that the loader builds for a statement with any other key; `None` when it
+        /// builds none.
+        other: Option<String>,
     },
     /// No function calls the file enumeration, or the route builds no class with a member
     /// reader.
     NoOwner,
-    /// Several classes with a member reader and no root key that selects between them; none is
+    /// Several classes with a member reader and no root keys that select between them; none is
     /// selected.
     Several(Vec<String>),
+}
+
+impl LoaderOwner {
+    /// Every class that the loader builds with a member reader.
+    pub(crate) fn classes(&self) -> Vec<&String> {
+        match self {
+            Self::Owner(owner) => vec![owner],
+            Self::ByRootKey { keyed, other } => keyed.values().chain(other).collect(),
+            Self::NoOwner => vec![],
+            Self::Several(classes) => classes.iter().collect(),
+        }
+    }
 }
 
 /// The calls that a custom loader makes to read its files.
@@ -64,15 +80,97 @@ pub fn loader_owner(
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
 ) -> LoaderOwner {
+    let entries = functions
+        .iter()
+        .filter(|(_, rows)| {
+            !FunctionAddresses::of(rows)
+                .calls
+                .is_disjoint(reads.enumerations)
+        })
+        .map(|(&start, _)| start)
+        .collect();
+
+    route_owner(functions, entries, reads, builders)
+}
+
+/// The owner that the loader in `functions` builds for the directory that the enumeration calls
+/// at `calls` pass: the route of each call starts at the call and ends at the next enumeration
+/// call of the same function. Calls whose routes give different owners are
+/// [`LoaderOwner::Several`], with every class that they build.
+pub fn directory_owner(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    reads: &LoaderReads<'_>,
+    builders: &BTreeMap<u64, String>,
+    calls: &[u64],
+) -> LoaderOwner {
+    let owners: Vec<LoaderOwner> = calls
+        .iter()
+        .map(|&call| call_owner(functions, reads, builders, call))
+        .collect();
+
+    match owners.split_first() {
+        None => LoaderOwner::NoOwner,
+        Some((first, rest)) if rest.iter().all(|owner| owner == first) => first.clone(),
+        Some(_) => {
+            let classes: BTreeSet<&String> = owners.iter().flat_map(LoaderOwner::classes).collect();
+
+            LoaderOwner::Several(classes.into_iter().cloned().collect())
+        }
+    }
+}
+
+/// The owner that the route from the enumeration call at `call` builds; no owner when no
+/// function of `functions` makes that call.
+fn call_owner(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    reads: &LoaderReads<'_>,
+    builders: &BTreeMap<u64, String>,
+    call: u64,
+) -> LoaderOwner {
+    let Some(code) = functions
+        .values()
+        .find_map(|rows| directory_code(rows, reads, call))
+    else {
+        return LoaderOwner::NoOwner;
+    };
+    let mut route_functions = functions.clone();
+    route_functions.insert(call, code.to_vec());
+
+    route_owner(&route_functions, vec![call], reads, builders)
+}
+
+/// The rows of `rows` from the enumeration call at `call` up to the next enumeration call.
+fn directory_code<'a>(
+    rows: &'a [Instruction],
+    reads: &LoaderReads<'_>,
+    call: u64,
+) -> Option<&'a [Instruction]> {
+    let first = rows.iter().position(|row| row.address == call)?;
+    let enumerates = |row: &Instruction| {
+        call_target(u32::from_le_bytes(row.bytes), row.address)
+            .is_some_and(|target| reads.enumerations.contains(&target))
+    };
+    let end = rows[first + 1..]
+        .iter()
+        .position(enumerates)
+        .map_or(rows.len(), |offset| first + 1 + offset);
+
+    Some(&rows[first..end])
+}
+
+/// The owner that the route from `entries`, and every function of `functions` that it calls
+/// directly, builds.
+fn route_owner(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    entries: Vec<u64>,
+    reads: &LoaderReads<'_>,
+    builders: &BTreeMap<u64, String>,
+) -> LoaderOwner {
     let addresses: BTreeMap<u64, FunctionAddresses> = functions
         .iter()
         .map(|(&start, rows)| (start, FunctionAddresses::of(rows)))
         .collect();
-    let mut pending: Vec<u64> = addresses
-        .iter()
-        .filter(|(_, function)| !function.calls.is_disjoint(reads.enumerations))
-        .map(|(&start, _)| start)
-        .collect();
+    let mut pending = entries;
     let mut route = BTreeSet::new();
     while let Some(start) = pending.pop() {
         if route.insert(start) {
@@ -90,31 +188,41 @@ pub fn loader_owner(
     match built.len() {
         0 => LoaderOwner::NoOwner,
         1 => LoaderOwner::Owner(built.remove(0)),
-        2 => route
+        _ => route
             .iter()
             .find_map(|start| {
                 root_key_owners(&functions[start], &addresses[start], reads, builders)
             })
-            .filter(|(_, keyed, other)| {
-                keyed != other && built.contains(keyed) && built.contains(other)
-            })
-            .map_or(LoaderOwner::Several(built), |(key, keyed, other)| {
-                LoaderOwner::ByRootKey { key, keyed, other }
+            .filter(|(keyed, other)| selects_every_class(keyed, other.as_ref(), &built))
+            .map_or(LoaderOwner::Several(built), |(keyed, other)| {
+                LoaderOwner::ByRootKey { keyed, other }
             }),
-        _ => LoaderOwner::Several(built),
     }
 }
 
-/// The root key whose token `rows` compares each statement's token with, the class that it builds
-/// for that key, and the class that it builds for any other key. `None` unless the function has
-/// one statement read, the next three instructions load its token, compare it with a named token
-/// and branch on equality, and each side builds exactly one class.
+/// Whether the classes of a root switch are distinct and are exactly the classes in `built`.
+fn selects_every_class(
+    keyed: &BTreeMap<String, String>,
+    other: Option<&String>,
+    built: &[String],
+) -> bool {
+    let selected: Vec<&String> = keyed.values().chain(other).collect();
+    let distinct: BTreeSet<&String> = selected.iter().copied().collect();
+
+    distinct.len() == selected.len() && distinct.into_iter().eq(built.iter())
+}
+
+/// The root keys whose tokens `rows` compares each statement's token with, the class that it
+/// builds for each, and the class that it builds for any other key, if any. `None` unless the
+/// function has one statement read; the next instruction loads its token; a chain of comparisons
+/// with named tokens follows, each with a branch on equality, the last one possibly on
+/// inequality; each key's side builds exactly one class, and the other side builds at most one.
 fn root_key_owners(
     rows: &[Instruction],
     addresses: &FunctionAddresses,
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
-) -> Option<(String, String, String)> {
+) -> Option<(BTreeMap<String, String>, Option<String>)> {
     let mut statement_reads = addresses
         .targets
         .iter()
@@ -128,37 +236,75 @@ fn root_key_owners(
         return None;
     }
 
-    let [load, compare, branch] = rows.get(read + 1..read + 4)? else {
-        return None;
-    };
+    let load = rows.get(read + 1)?;
     let (base, offset) = reader_argument(&rows[..read])?;
     let (token, word) = loaded_word(load)?;
     if word != (base, offset + reads.token_offset) {
         return None;
     }
 
-    let (compared, operand) = compare.operands.split_once(',')?;
-    if compare.operation != "cmp" || compared != token {
-        return None;
-    }
-    let constant = match number(operand) {
-        Some(constant) => constant,
-        None => constant_before(&rows[..read + 2], operand)?,
-    };
-    let key = reads.token_names.get(&(constant & 0xffff_ffff))?;
-
-    let target = rows
-        .iter()
-        .position(|row| Some(row.address) == number(&branch.operands))?;
-    let (keyed, other) = match branch.operation.as_str() {
-        "b.eq" => (target, read + 4),
-        "b.ne" => (read + 4, target),
+    let (keys, other) = token_chain(rows, read + 2, token, reads.token_names)?;
+    let loop_head = rows[read].address;
+    let built = |side| side_targets(rows, addresses, side, loop_head);
+    let keyed = keys
+        .into_iter()
+        .map(|(key, side)| Some((key, one_class(built(side), builders)?)))
+        .collect::<Option<BTreeMap<_, _>>>()?;
+    let other = match classes(built(other), builders).as_slice() {
+        [] => None,
+        [class] => Some(class.clone()),
         _ => return None,
     };
-    let loop_head = rows[read].address;
-    let built = |side| one_class(side_targets(rows, addresses, side, loop_head), builders);
 
-    Some((key.clone(), built(keyed)?, built(other)?))
+    Some((keyed, other))
+}
+
+/// The comparisons of `token` that start at `first`: the side of each named key, and the side of
+/// every other token. `None` when no comparison starts there, a constant has no name, or a branch
+/// is not on equality or, for the last comparison, inequality.
+fn token_chain(
+    rows: &[Instruction],
+    first: usize,
+    token: &str,
+    token_names: &BTreeMap<u64, String>,
+) -> Option<(Vec<(String, usize)>, usize)> {
+    let positions: BTreeMap<u64, usize> = rows
+        .iter()
+        .enumerate()
+        .map(|(position, row)| (row.address, position))
+        .collect();
+    let mut keys = Vec::new();
+    let mut position = first;
+
+    loop {
+        let Some((_, operand)) = rows
+            .get(position)
+            .filter(|compare| compare.operation == "cmp")
+            .and_then(|compare| compare.operands.split_once(','))
+            .filter(|(compared, _)| *compared == token)
+        else {
+            return (!keys.is_empty()).then_some((keys, position));
+        };
+        let constant = match number(operand) {
+            Some(constant) => constant,
+            None => constant_before(&rows[..position], operand)?,
+        };
+        let key = token_names.get(&(constant & 0xffff_ffff))?.clone();
+        let branch = rows.get(position + 1)?;
+        let target = *positions.get(&number(&branch.operands)?)?;
+
+        match branch.operation.as_str() {
+            "b.eq" => {
+                keys.push((key, target));
+                position += 2;
+            }
+            "b.ne" => {
+                keys.push((key, position + 2));
+                return Some((keys, target));
+            }
+            _ => return None,
+        }
+    }
 }
 
 /// The base register and offset of the reader that the call at the end of `rows` receives: the
@@ -255,12 +401,16 @@ fn side_targets(
 
 /// The one class that `targets` build.
 fn one_class(targets: BTreeSet<u64>, builders: &BTreeMap<u64, String>) -> Option<String> {
-    let classes: BTreeSet<&String> = targets.iter().filter_map(|t| builders.get(t)).collect();
-    let [class] = classes.into_iter().collect::<Vec<_>>()[..] else {
-        return None;
-    };
+    let [class] = classes(targets, builders).try_into().ok()?;
 
-    Some(class.clone())
+    Some(class)
+}
+
+/// The distinct classes that `targets` build.
+fn classes(targets: BTreeSet<u64>, builders: &BTreeMap<u64, String>) -> Vec<String> {
+    let classes: BTreeSet<&String> = targets.iter().filter_map(|t| builders.get(t)).collect();
+
+    classes.into_iter().cloned().collect()
 }
 
 /// The direct call targets of one function and the addresses that it forms with `adrp` and `add`.
@@ -369,7 +519,10 @@ mod tests {
                 enumerations: &BTreeSet::from([ENUMERATE]),
                 statement_reads: &BTreeSet::from([READ_STATEMENT]),
                 token_offset: TOKEN_OFFSET,
-                token_names: &BTreeMap::from([(0x2714, "random_list".to_owned())]),
+                token_names: &BTreeMap::from([
+                    (0x2714, "random_list".to_owned()),
+                    (0x2715, "fixed_list".to_owned()),
+                ]),
             },
             &builders(),
         )
@@ -415,10 +568,81 @@ mod tests {
         assert_eq!(
             owner([loader(READ_FILE), switch]),
             LoaderOwner::ByRootKey {
-                key: "random_list".into(),
-                keyed: "COwner".into(),
-                other: "COther".into(),
+                keyed: BTreeMap::from([("random_list".into(), "COwner".into())]),
+                other: Some("COther".into()),
             }
+        );
+    }
+
+    #[test]
+    fn a_chain_of_root_keys_selects_one_class_for_each_key() {
+        let mut code = Arm64::at(READ_FILE);
+        arm64!(code; mov w23, #0x2714; mov w24, #0x2715); // tokens random_list and fixed_list
+        let statement = code.here();
+        arm64!(code; reject:; add x0, sp, #0x70);
+        code.call(READ_STATEMENT);
+        arm64!(code;
+            ldr w8, [sp, #0xa8]
+            ; cmp w8, w23
+            ; b.eq >first
+            ; cmp w8, w24
+            ; b.ne <reject
+        );
+        builds_other(&mut code);
+        arm64!(code; b extern statement as usize; first:);
+        builds_owner(&mut code);
+        arm64!(code; b extern statement as usize);
+
+        assert_eq!(
+            owner([loader(READ_FILE), decoded(code, READ_FILE)]),
+            LoaderOwner::ByRootKey {
+                keyed: BTreeMap::from([
+                    ("fixed_list".into(), "COther".into()),
+                    ("random_list".into(), "COwner".into()),
+                ]),
+                other: None,
+            }
+        );
+    }
+
+    #[test]
+    fn each_directory_of_a_loader_is_owned_by_the_class_that_its_own_code_builds() {
+        let mut code = Arm64::at(LOADER);
+        code.call(ENUMERATE);
+        builds_owner(&mut code);
+        let second_call = code.here();
+        code.call(ENUMERATE).call(OTHER_CONSTRUCTOR);
+        arm64!(code; ret);
+        let functions = BTreeMap::from([decoded(code, LOADER)]);
+        let directory = |calls: &[u64]| {
+            directory_owner(
+                &functions,
+                &LoaderReads {
+                    enumerations: &BTreeSet::from([ENUMERATE]),
+                    statement_reads: &BTreeSet::from([READ_STATEMENT]),
+                    token_offset: TOKEN_OFFSET,
+                    token_names: &BTreeMap::new(),
+                },
+                &builders(),
+                calls,
+            )
+        };
+
+        assert_eq!(directory(&[LOADER]), LoaderOwner::Owner("COwner".into()));
+        assert_eq!(
+            directory(&[second_call]),
+            LoaderOwner::Owner("COther".into())
+        );
+        // Two calls of one directory that build different classes select neither.
+        assert_eq!(
+            directory(&[LOADER, second_call]),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
+        );
+        // A call that no decoded function makes builds nothing.
+        assert_eq!(directory(&[QUERY]), LoaderOwner::NoOwner);
+        assert_eq!(
+            owner(functions.clone()),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
         );
     }
 

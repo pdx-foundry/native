@@ -208,18 +208,16 @@ impl Native {
             Ok(schedule) => {
                 let mut unnamed_loaders = 0;
                 for directory in schedule.loader_directories.values() {
-                    match directory {
-                        Directory::Named(name) => {
-                            names.insert(name.clone());
-                        }
-                        Directory::Missing | Directory::Ambiguous(_) => unnamed_loaders += 1,
+                    match crate::binding::loader_names(directory) {
+                        [] => unnamed_loaders += 1,
+                        loader_names => names.extend(loader_names.iter().cloned()),
                     }
                 }
                 let inventory = &schedule.inventory;
                 if unnamed_loaders > 0 {
                     unnamed_details.push(format!(
                         "{unnamed_loaders} of {} scheduled databases have no template loader, and \
-                         their own functions enumerate no single content directory.",
+                         their own functions enumerate no content directory that the method establishes.",
                         inventory.rows
                     ));
                 }
@@ -265,12 +263,13 @@ impl Native {
     /// inherited readers, and dynamic names are outside it. Completeness says whether those root
     /// paths and their reader classifications were resolved.
     ///
-    /// Two shapes of custom loader give root statements instead of item fields. Where the loader
+    /// Three shapes of custom loader give root statements instead of item fields. Where the loader
     /// selects a scope by the root key, as the events loader does, every root field is a root
-    /// statement whose members are the item's fields. Where the loader reserves one root key for
+    /// statement whose members are the item's fields. Where the loader reserves a root key for
     /// another class, the root fields are the items of every other key, and one more root field
-    /// named for the reserved key is a root statement whose members are the other class's
-    /// fields.
+    /// named for each reserved key is a root statement whose members are that class's fields.
+    /// Where every accepted root key builds its own class and other keys build none, as in
+    /// `common/component_templates`, every root field is such a root statement.
     ///
     /// ```no_run
     /// # fn example(native: &pdx_native::Native) -> Result<(), pdx_native::Error> {
@@ -286,8 +285,8 @@ impl Native {
     /// ```
     ///
     /// The name is a content directory from [`Native::registries`]. A listed registry whose
-    /// loader builds no one owner is [`Error::Unsupported`] with the reason; another name is
-    /// [`Error::UnknownRegistry`].
+    /// loader builds no one owner, and no class for each root key, is [`Error::Unsupported`] with
+    /// the reason; another name is [`Error::UnknownRegistry`].
     pub fn registry_fields(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
         let registry = registry.trim_end_matches('/');
         self.answer(Operation::RegistryFields, Some(registry), || {
@@ -296,38 +295,22 @@ impl Native {
     }
 
     fn registry_fields_from_executable(&self, registry: &str) -> Result<Answer<Vec<Field>>, Error> {
+        if let Some(answer) = self.keyed_registry_fields(registry)? {
+            return Ok(answer);
+        }
+
         self.registry_field_run(registry).map(|run| run.answer)
     }
 
     /// The public registry field answer, with the method's own result that it is derived from.
     pub(crate) fn registry_field_run(&self, registry: &str) -> Result<RegistryFieldRun, Error> {
         let (owner, result) = self.registry_field_result(registry)?;
-        let facts = RegistryFieldFacts {
-            references: self.reference_facts(Operation::RegistryFields)?,
-            numeric: self.numeric_facts(Operation::RegistryFields)?,
-            scoped: self.scoped_numeric_facts(Operation::RegistryFields)?,
-            modifiers: self.modifier_block_facts()?,
-            weights: self.weight_block_facts()?,
-            triggered: self.triggered_modifier_facts()?,
-            blocks: self.block_facts()?,
-            categories: modifiers::category_names(self.category_input()?, []),
-        };
+        let facts = self.registry_field_facts()?;
         let (mut answer, entry_gaps) =
             self.registry_field_answer(registry, &owner, &result, &facts);
-        let keyed = self
-            .bound()
-            .analysis
-            .keyed_field_result(registry)
-            .map_err(|failure| error(Operation::RegistryFields, failure))?;
-        if let Some((key, class, keyed_result)) = keyed {
-            let (members, _) = self.registry_field_answer(registry, &class, &keyed_result, &facts);
-            let (field, gaps) = super::loader_kinds::reserved_key_field(
-                &key,
-                members.value,
-                members.gaps,
-                registry,
-            );
-            answer.value.push(field);
+        let (fields, gaps) = self.keyed_fields(registry, &facts)?;
+        if !fields.is_empty() {
+            answer.value.extend(fields);
             answer.gaps.extend(gaps);
             answer.completeness = Completeness::from_gaps(&answer.gaps);
         }
@@ -341,6 +324,92 @@ impl Native {
             result,
             owner,
             entry_gaps,
+        })
+    }
+
+    /// The answer for a registry whose loader builds a class for each root key and none for any
+    /// other key: one root field per key, with that class's fields as its members. `None` when
+    /// the registry has an owner or its loader reserves no key.
+    fn keyed_registry_fields(&self, registry: &str) -> Result<Option<Answer<Vec<Field>>>, Error> {
+        let verified = self.verified_analysis(Operation::RegistryFields)?;
+        let keyed_only = matches!(verified.registry_owner(registry), Some(Err(_)))
+            && verified
+                .database_schedule()
+                .is_ok_and(|schedule| !schedule.keyed_classes(registry).is_empty());
+        if !keyed_only {
+            return Ok(None);
+        }
+
+        let facts = self.registry_field_facts()?;
+        let (mut value, gaps) = self.keyed_fields(registry, &facts)?;
+
+        for field in &mut value {
+            field.requirement = self.bound().field_requirement(registry, &field.name);
+        }
+
+        Ok(Some(Answer {
+            value,
+            completeness: Completeness::from_gaps(&gaps),
+            gaps,
+            source: Source::new(self.build(), fields::METHOD, Basis::StaticAnalysis),
+        }))
+    }
+
+    /// One root field for each root key that `registry`'s loader reads into its own class, and
+    /// the gaps of those fields. The classes' registry-wide limits, which a root field leaves
+    /// out, are kept once when the registry has no owner answer to carry them.
+    fn keyed_fields(
+        &self,
+        registry: &str,
+        facts: &RegistryFieldFacts<'_>,
+    ) -> Result<(Vec<Field>, Vec<Gap>), Error> {
+        let keyed = self
+            .bound()
+            .analysis
+            .keyed_field_results(registry)
+            .map_err(|failure| error(Operation::RegistryFields, failure))?;
+        let owned = matches!(
+            self.verified_analysis(Operation::RegistryFields)?
+                .registry_owner(registry),
+            Some(Ok(_))
+        );
+        let mut fields = Vec::new();
+        let mut gaps = Vec::new();
+
+        for (key, class, result) in keyed {
+            let (members, _) = self.registry_field_answer(registry, &class, &result, facts);
+            if !owned {
+                for gap in super::loader_kinds::class_limits(&members.gaps, &key) {
+                    if !gaps.contains(&gap) {
+                        gaps.push(gap);
+                    }
+                }
+            }
+
+            let (field, field_gaps) = super::loader_kinds::reserved_key_field(
+                &key,
+                members.value,
+                members.gaps,
+                registry,
+            );
+            fields.push(field);
+            gaps.extend(field_gaps);
+        }
+
+        Ok((fields, gaps))
+    }
+
+    /// The executable-wide facts that every registry field answer joins.
+    fn registry_field_facts(&self) -> Result<RegistryFieldFacts<'_>, Error> {
+        Ok(RegistryFieldFacts {
+            references: self.reference_facts(Operation::RegistryFields)?,
+            numeric: self.numeric_facts(Operation::RegistryFields)?,
+            scoped: self.scoped_numeric_facts(Operation::RegistryFields)?,
+            modifiers: self.modifier_block_facts()?,
+            weights: self.weight_block_facts()?,
+            triggered: self.triggered_modifier_facts()?,
+            blocks: self.block_facts()?,
+            categories: modifiers::category_names(self.category_input()?, []),
         })
     }
 
@@ -536,8 +605,8 @@ impl Native {
             .ok_or_else(|| self.unanswered_registry(Operation::RegistryFields, registry))
     }
 
-    /// Add to `answer`, an answer for `registry`'s owner, a gap for the root statements that the
-    /// registry's loader reads into another class. The gap is outside the method: the answer
+    /// Add to `answer`, an answer for `registry`'s owner, a gap for each root key whose statements
+    /// the registry's loader reads into another class. The gap is outside the method: the answer
     /// covers the owner's items, and those statements are not its items.
     pub(crate) fn add_keyed_class_gap<T>(
         &self,
@@ -550,22 +619,20 @@ impl Native {
             .analysis
             .verified()
             .map_err(|failure| error(operation, failure))?;
-        let Some((key, _)) = verified
-            .database_schedule()
-            .ok()
-            .and_then(|schedule| schedule.keyed_class(registry))
-        else {
+        let Ok(schedule) = verified.database_schedule() else {
             return Ok(());
         };
 
-        answer.gaps.push(Gap {
-            kind: GapKind::OutsideMethod,
-            subject: Some(GapSubject::registry(registry)),
-            detail: format!(
-                "Root statements with the key `{key}` are items of another class, which this \
-                 answer does not cover."
-            ),
-        });
+        for (key, _) in schedule.keyed_classes(registry) {
+            answer.gaps.push(Gap {
+                kind: GapKind::OutsideMethod,
+                subject: Some(GapSubject::registry(registry)),
+                detail: format!(
+                    "Root statements with the key `{key}` are items of another class, which this \
+                     answer does not cover."
+                ),
+            });
+        }
 
         Ok(())
     }

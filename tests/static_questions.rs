@@ -713,8 +713,19 @@ fn modifier_families_match_the_recorded_m452_generators() {
     for registry in expected.keys() {
         let answer = native.modifier_families(registry).unwrap();
         assert_eq!(answer.source.basis, Basis::StaticAnalysis);
-        assert_eq!(answer.completeness, Completeness::Partial);
     }
+    // Only code of its own classes that generates names and is not joined keeps an answer partial.
+    let anomalies = native.modifier_families("common/anomalies").unwrap();
+    assert_eq!(anomalies.completeness, Completeness::Complete);
+    let zones = native.modifier_families("common/zones").unwrap();
+    assert_eq!(zones.completeness, Completeness::Partial);
+    assert!(zones.gaps.iter().any(|gap| {
+        gap.kind == GapKind::UnnamedDeclaration
+            && gap.subject
+                == Some(pdx_native::GapSubject::Registry {
+                    name: "common/zones".into(),
+                })
+    }));
 
     let bypass = native.modifier_families("common/bypass").unwrap();
     let names: Vec<_> = bypass
@@ -1691,16 +1702,19 @@ fn own_native() -> Native {
 }
 
 /// Independent expectation on M452: the registries that only their database's own loader names.
-const LOADER_NAMED: [&str; 21] = [
+const LOADER_NAMED: [&str; 24] = [
     "common/ambient_objects",
     "common/colors",
+    "common/component_sets",
     "common/component_tags",
+    "common/component_templates",
     "common/diplo_phrases",
     "common/fallen_empires",
     "common/global_ship_designs",
     "common/on_actions",
     "common/opinion_modifiers",
     "common/planet_classes",
+    "common/section_templates",
     "common/ship_behaviors",
     "common/special_projects",
     "common/species_names",
@@ -1927,6 +1941,68 @@ fn planet_classes_answer_the_random_list_key_as_a_root_statement() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn component_templates_answer_each_root_key_as_a_root_statement() {
+    let native = native();
+    let answer = native
+        .registry_fields("common/component_templates")
+        .unwrap();
+    let members = |key: &str| -> Vec<String> {
+        let field = answer.value.iter().find(|field| field.name == key).unwrap();
+        let pdx_native::FieldMembers::Fields(members) = &field.members else {
+            panic!("{key}: {:?}", field.members);
+        };
+
+        members.iter().map(|member| member.name.clone()).collect()
+    };
+
+    // Each root key builds its own class, so the answer has no item fields of its own.
+    let keys: Vec<&str> = answer
+        .value
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "strike_craft_component_template",
+            "utility_component_template",
+            "weapon_component_template"
+        ]
+    );
+    assert!(members("strike_craft_component_template").contains(&"launch_time".into()));
+    assert!(members("utility_component_template").contains(&"sensor_range".into()));
+    assert!(members("weapon_component_template").contains(&"missile_speed".into()));
+    assert!(!members("utility_component_template").contains(&"missile_speed".into()));
+
+    // A member's gap is below its key, and the method's limits stay with the registry.
+    let subjects: Vec<_> = answer.gaps.iter().map(|gap| &gap.subject).collect();
+    let field = |name: &str| {
+        Some(GapSubject::Field {
+            name: name.to_owned(),
+        })
+    };
+    assert!(subjects.contains(&&field("weapon_component_template.missile_speed")));
+    assert!(!subjects.contains(&&field("missile_speed")));
+    assert!(answer.gaps.iter().any(|gap| {
+        gap.kind == GapKind::OutsideMethod
+            && gap.subject
+                == Some(GapSubject::Registry {
+                    name: "common/component_templates".into(),
+                })
+    }));
+
+    let Err(Error::Unsupported { reason, .. }) = native.derived_names("common/component_templates")
+    else {
+        panic!("derived names of component templates");
+    };
+    assert!(
+        reason.starts_with("each root key builds its own class"),
+        "{reason}"
+    );
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_listed_registry_gets_an_answer_or_unsupported() {
     use std::collections::BTreeSet;
 
@@ -1953,7 +2029,8 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         }
     }
 
-    // Each registry query reads every loader registry whose loader builds one owner.
+    // Each registry query reads every loader registry whose loader builds one owner. The field
+    // query also reads a loader that builds a class for each root key.
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
@@ -1963,17 +2040,15 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     ]
     .map(String::from)
     .into();
-    for operation in [
-        Operation::RegistryFields,
-        Operation::DerivedNames,
-        Operation::ModifierFamilies,
+    let mut keyed_only = without_owner.clone();
+    keyed_only.insert("common/component_templates".into());
+    for (operation, expected) in [
+        (Operation::RegistryFields, &without_owner),
+        (Operation::DerivedNames, &keyed_only),
+        (Operation::ModifierFamilies, &keyed_only),
     ] {
         let operation = operation.to_string();
-        assert_eq!(
-            unsupported.get(&operation),
-            Some(&without_owner),
-            "{operation}"
-        );
+        assert_eq!(unsupported.get(&operation), Some(expected), "{operation}");
     }
     assert!(matches!(
         native.derived_names("common/no_such_registry"),
@@ -2164,12 +2239,18 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
     assert_eq!(
         names,
         [
+            "icon",
             "key",
+            "custom_tooltip",
             "apply_modifier_to_other_planets",
-            "divide_over_pop_groups"
+            "show_only_custom_tooltip",
+            "icon_frame",
+            "important",
+            "divide_over_pop_groups",
+            "hide_from_country_list"
         ]
     );
-    // Other tokens go to the base class's `ReadMember`, an inherited reader outside the method.
+    // The inherited `CGraphicalModifier::ReadMember` passes its other tokens to a virtual call.
     assert_eq!(answer.completeness, Completeness::Partial);
     let registry = Some(GapSubject::Registry {
         name: "common/static_modifiers".into(),
@@ -2211,6 +2292,38 @@ fn a_custom_loader_registry_reads_its_fields_from_the_owner_that_its_loader_buil
     );
 }
 
+/// Starbase modules and buildings read their shared keys through
+/// `CStarbaseComponent<T>::ReadMember`, which they call through an import stub
+/// (`docs/native/registry-fields.md`, inherited member readers).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn starbase_components_read_their_shared_keys_through_the_inherited_reader() {
+    let native = native();
+    for registry in ["common/starbase_modules", "common/starbase_buildings"] {
+        let answer = native.registry_fields(registry).unwrap();
+        let names: Vec<_> = answer
+            .value
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+
+        for shared in ["icon", "construction_days", "potential", "ship_modifier"] {
+            assert!(
+                names.contains(&shared),
+                "{registry} lacks {shared}: {names:?}"
+            );
+        }
+        assert!(
+            answer
+                .gaps
+                .iter()
+                .all(|gap| gap.kind != GapKind::UnnamedField),
+            "{registry}: {:?}",
+            answer.gaps
+        );
+    }
+}
+
 /// The derived-name and family methods read a custom loader's owner as they read a template
 /// owner. `CStaticModifier` has no template key constructor, so the key place stays a gap
 /// (`docs/native/derived-names.md`).
@@ -2237,14 +2350,8 @@ fn a_custom_loader_registry_answers_derived_names_and_modifier_families() {
     // No generation call is reached from `CStaticModifier`'s code, so the method does not run.
     let families = native.modifier_families("common/static_modifiers").unwrap();
     assert!(families.value.is_empty());
-    assert_eq!(families.completeness, Completeness::Partial);
+    assert_eq!(families.completeness, Completeness::Complete);
     assert!(!key_place(&families.gaps), "{:?}", families.gaps);
-    assert!(
-        families
-            .gaps
-            .iter()
-            .any(|gap| gap.kind == GapKind::UnnamedDeclaration && gap.subject.is_none())
-    );
 }
 
 #[test]

@@ -31,6 +31,12 @@ engine knowledge; severity belongs to the compiler, and subtype names and alias 
 `.cwt` emitter tests. The `.cwt` emitter is a test tool that compares a snapshot with the config;
 the product is the JSON snapshot.
 
+The coverage target is the Atlas-owned headline: covered claims over engine-fact plus
+content-derived claims. Content-derived claims are the documentation of shipped content, which
+Atlas credits from the installation's comments; content queries are consumer policy and outside the
+denominator (Atlas's [SDK-718 decision](https://github.com/pdx-foundry/atlas/pull/36)).
+Native does not read content for this.
+
 Coverage started at 0 of 56,551 Atlas-owned claims (item names answer no rule question). At the
 Milestone 3 gate, a live snapshot on config revision `8574760` covered 15,278 of 58,032 claims
 (26.33%); see Atlas's [language snapshot measurement](https://github.com/pdx-foundry/atlas/blob/9c39c807ed062f65c893789edb16677b7ea843a1/docs/coverage/language-snapshot.md).
