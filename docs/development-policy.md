@@ -47,17 +47,17 @@ not scan, records its exception in the binding's module comment and on its knowl
 
 ### Measuring method transfer
 
-A method ticket ends with one run of the method over every discovered registry, or over the whole
+A method task ends with one run of the method over every discovered registry, or over the whole
 command inventory when the method reads commands. Record on the method's page in `docs/native/` (the
 [engine knowledge index](engine-knowledge.md) lists them) the counts of complete, partial and failed
 answers, each failure shape, and any distinct finding the run produced. Repairs that the run prompts
-land in the shared module; the next ticket's run reflects them. Do not record routine run
+land in the shared module; the next task's run reflects them. Do not record routine run
 chronology.
 
 There is no freeze commit, no commit-per-repair rule and no held-out selection: a method with no
 per-case branch treats every registry the same. The registry sweep (SDK-553) is the one gated
 number: it runs the method set unchanged at a recorded commit and reports the automatic rate per
-relationship, registry and reader identity. Failures in the sweep become follow-up tickets, never
+relationship, registry and reader identity. Failures in the sweep join the gap list of the milestone (see the [roadmap](roadmap.md)), never
 fixes inside the sweep. A method page keeps failed shapes as pitfalls, not the runs.
 
 ### Write a method in one task
@@ -73,12 +73,12 @@ preserve it as the last section says.
 A separate investigation session is permitted before the method's task in two cases only:
 
 - the result selects between designs, so the plan cannot be written without it;
-- the result can show that the ticket's criteria cannot be met.
+- the result can show that the task's criteria cannot be met.
 
-The investigation has its own ticket, a child of the method ticket, and blocks it. It uses the
+The investigation is its own task, and the method's task waits for it. It uses the
 inspector and reads the code. It does not write method code or a prototype of the method. Its
 output is the findings and failed shapes on the method's page in `docs/native/`, and a
-recommendation on the ticket: the design to use, or the criterion to amend. The maintainer decides
+recommendation in its report: the design to use, or the criterion to amend. The maintainer decides
 before the method's task starts.
 
 All other exploration stays in the method's own task. A question whose answer does not change the
