@@ -177,6 +177,9 @@ struct State {
     path: Vec<u64>,
     /// The jump-table case that this token took.
     table_case: Option<TableCase>,
+    /// The outcome of each state comparison that the path has taken (`EqualsAny` to whether
+    /// it held), until a call or a store outside the frame may change the compared memory.
+    settled: BTreeMap<Value, bool>,
 }
 /// A reader call's Boolean in a stack temporary. The loader merges it into a bit of an owner
 /// word, or copies it to an owner byte, after the call.
@@ -208,6 +211,7 @@ impl State {
             self.registers.remove(&format!("x{register}"));
         }
         self.flags = None;
+        self.settled.clear();
     }
 
     fn overlaps_stored(&self, location: &Value, width: i64) -> bool {
@@ -620,6 +624,9 @@ fn apply(
 ) -> Result<(), Unresolved> {
     if matches!(row.operation.as_str(), "str" | "stur" | "strb" | "stp") {
         state.serializer = None;
+        if !row.operands.contains("[sp") {
+            state.settled.clear();
+        }
     }
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
     let unsupported = |reason| stop(reason, Obstacle::Unsupported);
@@ -935,7 +942,7 @@ pub(super) fn explore_owner(
     symbol_index: &SymbolIndex,
     root: &str,
     owner_slot: Option<i64>,
-) -> (Vec<TokenPath>, Vec<FieldGap>) {
+) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
     explore_member_with_wrapped_owner(
         &DispatchInput {
             scope: None,
@@ -992,7 +999,8 @@ pub(crate) fn explore_member(
     input: &DispatchInput<'_>,
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    explore_member_with_wrapped_owner(input, root, None, 0, None)
+    let (paths, gaps, _) = explore_member_with_wrapped_owner(input, root, None, 0, None);
+    (paths, gaps)
 }
 
 /// The token paths through `root`. With `declined`, a path that returns false there instead,
@@ -1003,7 +1011,7 @@ fn explore_member_with_wrapped_owner(
     wrapped_owner: Option<(i64, i64)>,
     depth: usize,
     mut declined: Option<&mut Vec<TokenPath>>,
-) -> (Vec<TokenPath>, Vec<FieldGap>) {
+) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
     let mut initial = State {
         stack: BTreeMap::new(),
         serializer: None,
@@ -1032,6 +1040,7 @@ fn explore_member_with_wrapped_owner(
         conditions: vec![],
         path: vec![],
         table_case: None,
+        settled: BTreeMap::new(),
     };
     if root.ends_with(", EScopeType)")
         && let Some(scope) = &input.scope
@@ -1040,7 +1049,11 @@ fn explore_member_with_wrapped_owner(
     }
     let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
-        return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
+        return (
+            vec![initial.finish(0, PathOutcome::Gap(missing))],
+            vec![],
+            vec![],
+        );
     };
     let after_last = rows.last().map_or(entry, |row| row.address + 4);
     let indexes: BTreeMap<_, _> = rows
@@ -1051,7 +1064,11 @@ fn explore_member_with_wrapped_owner(
     if let Some(loader) = input.loader {
         let Some(&start) = indexes.get(&loader.start) else {
             let missing = Unresolved::new("loader-start");
-            return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
+            return (
+                vec![initial.finish(0, PathOutcome::Gap(missing))],
+                vec![],
+                vec![],
+            );
         };
         initial.pc = start;
         initial.registers = BTreeMap::from([
@@ -1065,6 +1082,7 @@ fn explore_member_with_wrapped_owner(
     let mut leaves = Vec::new();
     let mut tables = Vec::new();
     let mut table_readers = Vec::new();
+    let mut order_checks = Vec::new();
     let mut visited = 0;
     while let Some(mut state) = pending.pop() {
         visited += 1;
@@ -1244,7 +1262,7 @@ fn explore_member_with_wrapped_owner(
                         && matches!(state.value("x2"), Some(Value::Token | Value::TokenWord(0)))
                     {
                         let child_input = input.with_owner_vtable(None);
-                        let (children, gaps) = explore_member_with_wrapped_owner(
+                        let (children, gaps, checks) = explore_member_with_wrapped_owner(
                             &child_input,
                             name.unwrap(),
                             Some((slot, owner)),
@@ -1252,6 +1270,7 @@ fn explore_member_with_wrapped_owner(
                             None,
                         );
                         tables.extend(gaps);
+                        order_checks.extend(checks);
                         leaves.extend(continued(children, &state, row.operation == "b"));
                     } else {
                         leaves.push(state.finish(
@@ -1282,7 +1301,7 @@ fn explore_member_with_wrapped_owner(
                     // A serializer's inherited reader keeps its receiver; an owner's has none.
                     let inherited_wrapped = wrapped_owner
                         .filter(|_| state.registers.get("x0") == Some(&Value::Serializer(0)));
-                    let (children, gaps) = explore_member_with_wrapped_owner(
+                    let (children, gaps, checks) = explore_member_with_wrapped_owner(
                         input,
                         inherited,
                         inherited_wrapped,
@@ -1290,6 +1309,7 @@ fn explore_member_with_wrapped_owner(
                         collects.then_some(&mut inherited_declined),
                     );
                     tables.extend(gaps);
+                    order_checks.extend(checks);
                     leaves.extend(continued(children, &state, !returns));
                     let inherited_declined = continued(inherited_declined, &state, false);
                     if !returns {
@@ -1313,6 +1333,20 @@ fn explore_member_with_wrapped_owner(
                     .and_then(|address| input.symbol_index.name(input.symbols, address))
                     .is_some_and(readers::changes_no_script_state);
                 if state.stored.is_some() && harmless && row.operation == "bl" {
+                    state.clobber_call();
+                    continue;
+                }
+                // A diagnostic about a converted value changes no script state, so the path goes
+                // on to the value's store. The reader's own reports stay rejections.
+                if row.operation == "bl"
+                    && state.converted.is_some()
+                    && target
+                        .and_then(|address| input.symbol_index.name(input.symbols, address))
+                        .is_some_and(|name| {
+                            readers::changes_no_script_state(name)
+                                && !name.starts_with("CReader::Report")
+                        })
+                {
                     state.clobber_call();
                     continue;
                 }
@@ -1514,6 +1548,12 @@ fn explore_member_with_wrapped_owner(
                     continue;
                 }
             }
+            if let Some(settled) = settled_comparison(row, &state, &rows, &indexes, input) {
+                state.pc = settled.side;
+                state.settled.insert(settled.compared, settled.equal);
+                order_checks.extend(settled.check);
+                continue;
+            }
             let branching = if let Some(condition) = row.operation.strip_prefix("b.") {
                 condition_branch(condition, row, &state, &indexes, entry)
             } else if matches!(row.operation.as_str(), "cbz" | "cbnz")
@@ -1546,7 +1586,7 @@ fn explore_member_with_wrapped_owner(
             .cmp(&b.domain)
             .then(a.conditions.cmp(&b.conditions))
     });
-    (leaves, tables)
+    (leaves, tables, order_checks)
 }
 
 /// Whether the code after a read (`continuation`) only restores registers and the frame, then
@@ -1988,6 +2028,176 @@ fn owner_virtual_target(input: &DispatchInput<'_>, state: &State, operand: &str)
     pointers.get(&point.checked_add(offset as u64)?).copied()
 }
 
+/// An order check: a test of an owner word, before the path reads its key's value, whose one side
+/// logs a diagnostic and returns whatever the token. The walk takes the other side, so a key's read conditions do not hold
+/// the order; the check's tested value and the tokens that reach it state the order instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct OrderCheck {
+    /// The branch of the check.
+    pub at: u64,
+    /// The state value that the check compares.
+    pub tested: Value,
+    /// The tokens that reached the check on one path and that its rejecting side would reject.
+    pub domain: [i64; 2],
+}
+
+/// A state comparison that a branch decides without a fork.
+struct Settled {
+    /// The comparison, as an `EqualsAny` value.
+    compared: Value,
+    /// Whether the compared value equals a pivot on the side taken.
+    equal: bool,
+    /// The row index of the side taken.
+    side: usize,
+    /// The order check that the branch passes, when it is one.
+    check: Option<OrderCheck>,
+}
+
+/// How the conditional branch `row` decides a state comparison without a fork: an earlier
+/// comparison of the same state on the path settled it, or one side only logs and returns.
+/// `None` when the branch forks as usual.
+fn settled_comparison(
+    row: &Instruction,
+    state: &State,
+    rows: &[Instruction],
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+) -> Option<Settled> {
+    let condition = row.operation.strip_prefix("b.")?;
+    let Some(Flags::Values { tested, pivots }) = &state.flags else {
+        return None;
+    };
+    if !matches!(condition, "eq" | "ne")
+        || matches!(
+            tested,
+            Value::Token | Value::TokenWord(_) | Value::Constant(_)
+        )
+    {
+        return None;
+    }
+    let target = *number(&row.operands).and_then(|a| indexes.get(&(a as u64)))?;
+    let (equal_side, unequal_side) = if condition == "eq" {
+        (target, state.pc)
+    } else {
+        (state.pc, target)
+    };
+    let side = |equal| if equal { equal_side } else { unequal_side };
+    let compared = Value::EqualsAny(Box::new(tested.clone()), pivots.clone());
+
+    if let Some(&equal) = state.settled.get(&compared) {
+        return Some(Settled {
+            side: side(equal),
+            compared,
+            equal,
+            check: None,
+        });
+    }
+
+    // An order check tests a word of the definition before the path reads or writes anything.
+    let writes = state.path.iter().any(|address| {
+        indexes.get(address).is_some_and(|&index| {
+            let row = &rows[index];
+            row.operation.starts_with("st") && !row.operands.contains("[sp")
+        })
+    });
+    let unread =
+        !writes && state.stored.is_none() && state.converted.is_none() && state.temporary.is_none();
+    if !unread
+        || !matches!(tested, Value::Load(word, _) if matches!(word.as_ref(), Value::Owner(_)))
+    {
+        return None;
+    }
+    let rejects = |side| logs_and_returns(rows, side, indexes, input);
+    let equal = match (rejects(equal_side), rejects(unequal_side)) {
+        (true, false) => false,
+        (false, true) => true,
+        _ => return None,
+    };
+    let check = OrderCheck {
+        at: row.address,
+        tested: tested.clone(),
+        domain: state.domain,
+    };
+
+    Some(Settled {
+        side: side(equal),
+        compared,
+        equal,
+        check: Some(check),
+    })
+}
+
+/// The most instructions that [`logs_and_returns`] examines.
+const MAX_DIAGNOSTIC_SIDE: usize = 64;
+
+/// Whether every way from `rows[start]` calls a diagnostic and returns, calling nothing else that
+/// can change script state and writing only the frame. Such a side reads no key, whatever the
+/// token.
+fn logs_and_returns(
+    rows: &[Instruction],
+    start: usize,
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+) -> bool {
+    let local = |operand: &str| number(operand).and_then(|a| indexes.get(&(a as u64)).copied());
+    // Each way, and whether it has called a diagnostic.
+    let mut pending = vec![(start, false)];
+    // Whether the first way to reach an instruction had called a diagnostic.
+    let mut seen = BTreeMap::new();
+
+    while let Some((mut index, mut logged)) = pending.pop() {
+        loop {
+            if let Some(&earlier) = seen.get(&index) {
+                // A later way covers itself only when it has logged at least as much.
+                if earlier && !logged {
+                    return false;
+                }
+                break;
+            }
+            seen.insert(index, logged);
+            if seen.len() > MAX_DIAGNOSTIC_SIDE {
+                return false;
+            }
+            let Some(row) = rows.get(index) else {
+                return false;
+            };
+            let target = row.operands.rsplit(',').next().unwrap_or_default();
+            index += 1;
+
+            match row.operation.as_str() {
+                "ret" if logged => break,
+                "ret" | "br" | "blr" => return false,
+                "bl" => {
+                    let callee = number(&row.operands)
+                        .and_then(|address| input.symbol_index.name(input.symbols, address as u64));
+                    if !callee.is_some_and(readers::changes_no_script_state) {
+                        return false;
+                    }
+                    logged = true;
+                }
+                "b" => match local(target) {
+                    Some(next) => index = next,
+                    None => return false,
+                },
+                "cbz" | "cbnz" | "tbz" | "tbnz" => match local(target) {
+                    Some(next) => pending.push((next, logged)),
+                    None => return false,
+                },
+                operation if operation.starts_with("b.") => match local(target) {
+                    Some(next) => pending.push((next, logged)),
+                    None => return false,
+                },
+                operation if operation.starts_with("st") && !row.operands.contains("[sp") => {
+                    return false;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    true
+}
+
 /// Whether the instruction at `index` calls a function that never returns.
 fn aborts(rows: &[Instruction], index: usize, input: &DispatchInput<'_>) -> bool {
     rows.get(index).is_some_and(|row| {
@@ -2155,9 +2365,11 @@ fn values_branch(
                 state.pc
             };
             if token_offset.is_none() {
+                let compared = Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec());
+                next.settled.insert(compared.clone(), equal);
                 next.conditions.push(Condition {
                     at: row.address,
-                    value: Some(Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec())),
+                    value: Some(compared),
                     zero: !equal,
                 });
             }
@@ -2933,6 +3145,7 @@ mod tests {
     #[test]
     fn register_widths_preserve_only_valid_provenance() {
         let mut state = State {
+            settled: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
             copied_tokens: BTreeSet::new(),

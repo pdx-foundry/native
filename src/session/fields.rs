@@ -917,7 +917,13 @@ fn collapse_equivalent_branches(alternatives: &mut Vec<(Vec<Condition>, PathOutc
             let (conditions, outcome) = &alternatives[left];
             if !matches!(
                 outcome,
-                PathOutcome::Reader(ReaderJoin::Joined { .. }) | PathOutcome::Rejected
+                PathOutcome::Reader(
+                    ReaderJoin::Joined { .. }
+                        | ReaderJoin::Stored {
+                            destination: Some(_),
+                            ..
+                        }
+                ) | PathOutcome::Rejected
             ) {
                 continue;
             }
@@ -1699,6 +1705,7 @@ mod tests {
             readers: vec![target_join],
         };
         let result = |fields, paths, collections| RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             persistent: BTreeMap::new(),

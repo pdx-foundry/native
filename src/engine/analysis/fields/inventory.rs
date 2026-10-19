@@ -1,5 +1,9 @@
+use super::dispatch::OrderCheck;
 use super::tokens::{Token, named_key};
-use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
+use super::uses::storage_offset;
+use super::{
+    FieldGap, FieldGapKind, KeyOrder, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+};
 use std::collections::BTreeMap;
 
 pub(crate) fn fields_and_gaps(
@@ -51,6 +55,56 @@ pub(crate) fn fields_and_gaps(
         }
     }
     (fields.into_values().collect(), gaps)
+}
+
+/// The key order of each order check in `checks`: the named keys that no path to the check
+/// would have rejected, and the field that sets the tested word.
+pub(super) fn key_order(
+    checks: &[OrderCheck],
+    fields: &[RootField],
+    tokens: &BTreeMap<i64, Token>,
+    partition_accounted: bool,
+) -> Vec<KeyOrder> {
+    let mut domains: BTreeMap<u64, (&Value, Vec<[i64; 2]>)> = BTreeMap::new();
+
+    for check in checks {
+        let (_, rejected) = domains
+            .entry(check.at)
+            .or_insert((&check.tested, Vec::new()));
+        rejected.push(check.domain);
+    }
+
+    let mut order: Vec<KeyOrder> = Vec::new();
+
+    for (tested, rejected) in domains.into_values() {
+        let allowed = tokens
+            .iter()
+            .filter(|(token, _)| {
+                !rejected
+                    .iter()
+                    .any(|[low, high]| (low..=high).contains(token))
+            })
+            .filter_map(|(_, token)| token.name.clone());
+        let mut allowed: Vec<_> = allowed.collect();
+        allowed.sort();
+        let set_by = match tested {
+            Value::Load(word, _) => match word.as_ref() {
+                Value::Owner(at) => fields
+                    .iter()
+                    .find(|field| storage_offset(field, partition_accounted) == Some(*at))
+                    .map(|field| field.name.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let entry = KeyOrder { allowed, set_by };
+
+        if !order.contains(&entry) {
+            order.push(entry);
+        }
+    }
+
+    order
 }
 
 pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
@@ -113,6 +167,7 @@ mod tests {
         let partition_accounted = partition_accounted(&paths);
         let offset = storage_offset(&fields[0], partition_accounted);
         let result = RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             uses: Vec::new(),
