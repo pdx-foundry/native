@@ -1264,22 +1264,30 @@ Two loaders that the literal scan did not name, read on M452 with `examples/insp
 
 | Registry | `registry_fields` | Definition names |
 | --- | --- | --- |
-| `common/name_lists` | `Unsupported`: several classes | `Root` / `Key` |
+| `common/name_lists` | `CNameList`, 15 fields, partial | `Root` / `Key` |
 | `common/random_names` | `Unsupported`: several classes | `RootKey(*_name_parts_list)` / `Field("key")` |
 | `common/random_names/base` | `Unsupported`: stated reason, no item | nested-key obstacle |
 | `common/graphical_culture` | `CGfxCulture`, 8 fields, partial | `Root` / `Key` |
 | `common/game_rules` | `Unsupported`: stated reason, no item | `Root` / `Key` |
 | `music` | `Unsupported`: several classes (`CSong`, `CMeanTimeToHappen`) | `RootKey("song")` / `Field("name")` |
 
-- **Why `common/name_lists` has no owner.** `Init()` allocates one `CNameList` (`new 0x318`, its
-  vtable at `[x19]`) and reads it through slot `+0x20` with the statement reader
-  (`0x1009971e0`). The same route forms the vtables of `CNameListShipClass`, `CNameListShip`,
-  `CNameListPlanet`, `CNameListCharacter`, `CNameListFleet`, `CNameListArmy` and
-  `CNameListByRarity` on the stack as the default contents of `SNameListContent`, which
-  `SNameListContent::operator=` moves into the list. All have a member reader, so the owner join
-  gives `Several`. Removal route: follow the built object to the call that receives the
-  statement reader. A heap-versus-stack rule is not enough: `ReadRandomNames()` builds its part
-  lists on the stack and copies them into an array, and its formats on the heap.
+- **The owner of `common/name_lists` is the object that the loader reads.** `Init()` allocates
+  one `CNameList` (`new 0x318`), stores its address point with `str x8, [x19]` (`0x100996cbc`)
+  and reads it with `mov x0, x19; add x1, sp, #0x1b0; blr x8` through slot `+0x20`
+  (`0x1009971f0`); `sp+0x1b0` is the reader of its one `ReadSimpleStatement()`. The same route
+  forms the vtables of `CNameListShipClass`, `CNameListShip`, `CNameListPlanet`,
+  `CNameListCharacter`, `CNameListFleet`, `CNameListArmy`, `CNameListByRarity` and
+  `CNameListDesign`, stored into the list at `+0x10` and after or on the stack as the default
+  contents of `SNameListContent`. All have a member reader, so the built classes are several;
+  [the read object](#custom-loader-owners) selects `CNameList`.
+- **Nested name lists stay unresolved.** `CNameList::ReadMember` reads `ship_names`,
+  `character_names` and the other lists with `CReader::Read(CPersistent&)` on embedded objects
+  (`+0x10`, `+0x68`, `+0x88`, `+0xf8`, `+0x1a0`, …), but `CNameList::CNameList()`
+  (`0x10061aa54`, used for the null object) installs no vtable there; `Init()` builds the contents
+  inline. The [embedded-object join](#embedded-object-keys) reads the owner's constructors, so these
+  fields keep `Unresolved` members. Removal route: take the loader's inline build of the read
+  object as a constructor of the owner. `language`, which the config states, is not a key of
+  `CNameList::ReadMember`, and vanilla M452 does not use it.
 - **Why `common/random_names` has no owner.** Five keys build each class, and the switch is a
   jump table, which [root-key owners](#root-key-owners-sdk-813) do not read. The route also builds
   `CWeightedStringTable` and `CMeanTimeToHappen`, members of the two classes.
@@ -1293,9 +1301,21 @@ database's own functions. The loader route is each of them that calls the file e
 each of them that the route calls directly. The owner is the one class with a member reader that
 the route builds: it calls the class's constructor or forms its primary vtable address point, as
 an inlined constructor does. Several built classes are owners [by root key](#root-key-owners-sdk-813)
-when the root keys select between them. A loader of several directories has a route for each
+when the root keys select between them. Otherwise the owner is the one built class whose object
+the route reads: a route function with one statement read stores the class's address point to
+the object's first word, then passes the object in `x0` and that statement's reader in `x1` to a
+call (a virtual `Read(CReader&)`). A loader of several directories has a route for each
 ([one loader, three directories](#one-loader-three-directories-sdk-843)). None, or several in any
 other shape, is `Unsupported` with the reason, never a choice.
+
+- **Read object: validated assumption, not a proof.** The registers are followed in code order,
+  not by path, and a constructor call is not counted as the store. On M452 the rule selects only
+  `CNameList` (`common/name_lists`). It does not select one class for `common/random_names`: the
+  part lists are read by `CReader::Read(CPersistent&)` with the reader in `x0`, and each format's
+  address point is stored with a post-index store into `x0` after `mov x19, x0`. `music` stays `Several`
+  (`CSong`, `CMeanTimeToHappen`). Change the rule when a loader reads its object through a
+  constructor-built object or a copied register; the exact-build test of the owners fixes the three
+  answers.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -1329,9 +1349,10 @@ other shape, is `Unsupported` with the reason, never a choice.
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 19 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34` for
-`common/planet_classes`, SDK-843 for the two ship-design directories and SDK-844 for
-`common/graphical_culture`; fields, then the answer). `common/component_templates` has a class for each root key and no owner
+On M452, 20 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34` for
+`common/planet_classes`, SDK-843 for the two ship-design directories, SDK-844 for
+`common/graphical_culture` and the read-object rule for `common/name_lists`; fields, then the
+answer). `common/component_templates` has a class for each root key and no owner
 ([root-key owners](#root-key-owners-sdk-813)):
 
 | Registry | Owner | Fields | Answer |
@@ -1342,6 +1363,7 @@ On M452, 19 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34`
 | `common/fallen_empires` | `CFallenEmpireType` | 6 | partial |
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
 | `common/graphical_culture` | `CGfxCulture` | 8 | partial |
+| `common/name_lists` | `CNameList`, the read object | 15 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
 | `common/section_templates` | `CSectionTemplate` | 19 | partial |

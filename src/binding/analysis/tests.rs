@@ -2200,6 +2200,8 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
 
     // The directory is the text of the instance's `CString` member.
     assert_eq!(directory("CNameListDatabase"), named("common/name_lists"));
+    // The loader reads the heap list; the classes of its default contents are only built.
+    assert_eq!(owner("CNameListDatabase"), "CNameList");
     assert_eq!(owner("CGfxCultureDatabase"), "CGfxCulture");
     // A loader outside the schedule reads each of its two directories on its own route.
     let random_names = "CRandomNameDatabase";
@@ -2219,6 +2221,11 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         random_owner("common/random_names"),
         LoaderOwner::Several(classes) if classes.contains(&"CCompositNamePartList".into())
     ));
+    // Neither class is the object that the song loader reads with its statement reader.
+    assert_eq!(
+        owners[&("CSongDatabase".to_owned(), "music".to_owned())],
+        LoaderOwner::Several(vec!["CMeanTimeToHappen".into(), "CSong".into()])
+    );
     assert_eq!(owners.len(), 31);
 }
 
