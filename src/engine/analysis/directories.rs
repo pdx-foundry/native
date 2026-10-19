@@ -33,6 +33,13 @@
 //! after a stop is read too. The literal can also arrive through a global `char const*`: an `ldr`
 //! from a known address loads the pointer slot, and the slot's rebase target is the literal. The
 //! method takes the slot's initial value as its value when the loader runs.
+//!
+//! The directory can also be the text of a `CString` member of the database instance, which the
+//! enumerating function, a member, reads through `x0` at its entry. [`member_texts`] gives the
+//! literal that the instance's constructors, or the object that `CreateInstance()` allocates,
+//! build that member from. Two assumptions hold on M452 and are not proved: the enumerating
+//! function is a member function, and the object that `CreateInstance()` allocates is the
+//! instance (it stores it to `_pInstance`).
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
@@ -41,7 +48,7 @@ use super::decode::{
 };
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "registry-directories/v7";
+pub const METHOD: &str = "registry-directories/v8";
 
 /// Base constructor whose `CString` argument is the content directory.
 pub const BASE_CONSTRUCTOR: &str =
@@ -51,6 +58,8 @@ pub const STRING_CONSTRUCTOR: &str = "CString::CString(char const*)";
 /// File enumeration whose first argument is a loader's content directory.
 pub const FILE_ENUMERATION: &str =
     "VFSGetEnumeratedFiles(char const*, CPdxArray<CString, int>&, char const*, char const*, int)";
+/// Allocation whose result `CreateInstance()` builds the database instance in.
+pub const ALLOCATION: &str = "operator new(unsigned long)";
 /// Name prefix of the static initializers that can build a global `CString`.
 pub const INITIALIZER_PREFIX: &str = "__GLOBAL__sub_I_";
 
@@ -72,6 +81,8 @@ pub struct Anchors {
     pub string_constructors: BTreeSet<u64>,
     /// Every body of the file enumeration.
     pub file_enumerations: BTreeSet<u64>,
+    /// Every body of the allocation.
+    pub allocations: BTreeSet<u64>,
 }
 
 /// What the constructors of one class establish.
@@ -105,6 +116,21 @@ pub(super) enum Value {
     Stack(u64),
     /// The pointer loaded from the slot at this address.
     Slot(u64),
+    /// The instance's address plus this offset.
+    Object(u64),
+    /// The text of the instance's `CString` member at this offset.
+    MemberText(u64),
+}
+
+/// What the scan knows of the database instance.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Instance {
+    /// Nothing: the function is not one of the instance's.
+    Unknown,
+    /// `x0` at the entry is the instance, as in a constructor or another member function.
+    Entry,
+    /// The result of the one allocation is the instance, as in `CreateInstance()`.
+    Allocated,
 }
 
 /// The file-selection argument registers at one file-enumeration call.
@@ -148,9 +174,13 @@ struct Scan {
     unread_base_call: bool,
 }
 
-/// Linear scan of one function.
-fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
+/// Linear scan of one function, which knows the address of the database instance as `instance`
+/// says.
+fn scan(function: &Constructor, anchors: &Anchors, instance: Instance) -> Scan {
     let mut registers = [Value::Unknown; 32];
+    if instance == Instance::Entry {
+        registers[0] = Value::Object(0);
+    }
     // Objects built so far, by location. A later construction at one location replaces the
     // earlier one, and any other call that receives the object forgets it.
     let mut objects: Vec<(Value, u64)> = Vec::new();
@@ -188,6 +218,9 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
                 }
             }
             registers[..=18].fill(Value::Unknown);
+            if instance == Instance::Allocated && anchors.allocations.contains(&target) {
+                registers[0] = Value::Object(0);
+            }
         } else if let Some(transfer) = unconditional_branch(word) {
             match transfer {
                 Transfer::Stop => {
@@ -216,17 +249,34 @@ fn scan(function: &Constructor, anchors: &Anchors) -> Scan {
 /// unconditional branch starts a block with every register unknown, so a value is known only
 /// when the block that makes the call sets it. A shared template loader chooses its directory
 /// on two paths, then sets the other arguments after they join.
+///
+/// `x0` at the entry is taken as the database instance, since a loader's enumerating functions
+/// are members of it. The one join that keeps a value is a [`member_text_select`]: its block
+/// starts with `x0` holding the text of that member.
 pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Vec<EnumerationCall> {
     let words = function.code.as_chunks::<4>().0;
     let starts = block_starts(words, function.address);
+    let incoming = incoming_branches(words, function.address);
     let mut registers = [Value::Unknown; 32];
+    registers[0] = Value::Object(0);
+    let mut selected_text = None;
     let mut calls = Vec::new();
     for (index, word) in words.iter().enumerate() {
-        let word = u32::from_le_bytes(*word);
         let address = function.address + index as u64 * 4;
         if starts.contains(&address) {
             registers.fill(Value::Unknown);
+            if let Some((join, offset)) = selected_text.take()
+                && join == address
+            {
+                registers[0] = Value::MemberText(offset);
+            }
         }
+
+        if let Some(select) = member_text_select(&words[index..], address, &registers, &incoming) {
+            selected_text = Some(select);
+        }
+
+        let word = u32::from_le_bytes(*word);
 
         if let Some(target) = branch_with_link(word, address) {
             if anchors.file_enumerations.contains(&target) {
@@ -263,6 +313,78 @@ fn block_starts(words: &[[u8; 4]], address: u64) -> BTreeSet<u64> {
     starts
 }
 
+/// The number of branches in `words`, which start at `address`, that reach each address: each
+/// conditional branch and each `b`.
+fn incoming_branches(words: &[[u8; 4]], address: u64) -> BTreeMap<u64, usize> {
+    let mut incoming = BTreeMap::new();
+    for (index, word) in words.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
+        let at = address + index as u64 * 4;
+        let jump = (word & 0xfc00_0000 == 0x1400_0000)
+            .then(|| call_or_jump_target(word, at))
+            .flatten();
+        if let Some(target) = conditional_branch_target(word, at).or(jump) {
+            *incoming.entry(target).or_insert(0) += 1;
+        }
+    }
+
+    incoming
+}
+
+/// The join and the member offset of the short-string select that starts `words`, at `address`,
+/// when `x0` leaves it as the text of the instance's `CString` member.
+///
+/// A `CString` keeps a short text inline and a long one behind a pointer, and the sign bit of its
+/// byte at `+0x17` says which. The select is `ldrsb wN, [xA, #a]; tbz wN, #31, join;
+/// ldr x0, [xB, #b]`, where `xA + a - 0x17` and `xB + b` are the same member of the instance, and
+/// `x0` already holds that member's address: on each path `x0` then points at its text. No other
+/// branch may enter the select or its join, so no other path brings another `x0` there.
+fn member_text_select(
+    words: &[[u8; 4]],
+    address: u64,
+    registers: &[Value; 32],
+    incoming: &BTreeMap<u64, usize>,
+) -> Option<(u64, u64)> {
+    let [load_flag, test, load_pointer, ..] = words else {
+        return None;
+    };
+    let (flag, flag_base, flag_offset) = ldrsb_immediate(u32::from_le_bytes(*load_flag))?;
+    let test = u32::from_le_bytes(*test);
+    let join = address + 12;
+    let tests_sign = test & 0xff00_0000 == 0x3600_0000
+        && (test >> 19 & 31) as usize == 31
+        && (test & 31) as usize == flag
+        && conditional_branch_target(test, address + 4) == Some(join);
+    let (destination, pointer_base, pointer_offset) =
+        ldr_immediate(u32::from_le_bytes(*load_pointer))?;
+    let instance_offset = |register: usize, offset: u64| match registers[register] {
+        Value::Object(base) => base.checked_add(offset),
+        _ => None,
+    };
+    let member = instance_offset(pointer_base, pointer_offset)?;
+    let shape = tests_sign
+        && destination == 0
+        && instance_offset(flag_base, flag_offset) == member.checked_add(0x17)
+        && registers[0] == Value::Object(member);
+    let entered_only_by_its_test = incoming.get(&join) == Some(&1)
+        && !incoming.contains_key(&(address + 4))
+        && !incoming.contains_key(&(address + 8));
+
+    (shape && entered_only_by_its_test).then_some((join, member))
+}
+
+/// The destination register, base register and offset of a 32-bit `ldrsb` with an unsigned
+/// immediate offset, such as `ldrsb w8, [x0, #0x17]`.
+fn ldrsb_immediate(word: u32) -> Option<(usize, usize, u64)> {
+    (word & 0xffc0_0000 == 0x39c0_0000).then(|| {
+        (
+            (word & 31) as usize,
+            (word >> 5 & 31) as usize,
+            u64::from(word >> 10 & 0xfff),
+        )
+    })
+}
+
 /// Follow one word that is neither a call nor an unconditional branch. An `adrp`, an `add` or
 /// `sub` of an immediate, a register move, an immediate move and a load from a known address give
 /// the value that they write; any other word makes every register that it may write unknown.
@@ -283,6 +405,7 @@ fn step(registers: &mut [Value; 32], word: u32, address: u64) {
             (31, _) => Value::Stack(offset),
             (_, Value::Constant(base)) => Value::Constant(base.wrapping_add(offset)),
             (_, Value::Stack(base)) => Value::Stack(base.wrapping_add(offset)),
+            (_, Value::Object(base)) => Value::Object(base.wrapping_add(offset)),
             _ => Value::Unknown,
         };
         if destination != 31 {
@@ -441,7 +564,7 @@ pub fn arguments(
     anchors: &Anchors,
     strings: &BTreeMap<u64, String>,
 ) -> Vec<Argument> {
-    let scan = scan(constructor, anchors);
+    let scan = scan(constructor, anchors, Instance::Unknown);
     // Arguments read before a stop do not prove the directory when the code after it, which the
     // scan did not follow, calls the base constructor again.
     let unread = scan.unread_base_call.then_some(Argument::Unknown);
@@ -467,7 +590,7 @@ pub fn globals(
 ) -> BTreeMap<u64, String> {
     let mut found: BTreeMap<u64, BTreeSet<String>> = BTreeMap::new();
     for initializer in initializers {
-        for built in scan(initializer, anchors).built {
+        for built in scan(initializer, anchors, Instance::Unknown).built {
             if let (Value::Constant(global), Some(path)) =
                 (built.destination, directory_path(strings, built.literal))
             {
@@ -482,28 +605,85 @@ pub fn globals(
         .collect()
 }
 
+/// The text of each `CString` member that the database instance's `constructors` and `creators`
+/// build from a literal, by member offset. A constructor receives the instance in `x0`; a
+/// creator, `CreateInstance()`, allocates it. A member built with several texts, and a creator
+/// that allocates more than once, give nothing.
+pub fn member_texts(
+    constructors: &[Constructor],
+    creators: &[Constructor],
+    anchors: &Anchors,
+    strings: &BTreeMap<u64, String>,
+) -> BTreeMap<u64, String> {
+    let allocates_once =
+        |creator: &&Constructor| allocation_count(creator, &anchors.allocations) == 1;
+    let built = constructors
+        .iter()
+        .flat_map(|constructor| scan(constructor, anchors, Instance::Entry).built)
+        .chain(
+            creators
+                .iter()
+                .filter(allocates_once)
+                .flat_map(|creator| scan(creator, anchors, Instance::Allocated).built),
+        );
+    let mut found: BTreeMap<u64, BTreeSet<String>> = BTreeMap::new();
+    for built in built {
+        if let (Value::Object(offset), Some(path)) =
+            (built.destination, directory_path(strings, built.literal))
+        {
+            found.entry(offset).or_default().insert(path);
+        }
+    }
+
+    found
+        .into_iter()
+        .filter(|(_, texts)| texts.len() == 1)
+        .map(|(offset, mut texts)| (offset, texts.pop_first().expect("one text")))
+        .collect()
+}
+
+/// The number of `bl` words in `function` that call one of `allocations`.
+fn allocation_count(function: &Constructor, allocations: &BTreeSet<u64>) -> usize {
+    let words = function.code.as_chunks::<4>().0;
+
+    words
+        .iter()
+        .enumerate()
+        .filter(|(index, word)| {
+            let address = function.address + *index as u64 * 4;
+            branch_with_link(u32::from_le_bytes(**word), address)
+                .is_some_and(|target| allocations.contains(&target))
+        })
+        .count()
+}
+
 /// The directory that a custom loader enumerates: the literal first argument of every
-/// file-enumeration call in `functions`, the database's own functions. `pointers` holds the
-/// rebase target of each pointer slot.
+/// file-enumeration call in `functions`, the database's own functions, or the text of the
+/// instance's member in `members` that it passes. `pointers` holds the rebase target of each
+/// pointer slot.
 pub fn loader_directory(
     functions: &[Constructor],
+    members: &BTreeMap<u64, String>,
     anchors: &Anchors,
     strings: &BTreeMap<u64, String>,
     pointers: &BTreeMap<u64, u64>,
 ) -> Directory {
-    let arguments: Vec<Argument> = enumerated_directories(functions, anchors, strings, pointers)
-        .into_iter()
-        .map(|(_, directory)| directory.map_or(Argument::Unknown, Argument::Literal))
-        .collect();
+    let arguments: Vec<Argument> =
+        enumerated_directories(functions, members, anchors, strings, pointers)
+            .into_iter()
+            .map(|(_, directory)| directory.map_or(Argument::Unknown, Argument::Literal))
+            .collect();
 
     directory(&arguments, &BTreeMap::new())
 }
 
-/// The address of every file-enumeration call in `functions`, with the directory literal that
-/// its call block passes, or `None` when the block does not establish one. `pointers` holds the
+/// The address of every file-enumeration call in `functions`, with the directory that its call
+/// block passes, or `None` when the block does not establish one: a literal, a literal that a
+/// pointer slot holds, or the text of an instance member in `members`. `pointers` holds the
 /// rebase target of each pointer slot.
 pub fn enumerated_directories(
     functions: &[Constructor],
+    members: &BTreeMap<u64, String>,
     anchors: &Anchors,
     strings: &BTreeMap<u64, String>,
     pointers: &BTreeMap<u64, u64>,
@@ -512,16 +692,16 @@ pub fn enumerated_directories(
         .iter()
         .flat_map(|function| enumeration_calls(function, anchors))
         .map(|call| {
-            let literal = match call.directory {
-                Value::Constant(literal) => Some(literal),
-                Value::Slot(slot) => pointers.get(&slot).copied(),
-                Value::Unknown | Value::Stack(_) => None,
+            let directory = match call.directory {
+                Value::Constant(literal) => directory_path(strings, literal),
+                Value::Slot(slot) => pointers
+                    .get(&slot)
+                    .and_then(|literal| directory_path(strings, *literal)),
+                Value::MemberText(offset) => members.get(&offset).cloned(),
+                Value::Unknown | Value::Stack(_) | Value::Object(_) => None,
             };
 
-            (
-                call.address,
-                literal.and_then(|literal| directory_path(strings, literal)),
-            )
+            (call.address, directory)
         })
         .collect()
 }
@@ -555,6 +735,7 @@ mod tests {
     const BASE: u64 = 0x1100;
     const STRING: u64 = 0x1200;
     const ENUMERATE: u64 = 0x1300;
+    const ALLOCATE: u64 = 0x1500;
     /// A function that is none of the anchors.
     const HELPER: u64 = 0x1400;
     /// The literals that `strings` holds.
@@ -574,6 +755,7 @@ mod tests {
             base_constructors: BTreeSet::from([BASE]),
             string_constructors: BTreeSet::from([STRING]),
             file_enumerations: BTreeSet::from([ENUMERATE]),
+            allocations: BTreeSet::from([ALLOCATE]),
         }
     }
     /// A pointer slot that holds `EXAMPLES`, and one that holds an address that is no literal.
@@ -654,6 +836,7 @@ mod tests {
     fn a_custom_loader_is_named_by_the_one_literal_it_enumerates() {
         let named = loader_directory(
             &[loader(EXAMPLES), loader(EXAMPLES)],
+            &BTreeMap::new(),
             &anchors(),
             &strings(),
             &pointers(),
@@ -662,6 +845,7 @@ mod tests {
 
         let several = loader_directory(
             &[loader(EXAMPLES), loader(OTHER)],
+            &BTreeMap::new(),
             &anchors(),
             &strings(),
             &pointers(),
@@ -675,6 +859,7 @@ mod tests {
         assert_eq!(
             loader_directory(
                 &[loader(EXAMPLES), unknown],
+                &BTreeMap::new(),
                 &anchors(),
                 &strings(),
                 &pointers()
@@ -682,7 +867,13 @@ mod tests {
             Directory::Missing
         );
         assert_eq!(
-            loader_directory(&[temporary(EXAMPLES)], &anchors(), &strings(), &pointers()),
+            loader_directory(
+                &[temporary(EXAMPLES)],
+                &BTreeMap::new(),
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
             Directory::Missing
         );
     }
@@ -695,16 +886,115 @@ mod tests {
         function(code.bytes())
     }
 
+    /// A `CreateInstance()` that allocates the instance and builds its `CString` member at
+    /// `offset` from `literal`.
+    fn creator(offset: u32, literal: u64) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        code.call(ALLOCATE);
+        arm64!(code; mov x19, x0; add x0, x19, #offset);
+        code.address(1, literal).call(STRING);
+
+        function(code.bytes())
+    }
+    /// A member function that enumerates the text of its instance's `CString` member at
+    /// `offset`, through the short-string select, after `before`.
+    fn member_loader(offset: u32, before: fn(&mut Arm64)) -> Constructor {
+        let flag = offset + 0x17;
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; mov x20, x0; add x0, x20, #offset);
+        before(&mut code);
+        arm64!(code
+            ; ldrsb w8, [x20, #flag]
+            ; tbz w8, #31, >join
+            ; ldr x0, [x20, #offset]
+            ; join:
+        );
+        code.call(ENUMERATE);
+
+        function(code.bytes())
+    }
+    #[test]
+    fn the_text_of_an_instance_member_names_the_loader() {
+        let members = member_texts(&[], &[creator(0x28, EXAMPLES)], &anchors(), &strings());
+        assert_eq!(members, BTreeMap::from([(0x28, "common/examples".into())]));
+        assert_eq!(
+            loader_directory(
+                &[member_loader(0x28, |_| {})],
+                &members,
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
+            Directory::Named("common/examples".into())
+        );
+
+        let mut constructor = Arm64::at(0x1000);
+        constructor.address(1, OTHER).call(STRING);
+        let constructed = member_texts(
+            &[function(constructor.bytes())],
+            &[],
+            &anchors(),
+            &strings(),
+        );
+        assert_eq!(constructed, BTreeMap::from([(0, "map/other".into())]));
+    }
+
+    #[test]
+    fn a_member_text_that_is_not_proven_leaves_the_loader_unnamed() {
+        let members = member_texts(&[], &[creator(0x28, EXAMPLES)], &anchors(), &strings());
+        let unnamed = |loader: Constructor| {
+            loader_directory(&[loader], &members, &anchors(), &strings(), &pointers())
+        };
+
+        assert_eq!(
+            unnamed(member_loader(0x28, |code| arm64!(code; mov x0, x1))),
+            Directory::Missing
+        );
+        assert_eq!(
+            unnamed(member_loader(0x28, |code| arm64!(code; cbz w1, >join))),
+            Directory::Missing
+        );
+        assert_eq!(unnamed(member_loader(0x30, |_| {})), Directory::Missing);
+
+        let twice = member_texts(
+            &[],
+            &[creator(0x28, EXAMPLES), creator(0x28, OTHER)],
+            &anchors(),
+            &strings(),
+        );
+        assert!(twice.is_empty());
+        let mut allocates_twice = Arm64::at(0x1000);
+        allocates_twice.call(ALLOCATE).call(ALLOCATE);
+        arm64!(allocates_twice; add x0, x0, #0x28);
+        allocates_twice.address(1, EXAMPLES).call(STRING);
+        assert!(
+            member_texts(
+                &[],
+                &[function(allocates_twice.bytes())],
+                &anchors(),
+                &strings()
+            )
+            .is_empty()
+        );
+    }
+
     #[test]
     fn a_literal_loaded_from_a_pointer_slot_names_the_loader() {
         let examples = Directory::Named("common/examples".into());
         assert_eq!(
-            loader_directory(&[slot_loader(SLOT)], &anchors(), &strings(), &pointers()),
+            loader_directory(
+                &[slot_loader(SLOT)],
+                &BTreeMap::new(),
+                &anchors(),
+                &strings(),
+                &pointers()
+            ),
             examples
         );
         assert_eq!(
             loader_directory(
                 &[slot_loader(SLOT), loader(EXAMPLES)],
+                &BTreeMap::new(),
                 &anchors(),
                 &strings(),
                 &pointers()
@@ -714,6 +1004,7 @@ mod tests {
         assert_eq!(
             loader_directory(
                 &[slot_loader(SLOT), loader(OTHER)],
+                &BTreeMap::new(),
                 &anchors(),
                 &strings(),
                 &pointers()
@@ -754,7 +1045,13 @@ mod tests {
             function(stack_after_zero.bytes()),
         ] {
             assert_eq!(
-                loader_directory(&[loader], &anchors(), &strings(), &pointers()),
+                loader_directory(
+                    &[loader],
+                    &BTreeMap::new(),
+                    &anchors(),
+                    &strings(),
+                    &pointers()
+                ),
                 Directory::Missing
             );
         }
@@ -874,7 +1171,11 @@ mod tests {
         call.address(1, EXAMPLES).call(HELPER);
         arm64!(call; add x0, sp, #8);
         call.call(STRING);
-        assert!(scan(&function(call.bytes()), &anchors()).built.is_empty());
+        assert!(
+            scan(&function(call.bytes()), &anchors(), Instance::Unknown)
+                .built
+                .is_empty()
+        );
 
         // mov x1, x2 replaces the stack argument before the base constructor.
         let mut overwritten = Arm64::at(0x1000);
@@ -903,7 +1204,11 @@ mod tests {
             write(&mut code);
             arm64!(code; add x0, sp, #8);
             code.call(STRING);
-            assert!(scan(&function(code.bytes()), &anchors()).built.is_empty());
+            assert!(
+                scan(&function(code.bytes()), &anchors(), Instance::Unknown)
+                    .built
+                    .is_empty()
+            );
         }
 
         // A store pair reads both registers, so the literal survives it.
@@ -911,7 +1216,12 @@ mod tests {
         stored.address(1, EXAMPLES);
         arm64!(stored; stp x0, x1, [sp, #16]; add x0, sp, #8);
         stored.call(STRING);
-        assert_eq!(scan(&function(stored.bytes()), &anchors()).built.len(), 1);
+        assert_eq!(
+            scan(&function(stored.bytes()), &anchors(), Instance::Unknown)
+                .built
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -977,6 +1287,7 @@ mod tests {
             assert_eq!(
                 loader_directory(
                     &[function(later_call.bytes())],
+                    &BTreeMap::new(),
                     &anchors(),
                     &strings(),
                     &pointers()
@@ -991,6 +1302,7 @@ mod tests {
             assert_eq!(
                 loader_directory(
                     &[function(literal_before_stop.bytes())],
+                    &BTreeMap::new(),
                     &anchors(),
                     &strings(),
                     &pointers()
@@ -1042,6 +1354,7 @@ mod tests {
             assert_eq!(
                 loader_directory(
                     &[function(code.bytes())],
+                    &BTreeMap::new(),
                     &anchors(),
                     &strings(),
                     &pointers()
@@ -1086,6 +1399,7 @@ mod tests {
         assert_eq!(
             loader_directory(
                 &[function(enumerates.bytes())],
+                &BTreeMap::new(),
                 &anchors(),
                 &strings(),
                 &pointers()

@@ -159,7 +159,9 @@ fn directory_code<'a>(
 }
 
 /// The owner that the route from `entries`, and every function of `functions` that it calls
-/// directly, builds.
+/// directly, builds. A called function that calls the file enumeration itself is not followed:
+/// it loads its own directory, as `CRandomNameDatabase::FillDatabase()` calls
+/// `ReadRandomNames()` after it reads its own files.
 fn route_owner(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     entries: Vec<u64>,
@@ -170,12 +172,16 @@ fn route_owner(
         .iter()
         .map(|(&start, rows)| (start, FunctionAddresses::of(rows)))
         .collect();
+    let follows = |call: &u64| {
+        addresses
+            .get(call)
+            .is_some_and(|callee| callee.calls.is_disjoint(reads.enumerations))
+    };
     let mut pending = entries;
     let mut route = BTreeSet::new();
     while let Some(start) = pending.pop() {
         if route.insert(start) {
-            let calls = &addresses[&start].calls;
-            pending.extend(calls.iter().filter(|call| addresses.contains_key(call)));
+            pending.extend(addresses[&start].calls.iter().filter(|call| follows(call)));
         }
     }
 
@@ -643,6 +649,35 @@ mod tests {
         assert_eq!(
             owner(functions.clone()),
             LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
+        );
+    }
+
+    #[test]
+    fn a_directory_route_does_not_follow_a_call_into_another_directory_loader() {
+        let mut first = Arm64::at(LOADER);
+        first.call(ENUMERATE);
+        builds_owner(&mut first);
+        first.call(READ_FILE);
+        arm64!(first; ret);
+        let mut second = Arm64::at(READ_FILE);
+        second.call(ENUMERATE);
+        builds_other(&mut second);
+        arm64!(second; ret);
+        let functions = BTreeMap::from([decoded(first, LOADER), decoded(second, READ_FILE)]);
+        let reads = LoaderReads {
+            enumerations: &BTreeSet::from([ENUMERATE]),
+            statement_reads: &BTreeSet::from([READ_STATEMENT]),
+            token_offset: TOKEN_OFFSET,
+            token_names: &BTreeMap::new(),
+        };
+
+        assert_eq!(
+            directory_owner(&functions, &reads, &builders(), &[LOADER]),
+            LoaderOwner::Owner("COwner".into())
+        );
+        assert_eq!(
+            directory_owner(&functions, &reads, &builders(), &[READ_FILE]),
+            LoaderOwner::Owner("COther".into())
         );
     }
 

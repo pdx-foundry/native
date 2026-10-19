@@ -194,8 +194,9 @@ impl Native {
         let mut gaps = vec![Gap {
             kind: GapKind::OutsideMethod,
             subject: None,
-            detail: "Registries with nested or late loaders, or with loaders that the database \
-                     schedule does not list, are not listed."
+            detail: "Registries with nested loaders, or with loaders outside the database \
+                     schedule whose own functions do not both enumerate a content directory and \
+                     read statements, are not listed."
                 .into(),
         }];
         let mut unnamed_details = Vec::new();

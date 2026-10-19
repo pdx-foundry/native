@@ -200,12 +200,80 @@ pub(in crate::binding) fn database_directories(
         .into_iter()
         .map(|database| {
             let directory = template_directory(candidates, &database).unwrap_or_else(|| {
-                let own = own_functions(text, image.symbols, &database);
-                directories::loader_directory(&own, &anchors, image.strings, image.pointers)
+                directories::loader_directory(
+                    &own_functions(text, image.symbols, &database),
+                    &instance_members(text, image, &database, &anchors),
+                    &anchors,
+                    image.strings,
+                    image.pointers,
+                )
             });
             (database, directory)
         })
         .collect()
+}
+
+/// The classes outside `known`, the template and scheduled databases, that load a directory on
+/// their own: a function of the class calls the file enumeration, another or the same reads
+/// statements, and the enumeration names a directory. Validated assumption: such a class reads
+/// its directory's files as script.
+pub(in crate::binding) fn unscheduled_loaders(
+    text: &Text<'_>,
+    image: &Image<'_>,
+    known: &BTreeSet<&str>,
+) -> BTreeMap<String, Directory> {
+    let anchors = super::constructors::anchors(image.symbols);
+    let symbols = image.index.over(image.symbols);
+    let statement_reads: BTreeSet<u64> = symbols
+        .named(super::fields::STATEMENT_READER)
+        .map(|symbol| symbol.address)
+        .collect();
+    let mut enumerating = BTreeSet::new();
+    let mut reading = BTreeSet::new();
+    for (site, target) in text.calls_into(&(&anchors.file_enumerations | &statement_reads)) {
+        let Some(&start) = text.starts.range(..=site).next_back() else {
+            continue;
+        };
+        let start = BTreeSet::from([start]);
+        let classes = symbols
+            .at(&start)
+            .filter_map(|symbol| method_class(&symbol.name));
+        if anchors.file_enumerations.contains(&target) {
+            enumerating.extend(classes);
+        } else {
+            reading.extend(classes);
+        }
+    }
+
+    enumerating
+        .intersection(&reading)
+        .copied()
+        .filter(|class| !known.contains(class))
+        .filter_map(|class| {
+            let directory = directories::loader_directory(
+                &own_functions(text, image.symbols, class),
+                &instance_members(text, image, class, &anchors),
+                &anchors,
+                image.strings,
+                image.pointers,
+            );
+
+            (directory != Directory::Missing).then(|| (class.to_owned(), directory))
+        })
+        .collect()
+}
+
+/// The class that qualifies a method name, such as `CRandomNameDatabase` in
+/// `CRandomNameDatabase::FillDatabase()`. `None` for a free function and for a template or
+/// anonymous qualifier.
+fn method_class(name: &str) -> Option<&str> {
+    let (qualified, _) = name.split_once('(')?;
+    let (class, _) = qualified.rsplit_once("::")?;
+    let plain = class
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == ':');
+
+    plain.then_some(class)
 }
 
 /// The arguments of every file enumeration in the functions of `classes`, the classes that load
@@ -294,6 +362,38 @@ fn template_directory(candidates: &[NamedCandidate], database: &str) -> Option<D
                 && matches!(candidate.directory, Directory::Named(_))
         })
         .map(|candidate| candidate.directory.clone())
+}
+
+/// The text of each `CString` member that the constructors of `class` and its
+/// `CreateInstance()` build from a literal, by member offset.
+pub(super) fn instance_members(
+    text: &Text<'_>,
+    image: &Image<'_>,
+    class: &str,
+    anchors: &directories::Anchors,
+) -> BTreeMap<u64, String> {
+    let symbols = image.index.over(image.symbols);
+    let creator = format!("{class}::CreateInstance()");
+    let bodies = |found: Vec<&Symbol>| -> Vec<Constructor> {
+        found
+            .into_iter()
+            .filter_map(|symbol| {
+                let (address, code) = text.function(symbol.address).ok()?;
+
+                Some(Constructor {
+                    address,
+                    code: code.to_vec(),
+                })
+            })
+            .collect()
+    };
+
+    directories::member_texts(
+        &bodies(symbols.constructors_of(class)),
+        &bodies(symbols.named(&creator).collect()),
+        anchors,
+        image.strings,
+    )
 }
 
 /// Every function whose name is qualified by `class`.

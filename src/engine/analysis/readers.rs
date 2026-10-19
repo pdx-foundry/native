@@ -81,6 +81,20 @@ pub(crate) const DIAGNOSTIC_LOCATIONS: &[&str] = &[
     "CReader::GetFileLocationDescription() const",
 ];
 
+/// Import stubs keep their raw name when it does not demangle.
+const NEVER_RETURN: [&str; 5] = [
+    "___stack_chk_fail",
+    "__Unwind_Resume",
+    "___cxa_throw",
+    "___cxa_rethrow",
+    "_abort",
+];
+
+/// Whether `callee` never returns: the engine's throw helpers and the runtime's.
+pub(crate) fn never_returns(callee: &str) -> bool {
+    NEVER_RETURN.contains(&callee) || callee.contains("::__throw_")
+}
+
 /// Releases a string's heap buffer.
 pub(crate) const STRING_RELEASE: &str =
     "CPdxCommonStringAllocator::deallocate(char*, unsigned long)";
@@ -442,10 +456,11 @@ pub(crate) fn arguments_join(
     } else if name == SKIP {
         get("x0") == Some(&Value::Reader(0))
     } else if is_uniform_list(name) {
-        // A list read into a stack array, which the loader converts after the call, still has
-        // the reader's value form; only its storage is unknown.
+        // A list read into a stack array or a serializer's member, which the loader converts
+        // after the call, still has the reader's value form; only its storage is unknown.
         get("x0") == Some(&Value::Reader(0))
-            && (owner(get("x1")) || matches!(get("x1"), Some(Value::Stack(_))))
+            && (owner(get("x1"))
+                || matches!(get("x1"), Some(Value::Stack(_) | Value::Serializer(_))))
     } else if name.starts_with("CReader::Read(") {
         let stack_temporary = match classify_callee(name) {
             ReaderKind::Integer => scalar_width(name) == Some(4),

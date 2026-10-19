@@ -8,7 +8,7 @@
 //! properties are unresolved. Obstacle: the forms are character and token-kind tests inside one
 //! scanner or reader loop, which no method reads. Removal route: a scanner-shape reader.
 //! `docs/native/script-expansion.md` records the fixture rows that check each form.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::declarations::{Text, addresses};
 use super::families::Names;
@@ -624,6 +624,7 @@ impl<'a> Image<'a> {
 
         Ok(directories::loader_directory(
             &self.body(loader)?,
+            &BTreeMap::new(),
             &anchors,
             self.strings,
             self.pointers,
@@ -636,7 +637,7 @@ impl<'a> Image<'a> {
         let anchors = Anchors {
             base_constructors: addresses(self.symbols, callee),
             string_constructors: addresses(self.symbols, directories::STRING_CONSTRUCTOR),
-            file_enumerations: BTreeSet::new(),
+            ..Anchors::default()
         };
         let arguments: Vec<_> = self
             .body(caller)?

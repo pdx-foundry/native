@@ -302,6 +302,7 @@ pub(super) fn discover(
                 symbol_index,
                 &Owner {
                     class: &object.class,
+                    serializer: None,
                     objects: &object.objects,
                     persistent,
                 },
