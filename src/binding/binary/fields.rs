@@ -52,7 +52,12 @@ impl SharedFieldInput {
             .unwrap_or_default();
 
         Ok(Self {
-            key_readers: key_readers(image.symbols, &tokens, persistent_recipe, reader_token_offset)?,
+            key_readers: key_readers(
+                image.symbols,
+                &tokens,
+                persistent_recipe,
+                reader_token_offset,
+            )?,
             persistent: SharedPersistent::read(image, &text, persistent_recipe)?,
         })
     }
