@@ -1592,7 +1592,8 @@ Their failure shapes, from `examples/inspect --registry-fields events`:
 **Members are definition fields.** Each kind is a root statement and a definition, so the
 requirement of its members comes from the [census](#required-fields), as a root field's does: the
 census run's empty `country_event` is the definition, and every kind builds the same `CEvent`
-through one loader. `id` is `Required`: `ReadEventsFile` (`0x1004d5e40`) logs `Event at %s has no
+through one loader. The kind itself stays `Unknown`: the census establishes what a definition
+must contain, not which statements a file must hold. `id` is `Required`: `ReadEventsFile` (`0x1004d5e40`) logs `Event at %s has no
 ID.` for an event whose id word is negative and whose id text is empty, and keeps no such event.
 `title`, `desc`, `picture` and `option` are `Unknown`: their absence reports (`eventmanager.cpp`
 446–464) run only when `hide_window` (`CEvent + 0x5ff`) is false. `mean_time_to_happen` and

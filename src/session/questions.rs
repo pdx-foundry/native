@@ -317,13 +317,11 @@ impl Native {
         }
 
         for field in &mut answer.value {
-            field.requirement = self.bound().field_requirement(registry, &field.name);
-
             // A loader root's fields are root statements, such as event kinds, and each statement
-            // is a definition: its members are the definition's fields.
-            if result.loader.is_some()
-                && let crate::FieldMembers::Fields(members) = &mut field.members
-            {
+            // is a definition: the census answers its members, not the statement.
+            if result.loader.is_none() {
+                field.requirement = self.bound().field_requirement(registry, &field.name);
+            } else if let crate::FieldMembers::Fields(members) = &mut field.members {
                 for member in members {
                     member.requirement = self.bound().field_requirement(registry, &member.name);
                 }

@@ -3878,6 +3878,7 @@ fn each_event_kind_is_a_root_field_read_in_the_scope_that_the_kind_selects() {
 
     // Each kind's members are an event definition's fields: `id` is required, `title` only when
     // the event is not hidden, and `hide_window` is a `yes` test with no requirement.
+    assert_eq!(country_event.requirement, FieldRequirement::Unknown);
     let member = |name| members.iter().find(|member| member.name == name).unwrap();
     assert_eq!(member("id").requirement, FieldRequirement::Required);
     assert_eq!(member("title").requirement, FieldRequirement::Unknown);

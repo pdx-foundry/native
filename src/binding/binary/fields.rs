@@ -1275,19 +1275,26 @@ pub(super) fn boolean_tokens(
     recipe: &PersistentRecipe,
 ) -> Result<[i64; 2], AnalysisError> {
     let [true_token, false_token] = recipe.boolean_tokens.map(|name| {
-        let mut matches = tokens
-            .iter()
-            .filter(|(_, token)| token.name.as_deref() == Some(name));
-
-        match (matches.next(), matches.next()) {
-            (Some((&id, _)), None) => Ok(id),
-            _ => Err(AnalysisError::from(crate::engine::analysis::InputError(
-                format!("Boolean token {name} is missing or ambiguous"),
-            ))),
-        }
+        named_token(tokens, name).ok_or_else(|| {
+            AnalysisError::from(crate::engine::analysis::InputError(format!(
+                "Boolean token {name} is missing or ambiguous"
+            )))
+        })
     });
 
     Ok([true_token?, false_token?])
+}
+
+/// The identity of the one token named `name`.
+fn named_token(tokens: &BTreeMap<i64, fields::Token>, name: &str) -> Option<i64> {
+    let mut matches = tokens
+        .iter()
+        .filter(|(_, token)| token.name.as_deref() == Some(name));
+
+    match (matches.next(), matches.next()) {
+        (Some((&id, _)), None) => Some(id),
+        _ => None,
+    }
 }
 
 /// Bind the compound reader boundaries used by both field and command dispatch.
@@ -1312,7 +1319,7 @@ pub(super) fn key_readers(
         string_stride: recipe.string_array[2],
         value_token: recipe.value_token as i64,
         token_text: recipe.token_text as i64,
-        true_token: boolean_tokens(tokens, recipe).ok().map(|[yes, _]| yes),
+        true_token: named_token(tokens, recipe.boolean_tokens[0]),
         token_copy: token_copy.into_iter().collect(),
         target_construct: target_construct.into_iter().collect(),
         target_move: Some(unique(symbols, "CEventTarget::operator=(CEventTarget&&)")?),
