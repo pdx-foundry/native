@@ -16,7 +16,7 @@ use crate::engine::analysis::{
         loading::{Function, Loading},
     },
     modifier_table::Layout,
-    readers::thunk_target,
+    readers::{self, thunk_target},
     strings::{StringFunctions, StringLayout},
 };
 
@@ -25,22 +25,11 @@ use super::declarations::{Text, addresses, unique};
 use super::grammar::LOG_FILE_AND_LINE;
 use super::language::{GENERATE_MODIFIER, constant_data, generation_calls};
 
-/// Import stubs keep their raw name when it does not demangle.
-const NEVER_RETURN: [&str; 5] = [
-    "___stack_chk_fail",
-    "__Unwind_Resume",
-    "___cxa_throw",
-    "___cxa_rethrow",
-    "_abort",
-];
-
 /// The functions that never return: the engine's throw helpers and the runtime's.
 pub(super) fn never_return(symbols: &[Symbol]) -> BTreeSet<u64> {
     symbols
         .iter()
-        .filter(|symbol| {
-            NEVER_RETURN.contains(&symbol.name.as_str()) || symbol.name.contains("::__throw_")
-        })
+        .filter(|symbol| readers::never_returns(&symbol.name))
         .map(|symbol| symbol.address)
         .collect()
 }

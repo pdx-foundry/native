@@ -344,6 +344,7 @@ fn offset(value: Value, amount: i64) -> Option<Value> {
     match value {
         Value::Owner(v) => v.checked_add(amount).map(Value::Owner),
         Value::Reader(v) => v.checked_add(amount).map(Value::Reader),
+        Value::Serializer(v) => v.checked_add(amount).map(Value::Serializer),
         Value::Stack(v) => v.checked_add(amount).map(Value::Stack),
         Value::Constant(v) => v.checked_add(amount).map(Value::Constant),
         Value::Offset(base, previous) => previous
@@ -748,15 +749,18 @@ fn apply(
             } else {
                 4
             };
-            if operation.starts_with("str")
-                && let Some(Value::Owner(at)) = &location
-            {
-                let overlaps = |slot: i64| *at < slot + 8 && at.saturating_add(width) > slot;
-                if wrapped_owner.is_some_and(|(slot, _)| overlaps(slot)) {
-                    return Err(unsupported("serializer-owner-overwrite"));
-                }
-                if input.owner_vtable.is_some() && overlaps(0) {
-                    return Err(unsupported("owner-vtable-overwrite"));
+            let overlaps = |at: i64, slot: i64| at < slot + 8 && at.saturating_add(width) > slot;
+            if operation.starts_with("str") {
+                match location {
+                    Some(Value::Serializer(at))
+                        if wrapped_owner.is_some_and(|(slot, _)| overlaps(at, slot)) =>
+                    {
+                        return Err(unsupported("serializer-owner-overwrite"));
+                    }
+                    Some(Value::Owner(at)) if input.owner_vtable.is_some() && overlaps(at, 0) => {
+                        return Err(unsupported("owner-vtable-overwrite"));
+                    }
+                    _ => {}
                 }
             }
             if operation.starts_with("str")
@@ -779,7 +783,7 @@ fn apply(
                 // A load retains origin as a load, never as the original receiver or pointer.
                 let value = location.map(|v| {
                     if let Some((slot, owner)) = wrapped_owner
-                        && width == 8 && v == Value::Owner(slot)
+                        && width == 8 && v == Value::Serializer(slot)
                     {
                         return Value::Owner(owner);
                     }
@@ -818,6 +822,8 @@ fn apply(
                 {
                     state.value_token_words.insert(at);
                 }
+            } else if let Some(Value::Serializer(_)) = location {
+                // The serializer's own members hold no owner field.
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
                 if let Some(Value::Converted(converter)) = state.value(operand) {
@@ -917,15 +923,16 @@ fn decode_root(input: &DispatchInput<'_>, root: &str) -> Option<(u64, Vec<Instru
     Some((body.address, rows))
 }
 
-/// Every token path through the member reader of `owner`, and the jump tables in it that could
-/// not be decoded. `symbol_index` is the index of the input's symbols.
+/// Every token path through the member reader `root` of an owner, and the jump tables in it that
+/// could not be decoded. With `owner_slot`, `root` is a serializer's reader, whose receiver holds
+/// a pointer to the owner at that offset. `symbol_index` is the index of the input's symbols.
 pub(super) fn explore_owner(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
-    owner: &str,
+    root: &str,
+    owner_slot: Option<i64>,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    let root = format!("{owner}::ReadMember(CReader&, int)");
-    explore_member(
+    explore_member_with_wrapped_owner(
         &DispatchInput {
             scope: None,
             key_readers: &input.key_readers,
@@ -940,7 +947,10 @@ pub(super) fn explore_owner(
             virtual_delegate: None,
             loader: None,
         },
-        &root,
+        root,
+        owner_slot.map(|slot| (slot, 0)),
+        0,
+        None,
     )
 }
 
@@ -1007,7 +1017,7 @@ fn explore_member_with_wrapped_owner(
         unknown_stack_store: false,
         pc: 0,
         registers: BTreeMap::from([
-            ("x0".into(), Value::Owner(0)),
+            ("x0".into(), receiver(wrapped_owner)),
             ("x1".into(), Value::Reader(0)),
             ("x2".into(), Value::Token),
             ("xzr".into(), Value::Constant(0)),
@@ -1265,10 +1275,13 @@ fn explore_member_with_wrapped_owner(
                     // A tail call returns the inherited reader's false to this reader's caller.
                     let mut inherited_declined = Vec::new();
                     let collects = returns || declined.is_some();
+                    // A serializer's inherited reader keeps its receiver; an owner's has none.
+                    let inherited_wrapped = wrapped_owner
+                        .filter(|_| state.registers.get("x0") == Some(&Value::Serializer(0)));
                     let (children, gaps) = explore_member_with_wrapped_owner(
                         input,
                         inherited,
-                        wrapped_owner,
+                        inherited_wrapped,
                         depth + 1,
                         collects.then_some(&mut inherited_declined),
                     );
@@ -1482,6 +1495,20 @@ fn explore_member_with_wrapped_owner(
                 }
                 leaves.push(state.finish(row.address, outcome));
                 break;
+            }
+            // A side that only calls a function that never returns, such as the stack guard's
+            // failure, reads no field: an unknown condition takes the other side.
+            if row.operation.starts_with("b.")
+                && state.flags.is_none()
+                && let Some(&target) = number(&row.operands).and_then(|a| indexes.get(&(a as u64)))
+            {
+                if aborts(&rows, target, input) {
+                    continue;
+                }
+                if aborts(&rows, state.pc, input) {
+                    state.pc = target;
+                    continue;
+                }
             }
             let branching = if let Some(condition) = row.operation.strip_prefix("b.") {
                 condition_branch(condition, row, &state, &indexes, entry)
@@ -1862,7 +1889,10 @@ fn call_outcome(
     }
     if name == Some("CPersistent::ReadMember(CReader&, int)")
         && rejects
-        && matches!(state.registers.get("x0"), Some(Value::Owner(_)))
+        && matches!(
+            state.registers.get("x0"),
+            Some(Value::Owner(_) | Value::Serializer(0))
+        )
         && state.registers.get("x1") == Some(&Value::Reader(0))
         && matches!(
             state.registers.get("x2"),
@@ -1916,10 +1946,20 @@ fn continued(
     })
 }
 
-/// Whether `x0` to `x2` still hold the member reader's owner, reader and token.
+/// The receiver of a member reader: the owner, or the serializer that holds it.
+fn receiver(wrapped_owner: Option<(i64, i64)>) -> Value {
+    match wrapped_owner {
+        Some(_) => Value::Serializer(0),
+        None => Value::Owner(0),
+    }
+}
+
+/// Whether `x0` to `x2` still hold the member reader's receiver, reader and token.
 fn forwards_member_arguments(state: &State) -> bool {
-    state.registers.get("x0") == Some(&Value::Owner(0))
-        && state.registers.get("x1") == Some(&Value::Reader(0))
+    matches!(
+        state.registers.get("x0"),
+        Some(Value::Owner(0) | Value::Serializer(0))
+    ) && state.registers.get("x1") == Some(&Value::Reader(0))
         && matches!(
             state.registers.get("x2"),
             Some(Value::Token | Value::TokenWord(0))
@@ -1942,6 +1982,16 @@ fn owner_virtual_target(input: &DispatchInput<'_>, state: &State, operand: &str)
         return None;
     }
     pointers.get(&point.checked_add(offset as u64)?).copied()
+}
+
+/// Whether the instruction at `index` calls a function that never returns.
+fn aborts(rows: &[Instruction], index: usize, input: &DispatchInput<'_>) -> bool {
+    rows.get(index).is_some_and(|row| {
+        row.operation == "bl"
+            && number(&row.operands)
+                .and_then(|address| input.symbol_index.name(input.symbols, address as u64))
+                .is_some_and(readers::never_returns)
+    })
 }
 
 /// The paths on each side of the conditional branch `row`, each limited to the token
@@ -2508,6 +2558,75 @@ mod tests {
             matches!(&paths[0].outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
             if callee == "CReader::Read(CString&, bool)")
         );
+    }
+
+    #[test]
+    fn an_unknown_condition_takes_the_side_that_returns() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let read = "CReader::Read(CString&, bool)";
+        let abort_side_taken = arm64!(at 0x1000;
+            ldr x9, [x1, #0x40]; // a value that no token decides
+            ldr x8, [x0, #0x50];
+            cmp x9, x8;
+            b.ne extern 0x1024;
+            add x8, x0, #24;
+            mov x0, x1;
+            mov x1, x8;
+            mov w2, #0;
+            b extern 0x2000;
+            bl extern 0x3000
+        );
+        let abort_side_next = arm64!(at 0x1000;
+            ldr x9, [x1, #0x40];
+            ldr x8, [x0, #0x50];
+            cmp x9, x8;
+            b.eq extern 0x1014;
+            bl extern 0x3000;
+            add x8, x0, #24;
+            mov x0, x1;
+            mov x1, x8;
+            mov w2, #0;
+            b extern 0x2000
+        );
+        for (code, callee, joins) in [
+            (&abort_side_taken, "___stack_chk_fail", true),
+            (&abort_side_next, "___stack_chk_fail", true),
+            (&abort_side_taken, "Owner::Report()", false),
+        ] {
+            let symbols = vec![
+                Symbol {
+                    name: root.into(),
+                    address: 0x1000,
+                },
+                Symbol {
+                    name: read.into(),
+                    address: 0x2000,
+                },
+                Symbol {
+                    name: callee.into(),
+                    address: 0x3000,
+                },
+            ];
+            let functions = BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.clone(),
+                },
+            )]);
+            let readers = super::super::KeyReaders::default();
+            let symbol_index = SymbolIndex::new(&symbols);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+            let joined = paths.iter().any(|path| {
+                matches!(&path.outcome, PathOutcome::Reader(ReaderJoin::Joined { callee, .. })
+                    if callee == read)
+            });
+
+            assert_eq!(joined, joins, "{callee}: {paths:?}");
+            assert_eq!(paths.len(), 1, "{callee}: {paths:?}");
+        }
     }
 
     #[test]

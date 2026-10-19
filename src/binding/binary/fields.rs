@@ -5,8 +5,8 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
-        FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput, PointReader,
-        has_owner_receiver,
+        self, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput,
+        PointReader, SerializerRoot, has_owner_receiver,
     },
     readers,
 };
@@ -23,6 +23,10 @@ use super::{
 
 /// Largest body of a reader function that the field reader collects.
 const FUNCTION_LIMIT: u64 = 1024 * 1024;
+
+/// The persistent reads that run an object's member reader over each statement of a block.
+const PERSISTENT_READ: &str = "CPersistent::Read(CReader&)";
+const READER_READ: &str = "CReader::Read(CPersistent&)";
 
 /// Largest body of an array insertion specialization that the field reader inspects.
 const INSERTION_LIMIT: u64 = 65_536;
@@ -82,7 +86,7 @@ pub(in crate::binding) fn read(
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
-    let root = format!("{owner}::ReadMember(CReader&, int)");
+    let (root, serializer) = root_reader(&text, image, owner, persistent_recipe)?;
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -104,16 +108,20 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
-    let objects = collect_objects(
-        image,
-        &text,
-        &data,
-        Some(&shared.persistent),
-        persistent_recipe,
-        &root,
-        &mut functions,
-        &mut gaps,
-    )?;
+    // The nested-object pass takes `x0` as the owner, so a serializer root collects no objects.
+    let objects = match serializer {
+        Some(_) => Vec::new(),
+        None => collect_objects(
+            image,
+            &text,
+            &data,
+            Some(&shared.persistent),
+            persistent_recipe,
+            &root,
+            &mut functions,
+            &mut gaps,
+        )?,
+    };
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
@@ -146,6 +154,7 @@ pub(in crate::binding) fn read(
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
         loader_root,
+        serializer,
         objects,
         owner: owner.into(),
         symbols: symbols.to_vec(),
@@ -154,6 +163,47 @@ pub(in crate::binding) fn read(
         strings: strings.clone(),
         read_only_data: read_only_sections(bytes)?,
         gaps,
+    })
+}
+
+/// The member reader of `owner`'s root keys: its own `ReadMember(CReader&, int)`, or, for an owner
+/// with none, the member reader in the vtable of the stack serializer that its `Read(CReader&)`
+/// reads.
+fn root_reader(
+    text: &Text,
+    image: &Image<'_>,
+    owner: &str,
+    recipe: &PersistentRecipe,
+) -> Result<(String, Option<SerializerRoot>), AnalysisError> {
+    let own = format!("{owner}::ReadMember(CReader&, int)");
+
+    if image.index.over(image.symbols).named(&own).next().is_some() {
+        return Ok((own, None));
+    }
+
+    let read = text.unique_body(image.symbols, &format!("{owner}::Read(CReader&)"))?;
+    let unique = |name| super::declarations::unique(image.symbols, name).ok();
+    let (Some(persistent), Some(reader)) = (unique(PERSISTENT_READ), unique(READER_READ)) else {
+        return Ok((own, None));
+    };
+    let reads = fields::PersistentReads { persistent, reader };
+    let names = Names::new(image.symbols);
+    let unique_name = |address: u64| names.unique(address).map(str::to_owned);
+    let serializer = read
+        .and_then(|rows| fields::serializer_read(&rows, &reads))
+        .and_then(|(point, owner_slot)| {
+            let reader =
+                super::receivers::concrete_reader(recipe, image.pointers, point, &unique_name)?;
+
+            Some(SerializerRoot {
+                reader: reader.member,
+                owner_slot,
+            })
+        });
+
+    Ok(match serializer {
+        Some(serializer) => (serializer.reader.clone(), Some(serializer)),
+        None => (own, None),
     })
 }
 

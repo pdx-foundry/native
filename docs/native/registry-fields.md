@@ -56,7 +56,9 @@ registries change, no field is lost, and `common/colony_automation_exceptions`, 
 and `common/deposits` have no registry-wide path gap left. Against `v47`, SDK-848's
 [inline-constructed objects](#inline-constructed-objects-sdk-848) change five registries. Against
 `v48`, SDK-854 gave 70 fields of 13 registries their repeat: the planet-class Boolean bits and
-the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against
+`v49`, SDK-835 reads [serializer roots and passes the stack guard](#serializer-roots-and-the-stack-guard-sdk-835):
+nine registries change and none loses a field. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -158,7 +160,8 @@ readers through the [allocation rule](#allocations-in-constructor-walks).
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
 unsupported instructions (`blr`, `ret`, `cset`, `lsr`) and branch conditions (`b.lt`,
 `b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
-input is the twelve owners with no `ReadMember` (`CJobTag`, `CTraitTag`, `CZoneType`, …).
+input is the seven owners with no `ReadMember` and no [serializer root](#serializer-roots-and-the-stack-guard-sdk-835)
+(`CJobTag`, `CTraitTag`, `CLivingStandard`, …).
 
 ### Inherited member readers (SDK-838)
 
@@ -217,6 +220,63 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
 - **Pitfall.** A same-name symbol is not proof that a call reaches a body. An import of an
   unresolved or external symbol can share the name of a local definition; only the fixup slot
   shows where the stub goes.
+
+### Serializer roots and the stack guard (SDK-835)
+
+Two shapes stopped `common/districts`, `common/zones` and `common/zone_slots` on M452.
+
+- **Serializer roots.** `CZoneType` and `CDistrictZoneSlot` have no `ReadMember`. Their
+  `Read(CReader&)` (`CZoneType::Read` at `0x100d46df8`) builds a stack object whose first two
+  words are the address point of `vtable for CZoneType::CSerializer` and the owner
+  (`stp x8,x0,[sp,#8]`), zeroes the serializer's own arrays, and calls
+  `CPersistent::Read(CReader&)` on it. The serializer's `ReadMember` loads the owner from its
+  receiver at `+8` and reads owner keys at offsets from it; `include`, `exclude` and the other
+  name lists go to the serializer's own arrays, which `InitPostRead` converts after the read; its
+  default case tail-calls `CPersistent::ReadMember` with the serializer as receiver.
+  `CComponentSlotTemplate::Read` builds the same object and calls `CReader::Read(CPersistent&)`
+  with the reader in `x0`.
+  - **Rule.** For an owner with no `ReadMember(CReader&, int)`, the binding reads
+    `Owner::Read(CReader&)` (`root_reader` in `binding/binary/fields.rs`). When its code runs
+    straight to its first call, stores an address point with the entry `x0` in the next word on
+    the stack, keeps both words and the entry reader, and passes that object and the reader to
+    one of the two persistent reads (`fields::serializer_read`), the root is the member reader in
+    that vtable's member slot (`concrete_reader`), with the owner at receiver offset 8
+    (`FieldInput::serializer`).
+  - **Receiver.** Dispatch walks the root with `x0` as `Value::Serializer(0)`. An 8-byte load of
+    the owner slot gives `Owner(0)`; a store over the slot stops the path
+    (`serializer-owner-overwrite`). Serializer members are no owner destination; a list read into
+    one keeps its reader and value form, as a list read into a stack array does. The base
+    rejection and an inherited reader accept the serializer receiver. The modifier blocks'
+    serializer delegate (`CCustomDescription::CSerializer`) uses the same receiver, so its own
+    members no longer read as owner offsets.
+- **Stack guard.** `CDistrictType::ReadMember` (`0x1004278e8`) saves `___stack_chk_guard` at
+  entry and, before each return or tail call, compares it with the saved copy (`cmp x9,x8`) and
+  branches to `bl ___stack_chk_fail` (`0x100428a14`). The compare leaves the flags unknown, so 199
+  of 215 paths stopped. A `b.cond` with unknown flags whose one side is a `bl` to a function that
+  never returns (`readers::never_returns`, the one list that the binding's never-return set also
+  uses) takes only the other side; that side keeps the whole token domain. A side that does more
+  before such a call is still a branch on unknown flags.
+- **Result on M452.** `common/districts` goes from 9 to 51 root fields, `common/zones` from 0 to
+  42 and `common/zone_slots` from 0 to 7, with no registry-wide path, name or input gap left.
+  `common/component_slot_templates` lists 4 fields and each `common/ai_espionage` policy its
+  `weight`. `common/economic_plans` and `common/country_focus/focus_cards` gain 6 fields each and
+  `common/resource_converters` changes; in command grammars, 19 commands give a stored key its
+  `Replace` repeat, because the walk now reaches the return after the guard. In the registry
+  sweep, eight of the nine registries become complete for `fields`, and no registry's complete
+  count falls.
+- **Limits.**
+  - A serializer root collects no inserted objects: the nested-object pass takes `x0` as the
+    owner. The zone `triggered_*_modifier` keys are named fields with an `UnresolvedReader` gap.
+  - Keyword fields of a serializer root list no domain ("The caller reads the owner through a
+    serializer, which the domain walk does not follow."). Repair both when Atlas needs them, by
+    giving those walks the same receiver.
+  - The remaining district and zone stops belong to census families: a log location before the
+    reader (`icon`, `desc`, `triggered_*`) and owned objects (`resources`, `ai_resource_production`).
+  - `CJobTag`, `CTraitTag`, `CLivingStandard`, `CMilitaryServiceType` and the scripted effect,
+    trigger and value templates have no `ReadMember` and do not match this `Read` shape.
+- **Pitfall.** The vtable's name is not the reader: take the member slot, as for any concrete
+  reader. A serializer member is not an owner field's storage, so treating the receiver as the
+  owner gives wrong destinations.
 
 ### Allocations in constructor walks
 

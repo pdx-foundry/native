@@ -42,13 +42,15 @@ const CONVERTED: u64 = 2;
 const UNKNOWN_KEPT: &str = "An unknown name keeps the converter's fallback with no diagnostic.";
 const CALLER_UNRESOLVED: &str = "A path of the caller could not be followed for some value.";
 const UNNAMED_VALUE: &str = "An accepted value has no single literal name.";
+const THROUGH_SERIALIZER: &str =
+    "The caller reads the owner through a serializer, which the domain walk does not follow.";
 
-/// The domain of each keyword field of `owner`, by the field's token: its accepted names, sorted,
-/// or why they are not established.
+/// The domain of each keyword field that the member reader `member` reads, by the field's token:
+/// its accepted names, sorted, or why they are not established.
 pub(super) fn domains(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
-    owner: &str,
+    member: &str,
     fields: &[RootField],
     tokens: &BTreeMap<i64, Token>,
 ) -> BTreeMap<i64, Result<Vec<String>, &'static str>> {
@@ -57,7 +59,6 @@ pub(super) fn domains(
         return BTreeMap::new();
     }
 
-    let member = format!("{owner}::ReadMember(CReader&, int)");
     let data = ReadOnlyData::new(
         input
             .read_only_data
@@ -65,7 +66,7 @@ pub(super) fn domains(
             .map(|section| (section.address, section.bytes.clone()))
             .collect(),
     );
-    let caller = Caller::new(input, symbol_index, &member, &data);
+    let caller = Caller::new(input, symbol_index, member, &data);
     keywords
         .into_iter()
         .map(|field| {
@@ -75,6 +76,17 @@ pub(super) fn domains(
             };
             (field.token, domain)
         })
+        .collect()
+}
+
+/// Why no keyword field that a serializer's member reader reads has a listed domain, by token.
+pub(super) fn through_serializer(
+    fields: &[RootField],
+) -> BTreeMap<i64, Result<Vec<String>, &'static str>> {
+    fields
+        .iter()
+        .filter(|field| is_keyword(field))
+        .map(|field| (field.token, Err(THROUGH_SERIALIZER)))
         .collect()
 }
 

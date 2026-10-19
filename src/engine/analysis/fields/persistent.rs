@@ -119,10 +119,10 @@ pub(super) fn embedded(
         if reader.family != crate::BlockFamily::Unknown {
             continue;
         }
-        let Some(class) = reader.member.strip_suffix("::ReadMember(CReader&, int)") else {
+        if !reader.member.ends_with("::ReadMember(CReader&, int)") {
             continue;
-        };
-        let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, class);
+        }
+        let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, &reader.member, None);
         let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
         // With no named key, the field keeps its unresolved members and their gap.
         if fields.is_empty() {
