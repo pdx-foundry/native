@@ -752,6 +752,7 @@ mod tests {
         vec![CollectionField {
             token: 7,
             offset: 0x40,
+            owned_pointer: false,
             data_offset: Some(8),
             count_offset: Some(0x14),
             container_mask: None,

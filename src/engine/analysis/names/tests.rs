@@ -1031,6 +1031,7 @@ fn storage_reads_string_and_boolean_fields_of_the_item_and_its_collections() {
     let swap = CollectionField {
         token: 3,
         offset: SWAPS.into(),
+        owned_pointer: false,
         data_offset: Some(8),
         count_offset: Some(0x14),
         container_mask: None,

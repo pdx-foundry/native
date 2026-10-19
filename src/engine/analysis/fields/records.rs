@@ -372,6 +372,9 @@ pub struct CollectionField {
     pub token: i64,
     /// Collection byte offset relative to the owning object.
     pub offset: u64,
+    /// The owner keeps one object in the pointer at `offset`, and each read replaces it; otherwise
+    /// `offset` is an array that each read appends to.
+    pub owned_pointer: bool,
     /// Buffer-pointer byte offset relative to the collection, if proven.
     pub data_offset: Option<u64>,
     /// Element-count byte offset relative to the collection, if proven.
