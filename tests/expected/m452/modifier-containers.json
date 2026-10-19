@@ -167,8 +167,15 @@
     "triggered_system_modifier.modifier": "Enclosing"
   },
   "common/patrons": {},
-  "common/districts": {},
-  "common/zones": {},
+  "common/districts": {
+    "planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Armies", "Planets", "Transport Ships", "Deposits", "Habitability", "Economic Units", "Colony"]}
+  },
+  "common/zones": {
+    "country_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
+    "district_country_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
+    "district_planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
+    "planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]}
+  },
   "common/starbase_modules": {},
   "common/species_rights/citizenship_types": {}
 }

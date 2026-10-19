@@ -27,7 +27,8 @@ pub struct DataSection {
 pub struct FieldInput {
     /// Bound signatures and layouts for compound key readers.
     pub key_readers: KeyReaders,
-    /// The class whose `ReadMember(CReader&, int)` is the root. The binding establishes it:
+    /// The registry's item class. Its `ReadMember(CReader&, int)` is the root, unless
+    /// `serializer` names another. The binding establishes the class:
     /// `VerifiedAnalysis::field_input` refuses an owner that no registry of the executable has.
     pub owner: String,
     /// Executable symbol inventory used to resolve calls.
@@ -47,8 +48,20 @@ pub struct FieldInput {
     /// The loader function whose root switch builds the owner, when a custom loader selects a
     /// scope for each root key that it accepts.
     pub loader_root: Option<LoaderRoot>,
+    /// The serializer whose member reader is the root, for an owner with no member reader.
+    pub serializer: Option<SerializerRoot>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
+}
+
+/// The stack serializer through which an owner with no member reader of its own reads its root
+/// keys.
+#[derive(Debug, Clone, Serialize)]
+pub struct SerializerRoot {
+    /// The member reader in the serializer's vtable, one of the input's functions.
+    pub reader: String,
+    /// The receiver offset of the pointer to the owner.
+    pub owner_slot: i64,
 }
 
 /// A loader function that reads each root statement, switches on its token and passes a scope
@@ -77,6 +90,9 @@ pub enum Value {
     Owner(i64),
     /// Offset from the original reader.
     Reader(i64),
+    /// Offset from a serializer that holds a pointer to the original member owner: the receiver
+    /// of a serializer's member reader.
+    Serializer(i64),
     /// Original signed field token.
     Token,
     /// The scope supplied to the enclosing command member reader.

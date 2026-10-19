@@ -70,7 +70,7 @@ mod tokens;
 mod uses;
 pub(crate) use dispatch::{DispatchInput, explore_member};
 pub(crate) use inventory::fields_and_gaps;
-pub(crate) use member::{follow_member, serializer_owner_slot};
+pub(crate) use member::{PersistentReads, follow_member, serializer_owner_slot, serializer_read};
 pub(crate) use persistent::constructor_points;
 pub use records::*;
 pub(crate) use tokens::{Token, named_key, recover_decoded};
@@ -80,7 +80,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v50";
+pub const METHOD: &str = "registry-fields/v51";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -109,6 +109,7 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     let symbol_index = SymbolIndex::new(&input.symbols);
     let owner = Owner {
         class: &input.owner,
+        serializer: input.serializer.as_ref(),
         objects: &input.objects,
         persistent: input.persistent.as_ref(),
     };
@@ -145,12 +146,25 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     Ok(result)
 }
 
-/// A class whose `ReadMember(CReader&, int)` the method walks, with the objects that it inserts
-/// and the constructor evidence of its persistent members.
+/// A class whose member reader the method walks, with the objects that it inserts and the
+/// constructor evidence of its persistent members.
 pub(super) struct Owner<'a> {
     pub class: &'a str,
+    /// The serializer whose member reader reads the class's keys, when the class has none.
+    pub serializer: Option<&'a SerializerRoot>,
     pub objects: &'a [ObjectReader],
     pub persistent: Option<&'a PersistentInput>,
+}
+
+impl Owner<'_> {
+    /// The member reader of the owner's keys, and the receiver offset of the owner pointer when
+    /// it is a serializer's.
+    fn reader(&self) -> (String, Option<i64>) {
+        match self.serializer {
+            Some(serializer) => (serializer.reader.clone(), Some(serializer.owner_slot)),
+            None => (format!("{}::ReadMember(CReader&, int)", self.class), None),
+        }
+    }
 }
 
 /// The fields of `owner` and what they read: dispatch paths, persistent members, embedded keys
@@ -161,7 +175,8 @@ fn owner_result(
     owner: &Owner<'_>,
     tokens: &std::collections::BTreeMap<i64, Token>,
 ) -> RegistryFieldResult {
-    let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, owner.class);
+    let (reader, owner_slot) = owner.reader();
+    let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, &reader, owner_slot);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);
@@ -176,7 +191,10 @@ fn owner_result(
         &persistent.readers,
         tokens,
     );
-    let keyword_domains = keywords::domains(input, symbol_index, owner.class, &fields, tokens);
+    let keyword_domains = match owner_slot {
+        Some(_) => keywords::through_serializer(&fields),
+        None => keywords::domains(input, symbol_index, &reader, &fields, tokens),
+    };
 
     RegistryFieldResult {
         persistent: persistent.readers,

@@ -1,6 +1,11 @@
 //! Shared bounds, token domains and receiver translation for member delegates.
 use super::{Condition, DispatchInput, FieldGap, PathOutcome, ReaderJoin, TokenPath, Value};
+use crate::engine::analysis::decode::{
+    Instruction, add_immediate, adrp, call_target, is_branch, number, sub_immediate, wide_register,
+    written_registers,
+};
 use crate::engine::analysis::stop::Unresolved;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Follow one member edge, preserving its token domain and owner-relative provenance.
 pub(crate) fn follow_member(
@@ -105,6 +110,165 @@ pub(crate) fn serializer_owner_slot(
         .map(|_| 8)
 }
 
+/// The two calls that read a persistent object from a reader: `CPersistent::Read(CReader&)`, with
+/// the object in `x0` and the reader in `x1`, and `CReader::Read(CPersistent&)`, with them swapped.
+pub(crate) struct PersistentReads {
+    pub persistent: u64,
+    pub reader: u64,
+}
+
+/// The stack serializer that an owner's `Read(CReader&)` reads through: the vtable address point
+/// stored with the owner, which arrives in `x0`, in the next pointer slot, and the offset of that
+/// slot. The code before the function's first call must run straight through, keep both words
+/// and the entry reader, and pass the object and the reader to one of `reads`.
+pub(crate) fn serializer_read(rows: &[Instruction], reads: &PersistentReads) -> Option<(u64, i64)> {
+    const STACK_POINTER: usize = 31;
+    let mut addresses = BTreeMap::new();
+    let mut stack = BTreeMap::from([(STACK_POINTER, 0)]);
+    let mut owner_in_x0 = true;
+    let mut readers = BTreeSet::from([1]);
+    let mut serializers = BTreeMap::new();
+
+    for row in rows {
+        let word = u32::from_le_bytes(row.bytes);
+
+        if row.operation == "bl" {
+            let target = call_target(word, row.address)?;
+            let (object, reader) = if target == reads.persistent {
+                (0, 1)
+            } else if target == reads.reader {
+                (1, 0)
+            } else {
+                return None;
+            };
+            let point = serializers.get(stack.get(&object)?).copied()?;
+
+            return readers.contains(&reader).then_some((point, 8));
+        }
+        // An authenticated call or return is also a transfer that the walk does not follow.
+        if is_branch(&row.operation)
+            || ["bl", "br", "ret"]
+                .iter()
+                .any(|op| row.operation.starts_with(op))
+        {
+            return None;
+        }
+        if row.operation.starts_with("st") {
+            let (base, offset, width) = store(row)?;
+            let at = stack.get(&base)? + offset;
+
+            serializers.retain(|&object, _| at + width <= object || at >= object + 16);
+            if row.operation == "stp"
+                && owner_in_x0
+                && let Some(point) = owner_store(row, &addresses)
+            {
+                serializers.insert(at, point);
+            }
+        }
+        if row.operands.contains('!') || row.operands.contains("],") {
+            return None;
+        }
+
+        let page = adrp(word, row.address);
+        let moved = add_immediate(word)
+            .map(|(destination, source, addend)| (destination, source, addend as i64))
+            .or_else(|| {
+                sub_immediate(word).map(|(destination, source, subtrahend)| {
+                    (destination, source, -(subtrahend as i64))
+                })
+            });
+        let moved_address = moved.and_then(|(destination, source, addend)| {
+            let base = addresses.get(&source)?;
+            Some((destination, base.wrapping_add_signed(addend)))
+        });
+        let moved_stack = moved.and_then(|(destination, source, addend)| {
+            Some((destination, stack.get(&source)? + addend))
+        });
+        let written = written_registers(&row.operation, &row.operands);
+
+        if written.contains(&0) {
+            owner_in_x0 = false;
+        }
+        let copied_reader = copied_register(row).is_some_and(|source| readers.contains(&source));
+
+        for register in &written {
+            addresses.remove(register);
+            stack.remove(register);
+            readers.remove(register);
+        }
+        if copied_reader {
+            readers.extend(written);
+        }
+        if let Some((register, page)) = page {
+            addresses.insert(register, page);
+        }
+        if let Some((destination, address)) = moved_address {
+            addresses.insert(destination, address);
+        }
+        if moved.is_some_and(|(destination, ..)| destination == STACK_POINTER) {
+            // Offsets saved against the old stack pointer no longer hold.
+            if !serializers.is_empty() {
+                return None;
+            }
+            stack = BTreeMap::from([(STACK_POINTER, 0)]);
+        } else if let Some((destination, offset)) = moved_stack {
+            stack.insert(destination, offset);
+        }
+    }
+
+    None
+}
+
+/// The source of a 64-bit register copy, `mov xd, xs`.
+fn copied_register(row: &Instruction) -> Option<usize> {
+    let (_, source) = row.operands.split_once(',')?;
+
+    (row.operation == "mov").then(|| wide_register(source))?
+}
+
+/// The base register, offset and width of a store with an immediate offset, or `None` for
+/// another store.
+fn store(row: &Instruction) -> Option<(usize, i64, i64)> {
+    let width = match row.operation.as_str() {
+        "strb" | "sturb" => 1,
+        "strh" | "sturh" => 2,
+        "str" | "stur" => register_width(&row.operands)?,
+        "stp" => 2 * register_width(&row.operands)?,
+        _ => return None,
+    };
+    let (_, address) = row.operands.split_once('[')?;
+    let address = address.split_once(']')?.0;
+    let (base, offset) = match address.split_once(",#") {
+        Some((base, offset)) => (base, number(offset)? as i64),
+        None => (address, 0),
+    };
+    let base = if base == "sp" {
+        31
+    } else {
+        wide_register(base)?
+    };
+
+    Some((base, offset, width))
+}
+
+/// The bytes that the first register operand of a store holds.
+fn register_width(operands: &str) -> Option<i64> {
+    match operands.chars().next()? {
+        'x' | 'd' => Some(8),
+        'w' | 's' => Some(4),
+        'q' => Some(16),
+        _ => None,
+    }
+}
+
+/// The address point of `stp point, x0, [...]`, where a register in `addresses` holds the point.
+fn owner_store(row: &Instruction, addresses: &BTreeMap<usize, u64>) -> Option<u64> {
+    let (first, rest) = row.operands.split_once(',')?;
+    rest.strip_prefix("x0,[")?;
+
+    addresses.get(&wide_register(first)?).copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +349,78 @@ mod tests {
                 .reason,
             "grammar-delegation-limit"
         );
+    }
+
+    #[test]
+    fn serializer_read_requires_the_saved_owner_and_reader_at_the_read() {
+        const PERSISTENT: u64 = 0x5000;
+        const READER: u64 = 0x6000;
+        let reads = PersistentReads {
+            persistent: PERSISTENT,
+            reader: READER,
+        };
+        let read = |code: Vec<u8>| {
+            let rows = crate::engine::analysis::decode::decode_arm64(&code, 0x1000).unwrap();
+            serializer_read(&rows, &reads)
+        };
+        let prefix = |code: &mut crate::engine::analysis::assembler::Arm64| {
+            arm64!(code;
+                sub sp, sp, #0x40;
+                adrp x8, extern 0x8000;
+                add x8, x8, #0x10; // the serializer's address point
+                stp x8, x0, [sp, #8]
+            );
+        };
+        let mut persistent = crate::engine::analysis::assembler::Arm64::at(0x1000);
+        prefix(&mut persistent);
+        arm64!(persistent; add x0, sp, #8; bl extern 0x5000);
+        let mut reader = crate::engine::analysis::assembler::Arm64::at(0x1000);
+        prefix(&mut reader);
+        arm64!(reader; mov x8, x1; add x1, sp, #8; mov x0, x8; bl extern 0x6000);
+
+        assert_eq!(read(persistent.bytes()), Some((0x8010, 8)));
+        assert_eq!(read(reader.bytes()), Some((0x8010, 8)));
+
+        for (control, rest) in [
+            (
+                "owner slot overwritten",
+                arm64!(at 0x1010; str xzr, [sp, #16]; add x0, sp, #8; bl extern 0x5000),
+            ),
+            (
+                "vtable overwritten",
+                arm64!(at 0x1010; strb wzr, [sp, #8]; add x0, sp, #8; bl extern 0x5000),
+            ),
+            (
+                "another receiver",
+                arm64!(at 0x1010; add x0, sp, #16; bl extern 0x5000),
+            ),
+            (
+                "another reader",
+                arm64!(at 0x1010; mov x1, x2; add x0, sp, #8; bl extern 0x5000),
+            ),
+            (
+                "another call first",
+                arm64!(at 0x1010; add x0, sp, #8; bl extern 0x7000; bl extern 0x5000),
+            ),
+            (
+                "a branch first",
+                arm64!(at 0x1010; cbz x2, extern 0x1020; add x0, sp, #8; bl extern 0x5000),
+            ),
+            (
+                "an indirect call first",
+                arm64!(at 0x1010; mov x19, x1; blr x9; mov x1, x19; add x0, sp, #8; bl extern 0x5000),
+            ),
+            (
+                "a store at a register offset",
+                arm64!(at 0x1010; mov x9, #16; str xzr, [sp, x9]; add x0, sp, #8; bl extern 0x5000),
+            ),
+        ] {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            prefix(&mut code);
+            let mut code = code.bytes();
+            code.extend(rest);
+
+            assert_eq!(read(code), None, "{control}");
+        }
     }
 }

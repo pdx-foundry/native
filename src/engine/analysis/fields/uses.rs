@@ -732,6 +732,7 @@ mod tests {
         let symbols = vec![Symbol { name: "TSingleObjectGameDatabase<CExampleDatabase, CExample, false>::LoadFile(char const*, bool)".into(), address: 0x7000 }];
         FieldInput {
             loader_root: None,
+            serializer: None,
             key_readers: Default::default(),
             persistent: None,
             owner: "CExample".into(),

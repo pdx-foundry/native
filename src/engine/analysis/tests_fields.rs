@@ -17,6 +17,7 @@ fn fixture() -> FieldInput {
     ];
     FieldInput {
         loader_root: None,
+        serializer: None,
         key_readers: Default::default(),
         persistent: None,
         objects: vec![],
@@ -658,6 +659,102 @@ fn inherited_fixture() -> FieldInput {
     ]);
 
     input
+}
+
+/// An owner with no member reader of its own, read through a serializer that holds the owner at
+/// offset 8: token 7 reads an owner member, token 8 a list into the serializer's own member.
+fn serializer_fixture(owner_load: Vec<u8>) -> FieldInput {
+    let reader = "CExample::CSerializer::ReadMember(CReader&, int)";
+    let list = "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)";
+    let mut input = fixture();
+    input.functions[0].name = reader.into();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1014;
+        cmp w2, #8; // token 8
+        b.eq extern 0x1028;
+        b extern 0x5000; // CPersistent::ReadMember
+        nop; // the owner load
+        add x8, x8, #0x40; // the owner member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x18; // the serializer's member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x7100 // CReader::ReadUniform<CString>
+    );
+    replace(&mut input, 0x1014, owner_load);
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7; // token 7
+        adrp x2, extern 0x8000; // "new_engine_field"
+        add x2, x2, #0;
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #8; // token 8
+        adrp x2, extern 0x8000; // "serializer_list"
+        add x2, x2, #0x10;
+        bl extern 0x3000; // CToken::CToken
+        ret
+    );
+    input.strings.insert(0x8010, "serializer_list".into());
+    input.symbols[1].name = reader.into();
+    input.symbols.push(Symbol {
+        name: list.into(),
+        address: 0x7100,
+    });
+    input.serializer = Some(fields::SerializerRoot {
+        reader: reader.into(),
+        owner_slot: 8,
+    });
+
+    input
+}
+
+#[test]
+fn a_serializer_root_reads_the_owner_through_its_owner_slot() {
+    use crate::engine::analysis::readers::destination;
+
+    for (owner_load, owner_member) in [
+        (arm64!(at 0x1014; ldr x8, [x0, #8]), Some(0x40)),
+        (arm64!(at 0x1014; ldr x8, [x0, #16]), None),
+    ] {
+        let result = derive(serializer_fixture(owner_load));
+        let names: Vec<_> = result
+            .fields
+            .iter()
+            .map(|field| field.name.as_str())
+            .collect();
+
+        assert_eq!(
+            names,
+            ["new_engine_field", "serializer_list"],
+            "{:?}",
+            result.gaps
+        );
+        assert_eq!(
+            result.fields[0]
+                .readers
+                .iter()
+                .map(destination)
+                .collect::<Vec<_>>(),
+            [owner_member]
+        );
+        assert!(matches!(
+            result.fields[1].readers[..],
+            [ReaderJoin::Joined { .. }]
+        ));
+        assert_eq!(destination(&result.fields[1].readers[0]), None);
+        assert!(result.partition_accounted);
+        assert!(
+            result
+                .paths
+                .iter()
+                .filter(|path| ![[7, 7], [8, 8]].contains(&path.domain))
+                .all(|path| path.outcome == PathOutcome::Rejected),
+            "the serializer's base rejection rejects the other tokens: {:?}",
+            result.paths
+        );
+    }
 }
 
 #[test]

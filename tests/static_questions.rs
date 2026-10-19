@@ -2387,6 +2387,57 @@ fn starbase_components_read_their_shared_keys_through_the_inherited_reader() {
     }
 }
 
+/// Zones and zone slots read their keys through a stack serializer, and every district path
+/// passes the stack guard (`docs/native/registry-fields.md`, serializer roots and the stack
+/// guard).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn district_and_zone_registries_read_their_root_keys() {
+    use pdx_native::BlockFamily;
+
+    let native = native();
+    for (registry, integer, list) in [
+        ("common/districts", Some("base_buildtime"), None),
+        ("common/zones", Some("max_buildings"), Some("include")),
+        ("common/zone_slots", None, Some("include")),
+    ] {
+        let answer = native.registry_fields(registry).unwrap();
+        let reader = |name: &str| {
+            let field = answer.value.iter().find(|field| field.name == name);
+            field.map(|field| (field.reader.kind, field.reader.family))
+        };
+
+        assert_eq!(
+            reader("potential"),
+            Some((ReaderKind::Block, BlockFamily::Trigger)),
+            "{registry}"
+        );
+        if let Some(integer) = integer {
+            assert_eq!(
+                reader(integer),
+                Some((ReaderKind::Integer, BlockFamily::NotApplicable)),
+                "{registry}"
+            );
+        }
+        if let Some(list) = list {
+            assert_eq!(
+                reader(list),
+                Some((ReaderKind::Block, BlockFamily::NotApplicable)),
+                "{registry}"
+            );
+        }
+        assert!(
+            answer.gaps.iter().all(|gap| {
+                !matches!(gap.kind, GapKind::UnreadableInput | GapKind::UnnamedField)
+                    && !(gap.kind == GapKind::UnresolvedPath
+                        && matches!(gap.subject, Some(GapSubject::Registry { .. })))
+            }),
+            "{registry}: {:?}",
+            answer.gaps
+        );
+    }
+}
+
 /// The derived-name and family methods read a custom loader's owner as they read a template
 /// owner. `CStaticModifier` has no template key constructor, so the key place stays a gap
 /// (`docs/native/derived-names.md`).
