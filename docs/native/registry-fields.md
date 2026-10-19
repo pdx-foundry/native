@@ -221,11 +221,11 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   `CString(char const*)` on the key text, so it is an `UnnamedField` gap instead of an
   unfollowed path.
 - **Limits.**
-  - The nested-object pass (`fields/nested.rs`) runs from the owner root, and `collect_objects`
-    scans only the root, so the 9 `triggered_*_modifier` keys of the template are named fields
-    with an `UnresolvedReader` gap, not triggered modifier clauses. A repair runs the nested
-    machine from the inherited reader where every path of the field ends, after the binding
-    collects the template's factories.
+  - The 9 `triggered_*_modifier` keys of the starbase template are named fields with an
+    `UnresolvedReader` gap, not triggered modifier clauses. The nested-object pass enters inherited
+    readers since `registry-fields/v56` ([objects constructed at an array's
+    end](#objects-constructed-at-an-arrays-end)), which joins the component template's triggered
+    modifiers, but the starbase answers did not change; their stop is not yet read.
   - The other starbase fields without one shared reader belong to census families above:
     `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
     loop), `triggered_component_set` (an inserted struct), `name` and `desc`
@@ -480,6 +480,45 @@ establish one shared reader." Their stops:
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
 | `common/ship_sizes` `hero_ship` | Two alternatives: a block read by `Read(CPersistent&)` of owner `+0xb8`, and `Read(bool&)`. The block's reader has no family because the `CShipSize::CShipSize(int, CString const&)` walk (`0x1011e98b8`) spends its 64-path bound in a zero-fill loop at `0x1011e9f64` whose base it loads from a heap pointer, so no constructor agrees on a reader at `+0xb8`. The same bound leaves `map_icon_override` without one. | Constructor walk bound; the field's members also need a rule for a field whose alternatives differ; SDK-873. |
+
+### Objects constructed at an array's end
+
+A root can grow an array of objects by one and read the new last element in place. The collection
+pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
+`CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)` on an owner member constructs one
+`Class` at the array's end, and a `CReader::Read(CPersistent&)` of that object reads it.**
+
+- **Binding.** `collect_objects` finds the class through a direct call to the resizing, and takes
+  its layout from the resizing's body (`emplace_layout`): the count is the one receiver word that it
+  increments, the element size is the immediate that the `operator new[]` size multiplies
+  (`mov wS,#size; umull x0,wN,wS`), and the element pointer is the receiver member that keeps the
+  new buffer. Every `operator new[]` call must agree. A class with an insertion keeps the
+  insertion's layout. `ObjectReader::array_emplace` and `array_element_size` carry the result.
+- **Walk.** At the resizing call, the walk reserves an object, installs the class's address points
+  and constant pointers, and makes the array hold two elements with its pointer one element size
+  before the new object. The root's own address arithmetic (`data + count * size - size`) then
+  reaches the object only when the root's element size is the class's. The read counts only through
+  `Read(CPersistent&)` with the reader in `x0` and that object in `x1`. The path may write no owner
+  word but the array's pointer and count.
+- **Inherited and value readers.** The pass enters the inherited readers and value readers that the
+  binding collects (`readers::is_inheritable_member`, `readers::is_member_value_reader`), and
+  `collect_objects` scans their direct calls for classes, so an object that only the base reader
+  constructs joins. The walk also writes the token into the reader's token word, as the dispatch
+  walk does, so a value reader that loads the token from the reader sees it.
+- **M452.** `CComponentTemplate::ReadMember` (`0x1001dd284`) handles `hostile_aura` (token
+  `0x3542`) by `SetSizeAndEmplace` (`0x1001f6858`) on `+0x7c8`, then `madd`/`sub` with `#0x278` to
+  the last element and a tail call of `Read(CPersistent&)` (`0x1025b820c`); `friendly_aura`
+  (`0x3543`) does the same on `+0x7e0`. The resizing reads the count at `+0x14`, multiplies the
+  capacity by `0x278` for `operator new[]`, and stores the new buffer at `+8`.
+- **Result on M452 (`registry-fields/v56`).** Only `common/component_templates` changes. Each of
+  the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
+  `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
+  `system_wide`, `modifier`. Through the entered base reader, `triggered_ship_modifier` and
+  `triggered_ship_design_modifier` of each key now read triggered modifier clauses. The field sweep
+  and every other registry are unchanged.
+- **Remove or limit the rule** when a build's resizing constructs its new element other than by
+  the class's default construction, when the root reads an element other than the last one, or
+  when a resizing's element size comes from a computed value.
 
 ### Scripted actions: an order check before the token switch
 

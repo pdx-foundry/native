@@ -118,6 +118,7 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
+    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     // The nested-object pass takes `x0` as the owner, so a serializer root collects no objects.
     let objects = match serializer {
         Some(_) => Vec::new(),
@@ -158,7 +159,6 @@ pub(in crate::binding) fn read(
         persistent_recipe,
     )?;
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
-    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     push_converters(&text, indexed, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
@@ -527,11 +527,17 @@ fn collect_objects(
     };
     let rows = crate::engine::analysis::decode::decode_arm64(&root.code, root.address)
         .map_err(|_| AnalysisError::InvalidRange)?;
-    let calls: BTreeSet<_> = rows
-        .iter()
-        .filter(|row| row.operation == "bl")
-        .filter_map(|row| u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16).ok())
-        .collect();
+    // Dispatch goes on in the inherited readers, so the objects that they read are the root's.
+    let mut calls = direct_calls(&rows);
+    for inherited in functions.iter().filter(|function| {
+        readers::is_inheritable_member(&function.name)
+            || readers::is_member_value_reader(&function.name)
+    }) {
+        let inherited_rows =
+            crate::engine::analysis::decode::decode_arm64(&inherited.code, inherited.address)
+                .map_err(|_| AnalysisError::InvalidRange)?;
+        calls.extend(direct_calls(&inherited_rows));
+    }
     let mut classes = BTreeMap::<String, Vec<&Symbol>>::new();
 
     for symbol in symbols.at(&calls) {
@@ -540,6 +546,8 @@ fn collect_objects(
         } else if let Some(class) = factory_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default().push(symbol);
         } else if let Some(class) = inserted_class(&symbol.name) {
+            classes.entry(class.to_owned()).or_default();
+        } else if let Some(class) = emplaced_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default();
         }
     }
@@ -557,6 +565,9 @@ fn collect_objects(
     let names = Names::new(symbols.symbols);
     let unique_name = |address: u64| names.unique(address).map(str::to_owned);
     let operator_new: BTreeSet<_> = addresses(symbols, "operator new(unsigned long)")
+        .into_iter()
+        .collect();
+    let array_new: BTreeSet<_> = addresses(symbols, "operator new[](unsigned long)")
         .into_iter()
         .collect();
     let mut objects = Vec::new();
@@ -612,8 +623,20 @@ fn collect_objects(
             .into_iter()
             .filter(|&start| clears_moved_source_at(text, start))
             .collect();
-        let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
-        let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
+        let emplace = addresses(symbols, &emplacement(&class));
+        // A class with an insertion keeps the insertion's layout: its pointer array is another
+        // collection than the array of objects that the resizing grows.
+        let emplace_layout = match emplace.as_slice() {
+            [start] if insert.is_empty() => emplace_layout(text, *start, &array_new),
+            _ => None,
+        };
+        let (data_offset, count_offset) = match emplace_layout {
+            Some(layout) => (Some(layout.data), Some(layout.count)),
+            None => (
+                array_member_offset(text, &insert, array_pointer_offsets)?,
+                array_member_offset(text, &insert, array_count_offsets)?,
+            ),
+        };
         let owner_of_keys = reader
             .as_ref()
             .is_none_or(|bound| bound.reader.family == BlockFamily::Unknown);
@@ -651,6 +674,8 @@ fn collect_objects(
             initializers: initializers.clone(),
             insert,
             moving_insert,
+            array_emplace: emplace_layout.map_or_else(Vec::new, |_| emplace),
+            array_element_size: emplace_layout.map(|layout| layout.element_size),
             class,
             vtables: vtable.address_points,
             pointers: slots,
@@ -833,6 +858,161 @@ fn inserted_class(name: &str) -> Option<&str> {
     let names_class = name == pointer || name == scoped_insertion(class);
 
     (names_class && !class.ends_with(" const")).then_some(class)
+}
+
+/// The class whose objects `void CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)`
+/// constructs in place at the array's end. A class with template arguments names none.
+fn emplaced_class(name: &str) -> Option<&str> {
+    let class = name
+        .strip_prefix("void CPdxArray<")?
+        .strip_suffix(", int>::SetSizeAndEmplace<>(int, const&)")?;
+
+    (!class.contains(['<', '>', ',', '*'])).then_some(class)
+}
+
+/// The resizing that constructs objects of `class` in place at a `CPdxArray`'s end.
+fn emplacement(class: &str) -> String {
+    format!("void CPdxArray<{class}, int>::SetSizeAndEmplace<>(int, const&)")
+}
+
+/// The array layout that an in-place resizing proves: its element pointer, its count and the
+/// size of one element.
+#[derive(Clone, Copy)]
+struct EmplaceLayout {
+    data: u64,
+    count: u64,
+    element_size: u64,
+}
+
+/// The layout of the resizing at `start`. The count is the receiver word that it increments.
+/// The element size is the constant that `operator new[]`'s size multiplies (`mov wS,#size;
+/// umull x0,wN,wS`), and the element pointer is the receiver member that keeps the new buffer.
+/// Every `operator new[]` call must agree.
+fn emplace_layout(text: &Text, start: u64, array_new: &BTreeSet<u64>) -> Option<EmplaceLayout> {
+    let code = text.function_within(start, INSERTION_LIMIT)?;
+    let rows = crate::engine::analysis::decode::decode_arm64(code, start).ok()?;
+
+    resizing_layout(&rows, array_new)
+}
+
+/// The layout that the decoded resizing `rows` proves, as [`emplace_layout`] reads it.
+fn resizing_layout(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    array_new: &BTreeSet<u64>,
+) -> Option<EmplaceLayout> {
+    let receivers = receiver_states(rows)?;
+    let counts = array_count_offsets(rows)?;
+    let [count] = counts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let mut layouts = BTreeSet::new();
+
+    for (index, row) in rows.iter().enumerate() {
+        let calls_array_new = row.operation == "bl"
+            && branch_target(&row.operands).is_some_and(|target| array_new.contains(&target));
+
+        if !calls_array_new {
+            continue;
+        }
+
+        let element_size = allocation_multiplier(&rows[..index])?;
+        let data = stored_allocation(&rows[index + 1..], &receivers[index + 1..])?;
+
+        layouts.insert((data, element_size));
+    }
+
+    let [(data, element_size)] = layouts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(EmplaceLayout {
+        data,
+        count,
+        element_size,
+    })
+}
+
+/// The constant that the size argument of a call multiplies: the instruction before the call is
+/// `umull x0,wN,wS` or `mul x0,xN,xS`, and the last write of `S` before it is a `mov` of an
+/// immediate.
+fn allocation_multiplier(before: &[crate::engine::analysis::decode::Instruction]) -> Option<u64> {
+    let (multiply, earlier) = before.split_last()?;
+    let ["x0", _, factor] = multiply.operands.split(',').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    if !matches!(multiply.operation.as_str(), "umull" | "mul") {
+        return None;
+    }
+
+    let factor = register_number(factor)?;
+    let write = earlier.iter().rev().find(|row| {
+        crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+            .contains(&factor)
+    })?;
+    let [_, immediate] = write.operands.split(',').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    (write.operation == "mov").then(|| parse_offset(immediate))?
+}
+
+/// The receiver member that keeps a call's result. The instruction after the call copies `x0` to
+/// a callee-saved register, which no later instruction in address order writes before it is
+/// stored through a receiver register.
+fn stored_allocation(
+    after: &[crate::engine::analysis::decode::Instruction],
+    receivers: &[Option<BTreeSet<String>>],
+) -> Option<u64> {
+    let (copy, rest) = after.split_first()?;
+    let ["x0"] = copy.operands.split(',').skip(1).collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let kept = copy.operands.split(',').next()?;
+    let kept_number = register_number(kept).filter(|number| (19..=28).contains(number))?;
+
+    if copy.operation != "mov" {
+        return None;
+    }
+
+    for (row, receiver) in rest.iter().zip(&receivers[1..]) {
+        let parts: Vec<_> = row.operands.split(',').collect();
+
+        if row.operation == "str"
+            && let [value, base, offset] = parts[..]
+            && value == kept
+            && receiver
+                .as_ref()
+                .is_some_and(|receiver| receiver.contains(base.trim_start_matches('[')))
+        {
+            return parse_offset(offset.trim_end_matches(']'));
+        }
+
+        if crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+            .contains(&kept_number)
+        {
+            return None;
+        }
+    }
+
+    None
+}
+
+/// The number of a general register operand such as `w8` or `x21`.
+fn register_number(operand: &str) -> Option<usize> {
+    operand
+        .strip_prefix('w')
+        .or_else(|| operand.strip_prefix('x'))?
+        .parse()
+        .ok()
+}
+
+/// The targets of the direct calls in `rows`.
+fn direct_calls(rows: &[crate::engine::analysis::decode::Instruction]) -> BTreeSet<u64> {
+    rows.iter()
+        .filter(|row| row.operation == "bl")
+        .filter_map(|row| u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16).ok())
+        .collect()
 }
 
 /// The insertions of a `Class*` and of a `Class const*` into a `CPdxArray`.
@@ -1395,6 +1575,41 @@ mod tests {
 
         assert_eq!(counts(insertion), Some(BTreeSet::from([0x14])));
         assert_eq!(counts(other_word), Some(BTreeSet::new()));
+    }
+
+    #[test]
+    fn a_resizing_proves_its_element_size_and_where_it_keeps_its_objects_and_count() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let resizing = arm64!(at 0x1000;
+            stp x20, x19, [sp, #-0x20]!;
+            mov x20, x0; // the array
+            mov x19, x1; // the new count
+            ldr w8, [x20, #0x10]; // its capacity
+            mov w9, #0x278; // the element size
+            umull x0, w8, w9;
+            bl extern 0x2000; // operator new[]
+            mov x21, x0;
+            bl extern 0x3000; // a move of the old objects
+            str x21, [x20, #8]; // the new objects
+            ldr w8, [x20, #0x14]; // the count
+            add w8, w8, #1;
+            str w8, [x20, #0x14];
+            ldp x20, x19, [sp], #0x20;
+            ret
+        );
+        let rows = decode_arm64(&resizing, 0x1000).unwrap();
+        let layout = resizing_layout(&rows, &BTreeSet::from([0x2000])).unwrap();
+
+        assert_eq!(
+            (layout.data, layout.count, layout.element_size),
+            (8, 0x14, 0x278)
+        );
+        // A size that a call computes proves no element size.
+        let mut computed = rows.clone();
+        computed[4].operation = "bl".into();
+        computed[4].operands = "#0x4000".into();
+        assert!(resizing_layout(&computed, &BTreeSet::from([0x2000])).is_none());
     }
 
     #[test]
