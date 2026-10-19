@@ -1,6 +1,6 @@
 //! The owner of a registry that its database's own loader names: the one class with a member
-//! reader that the loader builds, or the classes that the root key of each statement selects
-//! between.
+//! reader that the loader builds or reads, or the classes that the root key of each statement
+//! selects between.
 //!
 //! A template registry's owner is a template argument of its loader. A custom loader has no such
 //! argument, so the method reads the loader's code. The loader route is every function of the
@@ -18,19 +18,25 @@
 //! Exactly one built class is the owner. Several built classes are owners by root key when a route
 //! function compares the token of each statement that it reads with a chain of constants, and the
 //! code that each comparison selects, up to the next statement read, builds one class for each
-//! constant and one class or none for every other token. Any other shape is a gap; the method
-//! never selects one of several. A class that the database builds outside the route, such as a
-//! scope object on the stack of a query function, is not on the route and does not count.
+//! constant and one class or none for every other token. Otherwise the owner is the one built
+//! class whose object a route function reads: it stores the class's address point to the object's
+//! first word and passes the object in `x0`, with the reader of its one statement read in `x1`, to
+//! a call. The registers are followed in code order, not by path; a constructor call does not
+//! count as that store. Any other shape is a gap; the method never selects one of several. A class
+//! that the database builds outside the route, such as a scope object on the stack of a query
+//! function, is not on the route and does not count.
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::engine::analysis::decode::{
-    Instruction, add_immediate, adrp, call_target, general_register, number, written_registers,
+    Instruction, add_immediate, adrp, call_target, general_register, number, wide_register,
+    written_registers,
 };
 
 /// What a custom loader builds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoaderOwner {
-    /// Exactly one class with a member reader.
+    /// Exactly one class with a member reader that the loader builds, or the one of several that
+    /// it reads with the statement reader.
     Owner(String),
     /// A class for each of some root keys, and one class or none for every other key.
     ByRootKey {
@@ -43,8 +49,8 @@ pub enum LoaderOwner {
     /// No function calls the file enumeration, or the route builds no class with a member
     /// reader.
     NoOwner,
-    /// Several classes with a member reader and no root keys that select between them; none is
-    /// selected.
+    /// Several classes with a member reader, with no root keys that select between them and not
+    /// one that the loader reads; none is selected.
     Several(Vec<String>),
 }
 
@@ -194,16 +200,92 @@ fn route_owner(
     match built.len() {
         0 => LoaderOwner::NoOwner,
         1 => LoaderOwner::Owner(built.remove(0)),
-        _ => route
-            .iter()
-            .find_map(|start| {
-                root_key_owners(&functions[start], &addresses[start], reads, builders)
-            })
-            .filter(|(keyed, other)| selects_every_class(keyed, other.as_ref(), &built))
-            .map_or(LoaderOwner::Several(built), |(keyed, other)| {
-                LoaderOwner::ByRootKey { keyed, other }
-            }),
+        _ => {
+            if let Some((keyed, other)) = route
+                .iter()
+                .find_map(|start| {
+                    root_key_owners(&functions[start], &addresses[start], reads, builders)
+                })
+                .filter(|(keyed, other)| selects_every_class(keyed, other.as_ref(), &built))
+            {
+                return LoaderOwner::ByRootKey { keyed, other };
+            }
+
+            let read: BTreeSet<&String> = route
+                .iter()
+                .flat_map(|start| {
+                    read_classes(&functions[start], &addresses[start], reads, builders)
+                })
+                .collect();
+            match read.into_iter().collect::<Vec<_>>()[..] {
+                [owner] => LoaderOwner::Owner(owner.clone()),
+                _ => LoaderOwner::Several(built),
+            }
+        }
     }
+}
+
+/// The classes of the built objects that `rows` passes, with the reader of its one statement
+/// read, to a call. An object is built when the address point of its class is stored to its
+/// first word; the call receives the object in `x0` and the reader in `x1`, as a virtual
+/// `Read(CReader&)` does. The registers are followed in code order, not by path. Empty unless the
+/// function has one statement read.
+fn read_classes<'a>(
+    rows: &[Instruction],
+    addresses: &FunctionAddresses,
+    reads: &LoaderReads<'_>,
+    builders: &'a BTreeMap<u64, String>,
+) -> BTreeSet<&'a String> {
+    let mut read = BTreeSet::new();
+    let Some(statement) = statement_read(rows, addresses, reads) else {
+        return read;
+    };
+    let Some(reader) = argument(&rows[..statement], 0) else {
+        return read;
+    };
+    // The class whose address point each register holds, and the class of the object whose
+    // first word holds it.
+    let mut points: BTreeMap<usize, &String> = BTreeMap::new();
+    let mut objects: BTreeMap<usize, &String> = BTreeMap::new();
+
+    for (position, row) in rows.iter().enumerate() {
+        let operands: Vec<&str> = row.operands.split(',').collect();
+        let is_call = row.operation == "bl" || row.operation.starts_with("blr");
+        if is_call
+            && let Some(class) = objects.get(&0)
+            && argument(&rows[..position], 1) == Some(reader)
+        {
+            read.insert(*class);
+        }
+
+        if let ("str", [value, base]) = (row.operation.as_str(), operands.as_slice())
+            && let Some(class) = wide_register(value).and_then(|value| points.get(&value))
+            && let Some(base) = base
+                .strip_prefix('[')
+                .and_then(|base| base.strip_suffix(']'))
+                .and_then(wide_register)
+        {
+            objects.insert(base, *class);
+        }
+
+        let copied = match (row.operation.as_str(), operands.as_slice()) {
+            ("mov", [destination, source]) => wide_register(destination)
+                .zip(wide_register(source).and_then(|source| objects.get(&source).copied())),
+            _ => None,
+        };
+        for register in written_registers(&row.operation, &row.operands) {
+            points.remove(&register);
+            objects.remove(&register);
+        }
+        objects.extend(copied);
+        if let Some((destination, _, _)) = add_immediate(u32::from_le_bytes(row.bytes))
+            && let Some(class) = addresses.targets[position].and_then(|point| builders.get(&point))
+        {
+            points.insert(destination, class);
+        }
+    }
+
+    read
 }
 
 /// Whether the classes of a root switch are distinct and are exactly the classes in `built`.
@@ -229,21 +311,9 @@ fn root_key_owners(
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
 ) -> Option<(BTreeMap<String, String>, Option<String>)> {
-    let mut statement_reads = addresses
-        .targets
-        .iter()
-        .enumerate()
-        .filter(|(position, target)| {
-            rows[*position].operation == "bl"
-                && target.is_some_and(|target| reads.statement_reads.contains(&target))
-        });
-    let (read, _) = statement_reads.next()?;
-    if statement_reads.next().is_some() {
-        return None;
-    }
-
+    let read = statement_read(rows, addresses, reads)?;
     let load = rows.get(read + 1)?;
-    let (base, offset) = reader_argument(&rows[..read])?;
+    let (base, offset) = argument(&rows[..read], 0)?;
     let (token, word) = loaded_word(load)?;
     if word != (base, offset + reads.token_offset) {
         return None;
@@ -313,19 +383,43 @@ fn token_chain(
     }
 }
 
-/// The base register and offset of the reader that the call at the end of `rows` receives: the
-/// last write to `x0` is `add x0, base, #offset` or `mov x0, base`.
-fn reader_argument(rows: &[Instruction]) -> Option<(&str, u64)> {
+/// The position of the one call to the statement read in `rows`; `None` when there is none or
+/// several.
+fn statement_read(
+    rows: &[Instruction],
+    addresses: &FunctionAddresses,
+    reads: &LoaderReads<'_>,
+) -> Option<usize> {
+    let mut statement_reads = addresses
+        .targets
+        .iter()
+        .enumerate()
+        .filter(|(position, target)| {
+            rows[*position].operation == "bl"
+                && target.is_some_and(|target| reads.statement_reads.contains(&target))
+        })
+        .map(|(position, _)| position);
+    let read = statement_reads.next()?;
+
+    statement_reads.next().is_none().then_some(read)
+}
+
+/// The base register and offset of the address that a call at the end of `rows` receives in the
+/// argument register `x<register>`: its last write is `add x<register>, base, #offset` or
+/// `mov x<register>, base`.
+fn argument(rows: &[Instruction], register: usize) -> Option<(&str, u64)> {
     let writer = rows
         .iter()
         .rev()
-        .find(|row| written_registers(&row.operation, &row.operands).contains(&0))?;
+        .find(|row| written_registers(&row.operation, &row.operands).contains(&register))?;
     let operands: Vec<&str> = writer.operands.split(',').collect();
-    match (writer.operation.as_str(), operands.as_slice()) {
-        ("add", ["x0", base, offset]) => Some((base, number(offset)?)),
-        ("mov", ["x0", base]) => Some((base, 0)),
-        _ => None,
-    }
+    let (destination, base, offset) = match (writer.operation.as_str(), operands.as_slice()) {
+        ("add", [destination, base, offset]) => (destination, base, number(offset)?),
+        ("mov", [destination, base]) => (destination, base, 0),
+        _ => return None,
+    };
+
+    (wide_register(destination) == Some(register)).then_some((base, offset))
 }
 
 /// The destination of a 32-bit load and the base register and offset that it reads.
@@ -756,6 +850,37 @@ mod tests {
 
         assert_eq!(
             owner([loader(READ_FILE), decoded(code, READ_FILE)]),
+            LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
+        );
+    }
+
+    #[test]
+    fn the_object_that_the_loader_reads_with_the_statement_reader_selects_its_class() {
+        let read_with = |reader_offset: u32| {
+            let mut code = Arm64::at(READ_FILE);
+            let statement = code.here();
+            arm64!(code; add x0, sp, #0x70);
+            code.call(READ_STATEMENT);
+            arm64!(code; add x0, sp, #16);
+            code.call(OTHER_CONSTRUCTOR);
+            code.address(8, OWNER_POINT);
+            arm64!(code;
+                str x8, [x19]
+                ; ldr x8, [x19]
+                ; ldr x8, [x8, #0x20]
+                ; add x1, sp, #reader_offset
+                ; mov x0, x19
+                ; blr x8
+                ; b extern statement as usize
+            );
+
+            owner([loader(READ_FILE), decoded(code, READ_FILE)])
+        };
+
+        assert_eq!(read_with(0x70), LoaderOwner::Owner("COwner".into()));
+        // The call reads the object with another reader than the statement's.
+        assert_eq!(
+            read_with(0xa0),
             LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
         );
     }

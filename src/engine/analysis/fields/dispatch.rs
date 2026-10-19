@@ -630,13 +630,17 @@ fn apply(
     }
     let args: Vec<_> = row.operands.split(',').collect();
     match (row.operation.as_str(), args.as_slice()) {
-        ("cmp", [left, right]) => {
+        ("cmp", [left, right, shift @ ..]) if matches!(shift, [] | ["lsl#12"]) => {
             let offset = match state.value(left) {
                 Some(Value::Token) => Some(0),
                 Some(Value::TokenWord(offset)) => Some(offset),
                 _ => None,
             };
-            state.flags = match (offset, state.value(right)) {
+            let compared = match shift {
+                [] => state.value(right),
+                _ => number(right).map(|immediate| Value::Constant(immediate << 12)),
+            };
+            state.flags = match (offset, compared) {
                 (Some(offset), Some(Value::Constant(pivot))) if left.starts_with('w') => {
                     Some(Flags::Token(Comparison { offset, pivot }))
                 }

@@ -2016,9 +2016,9 @@ fn component_templates_answer_each_root_key_as_a_root_statement() {
     );
 }
 
-/// `CNameListDatabase` enumerates the text of its `CString` member, and `CRandomNameDatabase`,
-/// which the schedule does not list, loads `common/random_names/base` and then
-/// `common/random_names` (`docs/native/registry-fields.md`).
+/// `CNameListDatabase` enumerates the text of its `CString` member and reads one `CNameList` per
+/// statement, and `CRandomNameDatabase`, which the schedule does not list, loads
+/// `common/random_names/base` and then `common/random_names` (`docs/native/registry-fields.md`).
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn name_lists_and_random_names_are_named_by_their_loaders() {
@@ -2048,9 +2048,15 @@ fn name_lists_and_random_names_are_named_by_their_loaders() {
         };
         reason
     };
-    // The list's member lists are built on the stack as its defaults, so the loader builds
-    // several classes; each directory of the random names has its own route.
-    assert!(reason("common/name_lists").contains("CNameList, CNameListArmy"));
+    // The loader builds the list's member lists as its defaults too; the owner is the list that
+    // it reads with the statement reader. Each directory of the random names has its own route.
+    let name_lists = native.registry_fields("common/name_lists").unwrap();
+    assert!(
+        name_lists
+            .value
+            .iter()
+            .any(|field| field.name == "character_names")
+    );
     let random_names = reason("common/random_names");
     assert!(
         random_names.contains("CCompositNameFormat, CCompositNamePartList"),
@@ -2102,7 +2108,6 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         "common/colors",
         "common/component_tags",
         "common/game_rules",
-        "common/name_lists",
         "common/random_names",
         "common/random_names/base",
         "common/ship_behaviors",

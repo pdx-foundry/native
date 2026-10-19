@@ -60,7 +60,10 @@ the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-s
 `v50`, SDK-835 reads [serializer roots and passes the stack guard](#serializer-roots-and-the-stack-guard-sdk-835):
 nine registries change and none loses a field. Against
 `v51`, SDK-850's [duplicate checks and owned pointers](#duplicate-checks-and-owned-pointers-sdk-850)
-give six fields of five registries their members. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+give six fields of five registries their members. Against `v52`, the dispatch walker reads a compare with a
+shifted immediate: `common/scripted_actions` names its 42 fields
+([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
+changes. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -110,7 +113,8 @@ lookups, so the diff drops only members that match their serde defaults.
 Pitfalls:
 
 - A state branch before token discrimination would give a false registry-wide `UnresolvedPath`
-  gap: the token-partition check needs one contiguous chain. No M45 loader has that shape.
+  gap: the token-partition check needs one contiguous chain. `CScriptedActionInfo` has that shape on
+  M452 ([order check](#scripted-actions-an-order-check-before-the-token-switch)).
 - `b.hi` stops in `CEspionageOperationType` and `CStarClass` compare a value loaded from the object,
   not the token, so they correctly stay unknown flags.
 - Unresolved concrete readers do not remove established field names or broad `Block` kinds.
@@ -467,6 +471,42 @@ establish one shared reader." Their stops:
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
 | `common/ship_sizes` `hero_ship` | Two alternatives: a block read by `Read(CPersistent&)` of owner `+0xb8`, and `Read(bool&)`. The block's reader has no family because the `CShipSize::CShipSize(int, CString const&)` walk (`0x1011e98b8`) spends its 64-path bound in a zero-fill loop at `0x1011e9f64` whose base it loads from a heap pointer, so no constructor agrees on a reader at `+0xb8`. The same bound leaves `map_icon_override` without one. | Constructor walk bound; the field's members also need a rule for a field whose alternatives differ; SDK-873. |
+
+### Scripted actions: an order check before the token switch
+
+`CScriptedActionInfo::ReadMember` (`0x100b10ae4`, M452) tests owner state before it tests the token.
+It loads the `user_scope` word at `+0x48` and the `scope` word at `+0x40` and compares each with
+`0x200000`, the value that the checks take as not yet read. The compare is `cmp x8, #0x200, lsl #12`; the
+dispatch walker reads the shifted immediate since `registry-fields/v53`, and before that every path
+stopped there, so the registry had no field. The order rule, from the engine's own messages:
+
+- A key other than `user_scope` while `+0x48` is unread logs "First parameter for scripted actions
+  must always be user_scope" and returns without a read.
+- A key other than `user_scope` or `scope` while `+0x40` is unread logs "Second parameter for scripted
+  actions must always be scope" and returns without a read.
+- `user_scope` reads `GetScopeTypeEnumFromToken` of the value token into `+0x48`; a scope other than
+  fleet or megastructure logs "Supported user_scopes for scripted actions are megastructure and fleet"
+  and is stored all the same.
+
+Result on M452 (`registry-fields/v53`): 42 named fields, each with a joined reader on the paths
+after both checks. Every field keeps "The field's alternatives do not establish one shared reader"
+and an `UnresolvedCondition` gap, and the answer keeps a `TokenPartition` gap:
+
+- The log paths stop at the `CPdxLogFileAndLine` call, so their outcome is `Unresolved`, not
+  `Rejected`. Their conditions are owner words with no named-field term, so they are `Unresolved`.
+- The walker forks again on the second test of `+0x48` (`0x100b10b50`): it does not keep the result
+  of the first test, so one alternative of each field has a contradictory condition.
+- The two check paths cover wide token intervals that overlap the field tokens, so the partition
+  check fails. This is the honest result: those paths are alternatives of every field that the
+  inventory does not attach to a field (`an_overlapping_wider_path_withholds_the_storage_of_a_singleton_field`).
+- Atlas credits a value form only for `read` equal to `[Always]`. A field read only after an order
+  check has no such answer until the answer states the order rule.
+
+Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
+an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean
+from `cmp` of the value token with `0x251` and `cset`; `shortcut` calls
+`CKeyEvent::GetKeyEventFromName` on a stack string; `cost` builds a
+`CTriggeredResourceTable::CSerializer`; `specific_behavior` calls `ValidateSpecificCode`.
 
 ## Repeat behavior
 
@@ -1287,22 +1327,30 @@ Two loaders that the literal scan did not name, read on M452 with `examples/insp
 
 | Registry | `registry_fields` | Definition names |
 | --- | --- | --- |
-| `common/name_lists` | `Unsupported`: several classes | `Root` / `Key` |
+| `common/name_lists` | `CNameList`, 15 fields, partial | `Root` / `Key` |
 | `common/random_names` | `Unsupported`: several classes | `RootKey(*_name_parts_list)` / `Field("key")` |
 | `common/random_names/base` | `Unsupported`: stated reason, no item | nested-key obstacle |
 | `common/graphical_culture` | `CGfxCulture`, 8 fields, partial | `Root` / `Key` |
 | `common/game_rules` | `Unsupported`: stated reason, no item | `Root` / `Key` |
 | `music` | `Unsupported`: several classes (`CSong`, `CMeanTimeToHappen`) | `RootKey("song")` / `Field("name")` |
 
-- **Why `common/name_lists` has no owner.** `Init()` allocates one `CNameList` (`new 0x318`, its
-  vtable at `[x19]`) and reads it through slot `+0x20` with the statement reader
-  (`0x1009971e0`). The same route forms the vtables of `CNameListShipClass`, `CNameListShip`,
-  `CNameListPlanet`, `CNameListCharacter`, `CNameListFleet`, `CNameListArmy` and
-  `CNameListByRarity` on the stack as the default contents of `SNameListContent`, which
-  `SNameListContent::operator=` moves into the list. All have a member reader, so the owner join
-  gives `Several`. Removal route: follow the built object to the call that receives the
-  statement reader. A heap-versus-stack rule is not enough: `ReadRandomNames()` builds its part
-  lists on the stack and copies them into an array, and its formats on the heap.
+- **The owner of `common/name_lists` is the object that the loader reads.** `Init()` allocates
+  one `CNameList` (`new 0x318`), stores its address point with `str x8, [x19]` (`0x100996cbc`)
+  and reads it with `mov x0, x19; add x1, sp, #0x1b0; blr x8` through slot `+0x20`
+  (`0x1009971f0`); `sp+0x1b0` is the reader of its one `ReadSimpleStatement()`. The same route
+  forms the vtables of `CNameListShipClass`, `CNameListShip`, `CNameListPlanet`,
+  `CNameListCharacter`, `CNameListFleet`, `CNameListArmy`, `CNameListByRarity` and
+  `CNameListDesign`, stored into the list at `+0x10` and after or on the stack as the default
+  contents of `SNameListContent`. All have a member reader, so the built classes are several;
+  [the read object](#custom-loader-owners) selects `CNameList`.
+- **Nested name lists stay unresolved.** `CNameList::ReadMember` reads `ship_names`,
+  `character_names` and the other lists with `CReader::Read(CPersistent&)` on embedded objects
+  (`+0x10`, `+0x68`, `+0x88`, `+0xf8`, `+0x1a0`, …), but `CNameList::CNameList()`
+  (`0x10061aa54`, used for the null object) installs no vtable there; `Init()` builds the contents
+  inline. The [embedded-object join](#embedded-object-keys) reads the owner's constructors, so these
+  fields keep `Unresolved` members. Removal route: take the loader's inline build of the read
+  object as a constructor of the owner. `language`, which the config states, is not a key of
+  `CNameList::ReadMember`, and vanilla M452 does not use it.
 - **Why `common/random_names` has no owner.** Five keys build each class, and the switch is a
   jump table, which [root-key owners](#root-key-owners-sdk-813) do not read. The route also builds
   `CWeightedStringTable` and `CMeanTimeToHappen`, members of the two classes.
@@ -1316,9 +1364,23 @@ database's own functions. The loader route is each of them that calls the file e
 each of them that the route calls directly. The owner is the one class with a member reader that
 the route builds: it calls the class's constructor or forms its primary vtable address point, as
 an inlined constructor does. Several built classes are owners [by root key](#root-key-owners-sdk-813)
-when the root keys select between them. A loader of several directories has a route for each
+when the root keys select between them. Otherwise the owner is the one built class whose object
+the route reads: a route function with one statement read stores the class's address point to
+the object's first word, then passes the object in `x0` and that statement's reader in `x1` to a
+call (a virtual `Read(CReader&)`). A loader of several directories has a route for each
 ([one loader, three directories](#one-loader-three-directories-sdk-843)). None, or several in any
 other shape, is `Unsupported` with the reason, never a choice.
+
+- **Read object: validated assumption, not a proof.** The registers are followed in code order,
+  not by path. A `mov` between 64-bit registers copies the object, so `mov x0, x19` before the
+  call counts. A constructor call is not counted as the store, and neither is a store with
+  writeback, such as the post-index `str x8, [x0], #8`. On M452 the rule selects only `CNameList`
+  (`common/name_lists`). It does not select one class for `common/random_names`: the part lists
+  are read by `CReader::Read(CPersistent&)` with the reader in `x0`, and each format's address
+  point is stored with a post-index store into `x0` after `mov x19, x0`. `music` stays `Several`
+  (`CSong`, `CMeanTimeToHappen`). Change the rule when a loader reads its object through a
+  constructor-built object, or stores its address point with writeback; the exact-build test of
+  the owners fixes the three answers.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -1328,8 +1390,9 @@ other shape, is `Unsupported` with the reason, never a choice.
   since every field reader used only `owner_candidate` of the candidate record. The block-entry
   method takes the joined owners with the template owners, so the blocks of a custom owner get
   entry contexts (`common/strategic_resources` `potential` enters as a country).
-- **Validated assumption, not a proof.** A built class is taken as the item that the loader
-  reads; the method does not follow the built object to the read call. On M452 each joined route
+- **Validated assumption, not a proof.** When the route builds one class, that class is taken
+  as the item that the loader reads; the method follows the object to the read call only to
+  select one of several built classes. On M452 each joined route
   builds the object, then reads it: `CStaticModifierDatabase::Init(bool)` allocates, forms `vtable
   for CStaticModifier`+0x10 and calls slot `+0x20` of the object (`CPdxModifier<…>::Read(CReader&)`,
   whose member dispatch at slot `+0x28` is `CStaticModifier::ReadMember`);
@@ -1338,8 +1401,8 @@ other shape, is `Unsupported` with the reason, never a choice.
   point and calls slot `+0x20`; `ReadEventsFile` constructs `CEvent` ([the events
   loader](#the-events-loader-on-m452)). The parity test
   `m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates` fixes every owner.
-  Follow the object to its read call when a build has a route that builds a persistent object
-  that it does not read as the item.
+  Apply the read-object rule to one built class too when a build has a route that builds a
+  persistent object that it does not read as the item.
 - **Static modifiers.** The key-only phase of `CStaticModifierDatabase::Init(bool)` calls
   `CStaticModifier::ReadOnlyKey(CReader&)` and reads no definition. The full-read phase reads
   through `CStaticModifier::ReadMember(CReader&, int)`, the root. That reader handles `key`,
@@ -1352,9 +1415,10 @@ other shape, is `Unsupported` with the reason, never a choice.
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 19 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34` for
-`common/planet_classes`, SDK-843 for the two ship-design directories and SDK-844 for
-`common/graphical_culture`; fields, then the answer). `common/component_templates` has a class for each root key and no owner
+On M452, 20 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34` for
+`common/planet_classes`, SDK-843 for the two ship-design directories, SDK-844 for
+`common/graphical_culture` and the read-object rule for `common/name_lists`; fields, then the
+answer). `common/component_templates` has a class for each root key and no owner
 ([root-key owners](#root-key-owners-sdk-813)):
 
 | Registry | Owner | Fields | Answer |
@@ -1365,6 +1429,7 @@ On M452, 19 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34`
 | `common/fallen_empires` | `CFallenEmpireType` | 6 | partial |
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
 | `common/graphical_culture` | `CGfxCulture` | 8 | partial |
+| `common/name_lists` | `CNameList`, the read object | 15 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
 | `common/section_templates` | `CSectionTemplate` | 19 | partial |
