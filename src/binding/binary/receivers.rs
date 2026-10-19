@@ -375,6 +375,7 @@ pub(super) fn persistent_from(
         requested_words: Default::default(),
         containers: shared.containers.clone(),
         initialized_words: Default::default(),
+        loader_points: Default::default(),
     })
 }
 

@@ -50,6 +50,14 @@ pub(super) fn discover(
         containers,
         gaps,
     } = constructor_points(binding, read_only_data, &offsets);
+    // An offset that the constructors do not establish takes the point that the loader's inline
+    // build installs there.
+    let mut points = points;
+    for (&offset, &point) in &binding.loader_points {
+        if offsets.contains(&offset) {
+            points.entry(offset).or_insert(point);
+        }
+    }
     let readers = points
         .clone()
         .into_iter()

@@ -135,21 +135,21 @@ pub(in crate::binding) fn read(
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
-    let loader_root = match loader {
+    let loader_root = match &loader {
         Some(search) => loader_root(
             &text,
             indexed,
             &data,
             pointers,
             owner,
-            &search,
+            search,
             persistent_recipe,
             &mut functions,
             &mut gaps,
         )?,
         None => None,
     };
-    let persistent = super::receivers::persistent(
+    let mut persistent = super::receivers::persistent(
         image,
         &text,
         &data,
@@ -157,6 +157,19 @@ pub(in crate::binding) fn read(
         owner,
         persistent_recipe,
     )?;
+    if let Some(search) = &loader {
+        let points = loader_part_points(&text, indexed, &data, owner, search)?;
+        let names = Names::new(symbols);
+        let unique_name = |address: u64| names.unique(address).map(str::to_owned);
+        for (&offset, &point) in &points {
+            if let Some(reader) =
+                super::receivers::concrete_reader(persistent_recipe, pointers, point, &unique_name)
+            {
+                persistent.readers.insert(point, reader);
+            }
+            persistent.loader_points.insert(offset as i64, point);
+        }
+    }
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
     let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     push_converters(&text, indexed, &mut functions);
@@ -174,6 +187,94 @@ pub(in crate::binding) fn read(
         read_only_data: read_only_sections(bytes)?,
         gaps,
     })
+}
+
+/// The address points that the custom loader `search` installs, by owner offset, in each item
+/// that it builds inline. The loader's one read of an `owner` object gives the build. Each part
+/// that the build passes in `x0` at an offset to a member function of one class `Part`, where
+/// `Part::Part()` exists, takes that constructor's stores shifted by the offset, when they agree
+/// with the build's own stores ([`inline_build::part_points`]).
+fn loader_part_points(
+    text: &Text,
+    symbols: IndexedSymbols<'_>,
+    data: &ReadOnlyData,
+    owner: &str,
+    search: &LoaderSearch<'_>,
+) -> Result<BTreeMap<u64, u64>, AnalysisError> {
+    use crate::engine::analysis::discovery::{inline_build, loader_owner};
+
+    let mut points = BTreeMap::new();
+    let Some(owner_point) = symbols
+        .vtable_group(data, owner)
+        .and_then(|vtable| vtable.address_points.get(&0).copied())
+    else {
+        return Ok(points);
+    };
+    let functions = super::loader_owners::own_functions(text, symbols.symbols, search.database);
+    let statement_reads = addresses(symbols, STATEMENT_READER).into_iter().collect();
+    let reads = loader_owner::LoaderReads {
+        enumerations: &BTreeSet::new(),
+        statement_reads: &statement_reads,
+        token_offset: search.reader_token_offset,
+        token_names: &BTreeMap::new(),
+    };
+    let builders = BTreeMap::from([(owner_point, owner.to_owned())]);
+    let Some((start, read)) = loader_owner::read_object(&functions, &reads, &builders) else {
+        return Ok(points);
+    };
+    let build = inline_build::inline_build(
+        &functions[&start],
+        read.store,
+        read.register,
+        Some(read.call),
+    );
+
+    for (&offset, targets) in build.member_calls.range(1..) {
+        let classes: BTreeSet<&str> = symbols
+            .at(targets)
+            .filter_map(|symbol| Some(symbol.name.split_once("::")?.0))
+            .collect();
+        let [class] = classes.into_iter().collect::<Vec<_>>()[..] else {
+            continue;
+        };
+        let Some(rows) = default_constructor(text, symbols, class) else {
+            continue;
+        };
+        let part = inline_build::inline_build(&rows, 0, 0, None);
+
+        if let Some(part_points) = inline_build::part_points(&build, offset, &part) {
+            points.extend(part_points);
+        }
+    }
+
+    Ok(points)
+}
+
+/// The decoded body of `class`'s one default constructor `Class::Class()`, after the symbols of
+/// that name that only branch to another of them. `None` when there is no such body, several, or
+/// one that does not decode.
+fn default_constructor(
+    text: &Text,
+    symbols: IndexedSymbols<'_>,
+    class: &str,
+) -> Option<Vec<Instruction>> {
+    let name = format!("{class}::{class}()");
+    let entries: BTreeSet<u64> = symbols.named(&name).map(|symbol| symbol.address).collect();
+    let mut bodies = Vec::new();
+
+    for &entry in &entries {
+        let (address, code) = text.function(entry).ok()?;
+        let rows = crate::engine::analysis::decode::decode_arm64(code, address).ok()?;
+        let alias = declarations::branch_alias(&rows).is_some_and(|to| entries.contains(&to));
+
+        if !alias {
+            bodies.push(rows);
+        }
+    }
+
+    let [rows] = <[_; 1]>::try_from(bodies).ok()?;
+
+    Some(rows)
 }
 
 /// The member reader of `owner`'s root keys: its own `ReadMember(CReader&, int)`, or, for an owner

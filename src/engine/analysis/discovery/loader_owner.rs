@@ -211,51 +211,88 @@ fn route_owner(
                 return LoaderOwner::ByRootKey { keyed, other };
             }
 
-            let read: BTreeSet<&String> = route
+            let read: BTreeSet<String> = route
                 .iter()
                 .flat_map(|start| {
-                    read_classes(&functions[start], &addresses[start], reads, builders)
+                    object_reads(&functions[start], &addresses[start], reads, builders)
                 })
+                .map(|read| read.class)
                 .collect();
             match read.into_iter().collect::<Vec<_>>()[..] {
-                [owner] => LoaderOwner::Owner(owner.clone()),
+                [ref owner] => LoaderOwner::Owner(owner.clone()),
                 _ => LoaderOwner::Several(built),
             }
         }
     }
 }
 
-/// The classes of the built objects that `rows` passes, with the reader of its one statement
-/// read, to a call. An object is built when the address point of its class is stored to its
-/// first word; the call receives the object in `x0` and the reader in `x1`, as a virtual
-/// `Read(CReader&)` does. The registers are followed in code order, not by path. Empty unless the
-/// function has one statement read.
-fn read_classes<'a>(
+/// One built object that a loader function reads with the reader of its statement read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectRead {
+    /// The class whose address point the function stores to the object's first word.
+    pub class: String,
+    /// The position of that store in the function's rows.
+    pub store: usize,
+    /// The register that holds the object at the store.
+    pub register: usize,
+    /// The address of the call that reads the object.
+    pub call: u64,
+}
+
+/// The one object that the loader in `functions`, every decoded function of one database by its
+/// start, reads with its statement reader, with the start of the function that reads it. `None`
+/// when no function or several read one.
+pub fn read_object(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    reads: &LoaderReads<'_>,
+    builders: &BTreeMap<u64, String>,
+) -> Option<(u64, ObjectRead)> {
+    let mut found = functions.iter().flat_map(|(&start, rows)| {
+        object_reads(rows, &FunctionAddresses::of(rows), reads, builders)
+            .into_iter()
+            .map(move |read| (start, read))
+    });
+    let read = found.next()?;
+
+    found.next().is_none().then_some(read)
+}
+
+/// The built objects that `rows` passes, with the reader of its one statement read, to a call.
+/// An object is built when the address point of its class is stored to its first word; the call
+/// receives the object in `x0` and the reader in `x1`, as a virtual `Read(CReader&)` does. The
+/// registers are followed in code order, not by path. Empty unless the function has one statement
+/// read.
+fn object_reads(
     rows: &[Instruction],
     addresses: &FunctionAddresses,
     reads: &LoaderReads<'_>,
-    builders: &'a BTreeMap<u64, String>,
-) -> BTreeSet<&'a String> {
-    let mut read = BTreeSet::new();
+    builders: &BTreeMap<u64, String>,
+) -> Vec<ObjectRead> {
+    let mut read = Vec::new();
     let Some(statement) = statement_read(rows, addresses, reads) else {
         return read;
     };
     let Some(reader) = argument(&rows[..statement], 0) else {
         return read;
     };
-    // The class whose address point each register holds, and the class of the object whose
-    // first word holds it.
+    // The class whose address point each register holds, and the object whose first word holds
+    // it: its class, the store and the register at the store.
     let mut points: BTreeMap<usize, &String> = BTreeMap::new();
-    let mut objects: BTreeMap<usize, &String> = BTreeMap::new();
+    let mut objects: BTreeMap<usize, (&String, usize, usize)> = BTreeMap::new();
 
     for (position, row) in rows.iter().enumerate() {
         let operands: Vec<&str> = row.operands.split(',').collect();
         let is_call = row.operation == "bl" || row.operation.starts_with("blr");
         if is_call
-            && let Some(class) = objects.get(&0)
+            && let Some(&(class, store, register)) = objects.get(&0)
             && argument(&rows[..position], 1) == Some(reader)
         {
-            read.insert(*class);
+            read.push(ObjectRead {
+                class: class.clone(),
+                store,
+                register,
+                call: row.address,
+            });
         }
 
         if let ("str", [value, base]) = (row.operation.as_str(), operands.as_slice())
@@ -265,7 +302,7 @@ fn read_classes<'a>(
                 .and_then(|base| base.strip_suffix(']'))
                 .and_then(wide_register)
         {
-            objects.insert(base, *class);
+            objects.insert(base, (*class, position, base));
         }
 
         let copied = match (row.operation.as_str(), operands.as_slice()) {
