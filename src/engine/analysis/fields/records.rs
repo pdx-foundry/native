@@ -504,6 +504,9 @@ pub struct KeyReaders {
     pub string_stride: i64,
     pub value_token: i64,
     pub token_text: i64,
+    /// The token `yes`. A member that stores whether the value token is this token reads a
+    /// Boolean. `None` when the token table names no single `yes`.
+    pub true_token: Option<i64>,
     pub token_copy: Vec<u64>,
     pub target_construct: Vec<u64>,
     pub target_move: Option<u64>,

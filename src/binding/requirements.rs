@@ -67,6 +67,7 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/tradition_categories", "adoption_bonus"),
         ("common/tradition_categories", "finish_bonus"),
         ("common/war_goals", "casus_belli"),
+        ("events", "id"),
         ("map/galaxy", "stars_min_dist"),
     ],
     conditional: &[
@@ -96,6 +97,12 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/traditions", "on_enabled"),
         ("common/traditions", "triggered_modifier"),
         ("common/traditions", "unlocks_agenda"),
+        ("events", "desc"),
+        ("events", "is_triggered_only"),
+        ("events", "mean_time_to_happen"),
+        ("events", "option"),
+        ("events", "picture"),
+        ("events", "title"),
     ],
 };
 

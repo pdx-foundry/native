@@ -3855,7 +3855,7 @@ fn numeric_command_arguments_share_registry_conversion_facts() {
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn each_event_kind_is_a_root_field_read_in_the_scope_that_the_kind_selects() {
-    use pdx_native::FieldMembers;
+    use pdx_native::{FieldMembers, FieldRequirement};
 
     let native = native();
     let kinds = parity::event_kinds(native).unwrap();
@@ -3875,6 +3875,17 @@ fn each_event_kind_is_a_root_field_read_in_the_scope_that_the_kind_selects() {
         panic!("{:?}", country_event.members);
     };
     assert!(members.iter().any(|member| member.name == "trigger"));
+
+    // Each kind's members are an event definition's fields: `id` is required, `title` only when
+    // the event is not hidden, and `hide_window` is a `yes` test with no requirement.
+    let member = |name| members.iter().find(|member| member.name == name).unwrap();
+    assert_eq!(member("id").requirement, FieldRequirement::Required);
+    assert_eq!(member("title").requirement, FieldRequirement::Unknown);
+    assert_eq!(
+        member("hide_window").requirement,
+        FieldRequirement::Optional
+    );
+    assert_eq!(member("hide_window").reader.kind, ReaderKind::Boolean);
 }
 
 #[test]
