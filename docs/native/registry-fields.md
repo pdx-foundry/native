@@ -1309,13 +1309,15 @@ call (a virtual `Read(CReader&)`). A loader of several directories has a route f
 other shape, is `Unsupported` with the reason, never a choice.
 
 - **Read object: validated assumption, not a proof.** The registers are followed in code order,
-  not by path, and a constructor call is not counted as the store. On M452 the rule selects only
-  `CNameList` (`common/name_lists`). It does not select one class for `common/random_names`: the
-  part lists are read by `CReader::Read(CPersistent&)` with the reader in `x0`, and each format's
-  address point is stored with a post-index store into `x0` after `mov x19, x0`. `music` stays `Several`
+  not by path. A `mov` between 64-bit registers copies the object, so `mov x0, x19` before the
+  call counts. A constructor call is not counted as the store, and neither is a store with
+  writeback, such as the post-index `str x8, [x0], #8`. On M452 the rule selects only `CNameList`
+  (`common/name_lists`). It does not select one class for `common/random_names`: the part lists
+  are read by `CReader::Read(CPersistent&)` with the reader in `x0`, and each format's address
+  point is stored with a post-index store into `x0` after `mov x19, x0`. `music` stays `Several`
   (`CSong`, `CMeanTimeToHappen`). Change the rule when a loader reads its object through a
-  constructor-built object or a copied register; the exact-build test of the owners fixes the three
-  answers.
+  constructor-built object, or stores its address point with writeback; the exact-build test of
+  the owners fixes the three answers.
 
 - **Representation.** The join lives in `ScheduledDatabases::loader_owners`, beside
   `loader_directories`, and is read once with the schedule. It is not a `NamedCandidate`: the
@@ -1325,8 +1327,9 @@ other shape, is `Unsupported` with the reason, never a choice.
   since every field reader used only `owner_candidate` of the candidate record. The block-entry
   method takes the joined owners with the template owners, so the blocks of a custom owner get
   entry contexts (`common/strategic_resources` `potential` enters as a country).
-- **Validated assumption, not a proof.** A built class is taken as the item that the loader
-  reads; the method does not follow the built object to the read call. On M452 each joined route
+- **Validated assumption, not a proof.** When the route builds one class, that class is taken
+  as the item that the loader reads; the method follows the object to the read call only to
+  select one of several built classes. On M452 each joined route
   builds the object, then reads it: `CStaticModifierDatabase::Init(bool)` allocates, forms `vtable
   for CStaticModifier`+0x10 and calls slot `+0x20` of the object (`CPdxModifier<…>::Read(CReader&)`,
   whose member dispatch at slot `+0x28` is `CStaticModifier::ReadMember`);
@@ -1335,8 +1338,8 @@ other shape, is `Unsupported` with the reason, never a choice.
   point and calls slot `+0x20`; `ReadEventsFile` constructs `CEvent` ([the events
   loader](#the-events-loader-on-m452)). The parity test
   `m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates` fixes every owner.
-  Follow the object to its read call when a build has a route that builds a persistent object
-  that it does not read as the item.
+  Apply the read-object rule to one built class too when a build has a route that builds a
+  persistent object that it does not read as the item.
 - **Static modifiers.** The key-only phase of `CStaticModifierDatabase::Init(bool)` calls
   `CStaticModifier::ReadOnlyKey(CReader&)` and reads no definition. The full-read phase reads
   through `CStaticModifier::ReadMember(CReader&, int)`, the root. That reader handles `key`,
