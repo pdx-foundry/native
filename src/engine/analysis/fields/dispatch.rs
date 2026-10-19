@@ -274,6 +274,7 @@ impl State {
                 Value::Token => Some(Value::Token),
                 Value::TokenWord(offset) => Some(Value::TokenWord(offset)),
                 Value::Converted(entry) => Some(Value::Converted(entry)),
+                value @ Value::EqualsAny(..) => Some(value),
                 Value::Load(base, width) => Some(Value::Load(base, width.min(4))),
                 value @ Value::Offset(..) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
                     Some(value)
@@ -327,6 +328,7 @@ impl State {
                 Some(Value::Token) => Some(Value::TokenWord(0)),
                 Some(Value::TokenWord(offset)) => Some(Value::TokenWord(offset)),
                 Some(Value::Converted(entry)) => Some(Value::Converted(entry)),
+                Some(value @ Value::EqualsAny(..)) => Some(value),
                 Some(value @ Value::Offset(..)) if matches!(&value, Value::Offset(base, _) if matches!(base.as_ref(), Value::Load(_, 4))) => {
                     Some(value)
                 }
@@ -830,6 +832,17 @@ fn apply(
                 // The serializer's own members hold no owner field.
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
+                if let Some(test) = true_token_test(input.key_readers)
+                    && state.value(operand) == Some(test)
+                {
+                    let join = ReaderJoin::Stored {
+                        callee: TRUE_TOKEN_TEST.into(),
+                        kind: crate::ReaderKind::Boolean,
+                        destination: Some(at),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    state.stored = Some((join, at, width));
+                }
                 if let Some(Value::Converted(converter)) = state.value(operand) {
                     let callee = input.symbol_index.name(input.symbols, converter);
                     let join = ReaderJoin::Stored {
@@ -907,6 +920,9 @@ fn apply(
         // not followed.
         ("ubfx" | "and" | "orr" | "movk" | "csel", [destination, ..]) => {
             state.assign(destination, None)
+        }
+        ("cset", [destination, "eq"]) if tests_true_token(state, input.key_readers) => {
+            state.assign(destination, true_token_test(input.key_readers))
         }
         // A bit test of a value that the walk does not follow leaves the flags unknown.
         ("tst", _) => state.flags = None,
@@ -2495,6 +2511,33 @@ fn value_token_word(bindings: &super::KeyReaders) -> Value {
     Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
 }
 
+/// The reader that stores whether the value token is `yes` in an owner member. Every other token
+/// stores false, so the reader accepts any token without an error.
+const TRUE_TOKEN_TEST: &str = "value token == yes";
+
+/// Whether the value token is the true token, as a Boolean; `None` when the true token is not
+/// bound.
+fn true_token_test(bindings: &super::KeyReaders) -> Option<Value> {
+    let true_token = bindings.true_token?;
+
+    Some(Value::EqualsAny(
+        Box::new(value_token_word(bindings)),
+        vec![true_token],
+    ))
+}
+
+/// Whether the flags hold the comparison of the value token with the true token alone.
+fn tests_true_token(state: &State, bindings: &super::KeyReaders) -> bool {
+    let Some(Flags::Values { tested, pivots }) = &state.flags else {
+        return false;
+    };
+
+    *tested == value_token_word(bindings)
+        && bindings
+            .true_token
+            .is_some_and(|true_token| *pivots == [true_token])
+}
+
 /// Whether the call to `target` converts the value token with a pure converter, which a
 /// keyword's caller then stores.
 fn converts_value_token(input: &DispatchInput<'_>, target: u64, state: &State) -> bool {
@@ -2708,6 +2751,64 @@ mod tests {
         assert!(joins(&value_token_slot, &bound));
         assert!(!joins(&unchanged_reader, &bound));
         assert!(!joins(&unchanged_reader, &default));
+    }
+
+    #[test]
+    fn a_member_that_stores_whether_the_value_token_is_yes_reads_a_boolean() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![Symbol {
+            name: root.into(),
+            address: 0x1000,
+        }];
+        let functions = |code| {
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )])
+        };
+        let yes_test = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278];
+            mov w9, #7; // the true token
+            cmp w8, w9;
+            cset w8, eq;
+            strb w8, [x0, #0x20];
+            ret
+        ));
+        let other_token_test = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278];
+            mov w9, #8; // a token that is not true
+            cmp w8, w9;
+            cset w8, eq;
+            strb w8, [x0, #0x20];
+            ret
+        ));
+        let readers = super::super::KeyReaders {
+            value_token: 0x278,
+            true_token: Some(7),
+            ..Default::default()
+        };
+        let outcome = |functions| {
+            let symbol_index = SymbolIndex::new(&symbols);
+            let input =
+                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+
+        assert!(matches!(
+            outcome(&yes_test),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::Boolean,
+                destination: Some(0x20),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        assert!(matches!(outcome(&other_token_test), PathOutcome::Gap(_)));
     }
 
     #[test]

@@ -63,7 +63,8 @@ nine registries change and none loses a field. Against
 give six fields of five registries their members. Against `v52`, the dispatch walker reads a compare with a
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
-changes. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
+reader, adds `is_triggered_only`, and removes one civics path gap. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -101,6 +102,14 @@ lookups, so the diff drops only members that match their serde defaults.
   an element from an unknown call cannot establish the shape. A stack `CString` made from the
   value token's text and passed to an owner call reads `String` with no destination, by a stated
   rule ([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)).
+- **The `yes` test.** A reader that compares the value token with the token `yes` alone, sets a
+  register from the result (`cmp`, `cset …,eq`) and stores that register to an owner member reads
+  `Boolean/Replace`. Every other token stores false and logs nothing, so the reader accepts any
+  value. The binding takes `yes` from the recipe's Boolean token names
+  (`PersistentRecipe::boolean_tokens`); a token table with no single `yes` binds none, and the
+  idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
+  idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
+  …) and `status` of four triggers (`can_colonize`, …).
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13
   child fields each); in `advanced_authority_swap` the collection is established but not its
   children. The council presence branches normalize to unconditional integer reads. Objects built
@@ -630,7 +639,7 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
 | `Required` | An unconditional check logs the field's absence | 30 |
-| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below the root | 164 |
+| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below a definition's fields | 164 |
 | `Optional` | Every other root field of a census registry | 1,736 |
 
 **A recorded manual exception.** Claim: loading a definition without a field logs a report of
@@ -699,6 +708,7 @@ action is missing token`), `common/astral_rifts` (an invalid stage event) and
 | star_classes/randomizers | `stars` | `random_list does not contain any star classes!` |
 | tradition_categories | `adoption_bonus`, `finish_bonus` | `is missing required field '…'` (static) |
 | war_goals | `casus_belli` | `lacks a Casus Belli` |
+| events (each kind's members) | `id` | `Event at %s has no ID.` (static, [event members](#event-kinds)) |
 | map/galaxy | `stars_min_dist` | `has stars_min_dist = 0 (expected positive)` |
 
 The ethics `cost` and galaxy `stars_min_dist` checks test the default value, which an absent
@@ -1637,13 +1647,15 @@ known empty list to `scopeless`.
   `namespace` case at an `ldursb`, so the answer has one registry gap for a root path that the
   walk could not finish. The walk names every accepted kind regardless.
 
-`registry_fields` over `events/` at `registry-fields/v33`: 22 kinds, each read in an established
-scope; of the 30 `CEvent` fields, 7 are complete (`custom_gui`, `custom_gui_option`,
-`notification_event_icon`, `diplomatic_title`, `event_picture_background`, `specimen`,
-`event_message_type`), 4 are partial (`event_chain` with unresolved storage, `difficulty` and
-`notification_event_icon_frame` with the scanner's conversion outside the method, and
-`pre_triggers`, see [pre-trigger blocks](#pre-trigger-blocks)) and 19 have no established
-reader. Their failure shapes, from `examples/inspect --registry-fields events`:
+`registry_fields` over `events/` at `registry-fields/v53`: 22 kinds, each read in an established
+scope, with 44 `CEvent` members. 24 have a reader: 13 [`yes` tests](#current-sweep)
+(`fire_only_once`, `is_test_event`, `hide_window`, `diplomatic`, `auto_opens`,
+`is_advisor_event`, `force_open`, `trackable`, `archaeology`, `first_contact`,
+`espionage_operation`, `auto_select`, `astral_rift`), 7 strings (`custom_gui`,
+`custom_gui_option`, `notification_event_icon`, `diplomatic_title`, `event_picture_background`,
+`specimen`, `event_message_type`), `event_chain`, `difficulty`, `notification_event_icon_frame`
+and `pre_triggers` ([pre-trigger blocks](#pre-trigger-blocks)). 20 have no established reader.
+Their failure shapes, from `examples/inspect --registry-fields events`:
 
 - the path reaches a call that is not a reader: `operator new` for an object held by a
   `shared_ptr` (`trigger`, `immediate`, `option`, `after`, `abort_trigger`, `abort_effect`,
@@ -1652,8 +1664,27 @@ reader. Their failure shapes, from `examples/inspect --registry-fields events`:
   `location`); `strlen` or `CString::CString` of the token text (`id`, `title`, `message_desc`,
   `base`); `CTriggeredEventDescription<…>::ReadEntry(CReader&, int, EScopeType)` (`desc`);
   `shared_ptr<…>::reset` (`desc_clear`);
-- an unsupported instruction (`stur` to the frame, `cset`) on an alternative path and on 16
-  unnamed token paths, and three unsupported branch conditions.
+- `is_triggered_only` is a `yes` test, but when `mean_time_to_happen` is already set it logs
+  `'is_triggered_only' should always come before 'mean_time_to_happen' or 'weight_multiplier'!`
+  through a `CLogStream`, whose calls (`CLogger::AccessInstance`, `CEventManager::GetLogID`, the
+  stream operators) and `ldursb` the walk does not follow. Its two alternatives give no shared
+  reader. Repair: treat a `CLogStream` diagnostic as changing no script state;
+- no field: token `11510` stores `token - 0x2fa9` for the four tokens from `0x2faa` and `0` for
+  any other (`csel` after `cmp`), an inline keyword domain that the walk does not read
+  (`event_window_type` in the config); the four `*_clear` keys (`option_clear`, `picture_clear`,
+  `trigger_clear`, `show_sound_clear`) stop at a `b.lt` over an array count or a `movi`;
+- `major` and `major_trigger` are not keys of `CEvent::ReadMember` on M452.
+
+**Members are definition fields.** Each kind is a root statement and a definition, so the
+requirement of its members comes from the [census](#required-fields), as a root field's does: the
+census run's empty `country_event` is the definition, and every kind builds the same `CEvent`
+through one loader. The kind itself stays `Unknown`: the census establishes what a definition
+must contain, not which statements a file must hold. `id` is `Required`: `ReadEventsFile` (`0x1004d5e40`) logs `Event at %s has no
+ID.` for an event whose id word is negative and whose id text is empty, and keeps no such event.
+`title`, `desc`, `picture` and `option` are `Unknown`: their absence reports (`eventmanager.cpp`
+446–464) run only when `hide_window` (`CEvent + 0x5ff`) is false. `mean_time_to_happen` and
+`is_triggered_only` are `Unknown`: `CEvent::InitPostRead()` logs when both are absent. Every other
+member is `Optional`.
 
 The block children take their scope from `CEvent + 0x68`, where the constructor stores the kind's
 scope, but none of their readers joins, so none is `Enclosing` yet. When a child's reader joins

@@ -164,6 +164,7 @@ pub(in crate::binding) fn read(
         targets,
         key_readers: super::fields::key_readers(
             symbols,
+            &tokens,
             &recipe.persistent,
             recipe.reader_token_offset,
         )?,
@@ -203,16 +204,6 @@ fn command_bindings(
             recipe.trigger_target_getter_slot,
         ),
     };
-    let boolean_tokens: [Result<i64, AnalysisError>; 2] = recipe.boolean_tokens.map(|name| {
-        let mut matches = tokens
-            .iter()
-            .filter(|(_, token)| token.name.as_deref() == Some(name));
-        match (matches.next(), matches.next()) {
-            (Some((&id, _)), None) => Ok(id),
-            _ => Err(InputError(format!("Boolean token {name} is missing or ambiguous")).into()),
-        }
-    });
-    let [true_token, false_token] = boolean_tokens;
     let mut target_getters = required_matching(symbols, "typed target getters", |name| {
         name.starts_with("CEventTarget::GetScope") && name.ends_with("(CEventScope&) const")
     })?;
@@ -233,7 +224,7 @@ fn command_bindings(
         assign_slot: slots.assign,
         validation_slot,
         target_getter_slot,
-        boolean_tokens: [true_token?, false_token?],
+        boolean_tokens: super::fields::boolean_tokens(tokens, &recipe.persistent)?,
         token_copy: required_signature(symbols, "CToken::CToken(CToken const&)")?,
         target_from_token: required_signature(
             symbols,

@@ -46,9 +46,18 @@ impl SharedFieldInput {
         reader_token_offset: u64,
     ) -> Result<Self, AnalysisError> {
         let text = Text::read(image.bytes, image.symbols)?;
+        // The field method reports a token table that it cannot read as its own gap.
+        let tokens = text
+            .token_table(image.symbols, image.strings)
+            .unwrap_or_default();
 
         Ok(Self {
-            key_readers: key_readers(image.symbols, persistent_recipe, reader_token_offset)?,
+            key_readers: key_readers(
+                image.symbols,
+                &tokens,
+                persistent_recipe,
+                reader_token_offset,
+            )?,
             persistent: SharedPersistent::read(image, &text, persistent_recipe)?,
         })
     }
@@ -1269,10 +1278,39 @@ fn pointer_member_offset(
     }
 }
 
+/// The identities of the recipe's Boolean tokens, true then false.
+pub(super) fn boolean_tokens(
+    tokens: &BTreeMap<i64, fields::Token>,
+    recipe: &PersistentRecipe,
+) -> Result<[i64; 2], AnalysisError> {
+    let [true_token, false_token] = recipe.boolean_tokens.map(|name| {
+        named_token(tokens, name).ok_or_else(|| {
+            AnalysisError::from(crate::engine::analysis::InputError(format!(
+                "Boolean token {name} is missing or ambiguous"
+            )))
+        })
+    });
+
+    Ok([true_token?, false_token?])
+}
+
+/// The identity of the one token named `name`.
+fn named_token(tokens: &BTreeMap<i64, fields::Token>, name: &str) -> Option<i64> {
+    let mut matches = tokens
+        .iter()
+        .filter(|(_, token)| token.name.as_deref() == Some(name));
+
+    match (matches.next(), matches.next()) {
+        (Some((&id, _)), None) => Some(id),
+        _ => None,
+    }
+}
+
 /// Bind the compound reader boundaries used by both field and command dispatch.
 pub(super) fn key_readers(
     symbols: &[Symbol],
-    recipe: &super::super::targets::PersistentRecipe,
+    tokens: &BTreeMap<i64, fields::Token>,
+    recipe: &PersistentRecipe,
     reader_token_offset: u64,
 ) -> Result<crate::engine::analysis::fields::KeyReaders, AnalysisError> {
     use super::declarations::{addresses, unique};
@@ -1291,6 +1329,7 @@ pub(super) fn key_readers(
         string_stride: recipe.string_array[2],
         value_token: recipe.value_token as i64,
         token_text: recipe.token_text as i64,
+        true_token: named_token(tokens, recipe.boolean_tokens[0]),
         reader_token: Some(reader_token_offset),
         token_copy: token_copy.into_iter().collect(),
         target_construct: target_construct.into_iter().collect(),

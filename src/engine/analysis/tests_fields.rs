@@ -2608,6 +2608,7 @@ fn compound_fixture(code: Vec<u8>) -> FieldInput {
         compound_sizes: [0x190, 0x30, 0x18],
         value_token: 0x278,
         token_text: 0x10,
+        true_token: None,
         reader_token: None,
         token_copy: vec![0xa000],
         target_construct: vec![0xb000],

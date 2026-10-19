@@ -40,8 +40,9 @@ pub enum RepeatBehavior {
     Unknown,
 }
 
-/// Whether a definition must contain a root field: what the engine reports when a definition
-/// omits it while the game loads. This gives no occurrence count.
+/// Whether a definition must contain a root field, or a member of a root statement such as an
+/// event kind: what the engine reports when a definition omits it while the game loads. This gives
+/// no occurrence count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum FieldRequirement {
@@ -51,7 +52,7 @@ pub enum FieldRequirement {
     /// check that runs only when another field has a value can still report it.
     Optional,
     /// Not established: the check depends on another field's value, the registry was not
-    /// observed, or the field is not a root field.
+    /// observed, or the field is below a definition's fields.
     Unknown,
 }
 

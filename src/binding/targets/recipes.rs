@@ -41,6 +41,8 @@ pub(in crate::binding) struct PersistentRecipe {
     pub value_token: u64,
     /// Text object within an assigned token.
     pub token_text: u64,
+    /// Names of the Boolean tokens, true then false.
+    pub boolean_tokens: [&'static str; 2],
     pub read_slot: u64,
     pub member_slot: u64,
     /// The `InitPostRead()` and `InitPostRead(CString const&, int, int)` slots, which
@@ -112,8 +114,6 @@ pub(in crate::binding) struct DeclarationRecipe {
     pub trigger_validation_slot: u64,
     pub effect_target_getter_slot: u64,
     pub trigger_target_getter_slot: u64,
-    /// Token names used for the Boolean assignment probes, true then false.
-    pub boolean_tokens: [&'static str; 2],
     /// Stack offset of the category argument of the modifier definition call.
     pub modifier_category_offset: u64,
     /// Stack offset of the category argument of the call that registers a generated modifier.
@@ -279,6 +279,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         compound_sizes: [M45_EVENT_TARGET_SIZE as i64, 0x30, 0x18],
         value_token: 0x278,
         token_text: 0x10,
+        boolean_tokens: ["yes", "no"],
         read_slot: 0x20,
         member_slot: 0x28,
         post_read_slots: [0x30, 0x38],
@@ -321,7 +322,6 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
     trigger_validation_slot: 0x68,
     effect_target_getter_slot: 0x88,
     trigger_target_getter_slot: 0x80,
-    boolean_tokens: ["yes", "no"],
     modifier_category_offset: 0x4,
     dynamic_modifier_category_offset: 0x0,
     modifier_nodes: crate::engine::analysis::modifier_nodes::ModifierNodeLayout {

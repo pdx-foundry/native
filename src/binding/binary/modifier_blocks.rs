@@ -117,6 +117,12 @@ pub(in crate::binding) fn read(
         );
     }
     let tokens = text.token_table(image.symbols, image.strings)?;
+    let key_readers = super::fields::key_readers(
+        image.symbols,
+        &tokens,
+        &recipe.persistent,
+        recipe.reader_token_offset,
+    )?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
     let name_reads = name_read_functions(image, &text, &base, recipe);
     let directories = super::references::database_directories(
@@ -191,11 +197,7 @@ pub(in crate::binding) fn read(
         data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
         serializer_constructors,
-        key_readers: super::fields::key_readers(
-            image.symbols,
-            &recipe.persistent,
-            recipe.reader_token_offset,
-        )?,
+        key_readers,
         reader_token_offset: recipe.reader_token_offset,
         base_member: NUMERIC_MODIFIER_MEMBER.into(),
         base,
