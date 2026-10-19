@@ -1979,6 +1979,15 @@ fn component_templates_answer_each_root_key_as_a_root_statement() {
     assert!(members("utility_component_template").contains(&"sensor_range".into()));
     assert!(members("weapon_component_template").contains(&"missile_speed".into()));
     assert!(!members("utility_component_template").contains(&"missile_speed".into()));
+    // The weapon and strike craft readers pass other tokens to `ReadAttackInfoValue`, then to
+    // the base reader.
+    for key in [
+        "strike_craft_component_template",
+        "weapon_component_template",
+    ] {
+        assert!(members(key).contains(&"damage".into()), "{key}");
+        assert!(members(key).contains(&"key".into()), "{key}");
+    }
 
     // A member's gap is below its key, and the method's limits stay with the registry.
     let subjects: Vec<_> = answer.gaps.iter().map(|gap| &gap.subject).collect();

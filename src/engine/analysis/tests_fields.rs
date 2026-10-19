@@ -794,6 +794,91 @@ fn an_inherited_reader_reads_the_tokens_that_its_caller_passes_on() {
 }
 
 #[test]
+fn a_value_reader_reads_the_tokens_of_a_member_that_its_caller_passes_on() {
+    use crate::engine::analysis::readers::destination;
+
+    let value_reader = "ReadExampleValue(SExampleValue&, CReader&)";
+    let mut input = inherited_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        mov x19, x0; // the owner
+        mov x20, x1; // the reader
+        mov x21, x2; // the token
+        cmp w2, #7; // token 7
+        b.eq extern 0x1038;
+        add x0, x19, #0x40; // the value member
+        mov x1, x20;
+        bl extern 0xa000; // ReadExampleValue
+        tbnz w0, #0, extern 0x1034; // handled
+        mov x0, x19;
+        mov x1, x20;
+        mov x2, x21;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x19, #0x80; // the owner's member
+        mov x0, x20;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    input
+        .functions
+        .retain(|function| function.address != 0xa000);
+    input.functions.push(Function {
+        name: value_reader.into(),
+        address: 0xa000,
+        code: arm64!(at 0xa000;
+            ldr w8, [x1, #0x38]; // the reader's token
+            cmp w8, #8; // token 8
+            b.eq extern 0xa014;
+            mov w0, #0; // not handled
+            ret;
+            add x8, x0, #8; // a word of the value
+            mov x0, x1;
+            mov x1, x8;
+            bl extern 0x4000; // CReader::Read
+            mov w0, #1; // handled
+            ret
+        ),
+    });
+    input.stubs.clear();
+    input
+        .symbols
+        .retain(|symbol| symbol.address != 0x9000 && symbol.address != 0xa000);
+    input.symbols.push(Symbol {
+        name: value_reader.into(),
+        address: 0xa000,
+    });
+    input.key_readers.reader_token = Some(0x38);
+
+    let result = derive(input);
+
+    let names: Vec<_> = result
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["new_engine_field", "inherited_field"],
+        "{:?}",
+        result.gaps
+    );
+    assert_eq!(destination(&result.fields[1].readers[0]), Some(0x48));
+    // The false return reaches the base rejection under a test of a known constant.
+    let declined: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| ![[7, 7], [8, 8]].contains(&path.domain))
+        .collect();
+    assert!(declined.iter().all(|path| {
+        path.outcome == PathOutcome::Rejected
+            && path
+                .conditions
+                .iter()
+                .all(|condition| condition.value == Some(fields::Value::Constant(0)))
+    }));
+}
+
+#[test]
 fn a_false_return_through_a_tail_called_ancestor_reaches_the_owner() {
     let ancestor = "CAncestor::ReadMember(CReader&, int)";
     let mut input = inherited_fixture();
@@ -2482,6 +2567,7 @@ fn compound_fixture(code: Vec<u8>) -> FieldInput {
         compound_sizes: [0x190, 0x30, 0x18],
         value_token: 0x278,
         token_text: 0x10,
+        reader_token: None,
         token_copy: vec![0xa000],
         target_construct: vec![0xb000],
         target_move: Some(0xc000),

@@ -38,16 +38,17 @@ pub(in crate::binding) struct SharedFieldInput {
 }
 
 impl SharedFieldInput {
-    /// Read them from `image` with the recipe of its build; a field input then reads the rest
-    /// from the same image.
+    /// Read them from `image` with the recipe of its build and the reader offset of a statement's
+    /// token word; a field input then reads the rest from the same image.
     pub fn read(
         image: &Image<'_>,
         persistent_recipe: &PersistentRecipe,
+        reader_token_offset: u64,
     ) -> Result<Self, AnalysisError> {
         let text = Text::read(image.bytes, image.symbols)?;
 
         Ok(Self {
-            key_readers: key_readers(image.symbols, persistent_recipe)?,
+            key_readers: key_readers(image.symbols, persistent_recipe, reader_token_offset)?,
             persistent: SharedPersistent::read(image, &text, persistent_recipe)?,
         })
     }
@@ -341,8 +342,8 @@ fn push_embedded_readers(
     }
 }
 
-/// The member readers that `root` and the readers it reaches call directly, which dispatch
-/// follows as inherited readers, and the import stubs among those calls with the body that each
+/// The member readers and value readers that `root` and the readers it reaches call directly,
+/// which dispatch follows as inherited readers, and the import stubs among those calls with the body that each
 /// reaches. A stub counts only when the image's fixups resolve its pointer slot to a text body of
 /// the stub's name, as same-image weak coalescing does.
 fn push_inherited_readers(
@@ -380,7 +381,10 @@ fn push_inherited_readers(
             .collect();
         let calls: Vec<Symbol> = symbols
             .at(&targets)
-            .filter(|symbol| readers::is_inheritable_member(&symbol.name))
+            .filter(|symbol| {
+                readers::is_inheritable_member(&symbol.name)
+                    || readers::is_member_value_reader(&symbol.name)
+            })
             .cloned()
             .collect();
 
@@ -1269,6 +1273,7 @@ fn pointer_member_offset(
 pub(super) fn key_readers(
     symbols: &[Symbol],
     recipe: &super::super::targets::PersistentRecipe,
+    reader_token_offset: u64,
 ) -> Result<crate::engine::analysis::fields::KeyReaders, AnalysisError> {
     use super::declarations::{addresses, unique};
     let token_copy = addresses(symbols, "CToken::CToken(CToken const&)");
@@ -1286,6 +1291,7 @@ pub(super) fn key_readers(
         string_stride: recipe.string_array[2],
         value_token: recipe.value_token as i64,
         token_text: recipe.token_text as i64,
+        reader_token: Some(reader_token_offset),
         token_copy: token_copy.into_iter().collect(),
         target_construct: target_construct.into_iter().collect(),
         target_move: Some(unique(symbols, "CEventTarget::operator=(CEventTarget&&)")?),

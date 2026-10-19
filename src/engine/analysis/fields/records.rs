@@ -504,6 +504,9 @@ pub struct KeyReaders {
     pub string_stride: i64,
     pub value_token: i64,
     pub token_text: i64,
+    /// The reader offset of the statement's token word, which a member reader also receives in
+    /// `w2`.
+    pub reader_token: Option<u64>,
     pub token_copy: Vec<u64>,
     pub target_construct: Vec<u64>,
     pub target_move: Option<u64>,

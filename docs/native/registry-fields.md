@@ -219,6 +219,29 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
     (`CTriggeredEventDescription`) and `resources` (stack serializer).
   - A nested owner does not follow its own inherited reader: `nested_owner` collects no
     inherited readers. Change this when a nested owner needs it.
+- **Value readers.** `CWeaponComponentTemplate::ReadMember` (`0x1001e41f4`) and
+  `CStrikeCraftComponentTemplate::ReadMember` (`0x1001eef6c`) pass the tokens that they do not
+  handle to `ReadAttackInfoValue(NCombatRules::SAttackInfo&, CReader&)` (`0x1001320fc`) with
+  `x0` at an owner member (`+0x10f8` and `+0x1130`) and the reader in `x1`, then tail-call
+  `CComponentTemplate::ReadMember` on false (`tbnz w0,#0` at `0x1001e4a88`). The value reader
+  loads the token from the reader (`ldr w10,[x1,#0x38]`), switches on it through compares and a
+  byte jump table, reads the attack keys (`damage`, `hull_damage`, `shield_penetration` and
+  others) into the member, and returns false for any other token.
+  - **Rule.** Registry dispatch follows a direct call to a function with the signature
+    `F(T&, CReader&)` (`readers::is_member_value_reader`; a template argument or a third
+    parameter does not match) when `x0` holds an owner member and `x1` the reader. The callee
+    starts with that member in `x0` and no token in `x2`. Its false returns go on in the caller
+    as an inherited reader's do. The binding collects these callees with the inherited readers.
+  - **The reader's token word.** The owner walk reads a 32-bit load of the reader at the recipe's
+    `reader_token_offset` (`0x38`) as the token, as the loader walk does. A member reader receives
+    that word in `w2`; the strike-craft reader loads it again after the value reader returns.
+  - **Known bit tests.** A `tbz` or `tbnz` of a known constant records the constant, so the
+    condition drops when the alternatives collapse, as a zero test of a constant does. Before,
+    the false return after the value reader left every base field under an unresolved condition.
+  - **Result on M452.** Only `common/component_templates` changes: the weapon key goes from 24
+    to 70 fields and the strike-craft key from 22 to 67, with the base fields and the attack
+    keys; the jump-table and `UnnamedField` gaps of both keys are gone. The field sweep and every
+    other registry are unchanged.
 - **Pitfall.** A same-name symbol is not proof that a call reaches a body. An import of an
   unresolved or external symbol can share the name of a local definition; only the fixup slot
   shows where the stub goes.
@@ -1405,10 +1428,9 @@ Both go back to the statement read.
   the registry, and a member's at the member below its key. `derived_names` and
   `modifier_families` are `Unsupported` ("each root key builds its own class …"). Atlas reads
   key `K` as `type[component_template]/subtype[K]` (SDK-800). The three subclass readers
-  tail-call `CComponentTemplate::ReadMember` (`0x1001dd284`) for every other token, and the field
-  method does not follow an inherited reader (`call not followed` at the tail call), so the base
-  fields (`key`, `size`, `power` and the others) are not listed; each key keeps an
-  `UnresolvedPath` gap for it.
+  go on in `CComponentTemplate::ReadMember` (`0x1001dd284`) for every other token, so each key
+  lists the base fields (`key`, `size`, `power` and the others); the weapon and strike-craft keys
+  reach it through a [value reader](#inherited-member-readers-sdk-838).
 - **The random list's reader.** `CPlanetClassRandomList::ReadMember` (`0x10115ce44`) first tests
   the sign bit of a string's last byte (`ldrsb w8,[x0,#0x1f]`, `tbnz w8,#31`) and, when its
   location string is empty, sets it from `CReader::GetFileLocationDescription()`; then `planets`
