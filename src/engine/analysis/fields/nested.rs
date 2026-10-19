@@ -1,7 +1,10 @@
 //! Connect a constructed persistent object to its read and collection insertion on every path.
 //! A factory that returns the object through `x8` is entered, so its allocation and constructor
 //! call are evaluated. A moving insertion counts only when the binding proved that it clears its
-//! source; the model then clears the moved-from pointer.
+//! source; the model then clears the moved-from pointer. With no insertion, the one owner word
+//! that holds the object owns it; the root may first release the object that an earlier read
+//! stored there through its deleting destructor. Paths join at loop heads, and a call that changes
+//! no script state, such as a duplicate check's diagnostic or `_memcmp`, returns.
 //!
 //! The walk reads constant pointer slots and initialized zero-fill words, so a constructor
 //! argument that the code loads through either is known. It labels the category mask of a

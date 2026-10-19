@@ -19,7 +19,7 @@
 //!   unchanged, and goes on after its call where it returns false. It stops at any other
 //!   external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
-//!   every path. Its named child fields are then derived to depth one. So are the keys of an
+//!   every path, or keeps it in one owner pointer. Its named child fields are then derived to depth one. So are the keys of an
 //!   embedded object that every path of a field reads, when the constructors agree on its
 //!   reader and that reader has no block family.
 //! - Direct const owner methods supply local Boolean storage selections separately from loader

@@ -56,7 +56,9 @@ registries change, no field is lost, and `common/colony_automation_exceptions`, 
 and `common/deposits` have no registry-wide path gap left. Against `v47`, SDK-848's
 [inline-constructed objects](#inline-constructed-objects-sdk-848) change five registries. Against
 `v48`, SDK-854 gave 70 fields of 13 registries their repeat: the planet-class Boolean bits and
-the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against
+`v49`, SDK-850's [duplicate checks and owned pointers](#duplicate-checks-and-owned-pointers-sdk-850)
+give six fields of five registries their members. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -140,12 +142,12 @@ belongs to one row.
 | --- | ---: | ---: | --- |
 | `CReader::ReadUniform<T>` lists | 98 → 0 | 41 → 0 | Resolved: [uniform lists](#uniform-lists). |
 | Boolean stack temporaries (identity, repeat `Unknown`) | 240 → 2 root | | Resolved: [bit fields](#bit-fields); two named obstacles remain. |
-| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap; five fields that the root constructs inline joined since ([SDK-848](#inline-constructed-objects-sdk-848)). The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
+| Owned objects: `operator new`, `make_shared`, `PdxMakeScopedPtr`, `InsertAtEmplace`, `SetSizeAndEmplace`, `shared_ptr::reset` | 352 | 40 | Gap; five fields that the root constructs inline joined since ([SDK-848](#inline-constructed-objects-sdk-848)), and six with a duplicate check, a `Class const*` array or one owned pointer ([SDK-850](#duplicate-checks-and-owned-pointers-sdk-850)). The value is read into an object that an unfollowed call allocates or inserts, then through a pointer. The event members (`trigger`, `immediate`, `option`, …, 8 × 22 kinds) are most of it. Repair: extend the collection pass (allocate, construct, virtual read, insert) to one owned pointer and to `shared_ptr` members. |
 | Value text: `CString::CString(char const*)`, `strlen`, `CEventTarget::CEventTarget(CToken)`, `CReader::Read(CString&, bool)` into a non-owner destination | 171 | 29 | Gap. The value token's text goes to a name lookup, a comparison or an event target that no compound shape covers (event `id`, `title`, `location`, …). Repair: one compound shape per idiom, as for `Target` and `String` above. |
-| Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. |
+| Stack serializers: `X::CSerializer::CSerializer`, and `CReader::Read(CPersistent&)` of a stack object | 77 | 44 | Gap. The persistent read's object is a serializer on the stack (`CModifierWithTooltipData::CSerializer`, `CEconomicUnitTemplate::CSerializer`); no owner constructor installs its vtable, so no constructor join gives the reader. Repair: take the concrete reader from the vtable constant stored in the stack object. `common/country_types` `faction` is one: the root stores the `SCountryInstanceProperties::CSerializer` address point and owner `+0x48` at `sp+0x48` itself ([SDK-850](#duplicate-checks-and-owned-pointers-sdk-850)). |
 | Persistent read with no constructor-agreed reader | 54 | 25 | Gap. The read joins an owner destination, but no constructor-agreed vtable at that destination gives a reader; the constructor walk's own stops are in `stop_shapes`. Repair: the constructor join of that destination. One named case below. |
 | Enum readers: `TokenToEnum<E>`, `Get*FromToken` | 20 → 2 | 14 → 2 | Resolved: [keyword domains](#keyword-domains-sdk-828). `construction_type` converts a list of lexer tokens, and `requirements.shipclass_*` converts the key token. |
-| Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. |
+| Statement loops: `CReader::ReadSimpleStatement()` with `blr` | 21 | 16 | Gap. Keys of the block are read in a loop through virtual calls; the root-token walk has no key. Repair: a loop-key method. `common/country_types` `modules`, `common/map_modes` `color` and `common/ship_sizes` `section_slots` are this shape ([SDK-850](#duplicate-checks-and-owned-pointers-sdk-850)). |
 | Ignored keys: a scalar path that returns with no call, and `CReader::SkipBody()` for a block (`is_colony`, `is_boss`, `hide_size`) | 16 | 10 | Gap. The rule "the caller consumed the scalar, so a return accepts and keeps nothing" is not stated; with it the kind is `Skipped`. |
 | Log or singleton calls before the reader (`CPdxLogFileAndLine`, `CLogger`, `GetInstance`) | 14 | 7 | Gap. The walk ends at the first call that is not a reader. Repair: go on past a call that receives neither the owner nor the reader, as the weight value pass does. |
 | `CTriggeredEventDescription<…>::ReadEntry` (`desc`, `tooltip`) | 12 | 8 | Gap. A nested description grammar with its own trigger; repair with a description block reader. |
@@ -328,6 +330,61 @@ stack `CSwapCollection<SPopJobTypeSwap, …>::CSerializer` at `0x1008b45ec`; its
 into a new `CSwappable<SPopJobTypeSwap>` through two more stack serializers. That is the "Stack
 serializers" row above, three levels deep; `common/pop_categories` has the same chain. SDK-866
 owns it.
+
+### Duplicate checks and owned pointers (SDK-850)
+
+The collection pass (`fields/nested.rs`) joins three more shapes on M452. Each is a validated rule
+with the condition for its removal.
+
+- **A `Class const*` array.** The binding accepts `CPdxArray<Class const*, int>::InsertAtEmplace`
+  as the insertion of a class that the root constructs. It does not find a class through that
+  insertion alone: such an array also holds items that the root looks up (`CBuildingType::ReadMember`
+  inserts `CTechnology const*` prerequisites), and taking `CTechnology` as an object filled the
+  owner's function budget.
+- **Calls that change no script state.** The pass goes on past the diagnostics, their locations and
+  the string release that `readers::changes_no_script_state` names, and past `_memcmp`, which only
+  reads its three arguments. Remove this when a build's diagnostic writes script state.
+- **Loops.** The pass joins paths at loop heads (`run_paths_joining`). A path that arrives where an
+  earlier state covers its own is not joined itself. That comparison is of known values only, so the
+  path must still keep the sentinel and write no owner word outside the joined site; a loop that
+  clears the collection's count stops the join (`resetting_collection_storage_does_not_establish_accumulation`).
+- **One owned pointer.** With no array insertion, a path joins when the only owner word that it
+  writes holds the object that it constructed and read: the field reads a block whose repeat is
+  `Replace` (`CollectionField::owned_pointer`). A first run with the word unknown finds the word.
+  Then two runs must both join and agree: one with the word null, one with a stand-in for the object
+  that an earlier read stored there. The stand-in's vtable slot `+8` holds a sentinel address; only a
+  call to it with the stand-in in `x0` is the release (the Itanium ABI puts the deleting destructor
+  in that slot). A call through another slot stops the path. Remove the rule when a build releases
+  the old object other than through its deleting destructor.
+
+The duplicate check is the shape of `CPolicyGroup::ReadMember` `option` (`0x100a41720`):
+`operator new(0x470)`, `CPolicyOption::CPolicyOption(CPolicyGroup const*)`, the read through slot
+`+0x20`, a loop over the earlier options that compares names with a byte loop or `_memcmp`, on a
+duplicate the "Option '%s' already exists" log, then the insertion at `+0x280`. The owned pointer is
+`CShipSize::ReadMember` `ai_ship_data` (`0x1011ec5b8`): `PdxMakeScopedPtr<CAIShipData>`, the
+release of the old object at `+0x48` through slot `+8`, the store, then the read.
+
+Result on M452 (`registry-fields/v50`):
+
+| Field | Members | Left |
+| --- | --- | --- |
+| `common/policies` `option` | 11: `name`, `icon`, `prerequisites`, `potential`, `valid`, `on_enabled`, `on_disabled`, `policy_flags`, `ai_weight` (weight grammar), `modifier` (modifier grammar), `in_breach_of` | `pre_sapient_purge` is on an unfollowed path of `CPolicyOption::ReadMember`; `prerequisites` has no shared reader |
+| `common/ship_sizes` `ai_ship_data` | 5: `min`, `max`, `planet_mult`, `system_mult` (scoped numeric), `fraction` (weight grammar) | |
+| `common/ship_sizes` `space_fauna_values` | 9 | `age_threshold`, `culling_value` have no shared reader |
+| `common/patrons` `active_accord` | 15 | `activation_cost`, `desc` have no shared reader |
+| `common/patrons/callings` `tier` | 3 | `counter` has no shared reader |
+| `common/pop_faction_types` `demand` | 8 | |
+
+The other fields of the ticket keep the `UnresolvedReader` gap "The field's alternatives do not
+establish one shared reader." Their stops:
+
+| Field | Stop on M452 | Shape and follow-up |
+| --- | --- | --- |
+| `common/country_types` `faction` | `CCountryType::ReadMember` stores the `SCountryInstanceProperties::CSerializer` address point (`0x10304b538`) and owner `+0x48` at `sp+0x48`, then calls `CReader::Read(CPersistent&)` (`0x10033f590`). The serializer's `ReadMember` writes through its owner pointer. | Stack serializer, with `CEconomicUnitTemplate::CSerializer` (SDK-849) and `CSwapCollection::CSerializer` (SDK-866); SDK-872. |
+| `common/country_types` `modules` | An inline statement loop (`0x10033f874`): `ReadSimpleStatement`, then `CreateCountryModule(CCountry&, int, CReader&)` with the statement key at reader `+0x38`, then virtual calls on the module. | Statement loop; SDK-871. |
+| `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
+| `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
+| `common/ship_sizes` `hero_ship` | Two alternatives: a block read by `Read(CPersistent&)` of owner `+0xb8`, and `Read(bool&)`. The block's reader has no family because the `CShipSize::CShipSize(int, CString const&)` walk (`0x1011e98b8`) spends its 64-path bound in a zero-fill loop at `0x1011e9f64` whose base it loads from a heap pointer, so no constructor agrees on a reader at `+0xb8`. The same bound leaves `map_icon_override` without one. | Constructor walk bound; the field's members also need a rule for a field whose alternatives differ; SDK-873. |
 
 ## Repeat behavior
 

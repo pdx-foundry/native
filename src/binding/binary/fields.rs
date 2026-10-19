@@ -767,8 +767,9 @@ fn inserted_class(name: &str) -> Option<&str> {
         None => name.split_once("*& CPdxArray<")?.0,
     };
     let [pointer, _] = pointer_insertions(class);
+    let names_class = name == pointer || name == scoped_insertion(class);
 
-    (name == pointer || name == scoped_insertion(class)).then_some(class)
+    (names_class && !class.ends_with(" const")).then_some(class)
 }
 
 /// The insertions of a `Class*` and of a `Class const*` into a `CPdxArray`.
