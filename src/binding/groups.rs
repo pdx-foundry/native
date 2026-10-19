@@ -122,6 +122,16 @@ pub(super) const M452_LOADER_REASONS: &[LoaderReason] = &[
         reason: "the loader reads each item in its own statement loop, not through a member reader",
     },
     LoaderReason {
+        database: "CRandomNameDatabase",
+        reason: "the loader reads each fixed root key's list of names into the database and \
+                 builds no item",
+    },
+    LoaderReason {
+        database: "CGameRules",
+        reason: "the loader reads each fixed root key, a game rule, as a trigger block into the \
+                 database and builds no item",
+    },
+    LoaderReason {
         database: "CWorldGfxDatabase",
         reason: "the loader reads the database itself, whose member reader builds and reads each \
                  item",
