@@ -608,10 +608,24 @@ fn collect_objects(
             .iter()
             .flat_map(|name| addresses(symbols, name))
             .collect();
-        let moving_insert = addresses(symbols, &scoped_insertion(&class))
-            .into_iter()
-            .filter(|&start| clears_moved_source_at(text, start))
+        let moving_insert: BTreeMap<_, _> = [scoped_insertion(&class), shared_insertion(&class)]
+            .iter()
+            .flat_map(|name| addresses(symbols, name))
+            .filter_map(|start| Some((start, moved_source_width_at(text, start)?)))
             .collect();
+        let emplace_point = symbols
+            .vtable_group(data, &shared_emplace(&class))
+            .and_then(|group| group.address_points.get(&0).copied());
+        let release_prefix = format!("std::__1::shared_ptr<{class}>::~shared_ptr");
+        let mut shared_releases = Vec::new();
+        for symbol in symbols.at(&calls) {
+            if symbol.name.starts_with(&release_prefix)
+                && symbol.name.ends_with("()")
+                && push_function(text, functions, symbol)
+            {
+                shared_releases.push(symbol.address);
+            }
+        }
         let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
         let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
         let owner_of_keys = reader
@@ -623,7 +637,7 @@ fn collect_objects(
             .map(|symbol| symbol.address)
             .collect();
         let inline = if constructors.is_empty() {
-            let insertions: Vec<_> = insert.iter().chain(&moving_insert).copied().collect();
+            let insertions: Vec<_> = insert.iter().chain(moving_insert.keys()).copied().collect();
             inline_constructions(&root, &rows, &operator_new, &insertions)
         } else {
             Vec::new()
@@ -651,6 +665,8 @@ fn collect_objects(
             initializers: initializers.clone(),
             insert,
             moving_insert,
+            emplace_point,
+            shared_releases,
             class,
             vtables: vtable.address_points,
             pointers: slots,
@@ -851,6 +867,18 @@ fn scoped_insertion(class: &str) -> String {
     format!("{scoped}& CPdxArray<{scoped}, int>::InsertAtEmplace<{scoped} >(int, {scoped}&&)")
 }
 
+/// The insertion that moves a `std::__1::shared_ptr<Class>` into a `CPdxArray`.
+fn shared_insertion(class: &str) -> String {
+    let shared = format!("std::__1::shared_ptr<{class}>");
+
+    format!("{shared}& CPdxArray<{shared}, int>::InsertAtEmplace<{shared} >(int, {shared}&&)")
+}
+
+/// The control block that `std::make_shared<Class>` allocates, with the object inside it.
+fn shared_emplace(class: &str) -> String {
+    format!("std::__1::__shared_ptr_emplace<{class}, std::__1::allocator<{class}> >")
+}
+
 fn addresses(symbols: IndexedSymbols<'_>, name: &str) -> Vec<u64> {
     symbols.named(name).map(|symbol| symbol.address).collect()
 }
@@ -876,30 +904,29 @@ fn push_function(text: &Text, functions: &mut Vec<Function>, symbol: &Symbol) ->
     true
 }
 
-/// Whether the moving insertion at `start` clears its source pointer on every return.
-fn clears_moved_source_at(text: &Text, start: u64) -> bool {
-    let Some(code) = text.function_within(start, INSERTION_LIMIT) else {
-        return false;
-    };
+/// The bytes that the moving insertion at `start` clears at its source on every return.
+fn moved_source_width_at(text: &Text, start: u64) -> Option<u64> {
+    let code = text.function_within(start, INSERTION_LIMIT)?;
+    let rows = crate::engine::analysis::decode::decode_arm64(code, start).ok()?;
 
-    crate::engine::analysis::decode::decode_arm64(code, start)
-        .is_ok_and(|rows| clears_moved_source(&rows))
+    moved_source_width(&rows)
 }
 
-/// Whether every return leaves the 8-byte slot that `x2` names on entry holding zero, as the
-/// moving insertion of a scoped pointer must. The slot is cleared by `str xzr` through a register
-/// that still holds the entry `x2`; any other store through such a register, or a call that may
-/// receive it, makes the slot unknown again. Stores through other registers are taken not to
-/// alias the caller's source slot, because the insertion writes only its array and frame.
-fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) -> bool {
+/// The bytes from the source that `x2` names on entry that every return leaves holding zero, as
+/// the moving insertion of a scoped pointer (8) or a shared pointer (16) must. The source is
+/// cleared by `str xzr` or `stp xzr, xzr` with no offset through a register that still holds the
+/// entry `x2`; any other store through such a register, or a call that may receive it, makes the
+/// source unknown again. Stores through other registers are taken not to alias the caller's
+/// source, because the insertion writes only its array and frame.
+fn moved_source_width(rows: &[crate::engine::analysis::decode::Instruction]) -> Option<u64> {
     #[derive(Clone, PartialEq)]
     struct Source {
         registers: BTreeSet<String>,
-        cleared: bool,
+        cleared: u64,
     }
 
     if rows.is_empty() {
-        return false;
+        return None;
     }
 
     let indexes: BTreeMap<_, _> = rows
@@ -910,46 +937,50 @@ fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) ->
     let mut states: Vec<Option<Source>> = vec![None; rows.len()];
     states[0] = Some(Source {
         registers: BTreeSet::from(["x2".to_owned()]),
-        cleared: false,
+        cleared: 0,
     });
     let mut pending = std::collections::VecDeque::from([0]);
-    let mut returned = false;
+    let mut returned: Option<u64> = None;
     let mut steps = 0;
 
     while let Some(pc) = pending.pop_front() {
         steps += 1;
         if steps > rows.len() * 32 {
-            return false;
+            return None;
         }
 
         let row = &rows[pc];
         let Some(mut source) = states[pc].clone() else {
-            return false;
+            return None;
         };
         let parts: Vec<_> = row.operands.split(',').collect();
 
         if row.operation == "ret" {
-            if !source.cleared {
-                return false;
+            if source.cleared == 0 {
+                return None;
             }
-            returned = true;
+            returned = Some(returned.map_or(source.cleared, |width| width.min(source.cleared)));
             continue;
         }
 
         if row.operation == "br" {
-            return false;
+            return None;
         }
 
         if row.operation.starts_with("st")
             && memory_base(&row.operands).is_some_and(|base| source.registers.contains(base))
         {
-            source.cleared = row.operation == "str" && parts.len() == 2 && parts[0] == "xzr";
+            source.cleared = match (row.operation.as_str(), parts.as_slice()) {
+                ("str", ["xzr", _]) => 8,
+                ("stp", ["xzr", "xzr", base]) if !base.contains('#') => 16,
+                _ => 0,
+            };
         }
 
         if (row.operation == "bl" || row.operation == "blr")
             && (0..8).any(|index| source.registers.contains(&format!("x{index}")))
         {
-            source.cleared = false;
+            source.cleared = 0;
         }
 
         let copied = row.operation == "mov"
@@ -978,10 +1009,10 @@ fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) ->
             || matches!(row.operation.as_str(), "cbz" | "cbnz" | "tbz" | "tbnz")
         {
             let Some(target) = branch_target(&row.operands) else {
-                return false;
+                return None;
             };
             let Some(&index) = indexes.get(&target) else {
-                return false;
+                return None;
             };
             next.push(index);
         }
@@ -994,7 +1025,7 @@ fn clears_moved_source(rows: &[crate::engine::analysis::decode::Instruction]) ->
                         .intersection(&source.registers)
                         .cloned()
                         .collect(),
-                    cleared: previous.cleared && source.cleared,
+                    cleared: previous.cleared.min(source.cleared),
                 },
                 None => source.clone(),
             };
@@ -1398,10 +1429,10 @@ mod tests {
     }
 
     #[test]
-    fn a_moving_insertion_must_clear_its_source_on_every_return() {
+    fn a_moving_insertion_must_clear_its_source_on_every_return_and_says_how_much() {
         use crate::engine::analysis::assembler::arm64;
         use crate::engine::analysis::decode::decode_arm64;
-        let clears = |code: Vec<u8>| clears_moved_source(&decode_arm64(&code, 0x1000).unwrap());
+        let clears = |code: Vec<u8>| moved_source_width(&decode_arm64(&code, 0x1000).unwrap());
         let moved = arm64!(at 0x1000;
             mov x22, x2;
             bl extern 0x2000; // allocation
@@ -1434,9 +1465,18 @@ mod tests {
             ret
         );
 
-        assert!(clears(moved));
+        let moved_pair = arm64!(at 0x1000;
+            mov x22, x2;
+            ldp x8, x9, [x22];
+            stp xzr, xzr, [x22];
+            stp x8, x9, [x0];
+            ret
+        );
+
+        assert_eq!(clears(moved), Some(8));
+        assert_eq!(clears(moved_pair), Some(16));
         for code in [bypassed, other_slot, kept, passed_on] {
-            assert!(!clears(code));
+            assert_eq!(clears(code), None);
         }
     }
 
