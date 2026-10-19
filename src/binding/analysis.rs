@@ -761,7 +761,13 @@ impl VerifiedAnalysis<'_> {
         let shared = self
             .catalog
             .field_input
-            .get_or_init(|| binary::fields::SharedFieldInput::read(&image, self.persistent))
+            .get_or_init(|| {
+                binary::fields::SharedFieldInput::read(
+                    &image,
+                    self.persistent,
+                    self.reader_token_offset,
+                )
+            })
             .as_ref()
             .map_err(Clone::clone)?;
         let loader = database.map(|database| binary::fields::LoaderSearch {

@@ -16,8 +16,8 @@
 //!
 //! Limits of this revision:
 //! - Root dispatch follows an inherited member reader that receives the owner, reader and token
-//!   unchanged, and goes on after its call where it returns false. It stops at any other
-//!   external delegate. A second bounded pass can prove that
+//!   unchanged, or a value reader `F(T&, CReader&)` that receives an owner member and the reader,
+//!   and goes on after its call where it returns false. It stops at any other external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
 //!   every path, or keeps it in one owner pointer. Its named child fields are then derived to depth one. So are the keys of an
 //!   embedded object that every path of a field reads, when the constructors agree on its
@@ -80,7 +80,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v53";
+pub const METHOD: &str = "registry-fields/v55";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.

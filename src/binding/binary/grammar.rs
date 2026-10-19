@@ -162,7 +162,12 @@ pub(in crate::binding) fn read(
     Ok(GrammarInput {
         durations,
         targets,
-        key_readers: super::fields::key_readers(symbols, &tokens, &recipe.persistent)?,
+        key_readers: super::fields::key_readers(
+            symbols,
+            &tokens,
+            &recipe.persistent,
+            recipe.reader_token_offset,
+        )?,
         persistent_slots: [recipe.persistent.read_slot, recipe.persistent.member_slot],
         forms: form_input,
         command_bindings,

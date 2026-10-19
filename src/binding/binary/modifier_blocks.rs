@@ -117,7 +117,12 @@ pub(in crate::binding) fn read(
         );
     }
     let tokens = text.token_table(image.symbols, image.strings)?;
-    let key_readers = super::fields::key_readers(image.symbols, &tokens, &recipe.persistent)?;
+    let key_readers = super::fields::key_readers(
+        image.symbols,
+        &tokens,
+        &recipe.persistent,
+        recipe.reader_token_offset,
+    )?;
     let base = super::numeric::modifier_input(&text, image.symbols, &names, recipe)?;
     let name_reads = name_read_functions(image, &text, &base, recipe);
     let directories = super::references::database_directories(

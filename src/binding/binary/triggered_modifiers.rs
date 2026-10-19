@@ -62,7 +62,12 @@ pub(in crate::binding) fn read(
         })
         .collect();
     let tokens = text.token_table(image.symbols, image.strings)?;
-    let key_readers = super::fields::key_readers(image.symbols, &tokens, &recipe.persistent)?;
+    let key_readers = super::fields::key_readers(
+        image.symbols,
+        &tokens,
+        &recipe.persistent,
+        recipe.reader_token_offset,
+    )?;
 
     Ok(TriggeredInput {
         points,

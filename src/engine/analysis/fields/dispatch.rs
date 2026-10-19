@@ -632,13 +632,17 @@ fn apply(
     }
     let args: Vec<_> = row.operands.split(',').collect();
     match (row.operation.as_str(), args.as_slice()) {
-        ("cmp", [left, right]) => {
+        ("cmp", [left, right, shift @ ..]) if matches!(shift, [] | ["lsl#12"]) => {
             let offset = match state.value(left) {
                 Some(Value::Token) => Some(0),
                 Some(Value::TokenWord(offset)) => Some(offset),
                 _ => None,
             };
-            state.flags = match (offset, state.value(right)) {
+            let compared = match shift {
+                [] => state.value(right),
+                _ => number(right).map(|immediate| Value::Constant(immediate << 12)),
+            };
+            state.flags = match (offset, compared) {
                 (Some(offset), Some(Value::Constant(pivot))) if left.starts_with('w') => {
                     Some(Flags::Token(Comparison { offset, pivot }))
                 }
@@ -956,7 +960,7 @@ pub(super) fn explore_owner(
             symbols: &input.symbols,
             symbol_index,
             read_only_data: &input.read_only_data,
-            reader_token_offset: None,
+            reader_token_offset: input.key_readers.reader_token,
             member_delegates: false,
             owner_vtable: None,
             serializer_constructors: None,
@@ -965,6 +969,7 @@ pub(super) fn explore_owner(
         },
         root,
         owner_slot.map(|slot| (slot, 0)),
+        None,
         0,
         None,
     )
@@ -1004,15 +1009,18 @@ pub(crate) fn explore_member(
     input: &DispatchInput<'_>,
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    explore_member_with_wrapped_owner(input, root, None, 0, None)
+    explore_member_with_wrapped_owner(input, root, None, None, 0, None)
 }
 
 /// The token paths through `root`. With `declined`, a path that returns false there instead,
-/// so that the caller of an inherited reader goes on after its call.
+/// so that the caller of an inherited reader goes on after its call. With `value_receiver`,
+/// `root` is a value reader ([`readers::is_member_value_reader`]) that receives it in `x0` and
+/// the reader in `x1`, and reads the token from the reader.
 fn explore_member_with_wrapped_owner(
     input: &DispatchInput<'_>,
     root: &str,
     wrapped_owner: Option<(i64, i64)>,
+    value_receiver: Option<Value>,
     depth: usize,
     mut declined: Option<&mut Vec<TokenPath>>,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
@@ -1049,6 +1057,10 @@ fn explore_member_with_wrapped_owner(
         && let Some(scope) = &input.scope
     {
         initial.registers.insert("x3".into(), scope.clone());
+    }
+    if let Some(receiver) = value_receiver {
+        initial.registers.insert("x0".into(), receiver);
+        initial.registers.remove("x2");
     }
     let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
@@ -1260,6 +1272,7 @@ fn explore_member_with_wrapped_owner(
                             &child_input,
                             name.unwrap(),
                             Some((slot, owner)),
+                            None,
                             depth + 1,
                             None,
                         );
@@ -1276,15 +1289,29 @@ fn explore_member_with_wrapped_owner(
                     }
                     break;
                 }
-                let inherited = target
-                    .and_then(|address| input.symbol_index.name(input.symbols, address))
-                    .filter(|&name| readers::is_inheritable_member(name));
-                // The owner's inherited reader handles the tokens that this reader passes on.
-                if let Some(inherited) = inherited
+                let callee =
+                    target.and_then(|address| input.symbol_index.name(input.symbols, address));
+                let inherited = match (callee, state.value("x0")) {
+                    (Some(name), _)
+                        if readers::is_inheritable_member(name)
+                            && forwards_member_arguments(&state) =>
+                    {
+                        Some((name, None))
+                    }
+                    (Some(name), Some(member @ Value::Owner(_)))
+                        if readers::is_member_value_reader(name)
+                            && state.value("x1") == Some(Value::Reader(0)) =>
+                    {
+                        Some((name, Some(member)))
+                    }
+                    _ => None,
+                };
+                // The owner's inherited reader, or a value reader of one of its members, handles
+                // the tokens that this reader passes on.
+                if let Some((inherited, value_receiver)) = inherited
                     && state.stored.is_none()
                     && !input.member_delegates
                     && depth < 8
-                    && forwards_member_arguments(&state)
                     && input.function(inherited).is_some()
                 {
                     let returns = row.operation == "bl";
@@ -1298,6 +1325,7 @@ fn explore_member_with_wrapped_owner(
                         input,
                         inherited,
                         inherited_wrapped,
+                        value_receiver,
                         depth + 1,
                         collects.then_some(&mut inherited_declined),
                     );
@@ -2246,14 +2274,20 @@ fn bit_test_branch(
     }
 
     // `tbnz` branches when the bit is set, `tbz` when it is clear.
-    let known_taken = match (state.value(tested), number(bit)) {
-        (Some(Value::Constant(value)), Some(bit)) => {
+    let constant = match state.value(tested) {
+        Some(Value::Constant(value)) => Some(value),
+        _ => None,
+    };
+    let known_taken = match (constant, number(bit)) {
+        (Some(value), Some(bit)) => {
             let set = value >> bit & 1 == 1;
 
             Some(set == (row.operation == "tbnz"))
         }
         _ => None,
     };
+    // A known constant's condition holds on every path, as a zero test of one does.
+    let tested_value = known_taken.and(constant).map(Value::Constant);
     let continued = [false, true]
         .into_iter()
         .filter(|&taken| known_taken.is_none_or(|known| known == taken))
@@ -2262,7 +2296,7 @@ fn bit_test_branch(
             next.pc = if taken { target } else { state.pc };
             next.conditions.push(Condition {
                 at: row.address,
-                value: None,
+                value: tested_value.clone(),
                 zero: taken == (row.operation == "tbz"),
             });
             next
