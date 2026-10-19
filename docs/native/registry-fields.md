@@ -57,7 +57,7 @@ and `common/deposits` have no registry-wide path gap left. Against `v47`, SDK-84
 [inline-constructed objects](#inline-constructed-objects-sdk-848) change five registries. Against
 `v48`, SDK-854 gave 70 fields of 13 registries their repeat: the planet-class Boolean bits and
 the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-sdk-854)). Against
-`v49`, SDK-835 reads [serializer roots and passes the stack guard](#serializer-roots-and-the-stack-guard-sdk-835):
+`v50`, SDK-835 reads [serializer roots and passes the stack guard](#serializer-roots-and-the-stack-guard-sdk-835):
 nine registries change and none loses a field. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -260,8 +260,7 @@ Two shapes stopped `common/districts`, `common/zones` and `common/zone_slots` on
   42 and `common/zone_slots` from 0 to 7, with no registry-wide path, name or input gap left.
   `common/component_slot_templates` lists 4 fields and each `common/ai_espionage` policy its
   `weight`. `common/economic_plans` and `common/country_focus/focus_cards` gain 6 fields each and
-  `common/resource_converters` changes; in command grammars, 19 commands give a stored key its
-  `Replace` repeat, because the walk now reaches the return after the guard. In the registry
+  `common/resource_converters` changes. No command grammar changes. In the registry
   sweep, eight of the nine registries become complete for `fields`, and no registry's complete
   count falls.
 - **Limits.**
@@ -1077,23 +1076,32 @@ database class (`CTraitDatabase::…`) and takes the literal first argument of e
 `char const*`: an `ldr` from a known address loads the pointer slot, and the slot's rebase target
 is the literal. Each distinct literal names one registry, so a loader that enumerates several
 directories names each of them (SDK-843); no literal, or an argument that the scan does not
-establish, leaves the row in the `UnnamedRegistries` gap.
+establish, leaves the row in the `UnnamedRegistries` gap. The directory can also be the text of a
+`CString` member of the instance, read through the short-string select
+([below](#name-lists-and-random-names-sdk-844)). A class outside the schedule is a custom loader too
+when its own functions call the file enumeration and `CReader::ReadSimpleStatement()`, and the
+enumeration names a directory (`references::unscheduled_loaders`); such a class never counts in
+the `UnnamedRegistries` gap.
 `registry_fields`, `derived_names` and `modifier_families` read these names through their
 [owner](#custom-loader-owners) ([derived names](derived-names.md#population),
 [modifier families](modifier-families.md#roots)). `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
-On M452, 23 of the 35 rows are named, with 24 names: `common/ambient_objects`, `common/colors`,
+On M452, 25 of the 35 rows are named, with 26 names, and three classes outside the schedule name
+four more (SDK-844): `common/ambient_objects`, `common/colors`,
 `common/component_sets`, `common/component_templates` and `common/section_templates`
 (`CShipDesignTemplatesDatabase`, [below](#one-loader-three-directories-sdk-843)),
 `common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
-`common/global_ship_designs` (`CDesignerDatabase`), `common/on_actions`,
+`common/game_rules` (`CGameRules`, unscheduled), `common/global_ship_designs`
+(`CDesignerDatabase`), `common/graphical_culture` (`CGfxCultureDatabase`, a member),
+`common/name_lists` (`CNameListDatabase`, a member), `common/on_actions`,
 `common/opinion_modifiers`, `common/planet_classes` (through `_PLANET_CLASSES_DIR`),
+`common/random_names` and `common/random_names/base` (`CRandomNameDatabase`, unscheduled),
 `common/ship_behaviors`, `common/special_projects`,
 `common/species_names`, `common/start_screen_messages`, `common/static_modifiers`,
 `common/strategic_resources`, `common/terraform`, `common/traits`, `events` (`CEventManager`),
-`flags` (`CEmpireFlagDatabase`, through `_pEMPIRE_FLAG_FOLDER`), `gfx/worldgfx` and
-`prescripted_countries`. None repeats a template name.
+`flags` (`CEmpireFlagDatabase`, through `_pEMPIRE_FLAG_FOLDER`), `gfx/worldgfx`, `music`
+(`CSongDatabase`, unscheduled) and `prescripted_countries`. None repeats a template name.
 
 - **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
   both enumerate `prescripted_countries`, so it is one name. The owner join does not select one of
@@ -1109,13 +1117,14 @@ On M452, 23 of the 35 rows are named, with 24 names: `common/ambient_objects`, `
 - **The `RunGame` caller is not the loader.** `RunGame` passes `"common/planet_classes"` and
   `_pEMPIRE_FLAG_FOLDER` to `VFSPreEnumerateFiles(char const*, char const*, char const*, int)`, a
   warm-up of the file list; the database's own `Init()` enumerates the files. The ticket's caller
-  shape was therefore not built. Whether a caller supplies the directory of one of the 12 rows
+  shape was therefore not built. Whether a caller supplies the directory of one of the 10 rows
   below was not checked; their obstacles are in their own functions.
-- **The 12 rows that stay gaps**, by obstacle:
-  - The directory is the text of a `CString` member or a built path (the short-string `csel` on
-    the object): `CGfxCultureDatabase`, `CNameListDatabase`, `CGalaxyTemplateDatabase`
-    (`ReadFiles`), `CMessageSystem` (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase`
-    (`InitInstance`), `CScriptableLocalizationDatabase` and `CSystemInitializerDataBase`.
+- **The 10 rows that stay gaps**, by obstacle:
+  - The directory is a built path, or a `CString` on the stack (the short-string select on a
+    temporary): `CGalaxyTemplateDatabase` (`ReadFiles`; its constructors build the member `+0x30`
+    from `map/setup_scenarios`, which `ReadFiles` extends before the call), `CMessageSystem`
+    (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase` (`InitInstance`),
+    `CScriptableLocalizationDatabase` and `CSystemInitializerDataBase`.
   - A directory that is not a literal: `CPortraitDatabase` enumerates a global path, a member
     path and `gfx/portraits/portraits/substitutions`.
   - No enumeration call in the class's own functions: `CAdvisorDatabase`, `CAlertSystem` and
@@ -1163,6 +1172,61 @@ and the others). Vanilla M452 has 476 `ship_section_template`, 439 `component_se
   its database. `CShipDesignTemplatesDatabase` names three, so its lookups (`GetComponentTemplate`
   and the others) stay without a registry target.
 
+### Name lists and random names (SDK-844)
+
+Two loaders that the literal scan did not name, read on M452 with `examples/inspect`:
+
+- **A `CString` member.** `CNameListDatabase::CreateInstance()` (`0x100996838`) allocates the
+  instance (`operator new(0x68)`), builds `CString::CString(x0 = object, "common/name_lists")` in
+  it and stores it to `_pInstance`. `Init()` (`0x100996924`, `mov x20, x0`) passes that member to
+  the enumeration through the short-string select `ldrsb w8, [x0, #0x17]; tbz w8, #31, L;
+  ldr x0, [x20]; L:`, with `".txt"` and `-1`. `CGfxCultureDatabase` has the same shape, with
+  `common/graphical_culture` built in both constructors and in `CreateInstance()`.
+  `enumeration_calls` takes `x0` at a function's entry as the instance and gives the select's
+  join `x0 = MemberText(k)` only when the select's two loads address the same member, `x0`
+  already holds that member's address, and no other branch enters the select or its join.
+  `member_texts` reads the class's constructors (the instance in `x0`) and a `CreateInstance()`
+  that allocates once; several texts at one offset give nothing. Validated assumptions, not
+  proofs: the enumerating function is a member function, and the allocated object is the instance.
+- **A loader outside the schedule.** The galaxy generator calls
+  `CRandomNameDatabase::FillDatabase()` (`CGalaxyGenerator::Generate`), which enumerates
+  `common/random_names/base` (`0x100ac0434`, null suffix, depth 0) and reads each fixed root key
+  (`star_names`, `custom_star_names`, …) into string lists, the lists of `custom_star_names` and
+  `custom_planet_names` keyed by their nested keys (`SetEmplace` at `0x100ac07b4` and
+  `0x100ac08d4`). It then calls `ReadRandomNames()`, which enumerates `common/random_names`
+  (`0x100ac0e40`, depth 0, so `base` is not read again) and builds a `CCompositNamePartList`
+  (`*_name_parts_list`, named by `key`) or a `CCompositNameFormat` (`*_name_format`, no name) by a
+  root-key switch that is partly a jump table (`br x8` at `0x100ac1038`). The unscheduled-loader
+  rule also names `common/game_rules` (`CGameRules::InitInstance()`, which reads each fixed rule
+  key as a trigger block) and `music` (`CSongDatabase`, `song` blocks named by `name`).
+  `CInlineScriptDatabase` enumerates `common/inline_scripts` but calls no statement read, and
+  `CGameGraphics` enumerates `gfx/loadingscreens` for `.dds` files; neither is named.
+- **A route of each directory.** `FillDatabase()` calls `ReadRandomNames()` after its own loop, so
+  a route does not follow a call into an own function that enumerates: that function is the route
+  of its own directory.
+
+| Registry | `registry_fields` | Definition names |
+| --- | --- | --- |
+| `common/name_lists` | `Unsupported`: several classes | `Root` / `Key` |
+| `common/random_names` | `Unsupported`: several classes | `RootKey(*_name_parts_list)` / `Field("key")` |
+| `common/random_names/base` | `Unsupported`: stated reason, no item | nested-key obstacle |
+| `common/graphical_culture` | `CGfxCulture`, 8 fields, partial | `Root` / `Key` |
+| `common/game_rules` | `Unsupported`: stated reason, no item | `Root` / `Key` |
+| `music` | `Unsupported`: several classes (`CSong`, `CMeanTimeToHappen`) | `RootKey("song")` / `Field("name")` |
+
+- **Why `common/name_lists` has no owner.** `Init()` allocates one `CNameList` (`new 0x318`, its
+  vtable at `[x19]`) and reads it through slot `+0x20` with the statement reader
+  (`0x1009971e0`). The same route forms the vtables of `CNameListShipClass`, `CNameListShip`,
+  `CNameListPlanet`, `CNameListCharacter`, `CNameListFleet`, `CNameListArmy` and
+  `CNameListByRarity` on the stack as the default contents of `SNameListContent`, which
+  `SNameListContent::operator=` moves into the list. All have a member reader, so the owner join
+  gives `Several`. Removal route: follow the built object to the call that receives the
+  statement reader. A heap-versus-stack rule is not enough: `ReadRandomNames()` builds its part
+  lists on the stack and copies them into an array, and its formats on the heap.
+- **Why `common/random_names` has no owner.** Five keys build each class, and the switch is a
+  jump table, which [root-key owners](#root-key-owners-sdk-813) do not read. The route also builds
+  `CWeightedStringTable` and `CMeanTimeToHappen`, members of the two classes.
+
 ### Custom-loader owners
 
 `registry_fields` needs only an owner class: its root is `<owner>::ReadMember(CReader&, int)`. A
@@ -1208,9 +1272,9 @@ other shape, is `Unsupported` with the reason, never a choice.
   functions (`fields.rs`); the limit is 256 now. The 4 MiB code limit is unchanged (the input is
   0.4 MiB). Raise the count again only with a registry that exceeds it.
 
-On M452, 18 of the 24 names join an owner (sweep at `registry-fields/v31`, `v34` for
-`common/planet_classes`, and SDK-843 for the two ship-design directories; fields, then the
-answer). `common/component_templates` has a class for each root key and no owner
+On M452, 19 of the 30 names join an owner (sweep at `registry-fields/v31`, `v34` for
+`common/planet_classes`, SDK-843 for the two ship-design directories and SDK-844 for
+`common/graphical_culture`; fields, then the answer). `common/component_templates` has a class for each root key and no owner
 ([root-key owners](#root-key-owners-sdk-813)):
 
 | Registry | Owner | Fields | Answer |
@@ -1220,6 +1284,7 @@ answer). `common/component_templates` has a class for each root key and no owner
 | `common/diplo_phrases` | `CDiploPhrase` | 5 | partial |
 | `common/fallen_empires` | `CFallenEmpireType` | 6 | partial |
 | `common/global_ship_designs` | `CShipDesign` | 32 | partial |
+| `common/graphical_culture` | `CGfxCulture` | 8 | partial |
 | `common/on_actions` | `COnActionList` | 2 | partial |
 | `common/opinion_modifiers` | `COpinionModifier` | 10 | partial |
 | `common/section_templates` | `CSectionTemplate` | 19 | partial |

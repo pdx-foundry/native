@@ -39,7 +39,7 @@ use super::directories::{self, Anchors, Constructor, Value};
 use crate::{DefinitionForm, DuplicateRule, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v6";
+pub const METHOD: &str = "loader-rules/v7";
 
 /// The register of `ReadExistingEntry`'s existing item, its third argument after `this`.
 const EXISTING_ITEM: usize = 3;
@@ -466,7 +466,11 @@ fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
         Value::Constant(address) => strings
             .get(&address)
             .map_or(Text::Unknown, |literal| Text::Literal(literal.clone())),
-        Value::Unknown | Value::Stack(_) | Value::Slot(_) => Text::Unknown,
+        Value::Unknown
+        | Value::Stack(_)
+        | Value::Slot(_)
+        | Value::Object(_)
+        | Value::MemberText(_) => Text::Unknown,
     }
 }
 
@@ -474,7 +478,11 @@ fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
 fn depth(value: Value) -> Option<i32> {
     match value {
         Value::Constant(bits) => Some(bits as u32 as i32),
-        Value::Unknown | Value::Stack(_) | Value::Slot(_) => None,
+        Value::Unknown
+        | Value::Stack(_)
+        | Value::Slot(_)
+        | Value::Object(_)
+        | Value::MemberText(_) => None,
     }
 }
 

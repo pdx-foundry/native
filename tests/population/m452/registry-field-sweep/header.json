@@ -4,14 +4,14 @@
     "complete_queries": 19,
     "distinct_known_readers": 103,
     "failed_queries": 0,
-    "fields_found": 2204,
-    "known_reader_identities": 1798,
-    "known_reader_kinds": 1841,
-    "partial_queries": 163,
-    "queries_with_unresolved_paths": 151,
-    "unknown_reader_identities": 406,
-    "unknown_reader_kinds": 363,
-    "unresolved_paths": 1254,
-    "unsupported_queries": 6
+    "fields_found": 2212,
+    "known_reader_identities": 1804,
+    "known_reader_kinds": 1847,
+    "partial_queries": 164,
+    "queries_with_unresolved_paths": 152,
+    "unknown_reader_identities": 408,
+    "unknown_reader_kinds": 365,
+    "unresolved_paths": 1256,
+    "unsupported_queries": 11
   }
 }

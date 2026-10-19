@@ -53,6 +53,7 @@ pub(in crate::binding) fn loader_owners(
             Directory::Ambiguous(names) => {
                 let sites = directories::enumerated_directories(
                     &super::references::own_functions(text, image.symbols, database),
+                    &super::references::instance_members(text, image, database, &anchors),
                     &anchors,
                     image.strings,
                     image.pointers,

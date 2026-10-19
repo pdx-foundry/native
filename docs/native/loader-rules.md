@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v6`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v7`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
@@ -47,8 +47,13 @@ The callers:
   its own.
 - **Custom loaders.** The database class's own functions pass the folder as a literal, or load
   it from a global `char const*` (`CPlanetClassDatabase`, `CEmpireFlagDatabase`).
-  `CDesignerDatabase::Init` (`common/global_ship_designs`) and `CTerraformDatabase::InitInstance`
-  pass `".txt"` and `-1`. `CWeaponTagDatabase`, `CAmbientObjectDatabase`, `CShipBehaviorDatabase`,
+  A class outside the schedule that enumerates and reads statements is a loader too
+  ([custom-loader names](registry-fields.md#custom-loader-names)).
+  `CDesignerDatabase::Init` (`common/global_ship_designs`), `CTerraformDatabase::InitInstance`,
+  `CNameListDatabase::Init` (`common/name_lists`, the text of its `CString` member) and
+  `CSongDatabase::InitInstance` (`music`) pass `".txt"` and `-1`. `CGfxCultureDatabase::Init`
+  and `CGameRules::InitInstance` pass `".txt"` and `0`; the two calls of `CRandomNameDatabase`
+  pass `null`, `null` and `0`. `CWeaponTagDatabase`, `CAmbientObjectDatabase`, `CShipBehaviorDatabase`,
   `CStartScreenMessageDatabase`, `CWorldGfxDatabase`, `CPrescriptedSpeciesDatabase`,
   `CEmpireDesignDatabase`, `CPlanetClassDatabase`, `CEventManager::ReadEvents` and the three calls
   of `CShipDesignTemplatesDatabase::Init(bool)` pass `".txt"` and `0`. `CEmpireFlagDatabase` (`flags`) passes `null`, `null` and `-1`. The others pass
@@ -57,7 +62,8 @@ The callers:
 ## Method
 
 The loaders of a registry are each template candidate that it names (the functions of the
-loader class and the database class) and each scheduled database whose own loader enumerates it.
+loader class and the database class) and each custom-loader database whose own loader enumerates
+it.
 `prescripted_countries` has two (`CEmpireDesignDatabase`, `CPrescriptedSpeciesDatabase`); both
 pass `".txt"` and `0`.
 
@@ -265,6 +271,11 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     `COpinionModifierDatabase::Init` (`0x1009c1cf4`, `GetModifier`),
     `CStrategicResourceDatabase::Init` (`0x100c647f4`, `GetResource`) and
     `CTraitDatabase::ReadTraits` (`0x100cffb7c`, `GetTrait`; it expands `inline_script` itself).
+    SDK-844: `CNameListDatabase::Init` (`0x100996924`) copies the root key into the list's `+0x1c0`
+    and hashes it for `GetNameList`; `CGfxCultureDatabase::Init` (`0x100846770`) builds
+    `CGfxCulture(CString const&, int)` from the root key into the map that `GetCulture` searches;
+    `CGameRules::InitFromFile` (`0x1006c74e8`) compares each root key with its fixed rules and
+    reports any other key.
   - One root key, named by a field: `CShipBehaviorDatabase` takes only `ship_behavior`
     (`0x311c`); `CShipBehaviorReader::CreateAndRead` (`0x1011b79b4`) reads `name` into `+8`, which
     `AddBehavior` hashes and compares. `CSpecialProjectDatabase::Init` (`0x100b9ddec`) takes only
@@ -279,6 +290,10 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     `key` (`0xdc`) into the member that the directory's lookup compares
     ([one loader, three directories](registry-fields.md#one-loader-three-directories-sdk-843)).
     Other root keys are skipped, or reported for `gfx_settings` and the component templates.
+    `CSongDatabase::InitFromFile` (`0x1009890dc`) takes only `song` (`0x2dd4`) and builds a
+    `CSong`, named by its `name` field. `CRandomNameDatabase::ReadRandomNames()` (`0x100ac0dec`)
+    names each `*_name_parts_list` statement by its `key` field, which `GetPartFromList` compares;
+    a `*_name_format` statement has no name.
   - No name: `CColorsDatabase::Init` (`0x1012fb45c`) reads six fixed keys (`species`, `country`,
     …) of anonymous `rgb`/`hsv` entries, read by index. `CStartScreenMessageDatabase::InitInstance`
     (`0x100c5db64`) reads `part` blocks into an array by their `location`; `localization` is text
@@ -305,7 +320,9 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     (`0x1003fe2bc`) names a phrase by its key under `greetings`, or two levels under any other
     root key. `CEmpireFlagDatabase::Init` (`0x10047c768`) takes each `.dds` file as a flag named by
     its file name, in a category named by its folder, and reads `colors.txt` and `usage.txt`
-    apart.
+    apart. `CRandomNameDatabase::FillDatabase()` (`0x100ac03e0`, `common/random_names/base`) reads
+    each fixed root key's names into a list; under `custom_star_names` and `custom_planet_names`
+    each list is keyed by its nested key (`treasure_star_names`).
   - Repeated keys, seen while reading these loaders and not in the answer: `COnActionDatabase`,
     `CPlanetClassDatabase` and `CEmpireDesignDatabase` merge a later definition into the earlier
     one; `CFallenEmpiresDatabase` replaces it; `COpinionModifierDatabase` adds a second item that
