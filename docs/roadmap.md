@@ -149,21 +149,25 @@ capture at a `main` commit of Native:
 1. **Coverage:** covered claims over Atlas-owned claims.
 2. **Open gaps:** uncovered claims that have no reviewed reason.
 
-Milestone 5 completes when no gap is open. Before the close, each claim where Atlas and CWT
-disagree is reviewed: it is a CWT error or an Atlas defect. Native relationship rates and the
+Milestone 5 completes when no gap is open. Before the close, each covered claim where Atlas and
+CWT disagree is reviewed: it is a CWT error, or an Atlas or Native defect to repair. Native relationship rates and the
 headline over all files are diagnostics, not gates.
 
-**A reason is the last resort.** The engine holds every fact somewhere. A gap gets a reason only
-after static extraction and other routes, such as a fixture probe, were tried, and the reason says
-why each route fails. A reason lives in the knowledge page that owns the method. The accepted
+**A reason is the last resort.** The engine holds every engine fact somewhere. An engine-fact gap
+gets a reason only after static extraction and other routes, such as a fixture probe, were tried.
+The reason says why each route fails and which condition, such as a new method or build, reopens
+the gap. It lives in the knowledge page that owns the method. Content-derived claims come from the
+installation's comments, so their gaps go through Atlas's comment route instead. The accepted
 limits in [discovery](native/discovery.md) (SDK-819) are open gaps again until they are reviewed by
 this rule.
 
 **Tracking.** The gap list of the latest capture is the work queue, grouped by type and property.
-Work is not split into tickets. A gap that work finds joins the list.
+Work is not split into tickets. A gap that work finds joins the list. A method or an investigation
+is still its own task, as the [development policy](development-policy.md) says.
 
-**Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19) covers 13,489 of 25,231
-claims (53.46%). Of the 11,742 open gaps, 8,181 have no answer and 3,561 carry a Native gap.
+**Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
+its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims
+(53.46%). Of the 11,742 open gaps, 8,181 have no answer and 3,561 carry a Native gap.
 
 **The first sweep (done).** The first gate gave each of the 218 config types under `common/` and
 `events/` a Native registry status in the sweep report or an Atlas missing-join reason. SDK-798 and
