@@ -265,6 +265,23 @@ fn database_rules(database: &str, registry: &str) -> Vec<Stated> {
             rule: obstructed("definitions are image files named by their file name"),
         }],
         "CShipDesignTemplatesDatabase" => ship_design_template_rules(registry),
+        "CNameListDatabase" => root_keys(&[
+            "CNameListDatabase::Init()",
+            "CNameListDatabase::GetNameList(CString const&) const",
+        ]),
+        "CGfxCultureDatabase" => root_keys(&[
+            "CGfxCultureDatabase::Init()",
+            "CGfxCultureDatabase::GetCulture(CString const&) const",
+        ]),
+        "CGameRules" => root_keys(&["CGameRules::InitFromFile(CString const&)"]),
+        "CSongDatabase" => vec![Stated {
+            functions: &[
+                "CSongDatabase::InitFromFile(CReader&)",
+                "CSong::ReadMember(CReader&, int)",
+            ],
+            rule: named(vec![keyed_field("song", "name")]),
+        }],
+        "CRandomNameDatabase" => random_name_rules(registry),
         _ => vec![],
     }
 }
@@ -313,6 +330,40 @@ fn ship_design_template_rules(registry: &str) -> Vec<Stated> {
         functions,
         rule: named(forms),
     }]
+}
+
+/// The rules of the two directories that `CRandomNameDatabase` loads. In `common/random_names`
+/// each `*_name_parts_list` statement is named by its `key` field, which `GetPartFromList`
+/// compares, and a `*_name_format` statement has no name. In `common/random_names/base` each
+/// root key selects a fixed list, and the lists of `custom_star_names` and
+/// `custom_planet_names` are named by their nested keys.
+fn random_name_rules(registry: &str) -> Vec<Stated> {
+    match registry {
+        "common/random_names" => vec![Stated {
+            functions: &[
+                "CRandomNameDatabase::ReadRandomNames()",
+                "CCompositNamePartList::ReadMember(CReader&, int)",
+                "CRandomNameDatabase::GetPartFromList(CPdxArray<CCompositNamePartList, int> const&, CString const&, int, ERandomNameDatabaseListType, CRandomNameDatabaseVariables*) const",
+            ],
+            rule: named(
+                [
+                    "empire_name_parts_list",
+                    "federation_name_parts_list",
+                    "pop_faction_name_parts_list",
+                    "pre_communications_name_parts_list",
+                    "war_name_parts_list",
+                ]
+                .iter()
+                .map(|root_key| keyed_field(root_key, "key"))
+                .collect(),
+            ),
+        }],
+        "common/random_names/base" => vec![Stated {
+            functions: &["CRandomNameDatabase::FillDatabase()"],
+            rule: obstructed(NESTED_KEYS),
+        }],
+        _ => vec![],
+    }
 }
 
 fn named(forms: Vec<DefinitionForm>) -> Rule {

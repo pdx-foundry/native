@@ -662,12 +662,20 @@ impl VerifiedAnalysis<'_> {
         };
         let inventory = schedule::inventory(&instructions, &facts)?;
         let image = self.image();
-        let loader_directories = binary::references::database_directories(
+        let mut loader_directories = binary::references::database_directories(
             &text,
             &image,
             &self.catalog.candidates,
             inventory.unjoined.iter().cloned().collect(),
         );
+        let known: std::collections::BTreeSet<&str> = facts
+            .templates
+            .iter()
+            .copied()
+            .chain(inventory.unjoined.iter().map(String::as_str))
+            .collect();
+        let unscheduled = binary::references::unscheduled_loaders(&text, &image, &known);
+        loader_directories.extend(unscheduled);
         let loader_owners = binary::loader_owners::loader_owners(
             &text,
             &image,

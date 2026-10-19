@@ -750,5 +750,29 @@
   "sound/advisor_voice_types": {
     "gaps": [],
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/game_rules": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/graphical_culture": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/name_lists": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+  },
+  "common/random_names": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "empire_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "federation_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pop_faction_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pre_communications_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "war_name_parts_list"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/random_names/base": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "music": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "song"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   }
 }

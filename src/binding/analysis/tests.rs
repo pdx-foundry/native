@@ -2197,7 +2197,29 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
             other: None,
         }
     );
-    assert_eq!(owners.len(), 25);
+
+    // The directory is the text of the instance's `CString` member.
+    assert_eq!(directory("CNameListDatabase"), named("common/name_lists"));
+    assert_eq!(owner("CGfxCultureDatabase"), "CGfxCulture");
+    // A loader outside the schedule reads each of its two directories on its own route.
+    let random_names = "CRandomNameDatabase";
+    assert_eq!(
+        directory(random_names),
+        Directory::Ambiguous(vec![
+            "common/random_names".into(),
+            "common/random_names/base".into(),
+        ])
+    );
+    let random_owner = |directory: &str| &owners[&(random_names.to_owned(), directory.to_owned())];
+    assert_eq!(
+        *random_owner("common/random_names/base"),
+        LoaderOwner::NoOwner
+    );
+    assert!(matches!(
+        random_owner("common/random_names"),
+        LoaderOwner::Several(classes) if classes.contains(&"CCompositNamePartList".into())
+    ));
+    assert_eq!(owners.len(), 31);
 }
 
 #[test]

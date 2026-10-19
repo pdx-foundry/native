@@ -1702,7 +1702,7 @@ fn own_native() -> Native {
 }
 
 /// Independent expectation on M452: the registries that only their database's own loader names.
-const LOADER_NAMED: [&str; 24] = [
+const LOADER_NAMED: [&str; 30] = [
     "common/ambient_objects",
     "common/colors",
     "common/component_sets",
@@ -1710,10 +1710,15 @@ const LOADER_NAMED: [&str; 24] = [
     "common/component_templates",
     "common/diplo_phrases",
     "common/fallen_empires",
+    "common/game_rules",
     "common/global_ship_designs",
+    "common/graphical_culture",
+    "common/name_lists",
     "common/on_actions",
     "common/opinion_modifiers",
     "common/planet_classes",
+    "common/random_names",
+    "common/random_names/base",
     "common/section_templates",
     "common/ship_behaviors",
     "common/special_projects",
@@ -1726,6 +1731,7 @@ const LOADER_NAMED: [&str; 24] = [
     "events",
     "flags",
     "gfx/worldgfx",
+    "music",
     "prescripted_countries",
 ];
 
@@ -2001,6 +2007,58 @@ fn component_templates_answer_each_root_key_as_a_root_statement() {
     );
 }
 
+/// `CNameListDatabase` enumerates the text of its `CString` member, and `CRandomNameDatabase`,
+/// which the schedule does not list, loads `common/random_names/base` and then
+/// `common/random_names` (`docs/native/registry-fields.md`).
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn name_lists_and_random_names_are_named_by_their_loaders() {
+    let native = native();
+    let listed: Vec<String> = native
+        .registries()
+        .unwrap()
+        .value
+        .into_iter()
+        .map(|registry| registry.name)
+        .collect();
+    for registry in [
+        "common/game_rules",
+        "common/graphical_culture",
+        "common/name_lists",
+        "common/random_names",
+        "common/random_names/base",
+        "music",
+    ] {
+        assert!(listed.contains(&registry.to_owned()), "{registry}");
+    }
+    assert!(!listed.contains(&"common/inline_scripts".to_owned()));
+
+    let reason = |registry: &str| {
+        let Err(Error::Unsupported { reason, .. }) = native.registry_fields(registry) else {
+            panic!("fields of {registry}");
+        };
+        reason
+    };
+    // The list's member lists are built on the stack as its defaults, so the loader builds
+    // several classes; each directory of the random names has its own route.
+    assert!(reason("common/name_lists").contains("CNameList, CNameListArmy"));
+    let random_names = reason("common/random_names");
+    assert!(
+        random_names.contains("CCompositNameFormat, CCompositNamePartList"),
+        "{random_names}"
+    );
+    assert!(
+        reason("common/random_names/base").starts_with("the loader reads each fixed root key's"),
+    );
+    let cultures = native.registry_fields("common/graphical_culture").unwrap();
+    assert!(
+        cultures
+            .value
+            .iter()
+            .any(|field| field.name == "ship_selection_weight")
+    );
+}
+
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn every_listed_registry_gets_an_answer_or_unsupported() {
@@ -2034,8 +2092,13 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
     let without_owner: BTreeSet<String> = [
         "common/colors",
         "common/component_tags",
+        "common/game_rules",
+        "common/name_lists",
+        "common/random_names",
+        "common/random_names/base",
         "common/ship_behaviors",
         "gfx/worldgfx",
+        "music",
         "prescripted_countries",
     ]
     .map(String::from)

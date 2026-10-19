@@ -20,7 +20,8 @@ fn body(text: &Text, address: u64) -> Option<Constructor> {
     })
 }
 
-/// Entry addresses of the base constructor and the literal `CString` constructor.
+/// Entry addresses of the base constructor, the literal `CString` constructor, the file
+/// enumeration and the allocation.
 pub(in crate::binding) fn anchors(symbols: &[Symbol]) -> Anchors {
     let addresses = |name: &str| {
         symbols
@@ -33,6 +34,7 @@ pub(in crate::binding) fn anchors(symbols: &[Symbol]) -> Anchors {
         base_constructors: addresses(directories::BASE_CONSTRUCTOR),
         string_constructors: addresses(directories::STRING_CONSTRUCTOR),
         file_enumerations: addresses(directories::FILE_ENUMERATION),
+        allocations: addresses(directories::ALLOCATION),
     }
 }
 
