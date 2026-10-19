@@ -60,7 +60,10 @@ the stored immediate references ([gate shapes](#repeat-gaps-of-gate-registries-s
 `v50`, SDK-835 reads [serializer roots and passes the stack guard](#serializer-roots-and-the-stack-guard-sdk-835):
 nine registries change and none loses a field. Against
 `v51`, SDK-850's [duplicate checks and owned pointers](#duplicate-checks-and-owned-pointers-sdk-850)
-give six fields of five registries their members. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+give six fields of five registries their members. Against `v52`, the dispatch walker reads a compare with a
+shifted immediate: `common/scripted_actions` names its 42 fields
+([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
+changes. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -110,7 +113,8 @@ lookups, so the diff drops only members that match their serde defaults.
 Pitfalls:
 
 - A state branch before token discrimination would give a false registry-wide `UnresolvedPath`
-  gap: the token-partition check needs one contiguous chain. No M45 loader has that shape.
+  gap: the token-partition check needs one contiguous chain. `CScriptedActionInfo` has that shape on
+  M452 ([order check](#scripted-actions-an-order-check-before-the-token-switch)).
 - `b.hi` stops in `CEspionageOperationType` and `CStarClass` compare a value loaded from the object,
   not the token, so they correctly stay unknown flags.
 - Unresolved concrete readers do not remove established field names or broad `Block` kinds.
@@ -444,6 +448,42 @@ establish one shared reader." Their stops:
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
 | `common/ship_sizes` `hero_ship` | Two alternatives: a block read by `Read(CPersistent&)` of owner `+0xb8`, and `Read(bool&)`. The block's reader has no family because the `CShipSize::CShipSize(int, CString const&)` walk (`0x1011e98b8`) spends its 64-path bound in a zero-fill loop at `0x1011e9f64` whose base it loads from a heap pointer, so no constructor agrees on a reader at `+0xb8`. The same bound leaves `map_icon_override` without one. | Constructor walk bound; the field's members also need a rule for a field whose alternatives differ; SDK-873. |
+
+### Scripted actions: an order check before the token switch
+
+`CScriptedActionInfo::ReadMember` (`0x100b10ae4`, M452) tests owner state before it tests the token.
+It loads the `user_scope` word at `+0x48` and the `scope` word at `+0x40` and compares each with
+`0x200000`, the value that the checks take as not yet read. The compare is `cmp x8, #0x200, lsl #12`; the
+dispatch walker reads the shifted immediate since `registry-fields/v53`, and before that every path
+stopped there, so the registry had no field. The order rule, from the engine's own messages:
+
+- A key other than `user_scope` while `+0x48` is unread logs "First parameter for scripted actions
+  must always be user_scope" and returns without a read.
+- A key other than `user_scope` or `scope` while `+0x40` is unread logs "Second parameter for scripted
+  actions must always be scope" and returns without a read.
+- `user_scope` reads `GetScopeTypeEnumFromToken` of the value token into `+0x48`; a scope other than
+  fleet or megastructure logs "Supported user_scopes for scripted actions are megastructure and fleet"
+  and is stored all the same.
+
+Result on M452 (`registry-fields/v53`): 42 named fields, each with a joined reader on the paths
+after both checks. Every field keeps "The field's alternatives do not establish one shared reader"
+and an `UnresolvedCondition` gap, and the answer keeps a `TokenPartition` gap:
+
+- The log paths stop at the `CPdxLogFileAndLine` call, so their outcome is `Unresolved`, not
+  `Rejected`. Their conditions are owner words with no named-field term, so they are `Unresolved`.
+- The walker forks again on the second test of `+0x48` (`0x100b10b50`): it does not keep the result
+  of the first test, so one alternative of each field has a contradictory condition.
+- The two check paths cover wide token intervals that overlap the field tokens, so the partition
+  check fails. This is the honest result: those paths are alternatives of every field that the
+  inventory does not attach to a field (`an_overlapping_wider_path_withholds_the_storage_of_a_singleton_field`).
+- Atlas credits a value form only for `read` equal to `[Always]`. A field read only after an order
+  check has no such answer until the answer states the order rule.
+
+Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
+an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean
+from `cmp` of the value token with `0x251` and `cset`; `shortcut` calls
+`CKeyEvent::GetKeyEventFromName` on a stack string; `cost` builds a
+`CTriggeredResourceTable::CSerializer`; `specific_behavior` calls `ValidateSpecificCode`.
 
 ## Repeat behavior
 
