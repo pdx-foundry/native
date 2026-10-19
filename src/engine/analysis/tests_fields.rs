@@ -572,6 +572,47 @@ fn a_bit_test_of_an_owner_byte_keeps_both_paths_under_an_unstated_condition() {
 }
 
 #[test]
+fn a_shifted_immediate_compare_of_an_owner_word_keeps_both_paths_under_its_value() {
+    use crate::engine::analysis::fields::Value;
+
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        ldr x8, [x0, #0x48]; // a word that an earlier key stores
+        cmp x8, #0x200, lsl #12;
+        b.eq extern 0x100c;
+        cmp w2, #7; // token 7
+        b.eq extern 0x101c;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        ret
+    );
+
+    let result = derive(input);
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    let compared_word = Value::Load(Box::new(Value::Owner(0x48)), 8);
+    let compared = Value::EqualsAny(Box::new(compared_word), vec![0x20_0000]);
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+    assert_eq!(reads.len(), 2);
+    assert!(
+        reads
+            .iter()
+            .all(|path| path.conditions.iter().any(
+                |condition| condition.at == 0x1008 && condition.value == Some(compared.clone())
+            )),
+        "{reads:?}"
+    );
+}
+
+#[test]
 fn a_bit_test_of_the_token_is_a_gap() {
     let mut input = fixture();
     input.functions[0].code = arm64!(at 0x1000;
