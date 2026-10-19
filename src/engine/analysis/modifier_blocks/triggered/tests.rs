@@ -87,6 +87,7 @@ fn class(member: &str) -> PersistentInput {
         requested_words: BTreeMap::new(),
         containers: Default::default(),
         initialized_words: BTreeMap::new(),
+        loader_points: Default::default(),
         readers: BTreeMap::from([(
             MODIFIER_POINT,
             ConcreteReader {

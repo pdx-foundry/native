@@ -4,6 +4,7 @@
 //! enumerates exact template loader symbols. A candidate count never establishes that all
 //! registries were found; custom, nested and late loaders are outside the template method. The
 //! [`schedule`] lists the databases that the engine schedules, so it counts the ones outside it.
+pub mod inline_build;
 pub mod loader_owner;
 mod records;
 pub mod schedule;

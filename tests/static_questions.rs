@@ -2048,6 +2048,17 @@ fn name_lists_and_random_names_are_named_by_their_loaders() {
             .iter()
             .any(|field| field.name == "character_names")
     );
+    // The loader builds each list's contents inline; `SNameListContent::SNameListContent()`
+    // gives the fleet names' reader, whose keys are fixed.
+    let fleet_names = name_lists
+        .value
+        .iter()
+        .find(|field| field.name == "fleet_names")
+        .unwrap();
+    let pdx_native::FieldMembers::Fields(keys) = &fleet_names.members else {
+        panic!("fleet names: {:?}", fleet_names.members);
+    };
+    assert!(keys.iter().any(|key| key.name == "random_names"));
     let random_names = reason("common/random_names");
     assert!(
         random_names.contains("CCompositNameFormat, CCompositNamePartList"),

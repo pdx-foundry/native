@@ -1280,14 +1280,19 @@ Two loaders that the literal scan did not name, read on M452 with `examples/insp
   `CNameListDesign`, stored into the list at `+0x10` and after or on the stack as the default
   contents of `SNameListContent`. All have a member reader, so the built classes are several;
   [the read object](#custom-loader-owners) selects `CNameList`.
-- **Nested name lists stay unresolved.** `CNameList::ReadMember` reads `ship_names`,
-  `character_names` and the other lists with `CReader::Read(CPersistent&)` on embedded objects
-  (`+0x10`, `+0x68`, `+0x88`, `+0xf8`, `+0x1a0`, …), but `CNameList::CNameList()`
-  (`0x10061aa54`, used for the null object) installs no vtable there; `Init()` builds the contents
-  inline. The [embedded-object join](#embedded-object-keys) reads the owner's constructors, so these
-  fields keep `Unresolved` members. Removal route: take the loader's inline build of the read
-  object as a constructor of the owner. `language`, which the config states, is not a key of
-  `CNameList::ReadMember`, and vanilla M452 does not use it.
+- **Name-list contents come from the loader's inline build.** `CNameList::ReadMember` reads
+  `ship_names`, `character_names` and the other lists with `CReader::Read(CPersistent&)` on
+  embedded objects. `CNameList::CNameList()` (`0x10061aa54`, used for the null object) installs no
+  vtable there; `Init()` builds the contents inline. The [loader's part
+  points](#loader-part-points) give the eight readers. `fleet_names` gets its keys
+  (`random_names`, `sequential_names`, `sequential_name`). The other lists keep `Unresolved`
+  members: their readers read any key, such as `CNameListCharacter::ReadMember`, which builds a
+  `CNameListCulture` named by the key and reads it, so the walk names no key.
+- **`language` is not read.** The config states `language` for `name_list`, `species_name` and
+  `species_named_list`. `GetTokenArray()` names the token, but neither `CNameList::ReadMember`
+  (15 keys) nor `CSpeciesNames::ReadMember` (5 keys) compares it, the cold clone of
+  `CNameList::ReadMember` (`0x1028d3210`) only calls `_OUTLINED_FUNCTION_0`, and vanilla M452 does not
+  use the key. The claims are likely config errors.
 - **Why `common/random_names` has no owner.** Five keys build each class, and the switch is a
   jump table, which [root-key owners](#root-key-owners-sdk-813) do not read. The route also builds
   `CWeightedStringTable` and `CMeanTimeToHappen`, members of the two classes.
@@ -1636,6 +1641,37 @@ Pitfalls:
   `common/pop_categories` gained their modifier and weight readers with it.
 - A key whose value goes to a class helper that the dispatch walk does not follow keeps an
   `UnresolvedReader` gap. The key is still established: its path is a singleton.
+
+### Loader part points
+
+A custom-loader owner whose own constructors do not build its items' parts takes the address points
+that the loader's inline build installs (`loader_part_points` in `binding/binary/fields.rs`,
+`discovery/inline_build.rs`). The build is the code of the loader's one
+[read object](#custom-loader-owners), walked from the store of the owner's address point to the
+read call. The walk follows each branch, visits each position once, and keeps the registers that
+hold the object plus an offset (through `mov`, `add` and store writeback) and the addresses that
+`adrp` and `add` form. A direct call that the build makes with the object plus an offset in `x0`
+names a part: when every such call at that offset is a method of one class `Part`, and `Part` has
+one default constructor `Part::Part()`, the same walk over that constructor, from `x0`, gives the
+part's stores. Their points, shifted by the offset, become the owner's points at offsets that the
+owner's constructors do not establish.
+
+- **Check, not only an assumption.** The shifted points count only when the build itself stores at
+  least one of them and stores no other value at any of their offsets, and when the part's
+  constructor stores one value at each offset (`inline_build::part_points`).
+- **M452.** `CNameListDatabase::Init()` calls `SNameListContent::operator=(SNameListContent&&)`
+  with the list plus `0x10`. `SNameListContent::SNameListContent()` (`0x1009950a0`;
+  `0x1009957ac` only branches to it) stores eight vtables. The build's branch that constructs the
+  contents in place (from `0x10099734c`) stores the same eight at `+0x10`, `+0x30`, `+0x68`,
+  `+0x88`, `+0xb0`, `+0xf8`, `+0x180` and `+0x1a0`, so all eight agree. No other registry's
+  answer changes in the field sweep.
+- Pitfall: running the build through the constructor evaluator does not work. `_bzero` is not
+  modelled, so the flag test at `+8` splits the paths. The path that moves the contents in
+  through `operator=` keeps no vtable. The other path's copy-assign calls are opaque and forget the
+  earlier vtable words. Running `SNameListContent::SNameListContent()` stops at the 64-path
+  limit. The walk reads stores; it does not run calls.
+- Pitfall: a part that the build constructs on the stack and copies in is not seen. Only stores
+  into the object count.
 
 ### Pre-trigger blocks
 
