@@ -1474,7 +1474,9 @@ fn nested_fixture() -> FieldInput {
         factories: vec![],
         initializers: vec![],
         insert: vec![0x9300],
-        moving_insert: vec![],
+        moving_insert: BTreeMap::new(),
+        emplace_point: None,
+        shared_releases: vec![],
         data_offset: Some(8),
         count_offset: Some(0x14),
         reader: None,
@@ -1907,7 +1909,7 @@ fn factory_fixture() -> FieldInput {
     let object = &mut input.objects[0];
     object.factories = vec![0x9500];
     object.insert = vec![];
-    object.moving_insert = vec![0x9600];
+    object.moving_insert = BTreeMap::from([(0x9600, 8)]);
     object.reader = Some(PointReader {
         point: 0xa000,
         reader: ConcreteReader {
@@ -1940,7 +1942,9 @@ fn an_unproven_move_or_an_unconstructed_factory_object_is_not_joined() {
     // Taken as a pointer insertion, the moved-from pointer still holds the object, so its
     // destructor is an unmodelled call.
     let mut not_cleared = factory_fixture();
-    not_cleared.objects[0].insert = std::mem::take(&mut not_cleared.objects[0].moving_insert);
+    not_cleared.objects[0].insert = std::mem::take(&mut not_cleared.objects[0].moving_insert)
+        .into_keys()
+        .collect();
     assert!(derive(not_cleared).collections.is_empty());
 
     let mut unconstructed = factory_fixture();
