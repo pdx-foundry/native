@@ -140,6 +140,21 @@ pub(crate) fn is_inheritable_member(callee: &str) -> bool {
         && callee != "CPersistent::ReadMember(CReader&, int)"
 }
 
+/// Whether `callee` has the signature `F(T&, CReader&)` of a value reader that a member reader
+/// can pass the tokens it does not handle: it reads the token from the reader itself and returns
+/// false for a token it does not read, such as `ReadAttackInfoValue(NCombatRules::SAttackInfo&,
+/// CReader&)`.
+pub(crate) fn is_member_value_reader(callee: &str) -> bool {
+    let Some(head) = callee.strip_suffix(", CReader&)") else {
+        return false;
+    };
+    let Some((_, receiver)) = head.rsplit_once('(') else {
+        return false;
+    };
+
+    receiver.ends_with('&') && !receiver.contains([',', '<', '>'])
+}
+
 /// The function that the thunk symbol `name` runs, or `None` when `name` is not a thunk. A thunk
 /// is `non-virtual thunk to <target>` or `{virtual override thunk(<offset>, <target>)}`; a
 /// covariant return adds a second offset before the target.

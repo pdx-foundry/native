@@ -71,7 +71,11 @@ pub(in crate::binding) fn read(
         pointers: image.pointers.clone(),
         data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
-        key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
+        key_readers: super::fields::key_readers(
+            image.symbols,
+            &recipe.persistent,
+            recipe.reader_token_offset,
+        )?,
         reader_token_offset: recipe.reader_token_offset,
     })
 }

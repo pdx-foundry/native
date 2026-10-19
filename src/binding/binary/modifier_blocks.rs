@@ -191,7 +191,11 @@ pub(in crate::binding) fn read(
         data: super::declarations::read_only_sections(image.bytes)?,
         tokens,
         serializer_constructors,
-        key_readers: super::fields::key_readers(image.symbols, &recipe.persistent)?,
+        key_readers: super::fields::key_readers(
+            image.symbols,
+            &recipe.persistent,
+            recipe.reader_token_offset,
+        )?,
         reader_token_offset: recipe.reader_token_offset,
         base_member: NUMERIC_MODIFIER_MEMBER.into(),
         base,
