@@ -215,9 +215,8 @@ pub(in crate::binding) fn database_directories(
 
 /// The classes outside `known`, the template and scheduled databases, that load a directory on
 /// their own: a function of the class calls the file enumeration, another or the same reads
-/// statements, and the enumeration names a directory. On M452 the galaxy generator, not the
-/// schedule, fills `CRandomNameDatabase`; the class that reads its own files is the only sign of
-/// it. Validated assumption: such a class reads its directory's files as script.
+/// statements, and the enumeration names a directory. Validated assumption: such a class reads
+/// its directory's files as script.
 pub(in crate::binding) fn unscheduled_loaders(
     text: &Text<'_>,
     image: &Image<'_>,

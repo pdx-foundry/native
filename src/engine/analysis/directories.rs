@@ -913,13 +913,9 @@ mod tests {
 
         function(code.bytes())
     }
-    fn members_of(constructors: &[Constructor], creators: &[Constructor]) -> BTreeMap<u64, String> {
-        member_texts(constructors, creators, &anchors(), &strings())
-    }
-
     #[test]
     fn the_text_of_an_instance_member_names_the_loader() {
-        let members = members_of(&[], &[creator(0x28, EXAMPLES)]);
+        let members = member_texts(&[], &[creator(0x28, EXAMPLES)], &anchors(), &strings());
         assert_eq!(members, BTreeMap::from([(0x28, "common/examples".into())]));
         assert_eq!(
             loader_directory(
@@ -934,13 +930,18 @@ mod tests {
 
         let mut constructor = Arm64::at(0x1000);
         constructor.address(1, OTHER).call(STRING);
-        let constructed = members_of(&[function(constructor.bytes())], &[]);
+        let constructed = member_texts(
+            &[function(constructor.bytes())],
+            &[],
+            &anchors(),
+            &strings(),
+        );
         assert_eq!(constructed, BTreeMap::from([(0, "map/other".into())]));
     }
 
     #[test]
     fn a_member_text_that_is_not_proven_leaves_the_loader_unnamed() {
-        let members = members_of(&[], &[creator(0x28, EXAMPLES)]);
+        let members = member_texts(&[], &[creator(0x28, EXAMPLES)], &anchors(), &strings());
         let unnamed = |loader: Constructor| {
             loader_directory(&[loader], &members, &anchors(), &strings(), &pointers())
         };
@@ -955,13 +956,26 @@ mod tests {
         );
         assert_eq!(unnamed(member_loader(0x30, |_| {})), Directory::Missing);
 
-        let twice = members_of(&[], &[creator(0x28, EXAMPLES), creator(0x28, OTHER)]);
+        let twice = member_texts(
+            &[],
+            &[creator(0x28, EXAMPLES), creator(0x28, OTHER)],
+            &anchors(),
+            &strings(),
+        );
         assert!(twice.is_empty());
         let mut allocates_twice = Arm64::at(0x1000);
         allocates_twice.call(ALLOCATE).call(ALLOCATE);
         arm64!(allocates_twice; add x0, x0, #0x28);
         allocates_twice.address(1, EXAMPLES).call(STRING);
-        assert!(members_of(&[], &[function(allocates_twice.bytes())]).is_empty());
+        assert!(
+            member_texts(
+                &[],
+                &[function(allocates_twice.bytes())],
+                &anchors(),
+                &strings()
+            )
+            .is_empty()
+        );
     }
 
     #[test]
