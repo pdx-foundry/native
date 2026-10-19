@@ -1609,6 +1609,141 @@ fn an_object_built_inline_joins_when_its_primary_address_point_is_in_place() {
     }
 }
 
+/// The nested fixture with a duplicate check between the read and the insertion, as
+/// `CPolicyGroup::ReadMember` reads `option` on M452: a loop over the collection's earlier objects
+/// that compares names with `_memcmp`, then a logged diagnostic, then the insertion.
+fn duplicate_check_fixture(diagnostic: &str) -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        bl extern 0x9100; // constructor
+        str x21, [sp];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        ldr w22, [x19, #0x54]; // the collection's count
+        mov x23, #0;
+        cmp x23, x22;
+        b.ge extern 0x1064;
+        mov x0, x21;
+        mov x1, x19;
+        mov x2, #4;
+        bl extern 0x9600; // _memcmp
+        add x23, x23, #1;
+        b extern 0x1044;
+        mov x0, x19;
+        bl extern 0x9700; // the diagnostic
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9300; // append same object
+        ret
+    );
+    input.symbols.extend([
+        Symbol {
+            name: "_memcmp".into(),
+            address: 0x9600,
+        },
+        Symbol {
+            name: diagnostic.into(),
+            address: 0x9700,
+        },
+    ]);
+    input
+}
+
+#[test]
+fn a_duplicate_check_with_a_diagnostic_does_not_stop_the_join() {
+    let result = derive(duplicate_check_fixture(
+        "CPdxLogFileAndLine::operator()(char const*, ...)",
+    ));
+    assert_eq!(result.collections.len(), 1);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert!(!result.collections[0].owned_pointer);
+
+    let owner_call = derive(duplicate_check_fixture("COwner::Update()"));
+    assert!(owner_call.collections.is_empty());
+}
+
+/// A root that keeps one `CChild` in the owner pointer at `+0x48`, as `CShipSize::ReadMember`
+/// keeps `ai_ship_data` on M452. A non-null pointer is the object that an earlier read stored:
+/// the root calls `release_slot` of its vtable, then constructs a new object with
+/// `replacement`. A null pointer gets a `CChild`. The root stores the new object, then reads it.
+fn owned_pointer_fixture(release_slot: u32, replacement: usize) -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7;
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        ldr x0, [x19, #0x48];
+        cbz x0, extern 0x1040;
+        ldr x8, [x0];
+        ldr x8, [x8, #release_slot];
+        blr x8; // release the earlier object
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        bl extern replacement; // constructor
+        b extern 0x104c;
+        nop;
+        bl extern 0x9000; // allocation
+        mov x21, x0;
+        bl extern 0x9100; // constructor
+        str x21, [x19, #0x48];
+        ldr x8, [x21];
+        ldr x8, [x8, #0x20];
+        mov x0, x21;
+        mov x1, x20;
+        blr x8; // persistent read
+        ret
+    );
+    let mut other = input.objects[0].clone();
+    other.class = "COther".into();
+    other.constructors = vec![0x9110];
+    other.vtables = [(0, 0xa100)].into();
+    other.pointers = [(0xa120, 0x9200)].into();
+    input.objects.push(other);
+    input.symbols.push(Symbol {
+        name: "COther::COther()".into(),
+        address: 0x9110,
+    });
+    input
+}
+
+#[test]
+fn an_object_that_the_owner_keeps_in_one_pointer_joins_with_its_release() {
+    let result = derive(owned_pointer_fixture(8, 0x9100));
+    assert_eq!(result.collections.len(), 1);
+    let collection = &result.collections[0];
+    assert_eq!(collection.offset, 0x48);
+    assert!(collection.owned_pointer);
+    assert_eq!(collection.data_offset, None);
+    assert_eq!(collection.fields.fields[0].name, "new_engine_field");
+
+    for (case, input) in [
+        (
+            "a call through another vtable slot",
+            owned_pointer_fixture(0x10, 0x9100),
+        ),
+        (
+            "another class after a release",
+            owned_pointer_fixture(8, 0x9110),
+        ),
+    ] {
+        assert!(derive(input).collections.is_empty(), "{case}");
+    }
+}
+
 #[test]
 fn an_inline_owner_joins_its_members_only_from_the_construction_that_every_path_runs() {
     // The constructor evidence of `CChild`: the root's code from `start` to `end`, then a return.
@@ -1680,6 +1815,18 @@ fn resetting_collection_storage_does_not_establish_accumulation() {
         input.functions[0].code.splice(index..index, instruction);
         assert!(derive(input).collections.is_empty());
     }
+
+    // A loop after the insertion that clears the count arrives at its head in a state that the
+    // first arrival covers.
+    let mut input = nested_fixture();
+    replace(&mut input, 0x1048, arm64!(at 0x1048; ldr w3, [x19, #0x54]));
+    input.functions[0].code.extend(arm64!(at 0x104c;
+        cbz w3, extern 0x1058;
+        str wzr, [x19, #0x54];
+        b extern 0x1048;
+        ret
+    ));
+    assert!(derive(input).collections.is_empty(), "a reset in a loop");
 }
 
 #[test]

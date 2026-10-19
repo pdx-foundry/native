@@ -591,7 +591,10 @@ fn collect_objects(
                 }
             }
         }
-        let insert = addresses(symbols, &pointer_insertion(&class));
+        let insert: Vec<_> = pointer_insertions(&class)
+            .iter()
+            .flat_map(|name| addresses(symbols, name))
+            .collect();
         let moving_insert = addresses(symbols, &scoped_insertion(&class))
             .into_iter()
             .filter(|&start| clears_moved_source_at(text, start))
@@ -805,21 +808,27 @@ fn factory_class(name: &str) -> Option<&str> {
 }
 
 /// The class whose pointer an insertion into a `CPdxArray` of `Class*` or of
-/// `CPdxScopedPtrImpl<Class, false>` takes.
+/// `CPdxScopedPtrImpl<Class, false>` takes. A `Class const*` insertion names no class: such an
+/// array also holds items that the root looks up, such as the `CTechnology const*` prerequisites
+/// of `CBuildingType::ReadMember` on M452.
 fn inserted_class(name: &str) -> Option<&str> {
     let class = match name.strip_prefix("CPdxScopedPtrImpl<") {
         Some(scoped) => scoped.split_once(", false>& CPdxArray<")?.0,
         None => name.split_once("*& CPdxArray<")?.0,
     };
+    let [pointer, _] = pointer_insertions(class);
+    let names_class = name == pointer || name == scoped_insertion(class);
 
-    (name == pointer_insertion(class) || name == scoped_insertion(class)).then_some(class)
+    (names_class && !class.ends_with(" const")).then_some(class)
 }
 
-/// The insertion of a `Class*` into a `CPdxArray`.
-fn pointer_insertion(class: &str) -> String {
-    format!(
-        "{class}*& CPdxArray<{class}*, int>::InsertAtEmplace<{class}* const&>(int, {class}* const&)"
-    )
+/// The insertions of a `Class*` and of a `Class const*` into a `CPdxArray`.
+fn pointer_insertions(class: &str) -> [String; 2] {
+    [class.to_owned(), format!("{class} const")].map(|pointee| {
+        format!(
+            "{pointee}*& CPdxArray<{pointee}*, int>::InsertAtEmplace<{pointee}* const&>(int, {pointee}* const&)"
+        )
+    })
 }
 
 /// The insertion that moves a `CPdxScopedPtrImpl<Class, false>` into a `CPdxArray`.
@@ -1463,7 +1472,9 @@ mod tests {
 
     #[test]
     fn an_insertion_names_the_class_of_the_pointer_it_takes() {
-        assert_eq!(inserted_class(&pointer_insertion("A<B>")), Some("A<B>"));
+        let [pointer, const_pointer] = pointer_insertions("A<B>");
+        assert_eq!(inserted_class(&pointer), Some("A<B>"));
+        assert_eq!(inserted_class(&const_pointer), None);
         assert_eq!(inserted_class(&scoped_insertion("A")), Some("A"));
         assert_eq!(
             inserted_class("A*& CPdxArray<A*, int>::InsertAtEmplace<A*>(int, A*&&)"),

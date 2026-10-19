@@ -713,9 +713,13 @@ fn collection_field(
         kind: ReaderKind::Block,
         family,
     };
+    let repeat = match collection.owned_pointer {
+        true => RepeatBehavior::Replace,
+        false => RepeatBehavior::Accumulate,
+    };
     let shape = FieldShape {
         value: ValueShape::Block,
-        repeat: RepeatBehavior::Accumulate,
+        repeat,
     };
     Field {
         name: field.name.clone(),
@@ -1728,6 +1732,7 @@ mod tests {
             vec![CollectionField {
                 token: 5,
                 offset: 0x20,
+                owned_pointer: false,
                 data_offset: None,
                 count_offset: None,
                 container_mask: None,

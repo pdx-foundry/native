@@ -1468,6 +1468,7 @@ mod field_gap_tests {
         parent.collections.push(CollectionField {
             token: 7,
             offset: 0x40,
+            owned_pointer: false,
             data_offset: None,
             count_offset: None,
             class: "CChild".into(),
@@ -1670,6 +1671,7 @@ mod nested_attach_tests {
             collections: vec![CollectionField {
                 token: 5,
                 offset: 0x20,
+                owned_pointer: false,
                 data_offset: None,
                 count_offset: None,
                 container_mask: None,

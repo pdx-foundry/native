@@ -1,7 +1,10 @@
 //! Connect a constructed persistent object to its read and collection insertion on every path.
 //! A factory that returns the object through `x8` is entered, so its allocation and constructor
 //! call are evaluated. A moving insertion counts only when the binding proved that it clears its
-//! source; the model then clears the moved-from pointer.
+//! source; the model then clears the moved-from pointer. With no insertion, the one owner word
+//! that holds the object owns it; the root may first release the object that an earlier read
+//! stored there through its deleting destructor. Paths join at loop heads, and a call that changes
+//! no script state, such as a duplicate check's diagnostic or `_memcmp`, returns.
 //!
 //! The walk reads constant pointer slots and initialized zero-fill words, so a constructor
 //! argument that the code loads through either is known. It labels the category mask of a
@@ -9,7 +12,8 @@
 use super::containers::{self, PathMasks};
 use super::{CollectionField, FieldInput, Owner, RootField, tokens};
 use crate::engine::analysis::discovery::SymbolIndex;
-use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, ReadOnlyData};
+use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, Path, ReadOnlyData};
+use crate::engine::analysis::readers;
 use crate::engine::analysis::receivers::ConstructorImage;
 use crate::engine::analysis::stop::Unresolved;
 use std::collections::{BTreeMap, BTreeSet};
@@ -95,6 +99,12 @@ pub(super) fn discover(
         .filter(|symbol| symbol.name == "_bzero")
         .map(|symbol| symbol.address)
         .collect();
+    let compares: Vec<_> = input
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == "_memcmp")
+        .map(|symbol| symbol.address)
+        .collect();
     let scope_registers = scope_registers(&input.symbols, objects);
     let mut collections = Vec::new();
     for field in fields.iter().filter(|field| {
@@ -103,147 +113,180 @@ pub(super) fn discover(
             .iter()
             .any(|join| matches!(join, super::ReaderJoin::Missing(_)))
     }) {
-        let mut machine = Machine::new(&code, image.constant_data());
-        let owner = machine.reserve(SPAN);
-        let reader = machine.reserve(SPAN);
-        // A store through an unknown pointer invalidates this sentinel along with any
-        // unprotected memory. Such a store could reset the collection between reads.
-        let unchanged = machine.reserve(8);
-        machine.write(unchanged, 8, 1);
-        machine.set_register(0, owner);
-        machine.set_register(1, reader);
-        machine.set_register(2, field.token as u64);
-        let paths = machine.run_paths(root.address, &mut |target, machine| {
-            let target = target.ok_or_else(|| Unresolved::new("nested-indirect-call"))?;
-            if allocate.contains(&target) {
-                let at = machine.reserve(SPAN);
-                machine.label(ALLOCATED | at, machine.pc() + 4);
-                return Ok(Call::Return(Some(at)));
+        let run = |owned_word: Option<(u64, Previous)>| {
+            let mut machine = Machine::new(&code, image.constant_data());
+            let owner = machine.reserve(SPAN);
+            let reader = machine.reserve(SPAN);
+            // A store through an unknown pointer invalidates this sentinel along with any
+            // unprotected memory. Such a store could reset the collection between reads.
+            let unchanged = machine.reserve(8);
+            machine.write(unchanged, 8, 1);
+            let mut release = None;
+            if let Some((offset, previous)) = owned_word {
+                let value = match previous {
+                    Previous::Null => 0,
+                    Previous::Object => {
+                        let (object, destructor) = stand_in(&mut machine);
+                        release = Some((object, destructor));
+                        object
+                    }
+                };
+                machine.write(owner + offset, 8, value);
             }
-            if objects
-                .iter()
-                .any(|object| object.factories.contains(&target))
-            {
-                return Ok(Call::Enter);
-            }
-            for (index, object) in objects.iter().enumerate() {
-                if object.constructors.contains(&target) {
-                    let at = machine.known_register(0, "constructed-object")?;
-                    if machine.labelled(ALLOCATED | at).is_none() {
-                        // A member of an object that the root constructs inline.
-                        if initialized_members(machine, objects, &zero_fill, target).is_some() {
-                            break;
-                        }
-                        return Err(Unresolved::new("object-not-allocated"));
-                    }
-                    if machine.labelled(INSERTED_OBJECT) == Some(at) {
-                        return Err(Unresolved::new("inserted-object-reconstructed"));
-                    }
-                    match containers.and_then(|known| known.mask(target, machine)) {
-                        Some(mask) => machine.label(containers::LABEL | at, mask),
-                        None => machine.unlabel(containers::LABEL | at),
-                    }
-                    match scope_registers.get(&target) {
-                        Some(&register) => machine.label(
-                            SCOPE | at,
-                            machine.register(register).unwrap_or(UNKNOWN_SCOPE),
-                        ),
-                        None => machine.unlabel(SCOPE | at),
-                    }
-                    for (&offset, &point) in &object.vtables {
-                        machine.write(at + offset, 8, point);
-                    }
-                    for (&slot, &pointer) in &object.pointers {
-                        machine.write(slot, 8, pointer);
-                    }
-                    machine.unlabel(READ | at);
-                    machine.label(OBJECT | at, index as u64);
+            machine.set_register(0, owner);
+            machine.set_register(1, reader);
+            machine.set_register(2, field.token as u64);
+            let paths = machine.run_paths_joining(root.address, &mut |target, machine| {
+                let target = target.ok_or_else(|| Unresolved::new("nested-indirect-call"))?;
+                if release.is_some_and(|(object, destructor)| {
+                    target == destructor && machine.register(0) == Some(object)
+                }) {
+                    return Ok(Call::Return(None));
+                }
+                if allocate.contains(&target) {
+                    let at = machine.reserve(SPAN);
+                    machine.label(ALLOCATED | at, machine.pc() + 4);
                     return Ok(Call::Return(Some(at)));
                 }
-                if target == object.read {
-                    let at = machine.known_register(0, "read-object")?;
-                    let inline = constructed_inline(machine, object, at);
-                    if machine.register(1) == Some(reader)
-                        && (machine.labelled(OBJECT | at) == Some(index as u64) || inline)
-                    {
-                        if let Some(start) = machine.labelled(ALLOCATED | at).filter(|_| inline) {
-                            machine.label(INLINE_START | at, start);
-                            machine.label(INLINE_READ | at, machine.pc());
+                if objects
+                    .iter()
+                    .any(|object| object.factories.contains(&target))
+                {
+                    return Ok(Call::Enter);
+                }
+                for (index, object) in objects.iter().enumerate() {
+                    if object.constructors.contains(&target) {
+                        let at = machine.known_register(0, "constructed-object")?;
+                        if machine.labelled(ALLOCATED | at).is_none() {
+                            // A member of an object that the root constructs inline.
+                            if initialized_members(machine, objects, &zero_fill, target).is_some() {
+                                break;
+                            }
+                            return Err(Unresolved::new("object-not-allocated"));
                         }
+                        if machine.labelled(INSERTED_OBJECT) == Some(at) {
+                            return Err(Unresolved::new("inserted-object-reconstructed"));
+                        }
+                        match containers.and_then(|known| known.mask(target, machine)) {
+                            Some(mask) => machine.label(containers::LABEL | at, mask),
+                            None => machine.unlabel(containers::LABEL | at),
+                        }
+                        match scope_registers.get(&target) {
+                            Some(&register) => machine.label(
+                                SCOPE | at,
+                                machine.register(register).unwrap_or(UNKNOWN_SCOPE),
+                            ),
+                            None => machine.unlabel(SCOPE | at),
+                        }
+                        for (&offset, &point) in &object.vtables {
+                            machine.write(at + offset, 8, point);
+                        }
+                        for (&slot, &pointer) in &object.pointers {
+                            machine.write(slot, 8, pointer);
+                        }
+                        machine.unlabel(READ | at);
                         machine.label(OBJECT | at, index as u64);
-                        machine.label(READ | at, index as u64);
-                        return Ok(Call::Return(None));
+                        return Ok(Call::Return(Some(at)));
                     }
-                }
-                let moves = object.moving_insert.contains(&target);
-                if moves || object.insert.contains(&target) {
-                    let receiver = machine.known_register(0, "insert-collection")?;
-                    let pointer = machine.known_register(2, "insert-value")?;
-                    let at = machine
-                        .read(pointer, 8)
-                        .ok_or_else(|| Unresolved::new("insert-object"))?;
-                    if (owner..owner + SPAN).contains(&receiver)
-                        && machine.labelled(READ | at) == Some(index as u64)
-                        && machine.labelled(OBJECT | at) == Some(index as u64)
-                        && machine.labelled(INSERTED_CLASS).is_none()
-                    {
-                        if moves {
-                            machine.write(pointer, 8, 0);
+                    if target == object.read {
+                        let at = machine.known_register(0, "read-object")?;
+                        let inline = constructed_inline(machine, object, at);
+                        if machine.register(1) == Some(reader)
+                            && (machine.labelled(OBJECT | at) == Some(index as u64) || inline)
+                        {
+                            if let Some(start) = machine.labelled(ALLOCATED | at).filter(|_| inline)
+                            {
+                                machine.label(INLINE_START | at, start);
+                                machine.label(INLINE_READ | at, machine.pc());
+                            }
+                            machine.label(OBJECT | at, index as u64);
+                            machine.label(READ | at, index as u64);
+                            return Ok(Call::Return(None));
                         }
-                        machine.label(INSERTED_OBJECT, at);
-                        machine.label(INSERTED_CLASS, index as u64);
-                        machine.label(INSERTED_OFFSET, receiver - owner);
-                        return Ok(Call::Return(None));
+                    }
+                    let moves = object.moving_insert.contains(&target);
+                    if moves || object.insert.contains(&target) {
+                        let receiver = machine.known_register(0, "insert-collection")?;
+                        let pointer = machine.known_register(2, "insert-value")?;
+                        let at = machine
+                            .read(pointer, 8)
+                            .ok_or_else(|| Unresolved::new("insert-object"))?;
+                        if (owner..owner + SPAN).contains(&receiver)
+                            && machine.labelled(READ | at) == Some(index as u64)
+                            && machine.labelled(OBJECT | at) == Some(index as u64)
+                            && machine.labelled(INSERTED_CLASS).is_none()
+                        {
+                            if moves {
+                                machine.write(pointer, 8, 0);
+                            }
+                            machine.label(INSERTED_OBJECT, at);
+                            machine.label(INSERTED_CLASS, index as u64);
+                            machine.label(INSERTED_OFFSET, receiver - owner);
+                            return Ok(Call::Return(None));
+                        }
                     }
                 }
+                if let Some(initialized) = initialized_members(machine, objects, &zero_fill, target)
+                {
+                    machine
+                        .forget_known_bytes(initialized.start, initialized.end - initialized.start);
+                    return Ok(Call::Return(None));
+                }
+                if compares.contains(&target)
+                    || symbol_index
+                        .name(&input.symbols, target)
+                        .is_some_and(readers::changes_no_script_state)
+                {
+                    return Ok(Call::Return(None));
+                }
+                Err(Unresolved::new("nested-unmodelled-call"))
+            });
+            FieldRun {
+                owner,
+                unchanged,
+                paths,
             }
-            if let Some(initialized) = initialized_members(machine, objects, &zero_fill, target) {
-                machine.forget_known_bytes(initialized.start, initialized.end - initialized.start);
-                return Ok(Call::Return(None));
-            }
-            Err(Unresolved::new("nested-unmodelled-call"))
-        });
-        let joined: Option<Vec<_>> = paths
-            .iter()
-            .map(|path| {
-                (path.end == Ok(Exit::Returned)
-                    && path.machine.read(unchanged, 8) == Some(1)
-                    && !path.machine.has_written(owner, SPAN))
-                .then_some(())?;
-                let inserted = (
-                    path.machine.labelled(INSERTED_CLASS)?,
-                    path.machine.labelled(INSERTED_OFFSET)?,
-                );
-                let object = path.machine.labelled(INSERTED_OBJECT)?;
-
-                Some((
-                    inserted,
-                    path.machine.labelled(containers::LABEL | object),
-                    path.machine.labelled(SCOPE | object),
-                    path.machine
-                        .labelled(INLINE_START | object)
-                        .zip(path.machine.labelled(INLINE_READ | object)),
-                ))
-            })
-            .collect();
-        let Some(joined) = joined.filter(|joined| !joined.is_empty()) else {
-            continue;
         };
-        let first = joined[0].0;
-        if joined.iter().any(|(other, ..)| *other != first) {
+        let first_run = run(None);
+        let joined = match first_run.join() {
+            Some(joined) => joined,
+            None => {
+                // A root that keeps one owned object may first release the object that an
+                // earlier read stored. Both starting states of the word must join.
+                let Some(word) = first_run.owned_word() else {
+                    continue;
+                };
+                let joined = [Previous::Null, Previous::Object]
+                    .into_iter()
+                    .map(|previous| run(Some((word, previous))).join())
+                    .collect::<Option<Vec<_>>>();
+                let Some(joined) = joined else {
+                    continue;
+                };
+                joined.into_iter().flatten().collect()
+            }
+        };
+        let first = joined[0].site;
+        if joined.iter().any(|insertion| insertion.site != first) {
             continue;
         }
-        let container_mask = joined.iter().any(|(_, mask, ..)| mask.is_some()).then(|| {
-            let mut masks = PathMasks::default();
-            for (_, mask, ..) in &joined {
-                masks.add(*mask);
-            }
+        let container_mask = joined
+            .iter()
+            .any(|insertion| insertion.container_mask.is_some())
+            .then(|| {
+                let mut masks = PathMasks::default();
+                for insertion in &joined {
+                    masks.add(insertion.container_mask);
+                }
 
-            masks.agreed()
-        });
-        let construction_scopes = construction_scopes(joined.iter().map(|(_, _, scope, _)| *scope));
-        let object = &objects[first.0 as usize];
-        let inline_constructions = joined.iter().filter_map(|(.., construction)| *construction);
+                masks.agreed()
+            });
+        let construction_scopes =
+            construction_scopes(joined.iter().map(|insertion| insertion.scope));
+        let object = &objects[first.class as usize];
+        let inline_constructions = joined
+            .iter()
+            .filter_map(|insertion| insertion.inline_construction);
         let persistent = object
             .persistent
             .as_ref()
@@ -266,11 +309,16 @@ pub(super) fn discover(
                 names,
             ),
         };
+        let (data_offset, count_offset) = match first.owned {
+            true => (None, None),
+            false => (object.data_offset, object.count_offset),
+        };
         collections.push(CollectionField {
             token: field.token,
-            offset: first.1,
-            data_offset: object.data_offset,
-            count_offset: object.count_offset,
+            offset: first.offset,
+            owned_pointer: first.owned,
+            data_offset,
+            count_offset,
             class: object.class.clone(),
             reader,
             fields: Box::new(fields),
@@ -279,6 +327,146 @@ pub(super) fn discover(
         });
     }
     collections
+}
+
+/// What the owner word of one owned object holds before the read: nothing, or the object that an
+/// earlier read of the field stored there.
+#[derive(Clone, Copy)]
+enum Previous {
+    Null,
+    Object,
+}
+
+/// A stand-in for an owned object that an earlier read stored, and the address of its deleting
+/// destructor. Its vtable's second slot, where the Itanium C++ ABI puts the deleting destructor,
+/// holds that address; its other slots are unknown, so a call through any of them stops the path.
+fn stand_in(machine: &mut Machine<'_>) -> (u64, u64) {
+    let object = machine.reserve(8);
+    let vtable = machine.reserve(SPAN);
+    let destructor = machine.reserve(4);
+    machine.write(object, 8, vtable);
+    machine.write(vtable + 8, 8, destructor);
+
+    (object, destructor)
+}
+
+/// The paths of one field's run of the collection pass, with the run's owner and the sentinel
+/// that an unknown store invalidates.
+struct FieldRun<'a> {
+    owner: u64,
+    unchanged: u64,
+    paths: Vec<Path<'a>>,
+}
+
+/// Where a joined path keeps the object that it read: an array insertion, or the one owner word
+/// that owns it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Site {
+    class: u64,
+    offset: u64,
+    owned: bool,
+}
+
+/// What one joined path established about the object that it read and kept.
+struct Insertion {
+    site: Site,
+    container_mask: Option<u64>,
+    scope: Option<u64>,
+    inline_construction: Option<(u64, u64)>,
+}
+
+impl FieldRun<'_> {
+    /// The insertion of every path that returned, when each of them kept the sentinel and one
+    /// read object. A looping path arrived where an earlier state covers its own; that
+    /// comparison holds known values only, so it must still keep the sentinel and write no owner
+    /// byte outside the joined site.
+    fn join(&self) -> Option<Vec<Insertion>> {
+        let (looped, ended): (Vec<_>, Vec<_>) = self
+            .paths
+            .iter()
+            .partition(|path| path.end == Ok(Exit::Looped));
+        let joined: Vec<_> = ended
+            .iter()
+            .map(|path| {
+                (path.end == Ok(Exit::Returned) && path.machine.read(self.unchanged, 8) == Some(1))
+                    .then(|| self.insertion(&path.machine))?
+            })
+            .collect::<Option<_>>()?;
+        let site = joined.first()?.site;
+        let looped_keep_storage = looped.iter().all(|path| {
+            path.machine.read(self.unchanged, 8) == Some(1)
+                && self.writes_only_its_site(&path.machine, site)
+        });
+
+        looped_keep_storage.then_some(joined)
+    }
+
+    /// Whether every owner word that the path wrote is the site's own pointer: none for an
+    /// array insertion.
+    fn writes_only_its_site(&self, machine: &Machine<'_>, site: Site) -> bool {
+        let word = self.owner + site.offset;
+
+        machine
+            .written_words(self.owner, self.owner + SPAN)
+            .iter()
+            .all(|&written| site.owned && (written == word || written == word + 4))
+    }
+
+    /// Where the path kept its object: the array that it inserted the object into, with no owner
+    /// byte written, or else the one owner word that holds the object.
+    fn insertion(&self, machine: &Machine<'_>) -> Option<Insertion> {
+        let (site, object) = match machine.labelled(INSERTED_OBJECT) {
+            Some(object) if !machine.has_written(self.owner, SPAN) => {
+                let site = Site {
+                    class: machine.labelled(INSERTED_CLASS)?,
+                    offset: machine.labelled(INSERTED_OFFSET)?,
+                    owned: false,
+                };
+                (site, object)
+            }
+            Some(_) => return None,
+            None => self.owned_object(machine)?,
+        };
+
+        Some(Insertion {
+            site,
+            container_mask: machine.labelled(containers::LABEL | object),
+            scope: machine.labelled(SCOPE | object),
+            inline_construction: machine
+                .labelled(INLINE_START | object)
+                .zip(machine.labelled(INLINE_READ | object)),
+        })
+    }
+
+    /// The one owner word that the path wrote, when it holds an object that the path
+    /// constructed and read.
+    fn owned_object(&self, machine: &Machine<'_>) -> Option<(Site, u64)> {
+        let words = machine.written_words(self.owner, self.owner + SPAN);
+        let word = *words.first()?;
+        if !word.is_multiple_of(8) || words != BTreeSet::from([word, word + 4]) {
+            return None;
+        }
+        let object = machine.read(word, 8)?;
+        let class = machine.labelled(READ | object)?;
+        (machine.labelled(OBJECT | object) == Some(class)).then_some(())?;
+        let site = Site {
+            class,
+            offset: word - self.owner,
+            owned: true,
+        };
+
+        Some((site, object))
+    }
+
+    /// The owner word of a returned path that keeps its object there, which the next run gives
+    /// a stand-in for the object that an earlier read stored.
+    fn owned_word(&self) -> Option<u64> {
+        self.paths
+            .iter()
+            .filter(|path| path.end == Ok(Exit::Returned))
+            .find_map(|path| self.owned_object(&path.machine))
+            .map(|(site, _)| site.offset)
+    }
 }
 
 /// Whether the constructor evidence of a nested owner holds the code of every inline
