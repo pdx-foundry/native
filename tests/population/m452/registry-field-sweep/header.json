@@ -2,16 +2,16 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "summary": {
     "complete_queries": 19,
-    "distinct_known_readers": 120,
+    "distinct_known_readers": 121,
     "failed_queries": 0,
-    "fields_found": 2274,
-    "known_reader_identities": 1865,
-    "known_reader_kinds": 1909,
+    "fields_found": 2275,
+    "known_reader_identities": 1866,
+    "known_reader_kinds": 1910,
     "partial_queries": 165,
     "queries_with_unresolved_paths": 153,
     "unknown_reader_identities": 409,
     "unknown_reader_kinds": 365,
-    "unresolved_paths": 1319,
+    "unresolved_paths": 1318,
     "unsupported_queries": 10
   }
 }
