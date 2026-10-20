@@ -1838,6 +1838,41 @@ fn a_repeated_ordered_compare_of_an_owner_word_takes_only_the_side_that_the_firs
     );
 }
 
+#[test]
+fn an_ordered_compare_that_a_narrow_load_may_not_satisfy_stops_the_path() {
+    use crate::engine::analysis::readers::destination;
+
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        ldrb w8, [x0, #0x30]; // a byte of the owner
+        cmp w8, #255;
+        b.hi extern 0x102c; // never taken for an unsigned byte
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x50; // a member that a zero-extended byte never reaches
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    let result = derive(input);
+
+    assert!(
+        result
+            .fields
+            .iter()
+            .flat_map(|field| &field.readers)
+            .all(|reader| destination(reader) != Some(0x50)),
+        "{:?}",
+        result.fields
+    );
+}
+
 /// Token 7 compares the word that `load` at `0x1010` loads with 1, branches on `b.lt` around a
 /// diagnostic, then reads an owner member.
 fn ordered_compare_of(load: Vec<u8>) -> FieldInput {

@@ -216,7 +216,11 @@ Three local rules of the dispatch walk (`fields/dispatch.rs`), on M452 at `regis
 and `command-grammar/v28`:
 
 - **Ordered compare of an owner word.** A `b.lt`, `b.ge`, `b.gt`, `b.le`, `b.hi`, `b.ls`, … after a
-  compare of a word loaded from the owner keeps both sides, each under an unresolved condition.
+  compare of a word loaded from the owner with one constant keeps each side that the word can take,
+  under an unresolved condition (`ordered_sides`). A load at least as wide as the compare can hold
+  every value; a narrower load may be zero- or sign-extended (the walk does not keep which), so a
+  side counts only when both extensions agree, and otherwise the path stops
+  (`ordered-compare-range`). Every store outside the frame and every call forgets the sides.
   `CCountryType::ReadMember` (`0x10033f6bc`): `ldr w8,[x19,#0x784]; cmp w8,#1; b.lt` around a
   diagnostic, then the read of `trade_routes_available`. A compare of any other value is still a
   stop. The path remembers its side (`State::ordered`) until a call or a store outside the frame:
