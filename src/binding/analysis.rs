@@ -603,10 +603,15 @@ impl VerifiedAnalysis<'_> {
             .iter()
             .map(|record| record.database.clone())
             .collect();
+        let items: Vec<&str> = candidates
+            .iter()
+            .map(|record| record.owner_candidate.as_str())
+            .collect();
         let text = binary::declarations::Text::read(&self.executable, &self.catalog.symbols)?;
         let image = self.image();
 
         Ok(Some(LoaderEvidence {
+            item_reads: binary::references::item_reads(&image, self.persistent, &items)?,
             enumerations: binary::references::loader_enumerations(&text, &image, &classes),
             existing_entries: binary::references::existing_entry_rules(
                 &text,

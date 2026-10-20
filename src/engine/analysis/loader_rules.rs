@@ -39,7 +39,7 @@ use super::directories::{self, Anchors, Constructor, Value};
 use crate::{DefinitionForm, DuplicateRule, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v7";
+pub const METHOD: &str = "loader-rules/v8";
 
 /// The register of `ReadExistingEntry`'s existing item, its third argument after `this`.
 const EXISTING_ITEM: usize = 3;
@@ -70,6 +70,9 @@ pub struct LoaderEvidence {
     /// The rule of each template database's existing-entry handler, `None` for a handler that
     /// [`existing_entry_rule`] does not read. A custom loader has none.
     pub existing_entries: Vec<Option<DuplicateRule>>,
+    /// The `Read(CReader&)` of each template database's item, `None` when its vtable does not
+    /// establish one. A custom loader has none.
+    pub item_reads: Vec<Option<String>>,
     /// The loaders' stated definition-name rules.
     pub stated: Vec<StatedRule>,
 }
@@ -147,6 +150,39 @@ pub fn duplicate_rule(rules: &[Option<DuplicateRule>]) -> Result<DuplicateRule, 
         1 => Ok(*distinct.first().expect("one rule")),
         several => Err(DuplicateObstacle::Several(several)),
     }
+}
+
+/// The read that runs an item's member reader over its definition and keeps nothing of the
+/// definition's text: each statement goes to `ReadMember`, whose base reports and skips a key that
+/// no reader handles.
+pub const GENERIC_READ: &str = "CPersistent::Read(CReader&)";
+
+/// Why it is not established whether a registry's loader keeps a definition's text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeptTextObstacle {
+    /// No template database loads the registry: its loader's own read code is not followed.
+    NotFollowed,
+    /// A template item reads its definition with a read other than [`GENERIC_READ`], or its
+    /// vtable establishes no read.
+    OwnRead,
+}
+
+/// Whether the loader keeps a definition's text after reading it, from the read of each template
+/// item in `item_reads`. A template database keeps only the key of each statement and passes the
+/// reader to the item's read, a rule that the knowledge page checks over every template database,
+/// so the text is not kept when every item's read is [`GENERIC_READ`].
+pub fn keeps_definition_text(item_reads: &[Option<String>]) -> Result<bool, KeptTextObstacle> {
+    if item_reads.is_empty() {
+        return Err(KeptTextObstacle::NotFollowed);
+    }
+    if item_reads
+        .iter()
+        .all(|read| read.as_deref() == Some(GENERIC_READ))
+    {
+        return Ok(false);
+    }
+
+    Err(KeptTextObstacle::OwnRead)
 }
 
 /// The file selection of one registry's loader. Each property is established or has its obstacle.
@@ -546,6 +582,27 @@ mod tests {
         };
 
         enumerations(&[function], &anchors(), &strings())
+    }
+
+    #[test]
+    fn a_definition_text_is_kept_by_no_loader_whose_items_all_read_through_the_member_loop() {
+        let generic = Some(GENERIC_READ.to_owned());
+        let own = Some("CMetaScriptTemplate::Read(CReader&)".to_owned());
+
+        assert_eq!(
+            keeps_definition_text(std::slice::from_ref(&generic)),
+            Ok(false)
+        );
+        for reads in [vec![generic.clone(), own], vec![generic, None]] {
+            assert_eq!(
+                keeps_definition_text(&reads),
+                Err(KeptTextObstacle::OwnRead)
+            );
+        }
+        assert_eq!(
+            keeps_definition_text(&[]),
+            Err(KeptTextObstacle::NotFollowed)
+        );
     }
 
     #[test]
