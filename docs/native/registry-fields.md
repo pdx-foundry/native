@@ -206,9 +206,9 @@ readers through the [allocation rule](#allocations-in-constructor-walks).
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
 unsupported instructions (`blr`, `ret`, `cset`) and branch conditions on values other than an
 owner word ([ordered compares](#ordered-owner-compares-and-right-shifts)); the unnamed keys are
-non-singleton token paths; the unreadable input is the seven owners with no `ReadMember` and no
-[serializer root](#serializer-roots-and-the-stack-guard-sdk-835) (`CJobTag`, `CTraitTag`,
-`CLivingStandard`, …).
+non-singleton token paths; the unreadable input is the owners with no `ReadMember`, no
+[serializer root](#serializer-roots-and-the-stack-guard-sdk-835) and no base root (`CJobTag`,
+`CTraitTag`, …).
 
 ### Ordered owner compares and right shifts
 
@@ -290,10 +290,15 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   `counter` and `attunement` the same way. Remove the rule when a build's adjusted receiver is not
   a base subobject (a member object at a constant offset read through its base's reader would look
   the same; its fields would then be the member's).
-  - `CLivingStandard` and `CMilitaryServiceType` have no `ReadMember`: their vtables take
-    `CSpeciesRightBase::ReadMember` on the subobject directly, so the owner has no root to walk.
-    A repair takes the root from the owner vtable's member slot and the subobject offset from its
-    group; the field input then needs a root receiver offset.
+  - **Base root.** `CLivingStandard` and `CMilitaryServiceType` have no `ReadMember`: the group of
+    their vtable at subobject offset `0x38` holds `CSpeciesRightBase::ReadMember` in the member
+    slot (`0x103091830` for living standards). For an owner with neither its own reader nor a
+    serializer root, the binding takes the one address point whose member slot holds another
+    class's `ReadMember` (not a thunk, not `CPersistent`'s) as the root, with that point's offset
+    (`base_root` in `binding/binary/fields.rs`, `FieldInput::base_root`); the walk starts with the
+    owner plus the offset in `x0`. At `registry-fields/v69` both registries list the 8 shared keys.
+    `triggered_pop_group_modifier` stays `Unknown` there: the nested pass runs only an owner's own
+    reader. No point, or several, leaves the owner unread as before.
 - **Bit tests of a constant.** `tbz` and `tbnz` of a known constant take only the side the bit
   selects, as `cbz` and `cbnz` do. The resumed false return needs it.
 - **Result on M452.** `common/starbase_modules` goes from 7 to 57 root fields and
@@ -399,7 +404,8 @@ Two shapes stopped `common/districts`, `common/zones` and `common/zone_slots` on
   - The remaining district and zone stops belong to census families: a log location before the
     reader (`icon`, `desc`, `triggered_*`) and owned objects (`resources`, `ai_resource_production`).
   - `CJobTag`, `CTraitTag`, `CLivingStandard`, `CMilitaryServiceType` and the scripted effect,
-    trigger and value templates have no `ReadMember` and do not match this `Read` shape.
+    trigger and value templates have no `ReadMember` and do not match this `Read` shape; the two
+    species-rights owners read through a [base root](#inherited-member-readers-sdk-838).
 - **Pitfall.** The vtable's name is not the reader: take the member slot, as for any concrete
   reader. A serializer member is not an owner field's storage, so treating the receiver as the
   owner gives wrong destinations.

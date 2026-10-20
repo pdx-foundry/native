@@ -5362,3 +5362,22 @@ fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
         crate::ReaderKind::Unknown
     );
 }
+
+#[test]
+fn an_owner_without_its_own_reader_reads_through_its_base_on_the_subobject() {
+    use crate::engine::analysis::readers::destination;
+
+    let base = "CBase::ReadMember(CReader&, int)";
+    let mut input = fixture();
+    input.functions[0].name = base.into();
+    input.symbols[1].name = base.into();
+    input.base_root = Some(fields::BaseRoot {
+        reader: base.into(),
+        offset: 0x38,
+    });
+
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+    assert_eq!(destination(&result.fields[0].readers[0]), Some(0x78));
+}

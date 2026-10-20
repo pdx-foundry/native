@@ -5,8 +5,8 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
-        self, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput,
-        BaseRoot, PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
+        self, BaseRoot, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader,
+        PersistentInput, PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
     },
     readers,
 };
@@ -104,9 +104,7 @@ pub(in crate::binding) fn read(
         (None, None) => base_root(image, &data, owner, persistent_recipe),
         _ => None,
     };
-    let root = base_root
-        .as_ref()
-        .map_or(root, |base| base.reader.clone());
+    let root = base_root.as_ref().map_or(root, |base| base.reader.clone());
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -383,7 +381,9 @@ fn base_root(
         .address_points
         .iter()
         .filter_map(|(&offset, &point)| {
-            let target = image.pointers.get(&point.checked_add(recipe.member_slot)?)?;
+            let target = image
+                .pointers
+                .get(&point.checked_add(recipe.member_slot)?)?;
             let name = names.unique(*target)?;
             (name.ends_with("::ReadMember(CReader&, int)")
                 && !name.starts_with('{')

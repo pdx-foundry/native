@@ -166,7 +166,11 @@ impl Owner<'_> {
         match (self.serializer, self.base) {
             (Some(serializer), _) => (serializer.reader.clone(), Some(serializer.owner_slot), 0),
             (None, Some(base)) => (base.reader.clone(), None, base.offset),
-            (None, None) => (format!("{}::ReadMember(CReader&, int)", self.class), None, 0),
+            (None, None) => (
+                format!("{}::ReadMember(CReader&, int)", self.class),
+                None,
+                0,
+            ),
         }
     }
 }
