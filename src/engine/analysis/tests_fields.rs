@@ -2123,6 +2123,8 @@ fn nested_fixture() -> FieldInput {
         data_offset: Some(8),
         count_offset: Some(0x14),
         reader: None,
+        serializer: None,
+        base: None,
         persistent: None,
         objects: vec![],
     });
@@ -2971,6 +2973,107 @@ fn an_embedded_object_without_a_block_family_lists_its_keys() {
     let result = derive(wider);
     assert_eq!(result.fields[0].name, "new_engine_field");
     assert!(result.embedded.is_empty());
+}
+
+#[test]
+fn an_embedded_object_reads_its_own_embedded_object_through_the_parent_constructors() {
+    use crate::engine::analysis::fields::ConcreteReader;
+    let inner = "CInner::ReadMember(CReader&, int)";
+    let mut input = embedded_fixture();
+    let mut constructor = Arm64::at(0x9000);
+    constructor.prologue();
+    arm64!(constructor;
+        mov x19, x0;
+        add x0, x0, #0x40; // the embedded object
+        bl extern 0xa000;
+        add x0, x19, #0x60; // its own embedded object, at its +0x20
+        bl extern 0xa100;
+        mov x0, x19
+    );
+    constructor.epilogue();
+    arm64!(constructor; ret);
+    let binding = input.persistent.as_mut().unwrap();
+    binding.constructors[0].code = constructor.bytes();
+    binding
+        .summaries
+        .insert(0xa100, BTreeMap::from([(0, 0xb100)]));
+    binding.readers.insert(
+        0xb100,
+        ConcreteReader {
+            read: "CPersistent::Read(CReader&)".into(),
+            member: inner.into(),
+            family: crate::BlockFamily::Unknown,
+            delegate: None,
+            post_read: [None, None],
+        },
+    );
+    replace(&mut input, 0xd00c, arm64!(at 0xd00c; add x8, x0, #0x20)); // the inner object
+    replace(&mut input, 0xd018, arm64!(at 0xd018; b extern 0x4000)); // CReader::Read(CPersistent&)
+    input.symbols.push(Symbol {
+        name: inner.into(),
+        address: 0xd100,
+    });
+    input.functions.push(Function {
+        name: inner.into(),
+        address: 0xd100,
+        code: arm64!(at 0xd100;
+            cmp w2, #7; // token 7
+            b.eq extern 0xd10c;
+            b extern 0x5000; // CPersistent::ReadMember
+            add x8, x0, #0x10; // the Boolean member
+            mov x0, x1; // the reader
+            mov x1, x8;
+            b extern 0xe000 // CReader::Read(bool&)
+        ),
+    });
+
+    let result = derive(input);
+    let embedded = &result.embedded[0].fields;
+    assert_eq!(embedded.persistent[&0x60].member, inner);
+    assert_eq!(embedded.embedded[0].member, inner);
+    let fields = crate::session::questions::normalized_fields(&result, &Default::default());
+    let crate::FieldMembers::Fields(members) = &fields[0].members else {
+        panic!("members: {:?}", fields[0].members);
+    };
+    let crate::FieldMembers::Fields(inner_members) = &members[0].members else {
+        panic!("inner members: {:?}", members[0].members);
+    };
+
+    assert_eq!(inner_members[0].reader.kind, crate::ReaderKind::Boolean);
+}
+
+#[test]
+fn a_nested_owner_stops_at_the_depth_bound_and_where_it_holds_itself() {
+    use crate::engine::analysis::fields::{Owner, Receiver};
+    let root = Owner::allocation("CRoot", None, None, &[], None);
+    let embedded = |parent: &Owner<'static>, reader: &str, offset| {
+        parent.holding(Owner {
+            reader: reader.into(),
+            receiver: Receiver::Owner(offset),
+            objects: &[],
+            persistent: None,
+            enclosing: Vec::new(),
+        })
+    };
+    let first = embedded(&root, "CA::ReadMember(CReader&, int)", 0x10);
+    let second = embedded(&first, "CB::ReadMember(CReader&, int)", 0x20);
+    let third = embedded(&second, "CC::ReadMember(CReader&, int)", 0x30);
+
+    assert_eq!(third.stops(), None);
+    assert!(
+        embedded(&third, "CD::ReadMember(CReader&, int)", 0x40)
+            .stops()
+            .is_some()
+    );
+    assert!(
+        embedded(&first, "CA::ReadMember(CReader&, int)", 0x10)
+            .stops()
+            .is_some()
+    );
+    assert_eq!(
+        embedded(&first, "CA::ReadMember(CReader&, int)", 0x18).stops(),
+        None
+    );
 }
 
 #[test]

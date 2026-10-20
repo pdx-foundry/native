@@ -1,8 +1,8 @@
 //! Join generic persistent member destinations to constructor-installed virtual methods.
 use super::containers::{self, PathMasks};
 use super::{
-    ConcreteReader, EmbeddedField, FieldGap, FieldGapKind, FieldInput, PathOutcome,
-    RegistryFieldResult, RootField, TokenPath, dispatch, inventory, tokens,
+    ConcreteReader, EmbeddedField, FieldGap, FieldGapKind, FieldInput, Owner, PathOutcome,
+    ReaderJoin, Receiver, RootField, TokenPath, tokens,
 };
 use crate::engine::analysis::{
     discovery::SymbolIndex,
@@ -88,12 +88,14 @@ pub(super) fn discover(
     }
 }
 
-/// The keys of each embedded object that a root field reads on every path, when the object's
-/// member reader has no block family. A block family's own method gives the grammar of the
-/// others. The keys are derived to depth one, by the dispatch walk of the owner's reader.
+/// The keys of each embedded object that a field of `owner` reads on every path, when the
+/// object's member reader has no block family. A block family's own method gives the grammar of
+/// the others. The object is in the owner's allocation, so its analysis keeps the owner's
+/// constructor evidence, with its receiver at the field's destination.
 pub(super) fn embedded(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
+    owner: &Owner<'_>,
     fields: &[RootField],
     paths: &[TokenPath],
     readers: &BTreeMap<i64, ConcreteReader>,
@@ -121,92 +123,90 @@ pub(super) fn embedded(
         let Some(joins) = joins else {
             continue;
         };
-        // Every path reads the field through one stack serializer: its member reader gives the
-        // keys, with the wrapped member at its owner slot.
-        let serializer_readers: BTreeSet<_> = joins
-            .iter()
-            .map(|join| match join {
-                super::ReaderJoin::Stored {
-                    callee,
-                    kind: crate::ReaderKind::Block,
-                    ..
-                } => serializer_slot(callee).map(|slot| (callee.clone(), slot)),
-                _ => None,
-            })
-            .collect();
-        if let [Some((member, slot))] = serializer_readers.iter().collect::<Vec<_>>()[..] {
-            let (paths, mut gaps, order_checks) =
-                dispatch::explore_owner(input, symbol_index, member, Some(*slot), 0);
-            let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
-            if fields.is_empty() {
-                continue;
-            }
-            gaps.extend(field_gaps);
-            let partition_accounted = inventory::partition_accounted(&paths);
-            let key_order =
-                inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
-            embedded.push(EmbeddedField {
-                token: field.token,
-                read: readers::PERSISTENT_READ.into(),
-                member: member.clone(),
-                fields: Box::new(RegistryFieldResult {
-                    fields,
-                    paths,
-                    gaps,
-                    partition_accounted,
-                    key_order,
-                    ..RegistryFieldResult::default()
-                }),
-            });
-            continue;
-        }
-        if !joins
-            .iter()
-            .all(|join| readers::reads_embedded_object(join))
-        {
-            continue;
-        }
-        let offsets: BTreeSet<_> = joins.into_iter().map(readers::destination).collect();
-        if offsets.len() != 1 {
-            continue;
-        }
-        let Some(Some(offset)) = offsets.first() else {
+        let Some((read, member, receiver)) = embedded_reader(&joins, readers, &serializer_slot)
+        else {
             continue;
         };
-        let Some(reader) = readers.get(offset) else {
-            continue;
-        };
-        if reader.family != crate::BlockFamily::Unknown {
-            continue;
-        }
-        if !reader.member.ends_with("::ReadMember(CReader&, int)") {
-            continue;
-        }
-        let (paths, mut gaps, order_checks) =
-            dispatch::explore_owner(input, symbol_index, &reader.member, None, 0);
-        let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
+        let child = owner.holding(Owner {
+            reader: member.clone(),
+            receiver,
+            objects: &[],
+            persistent: owner.persistent,
+            enclosing: Vec::new(),
+        });
+        let result = super::owner_result(input, symbol_index, &child, names);
         // With no named key, the field keeps its unresolved members and their gap.
-        if fields.is_empty() {
+        if result.fields.is_empty() {
             continue;
         }
-        gaps.extend(field_gaps);
-        let partition_accounted = inventory::partition_accounted(&paths);
-        let key_order = inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
         embedded.push(EmbeddedField {
             token: field.token,
-            read: reader.read.clone(),
-            member: reader.member.clone(),
-            fields: Box::new(RegistryFieldResult {
-                fields,
-                paths,
-                gaps,
-                partition_accounted,
-                key_order,
-                ..RegistryFieldResult::default()
-            }),
+            read,
+            member,
+            fields: Box::new(result),
         });
     }
     embedded
+}
+
+/// The read, member reader and receiver of the one embedded object that every join reads: a
+/// stack serializer around the owner member at its destination, or an object at one destination
+/// whose constructor-installed reader has no block family.
+fn embedded_reader(
+    joins: &[&ReaderJoin],
+    readers: &BTreeMap<i64, ConcreteReader>,
+    serializer_slot: &dyn Fn(&str) -> Option<i64>,
+) -> Option<(String, String, Receiver)> {
+    // Every path reads the field through one stack serializer: its member reader gives the
+    // keys, with the wrapped member at its owner slot.
+    let serializers: Vec<_> = joins
+        .iter()
+        .map(|join| match join {
+            ReaderJoin::Stored {
+                callee,
+                kind: crate::ReaderKind::Block,
+                destination: Some(destination),
+                ..
+            } => serializer_slot(callee).map(|slot| (callee.clone(), slot, *destination)),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    if let [Some((member, slot, destination))] = &serializers[..] {
+        let receiver = Receiver::Serializer {
+            slot: *slot,
+            owner_offset: *destination,
+        };
+
+        return Some((readers::PERSISTENT_READ.into(), member.clone(), receiver));
+    }
+
+    if !joins
+        .iter()
+        .all(|join| readers::reads_embedded_object(join))
+    {
+        return None;
+    }
+
+    let offsets: BTreeSet<_> = joins
+        .iter()
+        .map(|join| readers::destination(join))
+        .collect();
+    let [Some(offset)] = offsets.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let reader = readers.get(&offset)?;
+    let keys = reader.family == crate::BlockFamily::Unknown
+        && reader.member.ends_with("::ReadMember(CReader&, int)");
+
+    keys.then(|| {
+        (
+            reader.read.clone(),
+            reader.member.clone(),
+            Receiver::Owner(offset),
+        )
+    })
 }
 
 /// The vtable address points that every owner constructor installs at the requested offsets.

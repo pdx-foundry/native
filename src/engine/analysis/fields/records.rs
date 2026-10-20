@@ -423,6 +423,11 @@ pub struct ObjectReader {
     pub count_offset: Option<u64>,
     /// The persistent reader at the object's primary address point.
     pub reader: Option<PointReader>,
+    /// The serializer whose member reader reads the object's keys, when its class has no member
+    /// reader of its own.
+    pub serializer: Option<SerializerRoot>,
+    /// The base class's reader on its subobject, when its class has no reader of its own.
+    pub base: Option<BaseRoot>,
     /// Constructor evidence for the persistent members of an object whose reader has no block
     /// family, which the method walks as a nested owner.
     pub persistent: Option<PersistentInput>,
@@ -470,7 +475,8 @@ pub struct EmbeddedField {
     pub read: String,
     /// The object's member reader.
     pub member: String,
-    /// Loader fields and gaps of the member reader. Its keys are derived to depth one.
+    /// Loader fields and gaps of the member reader, analyzed as an owner in the parent's
+    /// allocation.
     pub fields: Box<RegistryFieldResult>,
 }
 

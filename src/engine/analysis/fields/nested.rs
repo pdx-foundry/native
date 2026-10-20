@@ -53,14 +53,14 @@ pub(super) fn discover(
     names: &BTreeMap<i64, tokens::Token>,
 ) -> Vec<CollectionField> {
     let objects = owner.objects;
+    let owner_receiver = owner.receiver;
     if objects.is_empty() {
         return Vec::new();
     }
-    let root_name = format!("{}::ReadMember(CReader&, int)", owner.class);
     let Some(root) = input
         .functions
         .iter()
-        .find(|function| function.name == root_name)
+        .find(|function| function.name == owner.reader)
     else {
         return Vec::new();
     };
@@ -182,7 +182,19 @@ pub(super) fn discover(
                         .map(|elements| (array, elements));
                 }
             }
-            machine.set_register(0, owner);
+            let receiver = match owner_receiver {
+                super::Receiver::Owner(offset) => owner.wrapping_add_signed(offset),
+                super::Receiver::Serializer { slot, owner_offset } => {
+                    let serializer = machine.reserve(SPAN);
+                    machine.write(
+                        serializer.wrapping_add_signed(slot),
+                        8,
+                        owner.wrapping_add_signed(owner_offset),
+                    );
+                    serializer
+                }
+            };
+            machine.set_register(0, receiver);
             machine.set_register(1, reader);
             machine.set_register(2, field.token as u64);
             if let Some(offset) = input.key_readers.reader_token {
@@ -375,13 +387,13 @@ pub(super) fn discover(
             None => super::owner_result(
                 input,
                 symbol_index,
-                &Owner {
-                    class: &object.class,
-                    serializer: None,
-                    base: None,
-                    objects: &object.objects,
+                &owner.holding(Owner::allocation(
+                    &object.class,
+                    object.serializer.as_ref(),
+                    object.base.as_ref(),
+                    &object.objects,
                     persistent,
-                },
+                )),
                 names,
             ),
         };
