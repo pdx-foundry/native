@@ -248,6 +248,11 @@ impl State {
     }
 
     fn call_can_overwrite(&self, value: &Value) -> bool {
+        // A load narrower than a pointer cannot hold an address that the callee writes through.
+        if matches!(value, Value::Load(_, width) if *width < 8) {
+            return false;
+        }
+
         Self::owner_derived(value)
             || (Self::stack_derived(value)
                 && (self.unknown_stack_store
@@ -743,10 +748,11 @@ fn apply(
             };
             state.assign(destination, Some(value));
         }
-        ("ldr" | "ldrb" | "ldrsb" | "ldrsw" | "ldur" | "str" | "stur" | "strb", _) => {
-            // An unscaled store writes as `str` does.
+        ("ldr" | "ldrb" | "ldrsb" | "ldursb" | "ldrsw" | "ldur" | "str" | "stur" | "strb", _) => {
+            // An unscaled access reads or writes as its scaled form does.
             let operation = match row.operation.as_str() {
                 "stur" => "str",
+                "ldursb" => "ldrsb",
                 operation => operation,
             };
             let Some((operand, address)) = row.operands.split_once(',') else {

@@ -73,6 +73,17 @@ pub(crate) const DIAGNOSTICS: &[&str] = &[
     "CReader::ReportUnexpected()",
 ];
 
+/// Calls that build and write a diagnostic through the engine's log stream: the logger instance,
+/// the stream's text operators and its destructor, which writes the line.
+pub(crate) const DIAGNOSTIC_STREAM: &[&str] = &[
+    "CLogger::AccessInstance()",
+    "CLogStream::operator<<(char const*)",
+    "operator<<(std::__1::basic_ostream<char, std::__1::char_traits<char> >&, CString const&)",
+    "std::__1::basic_ostream<char, std::__1::char_traits<char> >& std::__1::__put_character_sequence[abi:v160006]<char, std::__1::char_traits<char> >(std::__1::basic_ostream<char, std::__1::char_traits<char> >&, char const*, unsigned long)",
+    "std::__1::basic_ostream<char, std::__1::char_traits<char> >& std::__1::endl[abi:v160006]<char, std::__1::char_traits<char> >(std::__1::basic_ostream<char, std::__1::char_traits<char> >&)",
+    "CLogStream::~CLogStream()",
+];
+
 /// Calls that locate a diagnostic in the reader or the engine source and change no script state.
 pub(crate) const DIAGNOSTIC_LOCATIONS: &[&str] = &[
     "CPdxLogFileAndLine::CPdxLogFileAndLine(char const*, unsigned int, unsigned int)",
@@ -113,6 +124,7 @@ pub(crate) const STRING_RELEASE: &str =
 /// state: a validated rule, which the weight and keyword methods state.
 pub(crate) fn changes_no_script_state(callee: &str) -> bool {
     DIAGNOSTICS.contains(&callee)
+        || DIAGNOSTIC_STREAM.contains(&callee)
         || DIAGNOSTIC_LOCATIONS.contains(&callee)
         || callee == STRING_RELEASE
 }
