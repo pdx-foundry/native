@@ -5334,9 +5334,8 @@ fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
     assert!(
         matches!(
             &result.fields[0].readers[..],
-            [ReaderJoin::Joined { callee, arguments, .. }]
+            [ReaderJoin::Stored { callee, kind: crate::ReaderKind::Block, destination: Some(0x40), .. }]
                 if callee.ends_with("CSerializer::ReadMember(CReader&, int)")
-                    && arguments.get("x0") == Some(&fields::Value::Owner(0x40))
         ),
         "{:?}",
         result.fields
@@ -5355,6 +5354,11 @@ fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
     assert!(result.embedded.is_empty());
     assert!(!matches!(
         &result.fields[0].readers[..],
-        [ReaderJoin::Joined { .. }]
+        [ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }]
     ));
+    // A serializer reader that some other join names keeps no established kind of its own.
+    assert_eq!(
+        super::readers::classify_callee("CExample::SPart::CSerializer::ReadMember(CReader&, int)"),
+        crate::ReaderKind::Unknown
+    );
 }
