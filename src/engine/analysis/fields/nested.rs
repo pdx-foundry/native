@@ -378,6 +378,7 @@ pub(super) fn discover(
                 &Owner {
                     class: &object.class,
                     serializer: None,
+                    base: None,
                     objects: &object.objects,
                     persistent,
                 },

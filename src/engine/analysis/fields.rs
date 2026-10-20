@@ -110,6 +110,7 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     let owner = Owner {
         class: &input.owner,
         serializer: input.serializer.as_ref(),
+        base: input.base_root.as_ref(),
         objects: &input.objects,
         persistent: input.persistent.as_ref(),
     };
@@ -152,17 +153,20 @@ pub(super) struct Owner<'a> {
     pub class: &'a str,
     /// The serializer whose member reader reads the class's keys, when the class has none.
     pub serializer: Option<&'a SerializerRoot>,
+    /// The base class's reader on its subobject, when the class has no reader of its own.
+    pub base: Option<&'a BaseRoot>,
     pub objects: &'a [ObjectReader],
     pub persistent: Option<&'a PersistentInput>,
 }
 
 impl Owner<'_> {
-    /// The member reader of the owner's keys, and the receiver offset of the owner pointer when
-    /// it is a serializer's.
-    fn reader(&self) -> (String, Option<i64>) {
-        match self.serializer {
-            Some(serializer) => (serializer.reader.clone(), Some(serializer.owner_slot)),
-            None => (format!("{}::ReadMember(CReader&, int)", self.class), None),
+    /// The member reader of the owner's keys, the receiver offset of the owner pointer when it
+    /// is a serializer's, and the owner offset of the reader's receiver.
+    fn reader(&self) -> (String, Option<i64>, i64) {
+        match (self.serializer, self.base) {
+            (Some(serializer), _) => (serializer.reader.clone(), Some(serializer.owner_slot), 0),
+            (None, Some(base)) => (base.reader.clone(), None, base.offset),
+            (None, None) => (format!("{}::ReadMember(CReader&, int)", self.class), None, 0),
         }
     }
 }
@@ -175,9 +179,9 @@ fn owner_result(
     owner: &Owner<'_>,
     tokens: &std::collections::BTreeMap<i64, Token>,
 ) -> RegistryFieldResult {
-    let (reader, owner_slot) = owner.reader();
+    let (reader, owner_slot, base_offset) = owner.reader();
     let (paths, mut gaps, order_checks) =
-        dispatch::explore_owner(input, symbol_index, &reader, owner_slot);
+        dispatch::explore_owner(input, symbol_index, &reader, owner_slot, base_offset);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);

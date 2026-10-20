@@ -6,7 +6,7 @@ use crate::engine::analysis::{
     evaluate::ReadOnlyData,
     fields::{
         self, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput,
-        PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
+        BaseRoot, PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
     },
     readers,
 };
@@ -100,6 +100,13 @@ pub(in crate::binding) fn read(
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
     let (root, serializer) = root_reader(&text, image, owner, persistent_recipe)?;
+    let base_root = match (&serializer, indexed.named(&root).next()) {
+        (None, None) => base_root(image, &data, owner, persistent_recipe),
+        _ => None,
+    };
+    let root = base_root
+        .as_ref()
+        .map_or(root, |base| base.reader.clone());
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -178,6 +185,7 @@ pub(in crate::binding) fn read(
     push_converters(&text, indexed, &mut functions);
     let stack_serializers = stack_serializers(image, &text, persistent_recipe, &mut functions);
     Ok(FieldInput {
+        base_root,
         stack_serializers,
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
@@ -356,6 +364,41 @@ fn root_reader(
     Ok(match serializer {
         Some(serializer) => (serializer.reader.clone(), Some(serializer)),
         None => (own, None),
+    })
+}
+
+/// The base class's member reader that reads the keys of `owner`, a class with no member reader
+/// of its own: the one address point of the owner's vtable whose member slot holds a
+/// `ReadMember(CReader&, int)` of another class (not a thunk), with the point's subobject offset.
+/// `None` when no point or several hold one.
+fn base_root(
+    image: &Image<'_>,
+    data: &ReadOnlyData,
+    owner: &str,
+    recipe: &PersistentRecipe,
+) -> Option<BaseRoot> {
+    let names = Names::new(image.symbols);
+    let group = image.index.over(image.symbols).vtable_group(data, owner)?;
+    let members: Vec<(u64, &str)> = group
+        .address_points
+        .iter()
+        .filter_map(|(&offset, &point)| {
+            let target = image.pointers.get(&point.checked_add(recipe.member_slot)?)?;
+            let name = names.unique(*target)?;
+            (name.ends_with("::ReadMember(CReader&, int)")
+                && !name.starts_with('{')
+                && name != "CPersistent::ReadMember(CReader&, int)"
+                && !name.starts_with(&format!("{owner}::")))
+            .then_some((offset, name))
+        })
+        .collect();
+    let [(offset, reader)] = members[..] else {
+        return None;
+    };
+
+    Some(BaseRoot {
+        reader: reader.to_owned(),
+        offset: i64::try_from(offset).ok()?,
     })
 }
 

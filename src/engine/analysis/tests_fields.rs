@@ -18,6 +18,7 @@ fn fixture() -> FieldInput {
     FieldInput {
         loader_root: None,
         serializer: None,
+        base_root: None,
         stack_serializers: BTreeMap::new(),
         key_readers: Default::default(),
         persistent: None,
