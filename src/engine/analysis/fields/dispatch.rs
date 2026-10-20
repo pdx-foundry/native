@@ -184,6 +184,17 @@ struct State {
     /// The outcome of each state comparison that the path has taken (`EqualsAny` to whether
     /// it held), until a call or a store outside the frame may change the compared memory.
     settled: BTreeMap<Value, bool>,
+    /// The side that the path took at an ordered compare of an owner word, by the word, until a
+    /// call or a store outside the frame may change it.
+    ordered: BTreeMap<Value, OrderedSide>,
+}
+/// The side of an ordered compare that a path took: the branch's condition and pivots, and
+/// whether the branch was taken.
+#[derive(Clone, PartialEq)]
+struct OrderedSide {
+    condition: &'static str,
+    pivots: Vec<i64>,
+    taken: bool,
 }
 /// A reader call's Boolean in a stack temporary. The loader merges it into a bit of an owner
 /// word, or copies it to an owner byte, after the call.
@@ -216,6 +227,7 @@ impl State {
         }
         self.flags = None;
         self.settled.clear();
+        self.ordered.clear();
     }
 
     fn overlaps_stored(&self, location: &Value, width: i64) -> bool {
@@ -637,6 +649,7 @@ fn apply(
         state.serializer = None;
         if !row.operands.contains("[sp") {
             state.settled.clear();
+            state.ordered.clear();
         }
     }
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
@@ -1092,6 +1105,7 @@ fn explore_member_with_wrapped_owner(
         path: vec![],
         table_case: None,
         settled: BTreeMap::new(),
+        ordered: BTreeMap::new(),
     };
     if root.ends_with(", EScopeType)")
         && let Some(scope) = &input.scope
@@ -2469,19 +2483,77 @@ fn values_branch(
             Unresolved::at("branch-target", row.address, entry, Obstacle::OutsideCode),
         );
     };
+    // A word that an earlier ordered compare constrained is decided only by the same compare or
+    // its opposite; any other test of it could take a side that the earlier one excludes.
+    if let Some(earlier) = state.ordered.get(tested) {
+        let taken = if earlier.pivots != pivots {
+            None
+        } else if earlier.condition == condition {
+            Some(earlier.taken)
+        } else if opposite(earlier.condition) == Some(condition) {
+            Some(!earlier.taken)
+        } else {
+            None
+        };
+        let Some(taken) = taken else {
+            return Branching::gap(
+                state,
+                row.address,
+                Unresolved::at(
+                    "ordered-compare-repeat",
+                    row.address,
+                    entry,
+                    Obstacle::Unsupported,
+                ),
+            );
+        };
+        let mut next = state.clone();
+        next.pc = if taken { target } else { state.pc };
+        return Branching {
+            continued: vec![next],
+            ..Branching::default()
+        };
+    }
     // An ordered compare of an owner word, such as a count, keeps both sides under a condition
-    // that the walk does not resolve.
-    if !matches!(condition, "eq" | "ne") && opposite(condition).is_some() && is_owner_word(tested) {
-        let continued = [(target, false), (state.pc, true)]
+    // that the walk does not resolve, and the path remembers its side.
+    if let Some(condition) = opposite(condition)
+        .and_then(opposite)
+        .filter(|condition| !matches!(*condition, "eq" | "ne"))
+        && is_owner_word(tested)
+    {
+        let settled_before = state.settled.keys().any(
+            |compared| matches!(compared, Value::EqualsAny(word, _) if word.as_ref() == tested),
+        );
+        if settled_before {
+            return Branching::gap(
+                state,
+                row.address,
+                Unresolved::at(
+                    "ordered-compare-repeat",
+                    row.address,
+                    entry,
+                    Obstacle::Unsupported,
+                ),
+            );
+        }
+        let continued = [(target, true), (state.pc, false)]
             .into_iter()
-            .map(|(pc, zero)| {
+            .map(|(pc, taken)| {
                 let mut next = state.clone();
                 next.pc = pc;
                 next.conditions.push(Condition {
                     at: row.address,
                     value: None,
-                    zero,
+                    zero: !taken,
                 });
+                next.ordered.insert(
+                    tested.clone(),
+                    OrderedSide {
+                        condition,
+                        pivots: pivots.to_vec(),
+                        taken,
+                    },
+                );
                 next
             })
             .collect();
@@ -3726,6 +3798,7 @@ mod tests {
     fn register_widths_preserve_only_valid_provenance() {
         let mut state = State {
             settled: BTreeMap::new(),
+            ordered: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
             copied_tokens: BTreeSet::new(),
