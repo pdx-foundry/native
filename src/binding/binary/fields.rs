@@ -619,15 +619,17 @@ fn collect_objects(
             .iter()
             .flat_map(|name| addresses(symbols, name))
             .collect();
-        let moving_insert = addresses(symbols, &scoped_insertion(&class))
+        let moving_insert: Vec<_> = addresses(symbols, &scoped_insertion(&class))
             .into_iter()
             .filter(|&start| clears_moved_source_at(text, start))
             .collect();
         let emplace = addresses(symbols, &emplacement(&class));
-        // A class with an insertion keeps the insertion's layout: its pointer array is another
-        // collection than the array of objects that the resizing grows.
+        // A class with an insertion or a moving insertion keeps the insertion's layout: its
+        // pointer array is another collection than the array of objects that the resizing grows.
         let emplace_layout = match emplace.as_slice() {
-            [start] if insert.is_empty() => emplace_layout(text, *start, &array_new),
+            [start] if insert.is_empty() && moving_insert.is_empty() => {
+                emplace_layout(text, *start, &array_new)
+            }
             _ => None,
         };
         let (data_offset, count_offset) = match emplace_layout {
@@ -905,6 +907,7 @@ fn resizing_layout(
     let [count] = counts.into_iter().collect::<Vec<_>>()[..] else {
         return None;
     };
+    let flow = Flow::of(rows);
     let mut layouts = BTreeSet::new();
 
     for (index, row) in rows.iter().enumerate() {
@@ -915,8 +918,8 @@ fn resizing_layout(
             continue;
         }
 
-        let element_size = allocation_multiplier(&rows[..index])?;
-        let data = stored_allocation(&rows[index + 1..], &receivers[index + 1..])?;
+        let element_size = allocation_multiplier(rows, &flow, index)?;
+        let data = stored_allocation(rows, &flow, &receivers, index)?;
 
         layouts.insert((data, element_size));
     }
@@ -932,11 +935,70 @@ fn resizing_layout(
     })
 }
 
-/// The constant that the size argument of a call multiplies: the instruction before the call is
-/// `umull x0,wN,wS` or `mul x0,xN,xS`, and the last write of `S` before it is a `mov` of an
-/// immediate.
-fn allocation_multiplier(before: &[crate::engine::analysis::decode::Instruction]) -> Option<u64> {
-    let (multiply, earlier) = before.split_last()?;
+/// The control flow of a decoded function: the position of each instruction address, and the
+/// addresses that a branch names.
+struct Flow {
+    positions: BTreeMap<u64, usize>,
+    branch_targets: BTreeSet<u64>,
+}
+
+impl Flow {
+    fn of(rows: &[crate::engine::analysis::decode::Instruction]) -> Self {
+        Self {
+            positions: rows
+                .iter()
+                .enumerate()
+                .map(|(position, row)| (row.address, position))
+                .collect(),
+            branch_targets: rows
+                .iter()
+                .filter(|row| branches(row))
+                .filter_map(|row| branch_target(&row.operands))
+                .collect(),
+        }
+    }
+
+    /// The positions that the instruction at `position` passes control to, or `None` when it
+    /// leaves the function or branches to an address outside it.
+    fn successors(
+        &self,
+        rows: &[crate::engine::analysis::decode::Instruction],
+        position: usize,
+    ) -> Option<Vec<usize>> {
+        let row = &rows[position];
+        let target =
+            || branch_target(&row.operands).and_then(|target| self.positions.get(&target).copied());
+
+        match row.operation.as_str() {
+            "ret" | "br" => None,
+            "b" => Some(vec![target()?]),
+            _ if branches(row) => Some(vec![target()?, position + 1]),
+            _ => Some(vec![position + 1]),
+        }
+    }
+}
+
+/// Whether `row` is a branch that may not go on to the next instruction.
+fn branches(row: &crate::engine::analysis::decode::Instruction) -> bool {
+    let operation = row.operation.as_str();
+
+    operation.starts_with("b.")
+        || matches!(
+            operation,
+            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
+}
+
+/// The constant that the size argument of the call at `call` multiplies: the instruction before
+/// the call is `umull x0,wN,wS` or `mul x0,xN,xS`, and the write of `S` before it is a `mov` of an
+/// immediate. Nothing from that `mov` to the call may branch or be a branch target, so every path
+/// to the call runs the `mov`.
+fn allocation_multiplier(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
+    call: usize,
+) -> Option<u64> {
+    let multiply = rows.get(call.checked_sub(1)?)?;
     let ["x0", _, factor] = multiply.operands.split(',').collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -946,25 +1008,44 @@ fn allocation_multiplier(before: &[crate::engine::analysis::decode::Instruction]
     }
 
     let factor = register_number(factor)?;
-    let write = earlier.iter().rev().find(|row| {
-        crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+    let mut position = call;
+    let definition = loop {
+        if flow.branch_targets.contains(&rows[position].address) {
+            return None;
+        }
+
+        position = position.checked_sub(1)?;
+        let row = &rows[position];
+
+        if branches(row) {
+            return None;
+        }
+
+        if crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
             .contains(&factor)
-    })?;
-    let [_, immediate] = write.operands.split(',').collect::<Vec<_>>()[..] else {
+            && position + 1 < call
+        {
+            break row;
+        }
+    };
+    let [_, immediate] = definition.operands.split(',').collect::<Vec<_>>()[..] else {
         return None;
     };
 
-    (write.operation == "mov").then(|| parse_offset(immediate))?
+    (definition.operation == "mov").then(|| parse_offset(immediate))?
 }
 
-/// The receiver member that keeps a call's result. The instruction after the call copies `x0` to
-/// a callee-saved register, which no later instruction in address order writes before it is
-/// stored through a receiver register.
+/// The receiver member that keeps the result of the call at `call`. The instruction after the
+/// call copies `x0` to a callee-saved register. On every path from there, that register is
+/// stored through a receiver register before any instruction writes it or the function returns,
+/// and every such store names one member.
 fn stored_allocation(
-    after: &[crate::engine::analysis::decode::Instruction],
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
     receivers: &[Option<BTreeSet<String>>],
+    call: usize,
 ) -> Option<u64> {
-    let (copy, rest) = after.split_first()?;
+    let copy = rows.get(call + 1)?;
     let ["x0"] = copy.operands.split(',').skip(1).collect::<Vec<_>>()[..] else {
         return None;
     };
@@ -975,17 +1056,27 @@ fn stored_allocation(
         return None;
     }
 
-    for (row, receiver) in rest.iter().zip(&receivers[1..]) {
+    let mut members = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut pending = vec![call + 2];
+
+    while let Some(position) = pending.pop() {
+        if !visited.insert(position) {
+            continue;
+        }
+
+        let row = rows.get(position)?;
         let parts: Vec<_> = row.operands.split(',').collect();
 
         if row.operation == "str"
             && let [value, base, offset] = parts[..]
             && value == kept
-            && receiver
+            && receivers[position]
                 .as_ref()
                 .is_some_and(|receiver| receiver.contains(base.trim_start_matches('[')))
         {
-            return parse_offset(offset.trim_end_matches(']'));
+            members.insert(parse_offset(offset.trim_end_matches(']'))?);
+            continue;
         }
 
         if crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
@@ -993,9 +1084,15 @@ fn stored_allocation(
         {
             return None;
         }
+
+        pending.extend(flow.successors(rows, position)?);
     }
 
-    None
+    let [member] = members.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(member)
 }
 
 /// The number of a general register operand such as `w8` or `x21`.
@@ -1610,6 +1707,16 @@ mod tests {
         computed[4].operation = "bl".into();
         computed[4].operands = "#0x4000".into();
         assert!(resizing_layout(&computed, &BTreeSet::from([0x2000])).is_none());
+        // A path that skips the store keeps the new objects nowhere that the layout names.
+        let mut skipped = rows.clone();
+        skipped[8].operation = "cbz".into();
+        skipped[8].operands = "w8,#0x1034".into();
+        assert!(resizing_layout(&skipped, &BTreeSet::from([0x2000])).is_none());
+        // A path that enters between the size and its multiply may bring another size.
+        let mut entered = rows.clone();
+        entered[8].operation = "cbz".into();
+        entered[8].operands = "w8,#0x1014".into();
+        assert!(resizing_layout(&entered, &BTreeSet::from([0x2000])).is_none());
     }
 
     #[test]

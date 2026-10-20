@@ -1686,6 +1686,54 @@ fn an_object_constructed_at_an_array_end_and_read_there_joins_its_collection() {
 }
 
 #[test]
+fn a_resizing_joins_only_when_it_grows_the_array_that_the_root_left_unchanged() {
+    let mut grows_by_two = emplaced_nested_fixture(0x30);
+    grows_by_two.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        add x0, x19, #0x40; // the array
+        ldr w8, [x19, #0x54]; // its count
+        add w1, w8, #2; // two more objects
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48];
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30;
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    let mut clears_first = emplaced_nested_fixture(0x30);
+    clears_first.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        str wzr, [x19, #0x54]; // clears the count
+        add x0, x19, #0x40; // the array
+        mov w1, #1;
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48];
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30;
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+
+    for input in [grows_by_two, clears_first] {
+        assert!(derive(input).collections.is_empty());
+    }
+}
+
+#[test]
 fn an_object_that_an_inherited_reader_behind_an_import_stub_constructs_joins_its_collection() {
     let inherited = "CBase::ReadMember(CReader&, int)";
     let mut input = emplaced_nested_fixture(0x30);

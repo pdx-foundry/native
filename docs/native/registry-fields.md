@@ -492,26 +492,31 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   its layout from the resizing's body (`emplace_layout`): the count is the one receiver word that it
   increments, the element size is the immediate that the `operator new[]` size multiplies
   (`mov wS,#size; umull x0,wN,wS`), and the element pointer is the receiver member that keeps the
-  new buffer. Every `operator new[]` call must agree. A class with an insertion keeps the
-  insertion's layout. `ObjectReader::array_emplace` and `array_element_size` carry the result.
-- **Walk.** At the resizing call, the walk reserves an object, installs the class's address points
-  and constant pointers, and makes the array hold two elements with its pointer one element size
-  before the new object. The root's own address arithmetic (`data + count * size - size`) then
+  new buffer. Nothing between the size's `mov` and the call may branch or be a branch target, and
+  on every path from the call the buffer's register is stored before it is written or the
+  function returns. Every `operator new[]` call must agree. A class with an insertion or a moving
+  insertion keeps the insertion's layout. `ObjectReader::array_emplace` and `array_element_size` carry the result.
+- **Walk.** A first run finds the array at the resizing call and stops there. A second run starts
+  with that array holding one element, and the call counts only when the array still holds it and
+  the requested size in `x1` is two. The walk then reserves an object, installs the class's address
+  points and constant pointers, and makes the array hold two elements with its pointer one element
+  size before the new object. The root's own address arithmetic (`data + count * size - size`) then
   reaches the object only when the root's element size is the class's. The read counts only through
   `Read(CPersistent&)` with the reader in `x0` and that object in `x1`. The path may write no owner
-  word but the array's pointer and count.
+  word but the array's pointer and count, and those must still hold what the resizing left.
 - **Inherited and value readers.** The pass enters the inherited readers and value readers that the
   binding collects (`readers::is_inheritable_member`, `readers::is_member_value_reader`), and
   `collect_objects` scans their direct calls for classes, so an object that only the base reader
   constructs joins. A call through an import stub that `FieldInput::stubs` binds to an entered
-  reader runs as a branch to its body. The walk also writes the token into the reader's token word, as the dispatch
-  walk does, so a value reader that loads the token from the reader sees it.
+  reader runs as a branch to its body. The walk also writes the token into the reader's token
+  word, as the dispatch walk does, so a value reader that loads the token from the reader sees it.
 - **M452.** `CComponentTemplate::ReadMember` (`0x1001dd284`) handles `hostile_aura` (token
   `0x3542`) by `SetSizeAndEmplace` (`0x1001f6858`) on `+0x7c8`, then `madd`/`sub` with `#0x278` to
   the last element and a tail call of `Read(CPersistent&)` (`0x1025b820c`); `friendly_aura`
   (`0x3543`) does the same on `+0x7e0`. The resizing reads the count at `+0x14`, multiplies the
   capacity by `0x278` for `operator new[]`, and stores the new buffer at `+8`.
-- **Result on M452 (`registry-fields/v56`).** Only `common/component_templates` changes. Each of
+- **Result on M452 (`registry-fields/v56`).** `common/component_templates`,
+  `common/starbase_modules` and `common/starbase_buildings` change. Each of
   the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
   `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
   `system_wide`, `modifier`. Through the entered base reader, `triggered_ship_modifier` and
