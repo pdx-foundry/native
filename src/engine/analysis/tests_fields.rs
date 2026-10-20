@@ -18,6 +18,7 @@ fn fixture() -> FieldInput {
     FieldInput {
         loader_root: None,
         serializer: None,
+        stack_serializers: BTreeMap::new(),
         key_readers: Default::default(),
         persistent: None,
         objects: vec![],
@@ -5253,4 +5254,110 @@ fn an_immediate_reference_read_ends_the_path_only_when_its_item_is_stored() {
         str x0, [x8, #0x50]; // x8 held the owner before the call, which may overwrite it
         ret
     )));
+}
+
+/// Token 7 builds a stack serializer around the owner member at `+0x40` with the constructor at
+/// `0x9500` and reads it with `CReader::Read(CPersistent&)`; the serializer's member reader at
+/// `0xa000` reads token 8 at `+0x10` of the wrapped member.
+fn stack_serializer_fixture() -> FieldInput {
+    let member = "CExample::SPart::CSerializer::ReadMember(CReader&, int)";
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x20, x1; // the reader
+        add x1, x0, #0x40; // the wrapped member
+        add x0, sp, #0x10; // the serializer
+        bl extern 0x9500; // CExample::SPart::CSerializer::CSerializer
+        add x1, sp, #0x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.functions[1].code = arm64!(at 0x2000;
+        mov w1, #7; // token 7
+        adrp x2, extern 0x8000; // "new_engine_field"
+        add x2, x2, #0;
+        bl extern 0x3000; // CToken::CToken
+        mov w1, #8; // token 8
+        adrp x2, extern 0x8000; // "nested_field"
+        add x2, x2, #0x10;
+        bl extern 0x3000; // CToken::CToken
+        ret
+    );
+    input.strings.insert(0x8010, "nested_field".into());
+    input.functions.push(Function {
+        name: member.into(),
+        address: 0xa000,
+        code: arm64!(at 0xa000;
+            cmp w2, #8; // token 8
+            b.eq extern 0xa00c;
+            b extern 0x5000; // CPersistent::ReadMember
+            ldr x8, [x0, #8]; // the wrapped member
+            add x8, x8, #0x10;
+            mov x0, x1;
+            mov x1, x8;
+            b extern 0x4000 // CReader::Read
+        ),
+    });
+    input.symbols.extend([
+        Symbol {
+            name: "CExample::SPart::CSerializer::CSerializer(CExample::SPart&)".into(),
+            address: 0x9500,
+        },
+        Symbol {
+            name: "CReader::Read(CPersistent&)".into(),
+            address: 0x9700,
+        },
+        Symbol {
+            name: member.into(),
+            address: 0xa000,
+        },
+    ]);
+    input.stack_serializers.insert(
+        0x9500,
+        fields::StackSerializer {
+            owner_slot: 8,
+            reader: member.into(),
+        },
+    );
+
+    input
+}
+
+#[test]
+fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
+    let result = derive(stack_serializer_fixture());
+
+    assert!(
+        matches!(
+            &result.fields[0].readers[..],
+            [ReaderJoin::Stored { callee, kind: crate::ReaderKind::Block, destination: Some(0x40), .. }]
+                if callee.ends_with("CSerializer::ReadMember(CReader&, int)")
+        ),
+        "{:?}",
+        result.fields
+    );
+    let names: Vec<_> = result.embedded[0]
+        .fields
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(names, ["nested_field"]);
+    // A constructor that is not a stack serializer of the input leaves the read unjoined.
+    let mut unknown = stack_serializer_fixture();
+    unknown.stack_serializers.clear();
+    let result = derive(unknown);
+    assert!(result.embedded.is_empty());
+    assert!(!matches!(
+        &result.fields[0].readers[..],
+        [ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }]
+    ));
+    // A serializer reader that some other join names keeps no established kind of its own.
+    assert_eq!(
+        super::readers::classify_callee("CExample::SPart::CSerializer::ReadMember(CReader&, int)"),
+        crate::ReaderKind::Unknown
+    );
 }

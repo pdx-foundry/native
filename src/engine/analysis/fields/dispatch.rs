@@ -36,6 +36,8 @@ pub(crate) struct DispatchInput<'a> {
     pub owner_vtable: Option<(u64, &'a BTreeMap<u64, u64>)>,
     /// Constructors whose body proves a wrapped owner pointer at this object offset.
     pub serializer_constructors: Option<&'a BTreeMap<u64, i64>>,
+    /// Constructors of stack serializers that a persistent read reads, with their member readers.
+    pub stack_serializers: Option<&'a BTreeMap<u64, super::StackSerializer>>,
     /// The one owner-vtable target that joins as a member delegate when a tail call passes it the
     /// owner, reader and token unchanged.
     pub virtual_delegate: Option<&'a str>,
@@ -85,6 +87,7 @@ impl<'a> DispatchInput<'a> {
             member_delegates: true,
             owner_vtable: None,
             serializer_constructors: None,
+            stack_serializers: None,
             virtual_delegate: None,
             loader: None,
             follows_order_checks: false,
@@ -157,6 +160,8 @@ enum Flags {
 struct State {
     stack: BTreeMap<i64, Value>,
     serializer: Option<(i64, i64, i64)>,
+    /// The constructor that built `serializer`, when it is a stack serializer of the input.
+    serializer_constructor: Option<u64>,
     copied_tokens: BTreeSet<i64>,
     /// Stack strings made from the value token's text since the last stack store.
     value_strings: BTreeSet<i64>,
@@ -652,6 +657,7 @@ fn apply(
 ) -> Result<(), Unresolved> {
     if row.operation.starts_with("st") {
         state.serializer = None;
+        state.serializer_constructor = None;
         if !row.operands.contains("[sp") {
             state.settled.clear();
             state.ordered.clear();
@@ -1026,6 +1032,7 @@ pub(super) fn explore_owner(
             member_delegates: false,
             owner_vtable: None,
             serializer_constructors: None,
+            stack_serializers: Some(&input.stack_serializers),
             virtual_delegate: None,
             loader: None,
             follows_order_checks: true,
@@ -1060,6 +1067,7 @@ pub(super) fn explore_loader(
             member_delegates: false,
             owner_vtable: None,
             serializer_constructors: None,
+            stack_serializers: None,
             virtual_delegate: None,
             loader: Some(loader),
             follows_order_checks: false,
@@ -1093,6 +1101,7 @@ fn explore_member_with_wrapped_owner(
     let mut initial = State {
         stack: BTreeMap::new(),
         serializer: None,
+        serializer_constructor: None,
         copied_tokens: BTreeSet::new(),
         value_strings: BTreeSet::new(),
         value_read: None,
@@ -1316,16 +1325,25 @@ fn explore_member_with_wrapped_owner(
                     ));
                     break;
                 }
-                if let Some(slot) = target.and_then(|target| {
+                let stack_serializer = target.and_then(|target| {
                     input
-                        .serializer_constructors
-                        .and_then(|constructors| constructors.get(&target))
-                }) {
+                        .stack_serializers
+                        .and_then(|serializers| serializers.get(&target))
+                });
+                if let Some(slot) = target
+                    .and_then(|target| {
+                        input
+                            .serializer_constructors
+                            .and_then(|constructors| constructors.get(&target))
+                    })
+                    .or(stack_serializer.map(|serializer| &serializer.owner_slot))
+                {
                     if row.operation == "bl"
                         && let (Some(Value::Stack(stack)), Some(Value::Owner(owner))) =
                             (state.value("x0"), state.value("x1"))
                     {
                         state.serializer = Some((stack, *slot, owner));
+                        state.serializer_constructor = stack_serializer.and(target);
                         state.clobber_call();
                         continue;
                     }
@@ -1341,6 +1359,27 @@ fn explore_member_with_wrapped_owner(
                 if let Some((stack, slot, owner)) = state.serializer {
                     let name =
                         target.and_then(|address| input.symbol_index.name(input.symbols, address));
+                    // A persistent read of a stack serializer reads the wrapped owner member
+                    // through the serializer's member reader.
+                    let serializer_reader = state
+                        .serializer_constructor
+                        .and_then(|constructor| input.stack_serializers?.get(&constructor))
+                        .map(|serializer| serializer.reader.clone());
+                    if name == Some(readers::PERSISTENT_READ)
+                        && state.value("x0") == Some(Value::Reader(0))
+                        && state.value("x1") == Some(Value::Stack(stack))
+                        && let Some(reader) = serializer_reader
+                    {
+                        // The proven read establishes a block at the wrapped member.
+                        let join = ReaderJoin::Stored {
+                            callee: reader,
+                            kind: crate::ReaderKind::Block,
+                            destination: Some(owner),
+                            repeat: crate::RepeatBehavior::Unknown,
+                        };
+                        leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
+                        break;
+                    }
                     if depth < 8
                         && name.is_some_and(crate::engine::analysis::readers::is_member)
                         && state.value("x0") == Some(Value::Stack(stack))
@@ -3938,6 +3977,7 @@ mod tests {
             ordered: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
+            serializer_constructor: None,
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,
@@ -3977,6 +4017,7 @@ mod tests {
             ordered: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
+            serializer_constructor: None,
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,

@@ -733,6 +733,7 @@ mod tests {
         FieldInput {
             loader_root: None,
             serializer: None,
+            stack_serializers: BTreeMap::new(),
             key_readers: Default::default(),
             persistent: None,
             owner: "CExample".into(),
