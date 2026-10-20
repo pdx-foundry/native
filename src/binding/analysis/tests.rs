@@ -2323,3 +2323,39 @@ fn m452_unjoined_generation_calls_count_in_the_registries_of_their_classes() {
         ])
     );
 }
+
+/// Spike (storage probe): every root field's fixture storage setup, as the supervisor resolves it,
+/// with the loader boundary and the public repeat, written as JSON lines to `STORAGE_PROBE_OUT`.
+#[test]
+#[ignore = "spike: requires STELLARIS_PATH and STORAGE_PROBE_OUT"]
+fn storage_probe_bindings() {
+    use crate::protocol::observation::FixtureQuestionStorage;
+    use std::io::Write;
+
+    let native = crate::session::installed_native();
+    let analysis = &native.bound().analysis;
+    let output = std::env::var_os("STORAGE_PROBE_OUT").expect("STORAGE_PROBE_OUT names a file");
+    let mut lines = fs::File::create(output).unwrap();
+
+    for registry in native.registries().unwrap().value {
+        let loader = analysis.fixture_loader(&registry.name).unwrap().is_some();
+        let FixtureRegistryFields { fields, bindings } =
+            analysis.fixture_registry_fields(&registry.name).unwrap();
+
+        for field in &fields {
+            let exact = bindings.iter().find(|bound| bound.name == field.name);
+            let storage = FixtureQuestionStorage::resolve(Some(&field.reader), exact);
+            let row = serde_json::json!({
+                "registry": registry.name,
+                "field": field.name,
+                "loader": loader,
+                "storage": storage,
+                "reader_kind": field.reader.kind,
+                "repeat": field.shape.repeat,
+                "value": field.shape.value,
+            });
+
+            writeln!(lines, "{row}").unwrap();
+        }
+    }
+}
