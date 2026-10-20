@@ -136,7 +136,7 @@ pub(super) fn embedded(
             .collect();
         if let [Some((member, slot))] = serializer_readers.iter().collect::<Vec<_>>()[..] {
             let (paths, mut gaps, order_checks) =
-                dispatch::explore_owner(input, symbol_index, member, Some(*slot));
+                dispatch::explore_owner(input, symbol_index, member, Some(*slot), 0);
             let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
             if fields.is_empty() {
                 continue;
@@ -183,7 +183,7 @@ pub(super) fn embedded(
             continue;
         }
         let (paths, mut gaps, order_checks) =
-            dispatch::explore_owner(input, symbol_index, &reader.member, None);
+            dispatch::explore_owner(input, symbol_index, &reader.member, None, 0);
         let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
         // With no named key, the field keeps its unresolved members and their gap.
         if fields.is_empty() {

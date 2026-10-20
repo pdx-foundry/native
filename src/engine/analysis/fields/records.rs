@@ -50,10 +50,22 @@ pub struct FieldInput {
     pub loader_root: Option<LoaderRoot>,
     /// The serializer whose member reader is the root, for an owner with no member reader.
     pub serializer: Option<SerializerRoot>,
+    /// The base class's member reader on its subobject, for an owner whose vtable reads its keys
+    /// with it and that has no member reader of its own.
+    pub base_root: Option<BaseRoot>,
     /// The constructors of the stack serializers that the input's readers build, by entry address.
     pub stack_serializers: BTreeMap<u64, StackSerializer>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
+}
+
+/// A base class's member reader that the owner's vtable holds for its subobject at `offset`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BaseRoot {
+    /// The member reader, one of the input's functions.
+    pub reader: String,
+    /// The subobject's offset in the owner.
+    pub offset: i64,
 }
 
 /// A serializer that a reader builds on its stack around one of the owner's members and reads

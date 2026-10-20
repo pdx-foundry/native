@@ -305,6 +305,7 @@ mod tests {
         FieldInput {
             loader_root: None,
             serializer: None,
+            base_root: None,
             stack_serializers: Default::default(),
             owner: "Owner".into(),
             symbols: vec![

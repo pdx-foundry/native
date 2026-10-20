@@ -5,8 +5,8 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
-        self, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput,
-        PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
+        self, BaseRoot, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader,
+        PersistentInput, PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
     },
     readers,
 };
@@ -100,6 +100,18 @@ pub(in crate::binding) fn read(
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
     let (root, serializer) = root_reader(&text, image, owner, persistent_recipe)?;
+    // Only an owner with no reader and no `Read` of its own reads through a base root: an
+    // unrecognized `Read` may build a serializer.
+    let own_read = format!("{owner}::Read(CReader&)");
+    let base_root = match (
+        &serializer,
+        indexed.named(&root).next(),
+        indexed.named(&own_read).next(),
+    ) {
+        (None, None, None) => base_root(image, &data, owner, persistent_recipe),
+        _ => None,
+    };
+    let root = base_root.as_ref().map_or(root, |base| base.reader.clone());
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -122,10 +134,11 @@ pub(in crate::binding) fn read(
         });
     }
     let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
-    // The nested-object pass takes `x0` as the owner, so a serializer root collects no objects.
-    let objects = match serializer {
-        Some(_) => Vec::new(),
-        None => collect_objects(
+    // The nested-object pass takes `x0` as the owner, so a serializer or base root collects no
+    // objects.
+    let objects = match (&serializer, &base_root) {
+        (Some(_), _) | (_, Some(_)) => Vec::new(),
+        (None, None) => collect_objects(
             image,
             &text,
             &data,
@@ -178,6 +191,7 @@ pub(in crate::binding) fn read(
     push_converters(&text, indexed, &mut functions);
     let stack_serializers = stack_serializers(image, &text, persistent_recipe, &mut functions);
     Ok(FieldInput {
+        base_root,
         stack_serializers,
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
@@ -357,6 +371,48 @@ fn root_reader(
         Some(serializer) => (serializer.reader.clone(), Some(serializer)),
         None => (own, None),
     })
+}
+
+/// The base class's member reader that reads the keys of `owner`, a class with no member reader
+/// of its own: the one address point of the owner's vtable whose member slot holds a
+/// `ReadMember(CReader&, int)` of another class (not a thunk), with the point's subobject offset.
+/// `None` when no point or several hold one.
+fn base_root(
+    image: &Image<'_>,
+    data: &ReadOnlyData,
+    owner: &str,
+    recipe: &PersistentRecipe,
+) -> Option<BaseRoot> {
+    let names = Names::new(image.symbols);
+    let group = image.index.over(image.symbols).vtable_group(data, owner)?;
+    let members: Vec<(u64, &str)> = group
+        .address_points
+        .iter()
+        .filter_map(|(&offset, &point)| {
+            let target = image
+                .pointers
+                .get(&point.checked_add(recipe.member_slot)?)?;
+            let name = names.unique(*target)?;
+            is_base_reader(name, owner).then_some((offset, name))
+        })
+        .collect();
+    let [(offset, reader)] = members[..] else {
+        return None;
+    };
+
+    Some(BaseRoot {
+        reader: reader.to_owned(),
+        offset: i64::try_from(offset).ok()?,
+    })
+}
+
+/// Whether `name` is a member reader of a class other than `owner` that an owner vtable can hold
+/// for a base subobject: not a thunk and not the base rejection.
+fn is_base_reader(name: &str, owner: &str) -> bool {
+    name.ends_with("::ReadMember(CReader&, int)")
+        && readers::thunk_target(name).is_none()
+        && name != "CPersistent::ReadMember(CReader&, int)"
+        && !name.starts_with(&format!("{owner}::"))
 }
 
 /// The one function of the loader's database that reads root statements and calls an
@@ -2234,6 +2290,23 @@ mod tests {
             alias_on_one_path,
         ] {
             assert_eq!(clears(code), None);
+        }
+    }
+
+    #[test]
+    fn a_base_root_is_another_class_reader_and_never_a_thunk() {
+        assert!(is_base_reader(
+            "CSpeciesRightBase::ReadMember(CReader&, int)",
+            "CLivingStandard"
+        ));
+        for name in [
+            "non-virtual thunk to CSpeciesRightBase::ReadMember(CReader&, int)",
+            "{virtual override thunk({offset(-56)}, CSpeciesRightBase::ReadMember(CReader&, int))}",
+            "CPersistent::ReadMember(CReader&, int)",
+            "CLivingStandard::ReadMember(CReader&, int)",
+            "CSpeciesRightBase::Read(CReader&)",
+        ] {
+            assert!(!is_base_reader(name, "CLivingStandard"), "{name}");
         }
     }
 
