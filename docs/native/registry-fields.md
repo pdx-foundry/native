@@ -297,8 +297,10 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
     class's `ReadMember` (not a thunk, not `CPersistent`'s) as the root, with that point's offset
     (`base_root` in `binding/binary/fields.rs`, `FieldInput::base_root`); the walk starts with the
     owner plus the offset in `x0`. At `registry-fields/v69` both registries list the 8 shared keys.
-    `triggered_pop_group_modifier` stays `Unknown` there: the nested pass runs only an owner's own
-    reader. No point, or several, leaves the owner unread as before.
+    Since `registry-fields/v71` `triggered_pop_group_modifier` joins as well: the nested pass runs
+    the base reader with the subobject as its receiver
+    ([nested owners](#nested-owners-and-the-receiver-context)). No point, or several, leaves the
+    owner unread as before.
 - **Bit tests of a constant.** `tbz` and `tbnz` of a known constant take only the side the bit
   selects, as `cbz` and `cbnz` do. The resumed false return needs it.
 - **Result on M452.** `common/starbase_modules` goes from 7 to 57 root fields and
@@ -324,8 +326,8 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
     `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
     loop), `triggered_component_set` (an inserted struct), `name` and `desc`
     (`CTriggeredEventDescription`) and `resources` (stack serializer).
-  - A nested owner does not follow its own inherited reader: `nested_owner` collects no
-    inherited readers. Change this when a nested owner needs it.
+  - A nested owner follows the inherited readers that its own member reader reaches, since
+    `registry-fields/v71` (`nested_owner` calls `push_inherited_readers`).
 - **Value readers.** `CWeaponComponentTemplate::ReadMember` (`0x1001e41f4`) and
   `CStrikeCraftComponentTemplate::ReadMember` (`0x1001eef6c`) pass the tokens that they do not
   handle to `ReadAttackInfoValue(NCombatRules::SAttackInfo&, CReader&)` (`0x1001320fc`) with
@@ -396,13 +398,15 @@ Two shapes stopped `common/districts`, `common/zones` and `common/zone_slots` on
   sweep, eight of the nine registries become complete for `fields`, and no registry's complete
   count falls.
 - **Limits.**
-  - A serializer root collects no inserted objects: the nested-object pass takes `x0` as the
-    owner. The zone `triggered_*_modifier` keys are named fields with an `UnresolvedReader` gap.
+  - A serializer root collects inserted objects since `registry-fields/v71`: the nested-object
+    pass runs the serializer's reader with a serializer that points at the owner
+    ([nested owners](#nested-owners-and-the-receiver-context)). The zone `triggered_desc` and
+    `triggered_*_modifier` keys join through it.
   - Keyword fields of a serializer root list no domain ("The caller reads the owner through a
     serializer, which the domain walk does not follow."). Repair both when Atlas needs them, by
     giving those walks the same receiver.
   - The remaining district and zone stops belong to census families: a log location before the
-    reader (`icon`, `desc`, `triggered_*`) and owned objects (`resources`, `ai_resource_production`).
+    reader (`icon`, `desc`) and owned objects (`resources`, `ai_resource_production`).
   - `CJobTag`, `CTraitTag`, `CLivingStandard`, `CMilitaryServiceType` and the scripted effect,
     trigger and value templates have no `ReadMember` and do not match this `Read` shape; the two
     species-rights owners read through a [base root](#inherited-member-readers-sdk-838).
@@ -2080,8 +2084,9 @@ Pitfalls:
 A root field that reads one embedded persistent object on every token path that holds its token,
 including a wider path, where every owner
 constructor installs the same reader there and that reader has no block family, gets the keys of
-the object's own `ReadMember` as `FieldMembers::Fields`, to depth one (`fields/persistent.rs`,
-`embedded`). The binding adds the member reader of each such reader that the owner's constructors
+the object's own `ReadMember` as `FieldMembers::Fields` (`fields/persistent.rs`, `embedded`). The
+object is an owner in its parent's allocation, and the same analysis walks it
+([nested owners](#nested-owners-and-the-receiver-context)). The binding adds the member reader of each such reader that the owner's constructors
 can install to the field input. A walk that names no key leaves the members `Unresolved`. The keys take the read-scope,
 scoped-operand and duration passes that a collection's fields take. A gap of
 the object's walk as a whole names the parent field; a gap of one key names `parent.key`. The same
@@ -2165,25 +2170,41 @@ receiver, and the constructor evidence of the allocation that holds the receiver
   object is a new allocation, with its own constructors. A base subobject and a member object at
   a constant offset have the same receiver; dispatch models both (`explore_owner`,
   `Value::Owner(offset)`, and a serializer with its owner at `(slot, owner_offset)`).
-- **Where the context is lost** (`registry-fields/v70`):
-  - `persistent::embedded` walks an embedded reader at offset 0 and keeps only dispatch: no
-    constructor join, no collection pass, no deeper embedded keys. `requirements.size_requirement`
-    is a persistent read with no reader for this reason. `scripted_actions` `ai.weight` and
-    `starbase_types` `ai_design.min` and `ratio` stop the same way; their owners are not traced.
-  - `nested_owner` gives an inserted object constructor evidence one level deep; its own objects
-    get none (`collect_objects` with no shared evidence). `events` `option.ai_trade_facility`
-    (`CEventOptionAiTradeFacility(EScopeType)` stores the `SInfoGathering` vtable at `+0x18` and
-    the `SOptionSelection` vtable at `+0xd0`, `0x1004ce918`, `0x1004ce944`) keeps
-    `info_gathering` and `option_selection` unjoined.
-  - A serializer root or a base root collects no objects, and the collection pass runs only
-    `Class::ReadMember` with `x0` as the owner. `living_standards` and `military_service_types`
-    keep `triggered_pop_group_modifier` unjoined; `citizenship_types` joins the same field through
-    the same `CSpeciesRightBase::ReadMember` because it has a reader of its own
-    (`CCitizenshipType::ReadMember` adds `0x38` to `x0` and branches to it, `0x100be58f0`).
-    `zones` `triggered_*` (a serializer root) stop the same way.
-  - A collection run that fails leaves no gap; the root path keeps only its dispatch stop (for
-    example `operator new` in `situations` `approach`).
-  - Loader part points and inherited readers are collected for the root reader only.
+- **The rule** (`registry-fields/v71`; `Owner` and `Receiver` in `engine/analysis/fields.rs`):
+  - An embedded object or a stack serializer keeps its parent's allocation and constructor
+    evidence. Its receiver is the field's destination: `Receiver::Owner(offset)`, or
+    `Receiver::Serializer { slot, owner_offset }` for a serializer whose word at `slot` points at
+    the wrapped member. `owner_result` walks it as it walks a root: dispatch, the constructor
+    join at the shifted offsets, its own embedded keys and keyword domains. It collects no
+    objects yet.
+  - An inserted object starts a new allocation, at offset 0, with its own constructor evidence.
+    The binding finds its member reader as it finds a root's (`owner_reader`): its own, a stack
+    serializer's, or a base class's on its subobject.
+  - The collection pass runs the owner's reader with `x0` built from the receiver: the allocation
+    plus the offset, or a serializer whose slot points at the owner. Serializer roots and base
+    roots collect objects.
+  - The binding gives each nested owner its constructor evidence, inherited readers and objects
+    for the root and three owners below it (`fields::OWNER_DEPTH` is 4, the root included), and
+    none to a class that an enclosing owner has. The analysis stops at the same bound (a fourth
+    owner below the root keeps its keys), and at an owner whose reader and receiver an enclosing
+    owner has: the deeper passes leave a reader gap.
+  - An embedded object collects no inserted objects: the binding collects objects for the root's
+    and each inserted object's reader only, so a collection that an embedded reader inserts stays
+    unresolved. Change this when a gap needs it; the binding would then key the objects by the
+    embedded member reader.
+  - The objects of a member reader are those that it, and the inherited readers that it reaches
+    by calls and jumps, construct (`reached_inherited_readers`).
+- **Result on M452 (`registry-fields/v71`).** Additions only. `special_projects`
+  `requirements.size_requirement` gets its reader (`SizeRequirement` from the point at `+0x5c0`)
+  and the keys `count` (integer) and `ship_size`. Every event kind's
+  `option.ai_trade_facility.info_gathering` and `option_selection` get reader identities from the
+  depth-2 constructor. `scripted_actions` `ai.weight` and `starbase_types` `ai_design.min` and
+  `ratio` get weight blocks. `living_standards` and `military_service_types` join
+  `triggered_pop_group_modifier` through the base reader, with no class-specific code, as
+  `citizenship_types` does. `zones` `triggered_desc` and the six `triggered_*_modifier` fields
+  join through the serializer receiver. `zones` `ai_resource_production` stays unjoined. The
+  largest field input is `CTrait` with 217 functions (unchanged); `events` has 117 (126 before),
+  `zones` 117 (85 before).
 - **Not this cause.** Most nested open members stop at a first-level shape, not at a lost context:
   statement loops, collection runs that meet an unmodelled call (string concatenations other than
   the log-ID ones, `SetDebugID`, a lookup through a virtual call), inline or nested stack
@@ -2194,11 +2215,17 @@ receiver, and the constructor evidence of the allocation that holds the receiver
 
 Pitfalls:
 
-- An embedded walk in the object's own coordinates cannot use any constructor evidence: the
-  parent's constructors describe parent offsets, and the member class may have no constructor
-  symbol of its own (it is often built inline).
-- A depth-2 object found by `collect_objects` without evidence still lists its keys, so the gap is
-  easy to miss: its persistent reads have no reader and no gap names the missing evidence.
+- The member class of an embedded object often has no constructor symbol of its own (it is built
+  inline), so only the parent's constructors give its evidence.
+- An object found by `collect_objects` without evidence (beyond the bound) still lists its keys, so
+  the gap is easy to miss: its persistent reads have no reader and no gap names the missing
+  evidence.
+- Counting the calls of every inheritable reader in the input, not only of those that the owner's
+  reader reaches, gives a nested owner the objects of unrelated readers. With deeper nesting,
+  `CPolicyOption` took `CCountryAI`'s objects and `common/policies` passed the 256-function input
+  budget.
+- An embedded walk in the member's own coordinates, at offset 0, finds no constructor point: the
+  parent's constructors store the member's vtables at parent offsets.
 - `CPersistent::ReadMember` as a vtable's member reader means the class reads in its own `Read`
   (for example a statement loop in `CObjectiveCounterSet::Read`); it is not a key table.
 

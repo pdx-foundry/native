@@ -980,12 +980,10 @@ impl BoundAnalysis {
         let mut input = verified.loaded_field_input(owner, verified.loader_database(registry))?;
         let requested_words = self.weight_block_facts()?.stored_scopes();
         let initialized_words = &self.modifier_node_result()?.initialized_words;
-        let nested = input
-            .objects
-            .iter_mut()
-            .filter_map(|object| object.persistent.as_mut());
+        let mut persistent: Vec<_> = input.persistent.iter_mut().collect();
+        nested_persistent(&mut input.objects, &mut persistent);
 
-        for persistent in input.persistent.iter_mut().chain(nested) {
+        for persistent in persistent {
             persistent.requested_words = requested_words.clone();
             persistent.initialized_words = initialized_words.clone();
         }
@@ -1783,5 +1781,19 @@ impl BoundAnalysis {
         &self,
     ) -> Result<crate::engine::analysis::callbacks::CallbacksInput, AnalysisError> {
         binary::callbacks::callbacks(&self.verified()?.image(), self.declarations)
+    }
+}
+
+/// The constructor evidence of every nested owner among `objects`, at any depth.
+fn nested_persistent<'a>(
+    objects: &'a mut [crate::engine::analysis::fields::ObjectReader],
+    persistent: &mut Vec<&'a mut crate::engine::analysis::fields::PersistentInput>,
+) {
+    for object in objects {
+        if let Some(evidence) = object.persistent.as_mut() {
+            persistent.push(evidence);
+        }
+
+        nested_persistent(&mut object.objects, persistent);
     }
 }

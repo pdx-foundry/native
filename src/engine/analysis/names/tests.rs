@@ -1038,6 +1038,7 @@ fn storage_reads_string_and_boolean_fields_of_the_item_and_its_collections() {
         container_mask: None,
         construction_scopes: Vec::new(),
         class: "CSwap".into(),
+        member: "CSwap::ReadMember(CReader&, int)".into(),
         reader: None,
         fields: Box::new(field_result(
             vec![

@@ -1012,17 +1012,19 @@ fn decode_root(input: &DispatchInput<'_>, root: &str) -> Option<(u64, Vec<Instru
 }
 
 /// Every token path through the member reader `root` of an owner, and the jump tables in it that
-/// could not be decoded. With `owner_slot`, `root` is a serializer's reader, whose receiver holds
-/// a pointer to the owner at that offset. With a nonzero `base_offset`, `root` is a base class's
-/// reader whose receiver is the owner's subobject at that offset. `symbol_index` is the index of
-/// the input's symbols.
+/// could not be decoded. `receiver` is what `root` receives in `x0`; destinations are in the
+/// coordinates of the allocation that holds it. `symbol_index` is the index of the input's
+/// symbols.
 pub(super) fn explore_owner(
     input: &FieldInput,
     symbol_index: &SymbolIndex,
     root: &str,
-    owner_slot: Option<i64>,
-    base_offset: i64,
+    receiver: super::Receiver,
 ) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
+    let (wrapped_owner, delegated_receiver) = match receiver {
+        super::Receiver::Serializer { slot, owner_offset } => (Some((slot, owner_offset)), None),
+        super::Receiver::Owner(offset) => (None, (offset != 0).then_some(Value::Owner(offset))),
+    };
     explore_member_with_wrapped_owner(
         &DispatchInput {
             scope: None,
@@ -1041,8 +1043,8 @@ pub(super) fn explore_owner(
             follows_order_checks: true,
         },
         root,
-        owner_slot.map(|slot| (slot, 0)),
-        (base_offset != 0).then_some(Value::Owner(base_offset)),
+        wrapped_owner,
+        delegated_receiver,
         0,
         None,
     )

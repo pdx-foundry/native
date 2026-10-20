@@ -19,9 +19,11 @@
 //!   unchanged, or a value reader `F(T&, CReader&)` that receives an owner member and the reader,
 //!   and goes on after its call where it returns false. It stops at any other external delegate. A second bounded pass can prove that
 //!   a field allocates, constructs, virtually reads and inserts the same persistent object on
-//!   every path, or keeps it in one owner pointer. Its named child fields are then derived to depth one. So are the keys of an
-//!   embedded object that every path of a field reads, when the constructors agree on its
-//!   reader and that reader has no block family.
+//!   every path, or keeps it in one owner pointer. So are the keys of an embedded object that
+//!   every path of a field reads, when the constructors agree on its reader and that reader has
+//!   no block family. Each such object is an owner that the same analysis walks, with its
+//!   receiver in the coordinates of the allocation that holds it, for the root and three owners
+//!   below it; a fourth keeps its keys, and it and an owner that holds itself are gaps.
 //! - Direct const owner methods supply local Boolean storage selections separately from loader
 //!   conditions. Other signatures do not establish the original receiver and remain unresolved.
 //!   Collection provenance is joined across loops; the enclosing selection context is unresolved.
@@ -80,7 +82,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v70";
+pub const METHOD: &str = "registry-fields/v71";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -107,13 +109,13 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     let (tokens, token_gaps) = tokens::recover(input);
     gaps.extend(token_gaps);
     let symbol_index = SymbolIndex::new(&input.symbols);
-    let owner = Owner {
-        class: &input.owner,
-        serializer: input.serializer.as_ref(),
-        base: input.base_root.as_ref(),
-        objects: &input.objects,
-        persistent: input.persistent.as_ref(),
-    };
+    let owner = Owner::allocation(
+        &input.owner,
+        input.serializer.as_ref(),
+        input.base_root.as_ref(),
+        &input.objects,
+        input.persistent.as_ref(),
+    );
     let mut result = owner_result(input, &symbol_index, &owner, &tokens);
     gaps.append(&mut result.gaps);
     if !result.partition_accounted {
@@ -147,31 +149,87 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     Ok(result)
 }
 
-/// A class whose member reader the method walks, with the objects that it inserts and the
-/// constructor evidence of its persistent members.
-pub(super) struct Owner<'a> {
-    pub class: &'a str,
-    /// The serializer whose member reader reads the class's keys, when the class has none.
-    pub serializer: Option<&'a SerializerRoot>,
-    /// The base class's reader on its subobject, when the class has no reader of its own.
-    pub base: Option<&'a BaseRoot>,
-    pub objects: &'a [ObjectReader],
-    pub persistent: Option<&'a PersistentInput>,
+/// How many owners deep the method analyzes, the root included: an owner this deep below the
+/// root keeps its keys, and the passes that reach deeper owners leave a gap.
+pub(crate) const OWNER_DEPTH: usize = 4;
+
+/// What a member reader receives in `x0`, in the coordinates of the allocation that holds the
+/// owner: the allocation's constructors describe the same offsets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Receiver {
+    /// The allocation plus this offset: the owner itself, a base subobject or an embedded object.
+    Owner(i64),
+    /// A serializer whose word at `slot` points at the allocation plus `owner_offset`.
+    Serializer { slot: i64, owner_offset: i64 },
 }
 
-impl Owner<'_> {
-    /// The member reader of the owner's keys, the receiver offset of the owner pointer when it
-    /// is a serializer's, and the owner offset of the reader's receiver.
-    fn reader(&self) -> (String, Option<i64>, i64) {
-        match (self.serializer, self.base) {
-            (Some(serializer), _) => (serializer.reader.clone(), Some(serializer.owner_slot), 0),
-            (None, Some(base)) => (base.reader.clone(), None, base.offset),
-            (None, None) => (
-                format!("{}::ReadMember(CReader&, int)", self.class),
-                None,
-                0,
+/// An owner whose member reader the method walks: the reader and its receiver, the constructor
+/// evidence of the allocation that holds the receiver, and the objects that the reader inserts.
+pub(super) struct Owner<'a> {
+    pub reader: String,
+    pub receiver: Receiver,
+    pub objects: &'a [ObjectReader],
+    pub persistent: Option<&'a PersistentInput>,
+    /// The readers and receivers of the owners that hold this one, outermost first.
+    pub enclosing: Vec<(String, Receiver)>,
+}
+
+impl<'a> Owner<'a> {
+    /// The owner that starts an allocation of `class`: its keys are read by the serializer's
+    /// member reader, by the base class's reader on its subobject, or by its own reader.
+    pub fn allocation(
+        class: &str,
+        serializer: Option<&SerializerRoot>,
+        base: Option<&BaseRoot>,
+        objects: &'a [ObjectReader],
+        persistent: Option<&'a PersistentInput>,
+    ) -> Self {
+        let (reader, receiver) = match (serializer, base) {
+            (Some(serializer), _) => (
+                serializer.reader.clone(),
+                Receiver::Serializer {
+                    slot: serializer.owner_slot,
+                    owner_offset: 0,
+                },
             ),
+            (None, Some(base)) => (base.reader.clone(), Receiver::Owner(base.offset)),
+            (None, None) => (
+                format!("{class}::ReadMember(CReader&, int)"),
+                Receiver::Owner(0),
+            ),
+        };
+
+        Self {
+            reader,
+            receiver,
+            objects,
+            persistent,
+            enclosing: Vec::new(),
         }
+    }
+
+    /// The owner that this one holds: an embedded object or a stack serializer in the same
+    /// allocation, or a new allocation that `child` starts.
+    pub fn holding<'b>(&self, child: Owner<'b>) -> Owner<'b> {
+        let mut enclosing = self.enclosing.clone();
+        enclosing.push((self.reader.clone(), self.receiver));
+
+        Owner { enclosing, ..child }
+    }
+
+    /// Whether the method stops at this owner: it is as deep as the bound, or an owner that
+    /// holds it has the same reader and receiver.
+    pub(super) fn stops(&self) -> Option<&'static str> {
+        if self.enclosing.len() >= OWNER_DEPTH {
+            return Some("the nested owner is deeper than the method's bound");
+        }
+
+        let cycle = self
+            .enclosing
+            .iter()
+            .any(|(reader, receiver)| *reader == self.reader && *receiver == self.receiver);
+
+        cycle.then_some("the nested owner holds itself")
     }
 }
 
@@ -183,27 +241,42 @@ fn owner_result(
     owner: &Owner<'_>,
     tokens: &std::collections::BTreeMap<i64, Token>,
 ) -> RegistryFieldResult {
-    let (reader, owner_slot, base_offset) = owner.reader();
     let (paths, mut gaps, order_checks) =
-        dispatch::explore_owner(input, symbol_index, &reader, owner_slot, base_offset);
+        dispatch::explore_owner(input, symbol_index, &owner.reader, owner.receiver);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);
     let key_order = inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
+    // At the bound or a cycle the owner keeps its keys, and the passes that reach deeper owners
+    // leave a gap.
+    if let Some(stop) = owner.stops() {
+        gaps.push(FieldGap::new(FieldGapKind::ReaderJoin, stop));
+        return RegistryFieldResult {
+            fields,
+            paths,
+            gaps,
+            partition_accounted,
+            key_order,
+            ..RegistryFieldResult::default()
+        };
+    }
     let collections = nested::discover(input, symbol_index, owner, &fields, tokens);
     let persistent = persistent::discover(owner.persistent, &input.read_only_data, &fields);
     gaps.extend(persistent.gaps);
     let embedded = persistent::embedded(
         input,
         symbol_index,
+        owner,
         &fields,
         &paths,
         &persistent.readers,
         tokens,
     );
-    let keyword_domains = match owner_slot {
-        Some(_) => keywords::through_serializer(&fields),
-        None => keywords::domains(input, symbol_index, &reader, &fields, tokens),
+    let keyword_domains = match owner.receiver {
+        Receiver::Serializer { .. } => keywords::through_serializer(&fields),
+        Receiver::Owner(_) => {
+            keywords::domains(input, symbol_index, &owner.reader, &fields, tokens)
+        }
     };
 
     RegistryFieldResult {

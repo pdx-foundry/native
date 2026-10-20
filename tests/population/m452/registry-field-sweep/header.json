@@ -5,13 +5,13 @@
     "distinct_known_readers": 126,
     "failed_queries": 0,
     "fields_found": 2386,
-    "known_reader_identities": 1984,
-    "known_reader_kinds": 2055,
+    "known_reader_identities": 1993,
+    "known_reader_kinds": 2064,
     "partial_queries": 165,
     "queries_with_unresolved_paths": 153,
-    "unknown_reader_identities": 402,
-    "unknown_reader_kinds": 331,
-    "unresolved_paths": 1858,
+    "unknown_reader_identities": 393,
+    "unknown_reader_kinds": 322,
+    "unresolved_paths": 1851,
     "unsupported_queries": 10
   }
 }

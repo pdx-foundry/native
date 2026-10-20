@@ -99,19 +99,11 @@ pub(in crate::binding) fn read(
     let data = super::language::constant_data(bytes, pointers, bound_slots)?;
     let mut functions = Vec::new();
     let mut gaps = Vec::new();
-    let (root, serializer) = root_reader(&text, image, owner, persistent_recipe)?;
-    // Only an owner with no reader and no `Read` of its own reads through a base root: an
-    // unrecognized `Read` may build a serializer.
-    let own_read = format!("{owner}::Read(CReader&)");
-    let base_root = match (
-        &serializer,
-        indexed.named(&root).next(),
-        indexed.named(&own_read).next(),
-    ) {
-        (None, None, None) => base_root(image, &data, owner, persistent_recipe),
-        _ => None,
-    };
-    let root = base_root.as_ref().map_or(root, |base| base.reader.clone());
+    let OwnerReader {
+        reader: root,
+        serializer,
+        base: base_root,
+    } = owner_reader(&text, image, &data, owner, persistent_recipe)?;
     for name in [
         root.as_str(),
         "CPersistent::ReadMember(CReader&, int)",
@@ -133,22 +125,21 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
-    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
-    // The nested-object pass takes `x0` as the owner, so a serializer or base root collects no
-    // objects.
-    let objects = match (&serializer, &base_root) {
-        (Some(_), _) | (_, Some(_)) => Vec::new(),
-        (None, None) => collect_objects(
-            image,
-            &text,
-            &data,
-            Some(&shared.persistent),
-            persistent_recipe,
-            &root,
-            &mut functions,
-            &mut gaps,
-        )?,
-    };
+    let mut stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
+    let objects = collect_objects(
+        image,
+        &text,
+        &data,
+        Nesting {
+            shared: &shared.persistent,
+            enclosing: vec![owner.to_owned()],
+        },
+        persistent_recipe,
+        &root,
+        &mut functions,
+        &mut stubs,
+        &mut gaps,
+    )?;
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
@@ -330,6 +321,43 @@ fn default_constructor(
     let [rows] = <[_; 1]>::try_from(bodies).ok()?;
 
     Some(rows)
+}
+
+/// The member reader of an owner's keys, and the serializer or base subobject that it reads them
+/// through.
+struct OwnerReader {
+    reader: String,
+    serializer: Option<SerializerRoot>,
+    base: Option<BaseRoot>,
+}
+
+/// The member reader of `owner`'s keys: its own, a stack serializer's, or a base class's on its
+/// subobject. Only an owner with no reader and no `Read` of its own reads through a base root: an
+/// unrecognized `Read` may build a serializer.
+fn owner_reader(
+    text: &Text,
+    image: &Image<'_>,
+    data: &ReadOnlyData,
+    owner: &str,
+    recipe: &PersistentRecipe,
+) -> Result<OwnerReader, AnalysisError> {
+    let indexed = image.index.over(image.symbols);
+    let (reader, serializer) = root_reader(text, image, owner, recipe)?;
+    let own_read = format!("{owner}::Read(CReader&)");
+    let base = match (
+        &serializer,
+        indexed.named(&reader).next(),
+        indexed.named(&own_read).next(),
+    ) {
+        (None, None, None) => base_root(image, data, owner, recipe),
+        _ => None,
+    };
+
+    Ok(OwnerReader {
+        reader: base.as_ref().map_or(reader, |base| base.reader.clone()),
+        serializer,
+        base,
+    })
 }
 
 /// The member reader of `owner`'s root keys: its own `ReadMember(CReader&, int)`, or, for an owner
@@ -643,6 +671,51 @@ fn push_inherited_readers(
     Ok(stubs)
 }
 
+/// The inherited member readers and value readers among `functions` that `root` reaches by calls
+/// and jumps, directly or through other such readers. A reader is found by the name of the
+/// symbol that a call targets, so a call through an import stub reaches its body.
+fn reached_inherited_readers<'a>(
+    symbols: IndexedSymbols<'_>,
+    functions: &'a [Function],
+    root: &Function,
+) -> Vec<&'a Function> {
+    let mut reached: Vec<&Function> = Vec::new();
+    let mut pending = vec![root.clone()];
+
+    while let Some(caller) = pending.pop() {
+        let targets: BTreeSet<u64> = caller
+            .code
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(index, word)| {
+                call_or_jump_target(u32::from_le_bytes(*word), caller.address + 4 * index as u64)
+            })
+            .collect();
+        let names: BTreeSet<&str> = symbols
+            .at(&targets)
+            .map(|symbol| symbol.name.as_str())
+            .filter(|name| {
+                readers::is_inheritable_member(name) || readers::is_member_value_reader(name)
+            })
+            .collect();
+
+        for function in functions {
+            let new = names.contains(function.name.as_str())
+                && function.address != root.address
+                && !reached.iter().any(|known| known.name == function.name);
+
+            if new {
+                reached.push(function);
+                pending.push(function.clone());
+            }
+        }
+    }
+
+    reached
+}
+
 /// The pointer slot that the import stub at `stub` jumps through: `adrp x16`, `ldr x16, [x16, #n]`
 /// and `br x16`.
 fn stub_slot(file: &object::File<'_>, stub: u64) -> Option<u64> {
@@ -699,19 +772,28 @@ fn push_converters(text: &Text, symbols: IndexedSymbols<'_>, functions: &mut Vec
     }
 }
 
+/// The owners that hold the objects that a member reader inserts, outermost first, and the
+/// persistent input that every owner shares.
+struct Nesting<'a> {
+    shared: &'a SharedPersistent,
+    enclosing: Vec<String>,
+}
+
 /// The objects that the member reader `root` constructs and inserts. Follow direct constructor
-/// and factory calls only; a symbol alone does not attach a nested class to a field. With
-/// `nested`, an object whose reader has no block family is a nested owner: it gets its own
-/// constructor evidence and inserted objects, one level deep.
+/// and factory calls only; a symbol alone does not attach a nested class to a field. An object
+/// whose reader has no block family is a nested owner: within the method's owner depth, and when
+/// no enclosing owner has its class, it gets its own constructor evidence and inserted objects.
+/// Its member reader is found as a root's is.
 #[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its two outputs.
 fn collect_objects(
     image: &Image<'_>,
     text: &Text,
     data: &ReadOnlyData,
-    nested: Option<&SharedPersistent>,
+    nesting: Nesting<'_>,
     recipe: &PersistentRecipe,
     root: &str,
     functions: &mut Vec<Function>,
+    stubs: &mut BTreeMap<u64, u64>,
     gaps: &mut Vec<String>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
     let symbols = image.index.over(image.symbols);
@@ -725,12 +807,10 @@ fn collect_objects(
     };
     let rows = crate::engine::analysis::decode::decode_arm64(&root.code, root.address)
         .map_err(|_| AnalysisError::InvalidRange)?;
-    // Dispatch goes on in the inherited readers, so the objects that they read are the root's.
+    // Dispatch goes on in the inherited readers that the root reaches, so the objects that they
+    // read are the root's. Readers that another owner reaches are not.
     let mut calls = direct_calls(&rows);
-    for inherited in functions.iter().filter(|function| {
-        readers::is_inheritable_member(&function.name)
-            || readers::is_member_value_reader(&function.name)
-    }) {
+    for inherited in reached_inherited_readers(symbols, functions, &root) {
         let inherited_rows =
             crate::engine::analysis::decode::decode_arm64(&inherited.code, inherited.address)
                 .map_err(|_| AnalysisError::InvalidRange)?;
@@ -790,7 +870,16 @@ fn collect_objects(
                 reader: super::receivers::concrete_reader(recipe, pointers, point, &unique_name)?,
             })
         });
-        let member_name = format!("{class}::ReadMember(CReader&, int)");
+        // A class whose `Read` the binding cannot read keeps its own member reader's name.
+        let OwnerReader {
+            reader: member_name,
+            serializer,
+            base,
+        } = owner_reader(text, image, data, &class, recipe).unwrap_or_else(|_| OwnerReader {
+            reader: format!("{class}::ReadMember(CReader&, int)"),
+            serializer: None,
+            base: None,
+        });
         let mut bodies_available = match symbols.named(&member_name).next() {
             Some(symbol) => push_function(text, functions, symbol),
             None => reader.is_some(),
@@ -865,20 +954,30 @@ fn collect_objects(
         } else {
             Vec::new()
         };
-        let (persistent, nested_objects) = match nested.filter(|_| owner_of_keys) {
-            Some(shared) => nested_owner(
+        let nests = owner_of_keys
+            && nesting.enclosing.len() < fields::OWNER_DEPTH
+            && !nesting.enclosing.contains(&class);
+        let (persistent, nested_objects) = if nests {
+            let mut enclosing = nesting.enclosing.clone();
+            enclosing.push(class.clone());
+            nested_owner(
                 image,
                 text,
                 data,
-                shared,
+                Nesting {
+                    shared: nesting.shared,
+                    enclosing,
+                },
                 recipe,
                 &class,
                 inline,
                 &member_name,
                 functions,
+                stubs,
                 gaps,
-            )?,
-            None => (None, Vec::new()),
+            )?
+        } else {
+            (None, Vec::new())
         };
         objects.push(ObjectReader {
             data_offset,
@@ -897,6 +996,8 @@ fn collect_objects(
             pointers: slots,
             read: *reads.first().unwrap(),
             reader,
+            serializer,
+            base,
             persistent,
             objects: nested_objects,
         });
@@ -904,21 +1005,24 @@ fn collect_objects(
     Ok(objects)
 }
 
-/// The constructor evidence and inserted objects of the nested owner `class`, whose member reader
-/// is `member`. A constructor that the binding cannot read leaves the evidence out, with a gap.
+/// The constructor evidence, inherited readers and inserted objects of the nested owner `class`,
+/// whose member reader is `member`; `nesting` ends with `class`. A constructor that the binding cannot read leaves the
+/// evidence out, with a gap.
 #[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its two outputs.
 fn nested_owner(
     image: &Image<'_>,
     text: &Text,
     data: &ReadOnlyData,
-    shared: &SharedPersistent,
+    nesting: Nesting<'_>,
     recipe: &PersistentRecipe,
     class: &str,
     inline: Vec<declarations::Function>,
     member: &str,
     functions: &mut Vec<Function>,
+    stubs: &mut BTreeMap<u64, u64>,
     gaps: &mut Vec<String>,
 ) -> Result<(Option<PersistentInput>, Vec<ObjectReader>), AnalysisError> {
+    let shared = nesting.shared;
     let persistent = if inline.is_empty() {
         super::receivers::persistent(image, text, data, shared, class, recipe)
     } else {
@@ -939,7 +1043,12 @@ fn nested_owner(
             None
         }
     };
-    let objects = collect_objects(image, text, data, None, recipe, member, functions, gaps)?;
+    // Dispatch and the collection pass go on in the inherited readers that the member reader
+    // reaches, as they do for the root's.
+    stubs.extend(push_inherited_readers(image, text, member, functions)?);
+    let objects = collect_objects(
+        image, text, data, nesting, recipe, member, functions, stubs, gaps,
+    )?;
 
     Ok((persistent, objects))
 }
