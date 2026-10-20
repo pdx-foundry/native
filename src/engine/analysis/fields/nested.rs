@@ -527,7 +527,7 @@ fn emplaced(machine: &Machine<'_>, object: &super::ObjectReader, at: u64) -> boo
 
     machine.labelled(ALLOCATED | block).is_some()
         && object
-            .emplace_point
+            .shared_emplace_point
             .is_some_and(|point| machine.read(block, 8) == Some(point))
 }
 

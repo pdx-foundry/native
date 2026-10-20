@@ -382,7 +382,7 @@ pub struct ObjectReader {
     pub moving_insert: BTreeMap<u64, u64>,
     /// The primary address point of `std::__1::__shared_ptr_emplace<Class, …>`, the control
     /// block that `make_shared` allocates with the object inside it.
-    pub emplace_point: Option<u64>,
+    pub shared_emplace_point: Option<u64>,
     /// The `shared_ptr` destructors of the class that the root calls. The method runs their code.
     pub shared_releases: Vec<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.

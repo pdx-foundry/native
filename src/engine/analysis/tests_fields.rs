@@ -1861,7 +1861,7 @@ fn nested_fixture() -> FieldInput {
         initializers: vec![],
         insert: vec![0x9300],
         moving_insert: BTreeMap::new(),
-        emplace_point: None,
+        shared_emplace_point: None,
         shared_releases: vec![],
         data_offset: Some(8),
         count_offset: Some(0x14),
@@ -1886,6 +1886,60 @@ fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
         replace(&mut input, address, arm64!(at address; mov x0, x3));
         assert!(derive(input).collections.is_empty(), "{address:#x}");
     }
+}
+
+/// The nested fixture with `CChild` made by `std::make_shared`: an allocation whose first word is
+/// the control block's address point `control_point`, the constructor on the object at `+0x18`,
+/// its log ID, then the read and a moving insertion of the `shared_ptr` (object and control block)
+/// at `sp`, as `CEvent::ReadMember` reads an `option` on M452.
+fn shared_nested_fixture(control_point: u64) -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        bl extern 0x9000; // allocation of the control block
+        mov x21, x0;
+        mov x8, #control_point; // the control block's address point
+        str x8, [x21];
+        add x22, x21, #0x18; // the object
+        mov x0, x22;
+        bl extern 0x9100; // constructor
+        mov x0, x22;
+        bl extern 0x9800; // CChild::SetLogID
+        stp x22, x21, [sp]; // the shared_ptr
+        ldr x8, [x22];
+        ldr x8, [x8, #0x20];
+        mov x0, x22;
+        mov x1, x20;
+        blr x8; // persistent read
+        add x0, x19, #0x40; // collection
+        mov x2, sp;
+        bl extern 0x9300; // moving insertion of the shared_ptr
+        ret
+    );
+    input.symbols.push(Symbol {
+        name: "CChild::SetLogID(CString const&)".into(),
+        address: 0x9800,
+    });
+    let object = &mut input.objects[0];
+    object.insert.clear();
+    object.moving_insert = BTreeMap::from([(0x9300, 0x10)]);
+    object.shared_emplace_point = Some(0xc010);
+    input
+}
+
+#[test]
+fn an_object_in_a_make_shared_control_block_moved_into_its_collection_joins() {
+    let result = derive(shared_nested_fixture(0xc010));
+
+    assert_eq!(result.collections.len(), 1, "{:?}", result.gaps);
+    assert_eq!(result.collections[0].offset, 0x40);
+    // Another class's control block holds some other object.
+    assert!(derive(shared_nested_fixture(0xc110)).collections.is_empty());
 }
 
 /// The nested fixture with `CChild` built inline: `_bzero` on the object, a member constructor on

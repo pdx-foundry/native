@@ -613,7 +613,7 @@ fn collect_objects(
             .flat_map(|name| addresses(symbols, name))
             .filter_map(|start| Some((start, moved_source_width_at(text, start)?)))
             .collect();
-        let emplace_point = symbols
+        let shared_emplace_point = symbols
             .vtable_group(data, &shared_emplace(&class))
             .and_then(|group| group.address_points.get(&0).copied());
         let release_prefix = format!("std::__1::shared_ptr<{class}>::~shared_ptr");
@@ -665,7 +665,7 @@ fn collect_objects(
             initializers: initializers.clone(),
             insert,
             moving_insert,
-            emplace_point,
+            shared_emplace_point,
             shared_releases,
             class,
             vtables: vtable.address_points,
