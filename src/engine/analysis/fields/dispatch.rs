@@ -1045,14 +1045,15 @@ pub(crate) fn explore_member(
 }
 
 /// The token paths through `root`. With `declined`, a path that returns false there instead,
-/// so that the caller of an inherited reader goes on after its call. With `value_receiver`,
-/// `root` is a value reader ([`readers::is_member_value_reader`]) that receives it in `x0` and
-/// the reader in `x1`, and reads the token from the reader.
+/// so that the caller of an inherited reader goes on after its call. With `delegated_receiver`,
+/// `root` receives it in `x0` instead of the owner: the subobject of an inherited reader, or the
+/// member of a value reader ([`readers::is_member_value_reader`]), which reads the token from the
+/// reader in `x1`.
 fn explore_member_with_wrapped_owner(
     input: &DispatchInput<'_>,
     root: &str,
     wrapped_owner: Option<(i64, i64)>,
-    value_receiver: Option<Value>,
+    delegated_receiver: Option<Value>,
     depth: usize,
     mut declined: Option<&mut Vec<TokenPath>>,
 ) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
@@ -1091,9 +1092,11 @@ fn explore_member_with_wrapped_owner(
     {
         initial.registers.insert("x3".into(), scope.clone());
     }
-    if let Some(receiver) = value_receiver {
+    if let Some(receiver) = delegated_receiver {
         initial.registers.insert("x0".into(), receiver);
-        initial.registers.remove("x2");
+        if readers::is_member_value_reader(root) {
+            initial.registers.remove("x2");
+        }
     }
     let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
@@ -1341,6 +1344,14 @@ fn explore_member_with_wrapped_owner(
                             && forwards_member_arguments(&state) =>
                     {
                         Some((name, None))
+                    }
+                    // A base class's reader on its subobject at a constant offset in the owner.
+                    (Some(name), Some(base @ Value::Owner(offset)))
+                        if readers::is_inheritable_member(name)
+                            && offset > 0
+                            && forwards_reader_and_token(&state) =>
+                    {
+                        Some((name, Some(base)))
                     }
                     (Some(name), Some(member @ Value::Owner(_)))
                         if readers::is_member_value_reader(name)
@@ -2110,7 +2121,12 @@ fn forwards_member_arguments(state: &State) -> bool {
     matches!(
         state.registers.get("x0"),
         Some(Value::Owner(0) | Value::Serializer(0))
-    ) && state.registers.get("x1") == Some(&Value::Reader(0))
+    ) && forwards_reader_and_token(state)
+}
+
+/// Whether `x1` and `x2` still hold the member reader's reader and token.
+fn forwards_reader_and_token(state: &State) -> bool {
+    state.registers.get("x1") == Some(&Value::Reader(0))
         && matches!(
             state.registers.get("x2"),
             Some(Value::Token | Value::TokenWord(0))

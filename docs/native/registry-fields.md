@@ -236,6 +236,22 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   resolves to the image's own definition. `FieldInput::stubs` carries each accepted stub to the
   dispatch name lookup; any other symbol of the name away from the body still makes the lookup
   fail.
+- **Base subobjects.** The call may also pass the owner plus a positive constant in `x0`, with the
+  reader and the token unchanged: the base class's subobject at that offset. The inherited reader
+  then runs with that receiver, so its owner offsets are the subobject's plus its own. On M452
+  `CCitizenshipType::ReadMember` (`0x100be5840`) ends with `add x0,x0,#0x38` and
+  `b CSpeciesRightBase::ReadMember` (`0x100be42f4`), whose default case tail-calls
+  `CPersistent::ReadMember` on its own receiver, the base rejection. At `registry-fields/v63` this
+  gives each of the seven species-rights registries with a `ReadMember` the 8 shared keys
+  (`potential`, `allow`, `ai_will_do`, `modifier`, `pop_group_modifier`,
+  `triggered_pop_group_modifier`, `hidden`, `in_breach_of`); `common/patrons/deeds` gains
+  `counter` and `attunement` the same way. Remove the rule when a build's adjusted receiver is not
+  a base subobject (a member object at a constant offset read through its base's reader would look
+  the same; its fields would then be the member's).
+  - `CLivingStandard` and `CMilitaryServiceType` have no `ReadMember`: their vtables take
+    `CSpeciesRightBase::ReadMember` on the subobject directly, so the owner has no root to walk.
+    A repair takes the root from the owner vtable's member slot and the subobject offset from its
+    group; the field input then needs a root receiver offset.
 - **Bit tests of a constant.** `tbz` and `tbnz` of a known constant take only the side the bit
   selects, as `cbz` and `cbnz` do. The resumed false return needs it.
 - **Result on M452.** `common/starbase_modules` goes from 7 to 57 root fields and

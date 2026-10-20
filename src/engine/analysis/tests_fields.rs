@@ -1051,6 +1051,77 @@ fn an_inherited_reader_reads_the_tokens_that_its_caller_passes_on() {
     );
 }
 
+/// The inherited fixture with the base reader on its subobject at owner `+0x38`: the owner
+/// tail-calls it with `this` adjusted, as `CCitizenshipType::ReadMember` calls
+/// `CSpeciesRightBase::ReadMember` on M452, and the base rejects the other tokens itself.
+fn base_subobject_fixture(adjustment: Vec<u8>) -> FieldInput {
+    let mut input = inherited_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38; // the base subobject
+        b extern 0x9000; // the stub of CBase::ReadMember
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    replace(&mut input, 0x1008, adjustment);
+    let base = input
+        .functions
+        .iter_mut()
+        .find(|function| function.address == 0xa000)
+        .unwrap();
+    base.code = arm64!(at 0xa000;
+        cmp w2, #8; // token 8
+        b.eq extern 0xa00c;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x48; // the inherited member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+
+    input
+}
+
+#[test]
+fn an_inherited_reader_on_a_base_subobject_reads_at_the_subobject_offset() {
+    use crate::engine::analysis::readers::destination;
+
+    let result = derive(base_subobject_fixture(arm64!(at 0x1008; add x0, x0, #0x38)));
+
+    let names: Vec<_> = result
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["new_engine_field", "inherited_field"],
+        "{:?}",
+        result.gaps
+    );
+    assert_eq!(destination(&result.fields[1].readers[0]), Some(0x80));
+    assert!(
+        result
+            .paths
+            .iter()
+            .filter(|path| ![[7, 7], [8, 8]].contains(&path.domain))
+            .all(|path| path.outcome == PathOutcome::Rejected),
+        "{:?}",
+        result.paths
+    );
+    // A receiver other than the owner plus a constant is not the base subobject.
+    for adjustment in [
+        arm64!(at 0x1008; add x0, x1, #0x38),
+        arm64!(at 0x1008; add x2, x2, #1),
+    ] {
+        let result = derive(base_subobject_fixture(adjustment));
+        assert_eq!(result.fields.len(), 1, "{:?}", result.fields);
+    }
+}
+
 #[test]
 fn a_value_reader_reads_the_tokens_of_a_member_that_its_caller_passes_on() {
     use crate::engine::analysis::readers::destination;

@@ -204,5 +204,8 @@
     "triggered_waystation_network_system_modifier": "Unresolved",
     "triggered_waystation_network_system_modifier.modifier": "Enclosing"
   },
-  "common/species_rights/citizenship_types": {}
+  "common/species_rights/citizenship_types": {
+    "triggered_pop_group_modifier": {"Listed": ["Pops", "Deposits", "Habitability", "Economic Units"]},
+    "triggered_pop_group_modifier.modifier": "Enclosing"
+  }
 }
