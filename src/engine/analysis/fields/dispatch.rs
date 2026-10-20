@@ -145,7 +145,12 @@ struct TableCase {
 #[derive(Clone)]
 enum Flags {
     Token(Comparison),
-    Values { tested: Value, pivots: Vec<i64> },
+    /// A compare of `tested` with `pivots` in a register of `bits` bits.
+    Values {
+        tested: Value,
+        pivots: Vec<i64>,
+        bits: u32,
+    },
 }
 
 #[derive(Clone)]
@@ -640,7 +645,7 @@ fn apply(
     input: &DispatchInput<'_>,
     wrapped_owner: Option<(i64, i64)>,
 ) -> Result<(), Unresolved> {
-    if matches!(row.operation.as_str(), "str" | "stur" | "strb" | "stp") {
+    if row.operation.starts_with("st") {
         state.serializer = None;
         if !row.operands.contains("[sp") {
             state.settled.clear();
@@ -674,6 +679,7 @@ fn apply(
                     state.value(left).map(|tested| Flags::Values {
                         tested,
                         pivots: vec![pivot],
+                        bits: if left.starts_with('w') { 32 } else { 64 },
                     })
                 }
                 _ => None,
@@ -682,20 +688,28 @@ fn apply(
         ("ccmp", [left, right, "#4", "ne"]) => {
             let previous = match state.flags.take() {
                 Some(Flags::Token(Comparison { offset, pivot })) => {
-                    Some((Value::TokenWord(offset), vec![pivot]))
+                    Some((Value::TokenWord(offset), vec![pivot], 32))
                 }
-                Some(Flags::Values { tested, pivots }) => Some((tested, pivots)),
+                Some(Flags::Values {
+                    tested,
+                    pivots,
+                    bits,
+                }) => Some((tested, pivots, bits)),
                 None => None,
             };
             state.flags = match (previous, state.value(left), state.value(right)) {
-                (Some((tested, mut pivots)), Some(current), Some(Value::Constant(pivot)))
+                (Some((tested, mut pivots, bits)), Some(current), Some(Value::Constant(pivot)))
                     if tested == current
                         || matches!((&tested, &current), (Value::TokenWord(0), Value::Token)) =>
                 {
                     pivots.push(pivot);
                     pivots.sort();
                     pivots.dedup();
-                    Some(Flags::Values { tested, pivots })
+                    Some(Flags::Values {
+                        tested,
+                        pivots,
+                        bits,
+                    })
                 }
                 _ => None,
             };
@@ -2201,7 +2215,7 @@ fn settled_comparison(
     root_reader: bool,
 ) -> Option<Settled> {
     let condition = row.operation.strip_prefix("b.")?;
-    let Some(Flags::Values { tested, pivots }) = &state.flags else {
+    let Some(Flags::Values { tested, pivots, .. }) = &state.flags else {
         return None;
     };
     if !matches!(condition, "eq" | "ne") || !is_owner_word(tested) {
@@ -2416,14 +2430,18 @@ fn condition_branch(
             ..Branching::default()
         };
     }
-    if let Some(Flags::Values { tested, pivots }) = &state.flags {
+    if let Some(Flags::Values {
+        tested,
+        pivots,
+        bits,
+    }) = &state.flags
+    {
         return values_branch(
             condition,
             row,
             state,
             target.copied(),
-            tested,
-            pivots,
+            (tested, pivots, *bits),
             entry,
         );
     }
@@ -2466,8 +2484,7 @@ fn values_branch(
     row: &Instruction,
     state: &State,
     target: Option<usize>,
-    tested: &Value,
-    pivots: &[i64],
+    (tested, pivots, bits): (&Value, &[i64], u32),
     entry: u64,
 ) -> Branching {
     let Some(target) = target else {
@@ -2508,30 +2525,41 @@ fn values_branch(
             ..Branching::default()
         };
     }
-    // An ordered compare of an owner word, such as a count, keeps both sides under a condition
-    // that the walk does not resolve, and the path remembers its side.
+    // An ordered compare of an owner word, such as a count, keeps each side that the word's
+    // values can take under a condition that the walk does not resolve, and the path remembers
+    // its side.
     if let Some(condition) = opposite(condition)
         .and_then(opposite)
         .filter(|condition| !matches!(*condition, "eq" | "ne"))
         && is_owner_word(tested)
     {
+        let repeat = Unresolved::at(
+            "ordered-compare-repeat",
+            row.address,
+            entry,
+            Obstacle::Unsupported,
+        );
         let settled_before = state.settled.keys().any(
             |compared| matches!(compared, Value::EqualsAny(word, _) if word.as_ref() == tested),
         );
         if settled_before {
-            return Branching::gap(
-                state,
-                row.address,
-                Unresolved::at(
-                    "ordered-compare-repeat",
-                    row.address,
-                    entry,
-                    Obstacle::Unsupported,
-                ),
-            );
+            return Branching::gap(state, row.address, repeat);
         }
+        let (Value::Load(_, width), [pivot]) = (tested, pivots) else {
+            return Branching::gap(state, row.address, repeat);
+        };
+        let Some(sides) = ordered_sides(condition, *pivot, u32::from(*width), bits) else {
+            let range = Unresolved::at(
+                "ordered-compare-range",
+                row.address,
+                entry,
+                Obstacle::Unsupported,
+            );
+            return Branching::gap(state, row.address, range);
+        };
         let continued = [(target, true), (state.pc, false)]
             .into_iter()
+            .filter(|&(_, taken)| if taken { sides.taken } else { sides.not_taken })
             .map(|(pc, taken)| {
                 let mut next = state.clone();
                 next.pc = pc;
@@ -2630,6 +2658,83 @@ fn values_branch(
         continued,
         ..Branching::default()
     }
+}
+
+/// Which sides of an ordered compare can hold.
+#[derive(Debug, PartialEq, Eq)]
+struct OrderedSides {
+    taken: bool,
+    not_taken: bool,
+}
+
+/// The sides of `condition` against `pivot` that a word loaded with `width` bytes can take in a
+/// compare of `bits` bits. A load narrower than the compare may be zero- or sign-extended, and
+/// the walk does not know which: `None` when the two give different sides.
+fn ordered_sides(condition: &str, pivot: i64, width: u32, bits: u32) -> Option<OrderedSides> {
+    let modulus = 1i128 << bits;
+    let pattern = (pivot as i128).rem_euclid(modulus);
+    let signed_pivot = if pattern >= modulus / 2 {
+        pattern - modulus
+    } else {
+        pattern
+    };
+    let holds = |unsigned: i128| {
+        let signed = if unsigned >= modulus / 2 {
+            unsigned - modulus
+        } else {
+            unsigned
+        };
+        match condition {
+            "lt" => Some(signed < signed_pivot),
+            "ge" => Some(signed >= signed_pivot),
+            "gt" => Some(signed > signed_pivot),
+            "le" => Some(signed <= signed_pivot),
+            "lo" => Some(unsigned < pattern),
+            "hs" => Some(unsigned >= pattern),
+            "hi" => Some(unsigned > pattern),
+            "ls" => Some(unsigned <= pattern),
+            _ => None,
+        }
+    };
+    // Every predicate is a threshold in the unsigned or the signed order, so the ends of each run
+    // of values, the values next to the pivot and the two ends of the signed order decide it.
+    let sides = |values: &[(i128, i128)]| -> Option<OrderedSides> {
+        let mut sides = OrderedSides {
+            taken: false,
+            not_taken: false,
+        };
+        for &(low, high) in values {
+            let probes = [
+                low,
+                high,
+                pattern - 1,
+                pattern,
+                pattern + 1,
+                modulus / 2 - 1,
+                modulus / 2,
+            ];
+            for value in probes
+                .into_iter()
+                .filter(|value| (low..=high).contains(value))
+            {
+                if holds(value)? {
+                    sides.taken = true;
+                } else {
+                    sides.not_taken = true;
+                }
+            }
+        }
+        Some(sides)
+    };
+    let loaded_bits = width * 8;
+    if loaded_bits >= bits {
+        return sides(&[(0, modulus - 1)]);
+    }
+    let half = 1i128 << (loaded_bits - 1);
+    let zero_extended = sides(&[(0, 2 * half - 1)])?;
+    let sign_extended = sides(&[(0, half - 1), (modulus - half, modulus - 1)])?;
+
+    (zero_extended == sign_extended).then_some(zero_extended)
 }
 
 /// The paths on each side of the zero test `row` of the register `tested`, which branches to
@@ -3007,7 +3112,7 @@ const LITERAL_TOKEN_TEST: &str = "value token == literal";
 /// `None` for any other comparison, or when the value token or `yes` is not bound: without `yes`,
 /// the literal could be it.
 fn literal_token_test(state: &State, bindings: &super::KeyReaders) -> Option<Value> {
-    let Some(Flags::Values { tested, pivots }) = &state.flags else {
+    let Some(Flags::Values { tested, pivots, .. }) = &state.flags else {
         return None;
     };
     let token_word = value_token_word(bindings);
@@ -3076,6 +3181,38 @@ fn emplaced_destination(bindings: &super::KeyReaders, state: &State) -> Option<i
 mod tests {
     use super::*;
     use crate::engine::analysis::{assembler::arm64, declarations::Function};
+
+    #[test]
+    fn an_ordered_compare_keeps_only_the_sides_that_the_loaded_word_can_take() {
+        let both = OrderedSides {
+            taken: true,
+            not_taken: true,
+        };
+        let only_not_taken = OrderedSides {
+            taken: false,
+            not_taken: true,
+        };
+
+        assert_eq!(ordered_sides("lt", 1, 4, 32), Some(both));
+        assert_eq!(ordered_sides("lo", 0, 4, 32), Some(only_not_taken));
+        assert_eq!(
+            ordered_sides("hi", 0xffff_ffff, 8, 32),
+            Some(OrderedSides {
+                taken: false,
+                not_taken: true,
+            })
+        );
+        // A byte is at most 255 when zero-extended but may be above it when sign-extended.
+        assert_eq!(ordered_sides("hi", 255, 1, 32), None);
+        assert_eq!(
+            ordered_sides("lt", 1, 1, 32),
+            Some(OrderedSides {
+                taken: true,
+                not_taken: true,
+            })
+        );
+        assert_eq!(ordered_sides("eq", 1, 4, 32), None);
+    }
 
     #[test]
     fn an_or_update_forgets_its_result_and_the_walk_goes_on() {
