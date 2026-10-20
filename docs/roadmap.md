@@ -180,6 +180,15 @@ is still its own task, as the [development policy](development-policy.md) says.
   inherited reader, nested reader or dynamic name that the method did not follow. The claim is then
   covered and joins the CWT disagreement review. The reader is checked first, because a key can be
   formed at run time. Elsewhere the claim stays open.
+- Nested owners: one owner analysis takes an explicit receiver context (the reader, its receiver
+  in one allocation's coordinates, and that allocation's constructor evidence) for roots, embedded
+  objects and inserted objects
+  ([nested owners](native/registry-fields.md#nested-owners-and-the-receiver-context)). The design
+  holds only if a third owner then joins with no class-specific code.
+- Conditional requirements: `FieldRequirement` gains cases, each a `FieldCondition` (with a new
+  keyword condition) and whether the field is required; there is no new `Field` property. The
+  routes are census reports joined by the code that logs them, the one-launch probe extended, and
+  traced conditional checks recorded as data ([required fields](native/registry-fields.md#required-fields)).
 
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims

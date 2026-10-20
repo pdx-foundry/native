@@ -51,6 +51,7 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/ethics", "cost"),
         ("common/first_contact", "on_roll_failed"),
         ("common/galactic_focuses", "effect"),
+        ("common/galactic_focuses", "trigger"),
         ("common/game_concept_categories", "icon"),
         ("common/game_concept_categories", "name"),
         ("common/mutations", "icon"),
@@ -308,6 +309,10 @@ mod tests {
         assert_eq!(
             requirement("common/tradition_categories", "traditions"),
             FieldRequirement::Unknown
+        );
+        assert_eq!(
+            requirement("common/galactic_focuses", "trigger"),
+            FieldRequirement::Required
         );
     }
 }
