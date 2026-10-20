@@ -1,5 +1,9 @@
+use super::dispatch::OrderCheck;
 use super::tokens::{Token, named_key};
-use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
+use super::uses::storage_offset;
+use super::{
+    FieldGap, FieldGapKind, KeyOrder, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+};
 use std::collections::BTreeMap;
 
 pub(crate) fn fields_and_gaps(
@@ -51,6 +55,56 @@ pub(crate) fn fields_and_gaps(
         }
     }
     (fields.into_values().collect(), gaps)
+}
+
+/// The key order of each order check in `checks`: the named keys that some path reads without
+/// crossing the check, and the field that sets the tested word.
+pub(super) fn key_order(
+    checks: &[OrderCheck],
+    paths: &[TokenPath],
+    fields: &[RootField],
+    partition_accounted: bool,
+) -> Vec<KeyOrder> {
+    let mut order: Vec<KeyOrder> = Vec::new();
+
+    for check in checks {
+        // A key is held by the check only when every path of it crosses the check.
+        let passes = |field: &&RootField| {
+            !field.paths.is_empty()
+                && field
+                    .paths
+                    .iter()
+                    .all(|&index| paths[index].instructions.contains(&check.at))
+        };
+        let mut allowed: Vec<_> = fields
+            .iter()
+            .filter(|field| !passes(field))
+            .map(|field| field.name.clone())
+            .collect();
+        allowed.sort();
+        let set_by = match &check.tested {
+            Value::Load(word, _) => match word.as_ref() {
+                Value::Owner(at) => {
+                    let mut setters = fields
+                        .iter()
+                        .filter(|field| storage_offset(field, partition_accounted) == Some(*at));
+                    match (setters.next(), setters.next()) {
+                        (Some(field), None) => Some(field.name.clone()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        let entry = KeyOrder { allowed, set_by };
+
+        if !order.contains(&entry) {
+            order.push(entry);
+        }
+    }
+
+    order
 }
 
 pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
@@ -113,6 +167,7 @@ mod tests {
         let partition_accounted = partition_accounted(&paths);
         let offset = storage_offset(&fields[0], partition_accounted);
         let result = RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             uses: Vec::new(),
@@ -148,5 +203,73 @@ mod tests {
             path([6, i32::MAX as i64], unresolved()),
         ];
         assert_eq!(derived(accounted), (Some(STORED_AT), 1));
+    }
+
+    #[test]
+    fn a_key_order_names_its_setter_only_when_one_field_stores_the_word() {
+        let named = |name: &str| Token {
+            name: Some(name.into()),
+            constructor: 0,
+        };
+        let tokens = |names: &[&str]| -> BTreeMap<i64, Token> {
+            (5..)
+                .zip(names)
+                .map(|(token, name)| (token, named(name)))
+                .collect()
+        };
+        let check = OrderCheck {
+            at: 0x1000,
+            tested: Value::Load(Box::new(Value::Owner(STORED_AT)), 8),
+        };
+        let setter = |names: &[&str]| {
+            let last = 4 + names.len() as i64;
+            let mut paths = vec![path([i32::MIN as i64, 4], PathOutcome::Rejected)];
+            paths.extend((5..=last).map(|token| path([token, token], string_field())));
+            paths.push(path([last + 1, i32::MAX as i64], PathOutcome::Rejected));
+            let (fields, _) = fields_and_gaps(&paths, &tokens(names));
+
+            key_order(
+                std::slice::from_ref(&check),
+                &paths,
+                &fields,
+                partition_accounted(&paths),
+            )[0]
+            .set_by
+            .clone()
+        };
+
+        assert_eq!(setter(&["first"]), Some("first".into()));
+        assert_eq!(setter(&["first", "second"]), None);
+    }
+
+    #[test]
+    fn a_key_read_on_some_path_without_the_check_passes_it() {
+        let token = || Token {
+            name: Some("key".into()),
+            constructor: 0,
+        };
+        let check = OrderCheck {
+            at: 0x1000,
+            tested: Value::Load(Box::new(Value::Owner(STORED_AT)), 8),
+        };
+        let allowed = |crossings: &[bool]| {
+            let mut paths = vec![path([i32::MIN as i64, 4], PathOutcome::Rejected)];
+            for &crosses in crossings {
+                let mut read = path([5, 5], string_field());
+                if crosses {
+                    read.instructions = vec![check.at];
+                }
+                paths.push(read);
+            }
+            paths.push(path([6, i32::MAX as i64], PathOutcome::Rejected));
+            let (fields, _) = fields_and_gaps(&paths, &BTreeMap::from([(5, token())]));
+
+            key_order(std::slice::from_ref(&check), &paths, &fields, false)[0]
+                .allowed
+                .clone()
+        };
+
+        assert!(allowed(&[true, true]).is_empty());
+        assert_eq!(allowed(&[true, false]), vec!["key".to_string()]);
     }
 }

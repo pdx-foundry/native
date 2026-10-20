@@ -612,6 +612,223 @@ fn a_shifted_immediate_compare_of_an_owner_word_keeps_both_paths_under_its_value
     );
 }
 
+/// The fixture's reader behind an order check: when the owner word at `+0x48` holds `0x200000`,
+/// the reader runs `rejection`, which starts at [`REJECTION`]. A second test of the same word
+/// follows the check.
+/// Where [`order_check_fixture`] places its rejecting side.
+const REJECTION: u64 = 0x1034;
+
+fn order_check_fixture(rejection: Vec<u8>) -> FieldInput {
+    let mut input = fixture();
+    let mut code = arm64!(at 0x1000;
+        ldr x8, [x0, #0x48]; // a word that an earlier key stores
+        cmp x8, #0x200, lsl #12;
+        b.eq extern REJECTION as usize;
+        cmp x8, #0x200, lsl #12; // the same test again
+        b.eq extern 0x1020;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1024;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    code.extend(rejection);
+    input.functions[0].code = code;
+    input.symbols.push(Symbol {
+        name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
+        address: 0xb000,
+    });
+    input.symbols.push(Symbol {
+        name: "CReader::GetLineNumber() const".into(),
+        address: 0xb100,
+    });
+
+    input
+}
+
+/// The read of token 7 in [`order_check_fixture`] keeps the check as a condition, and the
+/// registry states no key order.
+fn assert_no_order_check(rejection: Vec<u8>) {
+    let result = derive(order_check_fixture(rejection));
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert!(
+        reads.iter().all(|path| path
+            .conditions
+            .iter()
+            .any(|condition| condition.at == 0x1008)),
+        "{reads:?}"
+    );
+    assert!(result.key_order.is_empty());
+}
+
+#[test]
+fn an_order_check_that_only_logs_leaves_the_key_read_always() {
+    let logs = arm64!(at REJECTION;
+        bl extern 0xb000; // the diagnostic
+        ret
+    );
+
+    let result = derive(order_check_fixture(logs));
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert_eq!(reads.len(), 1, "{reads:?}");
+    assert!(reads[0].conditions.is_empty(), "{reads:?}");
+    assert!(result.partition_accounted);
+    assert_eq!(result.key_order.len(), 1);
+    assert!(
+        result.key_order[0].allowed.is_empty(),
+        "the read of token 7 passes the check"
+    );
+}
+
+#[test]
+fn a_rejecting_side_that_writes_the_owner_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        str wzr, [x0, #0x40]; // an owner write
+        ret
+    ));
+}
+
+#[test]
+fn a_side_that_only_locates_a_diagnostic_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        bl extern 0xb100; // CReader::GetLineNumber, no diagnostic
+        ret
+    ));
+}
+
+#[test]
+fn a_diagnostic_side_that_loops_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        bl extern 0xb000; // the diagnostic
+        b extern REJECTION as usize // never returns
+    ));
+}
+
+#[test]
+fn a_diagnostic_side_with_an_atomic_update_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        ldadd w9, w8, [x0]; // an atomic owner update
+        bl extern 0xb000; // the diagnostic
+        ret
+    ));
+}
+
+#[test]
+fn a_diagnostic_side_with_a_register_offset_store_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        str w8, [sp, x9]; // a slot that no immediate proves
+        bl extern 0xb000; // the diagnostic
+        ret
+    ));
+}
+
+#[test]
+fn a_test_of_a_frame_word_is_never_settled() {
+    let mut input = fixture();
+    let mut code = Arm64::at(0x1000);
+    arm64!(code; ldr x8, [sp, #0x10]; cmp x8, #5);
+    let first = code.here() + 4;
+    arm64!(code;
+        b.ne extern first as usize; // both sides join
+        str x9, [sp, #0x10]; // the frame word changes
+        ldr x8, [sp, #0x10]; cmp x8, #5
+    );
+    let second = code.here() + 4;
+    arm64!(code;
+        b.ne extern second as usize;
+        cmp w2, #7; // token 7
+        b.eq extern (code.here() + 8) as usize;
+        b extern 0x5000; // CPersistent::ReadMember
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    input.functions[0].code = code.bytes();
+
+    let result = derive(input);
+
+    let reads = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .count();
+    assert_eq!(reads, 4, "the second test forks again");
+}
+
+#[test]
+fn a_check_after_the_value_is_read_is_no_order_check() {
+    let mut input = compound_fixture(arm64!(at 0x1000;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1;
+        add x0, sp, #0x20; ldr x1, [x20, #0x288]; // the value text
+        bl extern 0x9000; // CString::CString
+        ldr x8, [x19, #0x48]; cmp x8, #0x200, lsl #12;
+        b.eq extern 0x1034;
+        ret;
+        bl extern 0xb800; // the diagnostic
+        ret
+    ));
+    input.symbols.push(Symbol {
+        name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
+        address: 0xb800,
+    });
+
+    let result = derive(input);
+
+    let crossing = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7] && path.instructions.contains(&0x102c))
+        .count();
+    assert_eq!(crossing, 2, "both sides of the check stay");
+    assert!(result.key_order.is_empty());
+}
+
+#[test]
+fn a_string_emplace_call_unsettles_an_owner_word_test() {
+    let mut code = Arm64::at(0x1000);
+    arm64!(code;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1;
+        ldr x8, [x19, #0x48]; cmp x8, #5
+    );
+    let joined = code.here() + 4;
+    arm64!(code;
+        b.ne extern joined as usize; // both sides join
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        bl extern 0xd000; // emplace, which writes the owner
+        ldr x8, [x19, #0x48]; cmp x8, #5
+    );
+    let after = code.here() + 4;
+    arm64!(code; b.ne extern after as usize; ret);
+
+    let result = derive(compound_fixture(code.bytes()));
+
+    let reads = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .count();
+    assert_eq!(reads, 4, "the second test forks after the call");
+}
+
 #[test]
 fn a_bit_test_of_the_token_is_a_gap() {
     let mut input = fixture();
@@ -946,6 +1163,49 @@ fn a_false_return_through_a_tail_called_ancestor_reaches_the_owner() {
         "{:?}",
         result.paths
     );
+}
+
+#[test]
+fn an_inherited_reader_does_not_follow_an_order_check() {
+    let mut input = inherited_fixture();
+    let inherited = input
+        .functions
+        .iter_mut()
+        .find(|function| function.address == 0xa000)
+        .unwrap();
+    inherited.code = arm64!(at 0xa000;
+        ldr x8, [x0, #0x48]; // a word that an earlier key stores
+        cmp x8, #0x200, lsl #12;
+        b.eq extern 0xa02c;
+        cmp w2, #8; // token 8
+        b.eq extern 0xa01c;
+        mov w0, #0; // not handled
+        ret;
+        add x8, x0, #0x48; // the inherited member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        bl extern 0xb000; // the diagnostic
+        ret
+    );
+    input.symbols.push(Symbol {
+        name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
+        address: 0xb000,
+    });
+
+    let result = derive(input);
+
+    assert!(result.key_order.is_empty());
+    let inherited = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [8, 8] && path.instructions.contains(&0xa01c));
+    assert!(inherited.clone().count() > 0);
+    assert!(inherited.into_iter().all(|path| {
+        path.conditions
+            .iter()
+            .any(|condition| condition.at == 0xa008)
+    }));
 }
 
 #[test]
