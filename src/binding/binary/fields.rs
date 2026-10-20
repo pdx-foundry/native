@@ -125,7 +125,7 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
-    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
+    let mut stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     let objects = collect_objects(
         image,
         &text,
@@ -137,6 +137,7 @@ pub(in crate::binding) fn read(
         persistent_recipe,
         &root,
         &mut functions,
+        &mut stubs,
         &mut gaps,
     )?;
     if !objects.is_empty() {
@@ -792,6 +793,7 @@ fn collect_objects(
     recipe: &PersistentRecipe,
     root: &str,
     functions: &mut Vec<Function>,
+    stubs: &mut BTreeMap<u64, u64>,
     gaps: &mut Vec<String>,
 ) -> Result<Vec<ObjectReader>, AnalysisError> {
     let symbols = image.index.over(image.symbols);
@@ -971,6 +973,7 @@ fn collect_objects(
                 inline,
                 &member_name,
                 functions,
+                stubs,
                 gaps,
             )?
         } else {
@@ -1002,8 +1005,8 @@ fn collect_objects(
     Ok(objects)
 }
 
-/// The constructor evidence and inserted objects of the nested owner `class`, whose member reader
-/// is `member`; `nesting` ends with `class`. A constructor that the binding cannot read leaves the
+/// The constructor evidence, inherited readers and inserted objects of the nested owner `class`,
+/// whose member reader is `member`; `nesting` ends with `class`. A constructor that the binding cannot read leaves the
 /// evidence out, with a gap.
 #[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its two outputs.
 fn nested_owner(
@@ -1016,6 +1019,7 @@ fn nested_owner(
     inline: Vec<declarations::Function>,
     member: &str,
     functions: &mut Vec<Function>,
+    stubs: &mut BTreeMap<u64, u64>,
     gaps: &mut Vec<String>,
 ) -> Result<(Option<PersistentInput>, Vec<ObjectReader>), AnalysisError> {
     let shared = nesting.shared;
@@ -1039,7 +1043,12 @@ fn nested_owner(
             None
         }
     };
-    let objects = collect_objects(image, text, data, nesting, recipe, member, functions, gaps)?;
+    // Dispatch and the collection pass go on in the inherited readers that the member reader
+    // reaches, as they do for the root's.
+    stubs.extend(push_inherited_readers(image, text, member, functions)?);
+    let objects = collect_objects(
+        image, text, data, nesting, recipe, member, functions, stubs, gaps,
+    )?;
 
     Ok((persistent, objects))
 }

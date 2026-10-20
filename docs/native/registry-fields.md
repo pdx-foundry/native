@@ -326,8 +326,8 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
     `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
     loop), `triggered_component_set` (an inserted struct), `name` and `desc`
     (`CTriggeredEventDescription`) and `resources` (stack serializer).
-  - A nested owner does not follow its own inherited reader: `nested_owner` collects no
-    inherited readers. Change this when a nested owner needs it.
+  - A nested owner follows the inherited readers that its own member reader reaches, since
+    `registry-fields/v71` (`nested_owner` calls `push_inherited_readers`).
 - **Value readers.** `CWeaponComponentTemplate::ReadMember` (`0x1001e41f4`) and
   `CStrikeCraftComponentTemplate::ReadMember` (`0x1001eef6c`) pass the tokens that they do not
   handle to `ReadAttackInfoValue(NCombatRules::SAttackInfo&, CReader&)` (`0x1001320fc`) with
@@ -2183,10 +2183,15 @@ receiver, and the constructor evidence of the allocation that holds the receiver
   - The collection pass runs the owner's reader with `x0` built from the receiver: the allocation
     plus the offset, or a serializer whose slot points at the owner. Serializer roots and base
     roots collect objects.
-  - The binding gives each nested owner its constructor evidence and objects to four owners below
-    the root (`fields::OWNER_DEPTH`), and none to a class that an enclosing owner has. The
-    analysis stops at the same bound, and at an owner whose reader and receiver an enclosing
-    owner has: the owner keeps its keys, and the deeper passes leave a reader gap.
+  - The binding gives each nested owner its constructor evidence, inherited readers and objects
+    for the root and three owners below it (`fields::OWNER_DEPTH` is 4, the root included), and
+    none to a class that an enclosing owner has. The analysis stops at the same bound (a fourth
+    owner below the root keeps its keys), and at an owner whose reader and receiver an enclosing
+    owner has: the deeper passes leave a reader gap.
+  - An embedded object collects no inserted objects: the binding collects objects for the root's
+    and each inserted object's reader only, so a collection that an embedded reader inserts stays
+    unresolved. Change this when a gap needs it; the binding would then key the objects by the
+    embedded member reader.
   - The objects of a member reader are those that it, and the inherited readers that it reaches
     by calls and jumps, construct (`reached_inherited_readers`).
 - **Result on M452 (`registry-fields/v71`).** Additions only. `special_projects`
