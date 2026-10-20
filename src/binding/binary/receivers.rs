@@ -18,12 +18,27 @@ const MAX_CONSTRUCTOR_CODE_BYTES: usize = 65536;
 /// `Class<Arguments>::Class(…)`. The class is the name before the last scope separator outside
 /// template arguments, so a nested class's constructor names the nested class.
 pub(super) fn constructor_class(name: &str) -> Option<&str> {
-    let separator = last_top_level_scope(name)?;
-    let (class, method) = (&name[..separator], &name[separator + 2..]);
-    let last = last_top_level_scope(class).map_or(class, |at| &class[at + 2..]);
-    let base = last.split_once('<').map_or(last, |(base, _)| base);
+    let class = method_class(name)?;
+    let method = &name[class.len() + 2..];
 
-    method.strip_prefix(base)?.starts_with('(').then_some(class)
+    method
+        .strip_prefix(unqualified_base(class))?
+        .starts_with('(')
+        .then_some(class)
+}
+
+/// The class that qualifies the method `name`: everything before its last top-level `::`, as
+/// `Outer::Part<T>` in `Outer::Part<T>::Read()`.
+pub(super) fn method_class(name: &str) -> Option<&str> {
+    Some(&name[..last_top_level_scope(name)?])
+}
+
+/// The name of `class` without its scopes and template arguments, as its constructors are named:
+/// `Part` for `Outer::Part<T>`.
+pub(super) fn unqualified_base(class: &str) -> &str {
+    let last = last_top_level_scope(class).map_or(class, |at| &class[at + 2..]);
+
+    last.split_once('<').map_or(last, |(base, _)| base)
 }
 
 /// The byte offset of the last `::` outside template arguments, before any parameter list.
@@ -375,6 +390,7 @@ pub(super) fn persistent_from(
         requested_words: Default::default(),
         containers: shared.containers.clone(),
         initialized_words: Default::default(),
+        loader_points: Default::default(),
     })
 }
 

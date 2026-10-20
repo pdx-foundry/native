@@ -382,6 +382,11 @@ pub struct ObjectReader {
     /// Entry addresses of insertion specializations that take the object from a scoped pointer
     /// and are proven to clear that pointer.
     pub moving_insert: Vec<u64>,
+    /// Entry addresses of the in-place resizing that constructs an object at the end of a
+    /// `CPdxArray` of this class, when its layout is proven.
+    pub array_emplace: Vec<u64>,
+    /// The size of one object in that array, from the resizing's allocation.
+    pub array_element_size: Option<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
     /// Byte offset of the element count within the collection, if proven.
@@ -494,6 +499,9 @@ pub struct PersistentInput {
     /// 32-bit words in zero-fill memory, with the value that the static initializer that stores
     /// each one leaves there.
     pub initialized_words: BTreeMap<u64, u64>,
+    /// The address points that the custom loader's inline build of each item installs, by owner
+    /// offset, from the constructor of a part that the build constructs in place.
+    pub loader_points: BTreeMap<i64, u64>,
 }
 
 /// The constructors of a modifier container, which store its category mask, and where the

@@ -1861,6 +1861,8 @@ fn nested_fixture() -> FieldInput {
         initializers: vec![],
         insert: vec![0x9300],
         moving_insert: vec![],
+        array_emplace: vec![],
+        array_element_size: None,
         data_offset: Some(8),
         count_offset: Some(0x14),
         reader: None,
@@ -1884,6 +1886,160 @@ fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
         replace(&mut input, address, arm64!(at address; mov x0, x3));
         assert!(derive(input).collections.is_empty(), "{address:#x}");
     }
+}
+
+/// The nested fixture with `CChild` constructed in place at the end of the owner's array at
+/// `+0x40` by its resizing at `0x9600`, then read through `CReader::Read(CPersistent&)` at its
+/// address `data + count * 0x30 - 0x30`, as `CComponentTemplate::ReadMember` reads an aura.
+fn emplaced_nested_fixture(element_size: u32) -> FieldInput {
+    let mut input = nested_fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        add x0, x19, #0x40; // the array
+        ldr w8, [x19, #0x54]; // its count
+        add w1, w8, #1;
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48]; // its objects
+        ldrsw x9, [x19, #0x54];
+        mov w10, #element_size; // the root's element size
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10; // the last object
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.symbols.extend([
+        Symbol {
+            name: "void CPdxArray<CChild, int>::SetSizeAndEmplace<>(int, const&)".into(),
+            address: 0x9600,
+        },
+        Symbol {
+            name: "CReader::Read(CPersistent&)".into(),
+            address: 0x9700,
+        },
+    ]);
+    input.key_readers.persistent_read = Some(0x9700);
+    let object = &mut input.objects[0];
+    object.constructors.clear();
+    object.insert.clear();
+    object.array_emplace = vec![0x9600];
+    object.array_element_size = Some(0x30);
+    input
+}
+
+#[test]
+fn an_object_constructed_at_an_array_end_and_read_there_joins_its_collection() {
+    let result = derive(emplaced_nested_fixture(0x30));
+
+    assert_eq!(result.collections.len(), 1, "{:?}", result.gaps);
+    assert_eq!(result.collections[0].offset, 0x40);
+    assert_eq!(
+        result.collections[0].fields.fields[0].name,
+        "new_engine_field"
+    );
+    // With another element size, the root reads some other object.
+    assert!(derive(emplaced_nested_fixture(0x28)).collections.is_empty());
+}
+
+#[test]
+fn a_resizing_joins_only_when_it_grows_the_array_that_the_root_left_unchanged() {
+    let mut grows_by_two = emplaced_nested_fixture(0x30);
+    grows_by_two.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        add x0, x19, #0x40; // the array
+        ldr w8, [x19, #0x54]; // its count
+        add w1, w8, #2; // two more objects
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48];
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30;
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    let mut clears_first = emplaced_nested_fixture(0x30);
+    clears_first.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        str wzr, [x19, #0x54]; // clears the count
+        add x0, x19, #0x40; // the array
+        mov w1, #1;
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48];
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30;
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+
+    for input in [grows_by_two, clears_first] {
+        assert!(derive(input).collections.is_empty());
+    }
+}
+
+#[test]
+fn an_object_that_an_inherited_reader_behind_an_import_stub_constructs_joins_its_collection() {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = emplaced_nested_fixture(0x30);
+    let body = arm64!(at 0xc000;
+        cmp w2, #7; // token 7
+        b.eq extern 0xc010;
+        mov w0, #0; // not handled
+        ret;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        add x0, x19, #0x40; // the array
+        ldr w8, [x19, #0x54]; // its count
+        add w1, w8, #1;
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48]; // its objects
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30; // the element size
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10; // the last object
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.functions[0].code = arm64!(at 0x1000;
+        b extern 0x9800 // the import stub of CBase::ReadMember
+    );
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0xc000,
+        code: body,
+    });
+    input.stubs.insert(0x9800, 0xc000);
+    input.symbols.extend([
+        Symbol {
+            name: inherited.into(),
+            address: 0x9800,
+        },
+        Symbol {
+            name: inherited.into(),
+            address: 0xc000,
+        },
+    ]);
+
+    let result = derive(input);
+
+    assert_eq!(result.collections.len(), 1, "{:?}", result.gaps);
+    assert_eq!(result.collections[0].offset, 0x40);
 }
 
 /// The nested fixture with `CChild` built inline: `_bzero` on the object, a member constructor on
@@ -2385,6 +2541,7 @@ fn modifier_binding(offset: u32) -> fields::PersistentInput {
             ..Default::default()
         },
         initialized_words: BTreeMap::new(),
+        loader_points: Default::default(),
         readers: BTreeMap::from([(
             0xb000,
             ConcreteReader {
