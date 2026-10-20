@@ -118,7 +118,6 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/game_concept_categories", "name"),
         ("common/mutations", "icon"),
         ("common/mutations", "ship_components"),
-        ("common/patrons", "position"),
         ("common/patrons", "text_color_code"),
         ("common/patrons/callings", "tier"),
         ("common/portrait_sets", "species_class"),
@@ -185,6 +184,38 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
                     TracedCondition::Zero {
                         field: "stages",
                         zero: false,
+                    },
+                    true,
+                ),
+            ],
+        },
+        // `CPatronType::PostReadInit()` tests `position` for each set category, and its default
+        // (-1, -1) fails every test. An unset category runs no position test.
+        TracedRequirement {
+            registry: "common/patrons",
+            field: "position",
+            cases: &[
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "minor_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "major_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "great_patron",
+                        equal: true,
                     },
                     true,
                 ),
@@ -453,6 +484,11 @@ mod tests {
             requirement("common/astral_rifts", "event"),
             FieldRequirement::Required
         );
+        let FieldRequirement::Cases(position) = requirement("common/patrons", "position") else {
+            panic!("patrons position has no cases");
+        };
+        assert_eq!(position.len(), 3);
+        assert!(position.iter().all(|case| case.required));
     }
 
     #[test]

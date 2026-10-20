@@ -939,8 +939,8 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
-| `Required` | An unconditional check logs the field's absence | 33 |
-| `Cases` | A traced check depends on another field's value: one case for each side of its condition ([traced conditional checks](#required-fields)) | 3 |
+| `Required` | An unconditional check logs the field's absence | 32 |
+| `Cases` | A traced check depends on another field's value: one case for each value of its condition that the trace states ([traced conditional checks](#required-fields)) | 4 |
 | `Unknown` | The check depends on another field's value with no traced cases; the registry is outside the census; or the field is below a definition's fields | 245 |
 | `Optional` | Every other root field of a census registry | 2,105 |
 
@@ -1072,8 +1072,9 @@ the condition, and the census publishes it as `FieldRequirement::Cases`, one cas
   `br x9` at `0x100a1349c`. Each set category tests `position` (`+0x110`, `+0x118`, fixed point
   ×100000): minor and great log when x² + y² is above 1, and major logs unless the position is a
   unit step on one axis. The constructor stores (-1, -1) (`0x100a12724`), which fails every test,
-  so `position` is required for every set category; an unset category logs its own report.
-  `position` is `Required` with no cases.
+  so `position` is required for every set category: three cases, one `FieldKeyword` for each
+  category keyword. An unset category logs its own report and tests no position, so it meets no
+  case and has no established requirement.
 - `CPatronType::ParseCountryEventID(CString const&, CString const&)` (`0x100a1442c`) logs
   `expected a %s event to be specified.` (`patron_type.cpp:451`) for an empty event string. Its
   callers in the hook (`0x100a13c00`, `0x100a13c68`) make `first_contact_event` (`+0x278`)
