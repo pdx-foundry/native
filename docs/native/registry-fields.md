@@ -556,6 +556,38 @@ Pitfalls:
   the lambda captures, the resolver order and the lambda's write decide the result.
 - A logged duplicate is not a rejection; the repeat is read.
 
+**Storage-probe spike (M452, 2026-10-20, branch `spike/storage-probe`).** Fixture storage
+read back after two writes (`a b`, `b a` and each alone) gives `Replace` for every one of the 20
+root fields whose open gap was "the read is not a tail call" and that has a storage binding:
+ship_sizes `max_speed`; buildings `icon`; districts `gridbox`, `district_background`;
+starbase_buildings and starbase_modules `category`, `custom_tooltip`,
+`custom_tooltip_with_modifiers`, `icon_frame`, `construction_days`, `scripted_effect_cooldown`,
+`scripted_effect_cooldown_flag` (`icon_frame` has no open claim); agreement_presets `parent`, `icon`;
+and the nested special-project
+`requirements.fleet_power`. Ten controls with a static answer agreed. The continuation does not
+undo the last write, so a continuation shape for these callers would be sound. Atlas owns the
+claims and results: `atlas/docs/prototypes/storage-probe-spike/` (copy in
+`.local/evidence/storage-probe-2026-10-20/`). Facts found on the way:
+
+- `max_speed` is not stored as written: `7` stores raw 31500 and `1` raw 4500 at scale 100000
+  (×0.045, after `NShipMovement::UnscaleShipSpeed`). The occurrence value already has the factor.
+- A block given to a direct numeric reader (`rotation_speed = { native_probe = 1 }`) logs
+  `Malformed token` and `Unexpected token`, stores 0, and its closing brace ends the definition:
+  the definitions after it in the file are not constructed.
+- The template fixed-point reader stores 0 for `yes` with no diagnostic; the direct readers log
+  `Malformed token` for `yes`, a bare word and a quoted word and store 0. The direct `int` reader
+  stores `1.5` as 1 with no diagnostic.
+- `Ship size '<key>' contains 'icon' entry that point to unknown sprite '<text>'.File '<file>',
+  lines [<a>-<b>].` arrives during file load as `engine-parser-log` and does not join: the source
+  join reads `File: '…', Lines: […]`, not this spelling.
+- A ship-size fixture through validation replaces every vanilla ship size: 19,350 `error.log`
+  lines, the pause at 171 s, and no fixture terminal (storage `Partial`). Use the file-load window
+  for registries that other content references.
+- Only the ordinary log names two lookups: `base ship size <key> not found in database.`
+  (`ship_size.cpp:726`, file load) and `Invalid ship size for names <key> in ship size <key>`
+  (`ship_size.cpp:1257`); neither has a file or line. Sprite, localisation, sound, entity and
+  behavior fields give no message for a missing key.
+
 ## Required fields
 
 `Field.requirement` says whether a definition must contain a root field. A field is required only
