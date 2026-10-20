@@ -276,7 +276,7 @@ pub fn reads_before_writing(rows: &[Instruction], register: usize) -> bool {
 /// Whether an instruction reads general register `register`: any operand after the ones that
 /// it only writes. An insertion (`movk`, `bfi`), a compare-and-swap and an atomic operation also
 /// read their first operand.
-fn reads_register(operation: &str, operands: &str, register: usize) -> bool {
+pub fn reads_register(operation: &str, operands: &str, register: usize) -> bool {
     let reads_first = matches!(operation, "movk" | "bfi" | "bfxil" | "bfm")
         || operation.starts_with("cas")
         || is_atomic(operation);

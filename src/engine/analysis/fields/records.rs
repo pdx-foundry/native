@@ -379,9 +379,14 @@ pub struct ObjectReader {
     pub initializers: Vec<u64>,
     /// Entry addresses of insertion specializations accepting this object's pointer.
     pub insert: Vec<u64>,
-    /// Entry addresses of insertion specializations that take the object from a scoped pointer
-    /// and are proven to clear that pointer.
-    pub moving_insert: Vec<u64>,
+    /// Entry addresses of insertion specializations that take the object from a scoped or shared
+    /// pointer and are proven to clear it, each with the bytes that it clears at the source.
+    pub moving_insert: BTreeMap<u64, u64>,
+    /// The primary address point of `std::__1::__shared_ptr_emplace<Class, …>`, the control
+    /// block that `make_shared` allocates with the object inside it.
+    pub shared_emplace_point: Option<u64>,
+    /// The `shared_ptr` destructors of the class that the root calls. The method runs their code.
+    pub shared_releases: Vec<u64>,
     /// Entry addresses of the in-place resizing that constructs an object at the end of a
     /// `CPdxArray` of this class, when its layout is proven.
     pub array_emplace: Vec<u64>,

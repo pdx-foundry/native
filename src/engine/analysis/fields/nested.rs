@@ -64,13 +64,15 @@ pub(super) fn discover(
     else {
         return Vec::new();
     };
+    // The walk runs the factories and the `shared_ptr` destructors of the objects.
     let factories: Vec<_> = input
         .functions
         .iter()
         .filter(|function| {
-            objects
-                .iter()
-                .any(|object| object.factories.contains(&function.address))
+            objects.iter().any(|object| {
+                object.factories.contains(&function.address)
+                    || object.shared_releases.contains(&function.address)
+            })
         })
         .collect();
     // Dispatch goes on in the inherited readers and value readers, so the walk enters them.
@@ -204,7 +206,9 @@ pub(super) fn discover(
                 for (index, object) in objects.iter().enumerate() {
                     if object.constructors.contains(&target) {
                         let at = machine.known_register(0, "constructed-object")?;
-                        if machine.labelled(ALLOCATED | at).is_none() {
+                        if machine.labelled(ALLOCATED | at).is_none()
+                            && !emplaced(machine, object, at)
+                        {
                             // A member of an object that the root constructs inline.
                             if initialized_members(machine, objects, &zero_fill, target).is_some() {
                                 break;
@@ -265,8 +269,8 @@ pub(super) fn discover(
                             return Ok(Call::Return(None));
                         }
                     }
-                    let moves = object.moving_insert.contains(&target);
-                    if moves || object.insert.contains(&target) {
+                    let moved = object.moving_insert.get(&target).copied();
+                    if moved.is_some() || object.insert.contains(&target) {
                         let receiver = machine.known_register(0, "insert-collection")?;
                         let pointer = machine.known_register(2, "insert-value")?;
                         let at = machine
@@ -277,8 +281,8 @@ pub(super) fn discover(
                             && machine.labelled(OBJECT | at) == Some(index as u64)
                             && machine.labelled(INSERTED_CLASS).is_none()
                         {
-                            if moves {
-                                machine.write(pointer, 8, 0);
+                            for word in (0..moved.unwrap_or(0)).step_by(8) {
+                                machine.write(pointer + word, 8, 0);
                             }
                             machine.label(INSERTED_OBJECT, at);
                             machine.label(INSERTED_CLASS, index as u64);
@@ -296,7 +300,10 @@ pub(super) fn discover(
                 if compares.contains(&target)
                     || symbol_index
                         .name(&input.symbols, target)
-                        .is_some_and(readers::changes_no_script_state)
+                        .is_some_and(|name| {
+                            readers::changes_no_script_state(name)
+                                || names_log_id_outside(machine, name, owner)
+                        })
                 {
                     return Ok(Call::Return(None));
                 }
@@ -712,6 +719,50 @@ fn constructed_inline(machine: &Machine<'_>, object: &super::ObjectReader, at: u
             .vtables
             .get(&0)
             .is_some_and(|&point| machine.read(at, 8) == Some(point))
+}
+
+/// The string concatenations that build a log ID from its owner's.
+const LOG_ID_CONCATENATIONS: [&str; 2] = [
+    "operator+(CString const&, char const*)",
+    "operator+(CString&&, CString&&)",
+];
+
+/// Whether `callee` builds or sets an object's log ID, a name for the engine's log that no read
+/// or insertion uses, and writes nothing in the owner at `owner`. `SetLogID` writes only its
+/// receiver's log-ID string, so the receiver must be outside the owner. The concatenations and
+/// `GetLogID` write only the `CString` that they return through `x8`, so `x8` must name the stack.
+fn names_log_id_outside(machine: &Machine<'_>, callee: &str, owner: u64) -> bool {
+    if callee.ends_with("::SetLogID(CString const&)") {
+        return machine
+            .register(0)
+            .is_some_and(|receiver| !(owner..owner + SPAN).contains(&receiver));
+    }
+
+    let returns_log_id =
+        LOG_ID_CONCATENATIONS.contains(&callee) || callee.ends_with("::GetLogID() const");
+
+    returns_log_id
+        && machine
+            .register(8)
+            .is_some_and(|result| machine.is_stack(result))
+}
+
+/// Where `std::make_shared` puts the object in its control block: past the control block's
+/// vtable pointer and its shared and weak counts (libc++ `__shared_ptr_emplace`).
+const EMPLACED_OBJECT: u64 = 0x18;
+
+/// Whether `at` is the object inside a `make_shared` control block of `object`'s class: an
+/// allocation whose primary address point is that control block's, with the object at
+/// [`EMPLACED_OBJECT`].
+fn emplaced(machine: &Machine<'_>, object: &super::ObjectReader, at: u64) -> bool {
+    let Some(block) = at.checked_sub(EMPLACED_OBJECT) else {
+        return false;
+    };
+
+    machine.labelled(ALLOCATED | block).is_some()
+        && object
+            .shared_emplace_point
+            .is_some_and(|point| machine.read(block, 8) == Some(point))
 }
 
 /// The bytes that `target` initializes in an allocation that no object constructor has built,
