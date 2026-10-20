@@ -211,9 +211,12 @@ Facts from `c621723d…` (M452):
   during the read.
 
 **Rule.** `keeps_definition_text` is `Known(false)` when every template database of the registry
-has an item whose vtable read slot (`0x20` at each address point) holds `CPersistent::Read`. An
-item with its own `Read` (`CMetaScriptTemplate`, `CZoneType::Read`, `CAstralRiftType::Read`, …) or
-with no read slot gives `Unresolved` with a gap, and so does a custom loader.
+has an item whose persistent address points all hold `CPersistent::Read` in the read slot (`0x20`).
+A persistent point is one whose slots up to the last post-read hook (`0x38`) all hold pointers;
+the primary group of an item with a `CPersistent` base at `+0x38` ends before `0x20` and is not one.
+Any persistent point whose read slot names another function, no function or several gives
+`Unresolved` (`loader_rules::item_read`), as does an item with its own `Read` (`CMetaScriptTemplate`,
+`CZoneType::Read`, `CAstralRiftType::Read`, …), an item with no persistent point and a custom loader.
 
 **Build-wide part (gap `later_text_reads`).** Code other than the loader could reread a file. On
 M452, 107 functions other than the template `LoadFile` bodies call a lexer constructor directly
@@ -223,12 +226,13 @@ M452, 107 functions other than the template `LoadFile` bodies call a lexer const
 a template database's function or a post-read hook, and a call through a register is not in the
 list. A probe can confirm it (below). Review the list again for a new build.
 
-Result on M452 (`loader-rules/v8`): 150 `Known(false)`, including all 19 registries whose
-`registry_fields` is `Complete`; 14 `Unresolved` because an item has its own read or no read slot (`common/job_tags`,
+Result on M452 (`loader-rules/v8`): 149 `Known(false)`, including all 19 registries whose
+`registry_fields` is `Complete`; 15 `Unresolved` because an item has its own read or no read slot (`common/job_tags`, `common/map_modes`,
 `common/trait_tags`, `common/scripted_effects`, `common/scripted_triggers`, `common/script_values`,
 `common/zones`, `common/zone_slots`, `common/astral_rifts`, `common/starbase_buildings`,
 `common/starbase_levels`, `common/starbase_modules`, `common/ai_espionage/operations`,
-`common/ai_espionage/targets`, `common/component_slot_templates`); 30 `Unresolved` custom loaders.
+`common/ai_espionage/targets`, `common/component_slot_templates`; `common/map_modes` because its
+primary group has the persistent layout with another function in the read slot); 30 `Unresolved` custom loaders.
 
 Remove or limit the rule when a template `LoadFromReader` calls anything else, when a post-read
 hook builds a reader, or when a lexer constructor gets a new caller.

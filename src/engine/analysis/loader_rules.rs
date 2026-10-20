@@ -167,6 +167,28 @@ pub enum KeptTextObstacle {
     OwnRead,
 }
 
+/// One address point of a template item's vtable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ItemPoint {
+    /// Whether every slot of a persistent vtable, up to its last post-read hook, holds a pointer.
+    /// A point without that layout is not a persistent subobject.
+    pub persistent_layout: bool,
+    /// The unique name of the read slot's target, `None` when it has none or several.
+    pub read: Option<String>,
+}
+
+/// The `Read(CReader&)` of an item: the one read that every persistent address point holds.
+/// `None` when no point is persistent, or when any persistent point's read is unnamed or
+/// differs, so that an unresolved slot is never dropped.
+pub fn item_read(points: &[ItemPoint]) -> Option<String> {
+    let mut reads = points.iter().filter(|point| point.persistent_layout);
+    let first = reads.next()?.read.clone()?;
+
+    reads
+        .all(|point| point.read.as_deref() == Some(first.as_str()))
+        .then_some(first)
+}
+
 /// Whether the loader keeps a definition's text after reading it, from the read of each template
 /// item in `item_reads`. A template database keeps only the key of each statement and passes the
 /// reader to the item's read, a rule that the knowledge page checks over every template database,
@@ -582,6 +604,31 @@ mod tests {
         };
 
         enumerations(&[function], &anchors(), &strings())
+    }
+
+    #[test]
+    fn an_item_read_needs_every_persistent_point_to_name_the_same_read() {
+        let point = |persistent_layout, read: Option<&str>| ItemPoint {
+            persistent_layout,
+            read: read.map(str::to_owned),
+        };
+        let generic = point(true, Some(GENERIC_READ));
+
+        assert_eq!(
+            item_read(&[point(false, None), generic.clone()]).as_deref(),
+            Some(GENERIC_READ)
+        );
+        for points in [
+            vec![generic.clone(), point(true, None)],
+            vec![
+                generic.clone(),
+                point(true, Some("CExample::Read(CReader&)")),
+            ],
+            vec![point(false, Some(GENERIC_READ))],
+            vec![],
+        ] {
+            assert_eq!(item_read(&points), None, "{points:?}");
+        }
     }
 
     #[test]

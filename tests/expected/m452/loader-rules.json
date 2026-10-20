@@ -352,8 +352,8 @@
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/map_modes": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/megastructure_overclock_types": {
     "gaps": [],
