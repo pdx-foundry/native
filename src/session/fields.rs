@@ -917,7 +917,13 @@ fn collapse_equivalent_branches(alternatives: &mut Vec<(Vec<Condition>, PathOutc
             let (conditions, outcome) = &alternatives[left];
             if !matches!(
                 outcome,
-                PathOutcome::Reader(ReaderJoin::Joined { .. }) | PathOutcome::Rejected
+                PathOutcome::Reader(
+                    ReaderJoin::Joined { .. }
+                        | ReaderJoin::Stored {
+                            destination: Some(_),
+                            ..
+                        }
+                ) | PathOutcome::Rejected
             ) {
                 continue;
             }
@@ -1074,6 +1080,31 @@ mod tests {
         different[1].1 = PathOutcome::Rejected;
         collapse_equivalent_branches(&mut different);
         assert_eq!(different.len(), 2);
+
+        let stored = |destination| {
+            PathOutcome::Reader(ReaderJoin::Stored {
+                callee: "GetScopeTypeEnumFromToken".into(),
+                kind: crate::ReaderKind::Keyword,
+                destination,
+                repeat: crate::RepeatBehavior::Unknown,
+            })
+        };
+        let mut kept = vec![
+            (vec![test(true)], stored(Some(0x48))),
+            (vec![test(false)], stored(Some(0x48))),
+        ];
+        collapse_equivalent_branches(&mut kept);
+        assert_eq!(kept, vec![(vec![], stored(Some(0x48)))]);
+        let mut unplaced = vec![
+            (vec![test(true)], stored(None)),
+            (vec![test(false)], stored(None)),
+        ];
+        collapse_equivalent_branches(&mut unplaced);
+        assert_eq!(
+            unplaced.len(),
+            2,
+            "a store with no destination proves no always-read rule"
+        );
     }
     #[test]
     fn a_zero_test_names_a_field_only_when_it_stores_an_integer_word_there() {
@@ -1699,6 +1730,7 @@ mod tests {
             readers: vec![target_join],
         };
         let result = |fields, paths, collections| RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             persistent: BTreeMap::new(),
