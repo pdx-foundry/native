@@ -71,6 +71,9 @@ pub(super) const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
 pub(in crate::binding) struct LoaderSearch<'a> {
     pub database: &'a str,
     pub reader_token_offset: u64,
+    /// Whether the loader names one directory. The part points of a loader that names several
+    /// are not inferred, since its read object is not scoped to one directory.
+    pub one_directory: bool,
 }
 
 /// Read the root of `owner`, the shared engine token constructor and the read-only data that holds
@@ -204,6 +207,9 @@ fn loader_part_points(
     use crate::engine::analysis::discovery::{inline_build, loader_owner};
 
     let mut points = BTreeMap::new();
+    if !search.one_directory {
+        return Ok(points);
+    }
     let Some(owner_point) = symbols
         .vtable_group(data, owner)
         .and_then(|vtable| vtable.address_points.get(&0).copied())

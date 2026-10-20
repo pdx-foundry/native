@@ -3,10 +3,13 @@
 //!
 //! The walk follows each branch from a start position with the object in one register, and keeps
 //! the registers that hold the object plus an offset and the registers that hold an address that
-//! `adrp` and `add` form. Where paths meet, the walk keeps what they agree on and visits the
-//! position again until no path brings a new state, so the stores are those of any path. A call
-//! writes the caller-saved registers. A branch out of the walked code, or through a register,
-//! leaves stores unseen, so the build is marked open; code that ends in a call ends in one that
+//! `adrp` and `add` form. Where paths meet, a register keeps every object offset that it holds on
+//! some path and a formed address only when every path holds it, and the walk visits the position
+//! again until no path brings a new state, so the stores are those of any path. A walk that does
+//! not settle within a bound is open. A call
+//! writes the caller-saved registers. A branch out of the walked code or through a register, or
+//! a store through the object that the walk cannot read, leaves stores unseen, so the build is
+//! marked open; code that ends in a call ends in one that
 //! does not return. Stores to memory that is not the object are
 //! not followed, so a part built on the stack and copied in is not seen.
 use std::collections::{BTreeMap, BTreeSet};
@@ -94,8 +97,8 @@ pub fn part_points(
 /// The register state of one path.
 #[derive(Clone, Default, PartialEq)]
 struct Registers {
-    /// The object offset that each register holds the object's address plus.
-    object: BTreeMap<usize, u64>,
+    /// The object offsets that each register may hold the object's address plus, on some path.
+    object: BTreeMap<usize, BTreeSet<u64>>,
     /// The address that each register holds from `adrp` and `add`.
     formed: BTreeMap<usize, u64>,
 }
@@ -116,10 +119,16 @@ pub fn inline_build(
     let mut build = InlineBuild::default();
     let mut arrived: BTreeMap<usize, Registers> = BTreeMap::new();
     let mut entry = Registers::default();
-    entry.object.insert(register, 0);
+    entry.object.insert(register, BTreeSet::from([0]));
     let mut pending = vec![(start, entry)];
+    let mut steps = 0;
 
     while let Some((position, registers)) = pending.pop() {
+        steps += 1;
+        if steps > rows.len() * VISITS {
+            build.open = true;
+            break;
+        }
         let Some(row) = rows.get(position) else {
             // Code that ends in a call ends in a call that does not return, such as the
             // `_Unwind_Resume` of a landing pad.
@@ -133,11 +142,11 @@ pub fn inline_build(
         }
         let mut registers = match arrived.get(&position) {
             Some(earlier) => {
-                let agreed = earlier.agreed(&registers);
-                if agreed == *earlier {
+                let merged = earlier.merged(&registers);
+                if merged == *earlier {
                     continue;
                 }
-                agreed
+                merged
             }
             None => registers,
         };
@@ -172,20 +181,25 @@ pub fn inline_build(
     build
 }
 
-impl Registers {
-    /// What both states hold: the registers that hold the same value in each.
-    fn agreed(&self, other: &Self) -> Self {
-        let common = |mine: &BTreeMap<usize, u64>, theirs: &BTreeMap<usize, u64>| {
-            mine.iter()
-                .filter(|(register, value)| theirs.get(register) == Some(value))
-                .map(|(&register, &value)| (register, value))
-                .collect()
-        };
+/// The visits of each position after which the walk gives up and marks the build open.
+const VISITS: usize = 16;
 
-        Self {
-            object: common(&self.object, &other.object),
-            formed: common(&self.formed, &other.formed),
+impl Registers {
+    /// The state where two paths meet: every object offset that either path may hold, and the
+    /// formed addresses that both hold.
+    fn merged(&self, other: &Self) -> Self {
+        let mut object = self.object.clone();
+        for (&register, offsets) in &other.object {
+            object.entry(register).or_default().extend(offsets);
         }
+        let formed = self
+            .formed
+            .iter()
+            .filter(|(register, address)| other.formed.get(register) == Some(address))
+            .map(|(&register, &address)| (register, address))
+            .collect();
+
+        Self { object, formed }
     }
 }
 
@@ -193,32 +207,38 @@ impl Registers {
 fn record(row: &Instruction, registers: &Registers, build: &mut InlineBuild) {
     if row.operation == "bl"
         && let Some(target) = call_target(u32::from_le_bytes(row.bytes), row.address)
-        && let Some(&offset) = registers.object.get(&0)
     {
-        build.member_calls.entry(offset).or_default().insert(target);
+        for &offset in registers.object.get(&0).into_iter().flatten() {
+            build.member_calls.entry(offset).or_default().insert(target);
+        }
     }
 
     let Some(store) = Store::of(row) else {
+        // A store that the walk cannot read, such as one with a register index, may write the
+        // object.
+        build.open |= row.operation.starts_with("st")
+            && memory_base(row).is_some_and(|base| registers.object.contains_key(&base));
         return;
     };
-    let Some(&base) = registers.object.get(&store.base) else {
+    let Some(bases) = registers.object.get(&store.base) else {
         return;
     };
-    let at = base.wrapping_add(store.offset);
 
-    for (index, value) in store.values.iter().enumerate() {
-        let offset = at.wrapping_add(store.width * index as u64);
-        let formed = value
-            .and_then(|value| registers.formed.get(&value))
-            .filter(|_| store.width == 8);
+    for at in bases.iter().map(|base| base.wrapping_add(store.offset)) {
+        for (index, value) in store.values.iter().enumerate() {
+            let offset = at.wrapping_add(store.width * index as u64);
+            let formed = value
+                .and_then(|value| registers.formed.get(&value))
+                .filter(|_| store.width == 8);
 
-        match formed {
-            Some(&formed) => {
-                build.points.entry(offset).or_default().insert(formed);
-            }
-            None => {
-                let words = (offset & !7..offset + store.width).step_by(8);
-                build.other_stores.extend(words);
+            match formed {
+                Some(&formed) => {
+                    build.points.entry(offset).or_default().insert(formed);
+                }
+                None => {
+                    let words = (offset & !7..offset + store.width).step_by(8);
+                    build.other_stores.extend(words);
+                }
             }
         }
     }
@@ -235,7 +255,7 @@ fn step(row: &Instruction, registers: &mut Registers) {
     .map(|(destination, source)| {
         (
             destination,
-            registers.object.get(&source).copied(),
+            registers.object.get(&source).cloned(),
             registers.formed.get(&source).copied(),
         )
     });
@@ -248,10 +268,12 @@ fn step(row: &Instruction, registers: &mut Registers) {
     .map(|((destination, source), immediate)| {
         (
             destination,
-            registers
-                .object
-                .get(&source)
-                .map(|offset| offset + immediate),
+            registers.object.get(&source).map(|offsets| {
+                offsets
+                    .iter()
+                    .map(|offset| offset.wrapping_add(immediate))
+                    .collect()
+            }),
             registers
                 .formed
                 .get(&source)
@@ -261,8 +283,12 @@ fn step(row: &Instruction, registers: &mut Registers) {
     let written_back = Store::of(row)
         .filter(|store| store.writes_back)
         .and_then(|store| {
-            let offset = registers.object.get(&store.base)?;
-            Some((store.base, offset.wrapping_add(store.advance)))
+            let offsets = registers.object.get(&store.base)?;
+            let advanced = offsets
+                .iter()
+                .map(|offset| offset.wrapping_add(store.advance))
+                .collect::<BTreeSet<_>>();
+            Some((store.base, advanced))
         });
     let page = adrp(word, row.address);
 
@@ -299,16 +325,20 @@ struct Store {
 
 impl Store {
     fn of(row: &Instruction) -> Option<Self> {
-        if !matches!(row.operation.as_str(), "str" | "stur" | "stp") {
-            return None;
-        }
+        let narrow = match row.operation.as_str() {
+            "str" | "stur" | "stp" => None,
+            "strb" | "sturb" => Some(1),
+            "strh" | "sturh" => Some(2),
+            _ => return None,
+        };
 
         let (values, address) = row.operands.split_once('[')?;
         let values: Vec<&str> = values.trim_end_matches(',').split(',').collect();
-        let width = match values.first()?.chars().next()? {
-            'x' | 'd' => 8,
-            'w' | 's' => 4,
-            'q' => 16,
+        let width = match (narrow, values.first()?.chars().next()?) {
+            (Some(width), 'w') => width,
+            (None, 'x' | 'd') => 8,
+            (None, 'w' | 's') => 4,
+            (None, 'q') => 16,
             _ => return None,
         };
         let (inside, after) = address.split_once(']')?;
@@ -331,6 +361,14 @@ impl Store {
             advance,
         })
     }
+}
+
+/// The base register of a memory operand such as `[x19,#0x10]`.
+fn memory_base(row: &Instruction) -> Option<usize> {
+    let (_, address) = row.operands.split_once('[')?;
+    let base = address.split([',', ']']).next()?;
+
+    wide_register(base)
 }
 
 #[cfg(test)]
@@ -430,6 +468,37 @@ mod tests {
         );
         let part = stored(&[(0, FIRST_POINT)]);
         assert_eq!(part_points(&build, 0x10, &part, |_| true), None);
+    }
+
+    #[test]
+    fn a_store_that_the_walk_cannot_read_opens_the_build_and_one_path_s_alias_is_kept() {
+        let rows = |code: Arm64| decode_arm64(&code.bytes(), START).unwrap();
+        let mut indexed = Arm64::at(START);
+        arm64!(indexed; str x8, [x19, x9]; strb w8, [x19, #8]; ret);
+        let mut aliased = Arm64::at(START);
+        arm64!(aliased;
+            cbz x1, >alias;
+            b >join;
+            alias:;
+            mov x20, x19;
+            join:;
+            str x8, [x20, #0x10];
+            ret
+        );
+
+        let indexed = inline_build(&rows(indexed), 0, 19, None);
+        let aliased = inline_build(&rows(aliased), 0, 19, None);
+
+        assert!(indexed.open);
+        // Only one path holds the object in x20; its store through x20 still counts.
+        assert!(!aliased.open);
+        assert_eq!(aliased.other_stores, BTreeSet::from([0x10]));
+        // A byte store is read: it writes its word with another value than a point.
+        let mut byte = Arm64::at(START);
+        arm64!(byte; strb w8, [x19, #9]; ret);
+        let byte = inline_build(&rows(byte), 0, 19, None);
+        assert!(!byte.open);
+        assert_eq!(byte.other_stores, BTreeSet::from([8]));
     }
 
     #[test]

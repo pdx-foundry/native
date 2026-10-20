@@ -1744,9 +1744,13 @@ that the loader's inline build installs (`loader_part_points` in `binding/binary
 (`loader_owner::read_object`), walked from the store of the owner's address point to the read
 call. The walk follows each branch and keeps the registers that hold the object plus an offset
 (through `mov`, `add` and store writeback) and the addresses that `adrp` and `add` form. Where
-paths meet it keeps what they agree on and walks on again until no path brings a new state, so the
-stores are those of any path. A branch out of the code or through a register marks the build open;
-code that ends in a call (a landing pad's `_Unwind_Resume`) ends there. A direct call that the
+paths meet, a register keeps every object offset that it holds on some path and a formed address
+only when every path holds it, and the walk goes on until no path brings a new state, so the stores
+are those of any path. A branch out of the code or through a register, a store through the object
+that the walk cannot read (such as one with a register index), or a walk that does not settle marks
+the build open; code that ends in a call (a landing pad's `_Unwind_Resume`) ends there. A loader
+that names several directories infers no part points, since its read object is not scoped to one
+directory. A direct call that the
 build makes with the object plus an offset in `x0` names a part: when every call target at that
 offset has a symbol and is a method of one class `Part` (the name before the last top-level `::`),
 and `Part` has one default constructor (`Outer::Part<T>::Part()`), the same walk over that
@@ -1775,7 +1779,7 @@ offset, become the owner's points at offsets that the owner's constructors do no
   earlier vtable words. Running `SNameListContent::SNameListContent()` stops at the 64-path
   limit. The walk reads stores; it does not run calls.
 - Pitfall: a part that the build constructs on the stack and copies in is not seen. Only stores
-  into the object count; byte and halfword stores are not read.
+  into the object count.
 - Pitfall: `Part::Part()` also stores member vtables that are not the part's own, such as
   `0x1030648e8` at `+0x8`; the loader's build stores other values there (`+0x18` in the list), so
   those offsets keep no point.
