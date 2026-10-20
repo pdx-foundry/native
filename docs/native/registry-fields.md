@@ -64,7 +64,7 @@ give six fields of five registries their members. Against `v52`, the dispatch wa
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
 changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the literal-token test (below) adds `scripted_actions.context_menu_ordering` and `steal_planet_output.mode`. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -107,7 +107,14 @@ lookups, so the diff drops only members that match their serde defaults.
   `Boolean/Replace`. Every other token stores false and logs nothing, so the reader accepts any
   value. The binding takes `yes` from the recipe's Boolean token names
   (`PersistentRecipe::boolean_tokens`); a token table with no single `yes` binds none, and the
-  idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
+  idiom then stops at the `cset`. The same idiom with one literal token other than `yes`
+  (`cmp` of the value token with `weight`, `cset …,eq`, store: `scripted_actions.context_menu_ordering`)
+  reads `Keyword/Replace` (`value token == literal`): the field has two meanings, that token and
+  every other, and every token is accepted without a diagnostic, so its domain stays `Unknown` and
+  Atlas credits no value form. A `cset` after a comparison with several tokens, or of anything
+  other than the value token, still stops. A value-token range that `csel` selects
+  (`events.event_window_type`: `cmp` of the token minus `leader_recruit` with 4, `csel …,lo`)
+  still stops at `csel`. On M452 the
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13

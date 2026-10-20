@@ -843,12 +843,18 @@ fn apply(
                 // The serializer's own members hold no owner field.
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
-                if let Some(test) = true_token_test(input.key_readers)
-                    && state.value(operand) == Some(test)
+                if let Some(Value::EqualsAny(tested, pivots)) = state.value(operand)
+                    && *tested == value_token_word(input.key_readers)
+                    && let [literal] = pivots.as_slice()
                 {
+                    let (callee, kind) = if input.key_readers.true_token == Some(*literal) {
+                        (TRUE_TOKEN_TEST, crate::ReaderKind::Boolean)
+                    } else {
+                        (LITERAL_TOKEN_TEST, crate::ReaderKind::Keyword)
+                    };
                     let join = ReaderJoin::Stored {
-                        callee: TRUE_TOKEN_TEST.into(),
-                        kind: crate::ReaderKind::Boolean,
+                        callee: callee.into(),
+                        kind,
                         destination: Some(at),
                         repeat: crate::RepeatBehavior::Replace,
                     };
@@ -932,8 +938,8 @@ fn apply(
         ("ubfx" | "and" | "orr" | "movk" | "csel", [destination, ..]) => {
             state.assign(destination, None)
         }
-        ("cset", [destination, "eq"]) if tests_true_token(state, input.key_readers) => {
-            state.assign(destination, true_token_test(input.key_readers))
+        ("cset", [destination, "eq"]) if literal_token_test(state, input.key_readers).is_some() => {
+            state.assign(destination, literal_token_test(state, input.key_readers))
         }
         // A bit test of a value that the walk does not follow leaves the flags unknown.
         ("tst", _) => state.flags = None,
@@ -2766,27 +2772,21 @@ fn value_token_word(bindings: &super::KeyReaders) -> Value {
 /// stores false, so the reader accepts any token without an error.
 const TRUE_TOKEN_TEST: &str = "value token == yes";
 
-/// Whether the value token is the true token, as a Boolean; `None` when the true token is not
-/// bound.
-fn true_token_test(bindings: &super::KeyReaders) -> Option<Value> {
-    let true_token = bindings.true_token?;
+/// The reader that stores whether the value token is one literal token other than `yes`: a
+/// keyword with two meanings, that token and every other. Every token is accepted without an
+/// error, so the keyword's domain is not established.
+const LITERAL_TOKEN_TEST: &str = "value token == literal";
 
-    Some(Value::EqualsAny(
-        Box::new(value_token_word(bindings)),
-        vec![true_token],
-    ))
-}
-
-/// Whether the flags hold the comparison of the value token with the true token alone.
-fn tests_true_token(state: &State, bindings: &super::KeyReaders) -> bool {
+/// The comparison of the value token with one literal token that the flags hold, as a Boolean;
+/// `None` for any other comparison, or when the value token is not bound.
+fn literal_token_test(state: &State, bindings: &super::KeyReaders) -> Option<Value> {
     let Some(Flags::Values { tested, pivots }) = &state.flags else {
-        return false;
+        return None;
     };
+    let token_word = value_token_word(bindings);
 
-    *tested == value_token_word(bindings)
-        && bindings
-            .true_token
-            .is_some_and(|true_token| *pivots == [true_token])
+    (bindings.value_token != 0 && *tested == token_word && pivots.len() == 1)
+        .then(|| Value::EqualsAny(Box::new(token_word), pivots.clone()))
 }
 
 /// Whether the call to `target` converts the value token with a pure converter, which a
@@ -3005,7 +3005,7 @@ mod tests {
     }
 
     #[test]
-    fn a_member_that_stores_whether_the_value_token_is_yes_reads_a_boolean() {
+    fn a_member_that_stores_whether_the_value_token_is_one_token_reads_a_boolean_or_a_keyword() {
         let root = "Owner::ReadMember(CReader&, int)";
         let symbols = vec![Symbol {
             name: root.into(),
@@ -3030,7 +3030,7 @@ mod tests {
         ));
         let other_token_test = functions(arm64!(at 0x1000;
             ldr w8, [x1, #0x278];
-            mov w9, #8; // a token that is not true
+            mov w9, #8; // a token other than yes
             cmp w8, w9;
             cset w8, eq;
             strb w8, [x0, #0x20];
@@ -3059,7 +3059,15 @@ mod tests {
                 ..
             })
         ));
-        assert!(matches!(outcome(&other_token_test), PathOutcome::Gap(_)));
+        assert!(matches!(
+            outcome(&other_token_test),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::Keyword,
+                destination: Some(0x20),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
     }
 
     #[test]
