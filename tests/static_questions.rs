@@ -1947,6 +1947,31 @@ fn planet_classes_answer_the_random_list_key_as_a_root_statement() {
 
 #[test]
 #[ignore = "requires STELLARIS_PATH with the exact M452 build"]
+fn scripted_actions_read_their_keys_always_and_state_the_key_order_on_the_registry() {
+    let answer = native().registry_fields("common/scripted_actions").unwrap();
+    let always = |name: &str| {
+        let field = answer
+            .value
+            .iter()
+            .find(|field| field.name == name)
+            .unwrap();
+        matches!(field.read.as_slice(), [read] if read.condition == pdx_native::FieldCondition::Always)
+    };
+    let order: Vec<&str> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == GapKind::OutsideMethod && gap.detail.starts_with("Key order"))
+        .map(|gap| gap.detail.as_str())
+        .collect();
+
+    assert!(always("tooltip") && always("user_scope") && always("wait"));
+    assert_eq!(order.len(), 2, "{order:?}");
+    assert!(order[0].contains("other than `user_scope` until `user_scope` is read"));
+    assert!(order[1].contains("other than `scope` until"), "{order:?}");
+}
+
+#[test]
+#[ignore = "requires STELLARIS_PATH with the exact M452 build"]
 fn component_templates_answer_each_root_key_as_a_root_statement() {
     let native = native();
     let answer = native

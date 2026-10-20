@@ -2510,39 +2510,7 @@
             "name": "owner",
             "read": [
               {
-                "condition": {
-                  "All": [
-                    "Unresolved",
-                    "Unresolved"
-                  ]
-                },
-                "outcome": {
-                  "Read": {
-                    "reader": {
-                      "id": "1b6f3b12faaef087",
-                      "kind": "Target",
-                      "family": "NotApplicable",
-                      "numeric": {
-                        "Known": null
-                      },
-                      "scoped_operand": {
-                        "Known": null
-                      }
-                    },
-                    "shape": {
-                      "repeat": "Unknown",
-                      "value": "Scalar"
-                    }
-                  }
-                }
-              },
-              {
-                "condition": {
-                  "All": [
-                    "Unresolved",
-                    "Unresolved"
-                  ]
-                },
+                "condition": "Unresolved",
                 "outcome": {
                   "Read": {
                     "reader": {

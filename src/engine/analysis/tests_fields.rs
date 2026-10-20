@@ -612,6 +612,86 @@ fn a_shifted_immediate_compare_of_an_owner_word_keeps_both_paths_under_its_value
     );
 }
 
+/// The fixture's reader behind an order check: the owner word at `+0x48` must not hold
+/// `0x200000`, or the reader runs `rejection` and returns. A second test of the same word
+/// follows the check.
+fn order_check_fixture(rejection: Vec<u8>) -> FieldInput {
+    let mut input = fixture();
+    let mut code = arm64!(at 0x1000;
+        ldr x8, [x0, #0x48]; // a word that an earlier key stores
+        cmp x8, #0x200, lsl #12;
+        b.ne extern 0x1014
+    );
+    code.extend(rejection);
+    code.extend(arm64!(at 0x1014;
+        cmp x8, #0x200, lsl #12; // the same test again
+        b.eq extern 0x1024;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1028;
+        b extern 0x5000; // CPersistent::ReadMember
+        ret;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    ));
+    input.functions[0].code = code;
+    input.symbols.push(Symbol {
+        name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
+        address: 0xb000,
+    });
+
+    input
+}
+
+#[test]
+fn an_order_check_that_only_logs_leaves_the_key_read_always() {
+    let logs = arm64!(at 0x100c;
+        bl extern 0xb000; // the diagnostic
+        ret
+    );
+
+    let result = derive(order_check_fixture(logs));
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert_eq!(reads.len(), 1, "{reads:?}");
+    assert!(reads[0].conditions.is_empty(), "{reads:?}");
+    assert!(result.partition_accounted);
+    assert_eq!(result.key_order.len(), 1);
+    assert!(
+        result.key_order[0].allowed.is_empty(),
+        "the read of token 7 passes the check"
+    );
+}
+
+#[test]
+fn a_rejecting_side_that_writes_the_owner_is_no_order_check() {
+    let writes = arm64!(at 0x100c;
+        str wzr, [x0, #0x40]; // an owner write
+        ret
+    );
+
+    let result = derive(order_check_fixture(writes));
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert_eq!(reads.len(), 1, "{reads:?}");
+    assert!(
+        reads[0]
+            .conditions
+            .iter()
+            .any(|condition| condition.at == 0x1008)
+    );
+    assert!(result.key_order.is_empty());
+}
+
 #[test]
 fn a_bit_test_of_the_token_is_a_gap() {
     let mut input = fixture();

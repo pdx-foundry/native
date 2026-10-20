@@ -9,7 +9,7 @@ use crate::binding::{Binding, VerifiedAnalysis};
 use crate::engine::analysis::{
     declarations::{self, DeclarationResult, ScopeOutcome, ScopeType, Site},
     directories::{self, Directory},
-    fields::{self, FieldGapKind, PathOutcome, RegistryFieldResult},
+    fields::{self, FieldGapKind, KeyOrder, PathOutcome, RegistryFieldResult},
     modifiers::{self, CategoryInput, CategoryNames},
     references::ReferenceFacts,
     stop::Unresolved,
@@ -891,6 +891,23 @@ pub(super) fn scope_references(types: &[ScopeType]) -> Vec<ScopeReference> {
         .collect()
 }
 
+/// The statement of one order check. Field read conditions leave the order out.
+fn key_order_detail(order: &KeyOrder) -> String {
+    let allowed: Vec<_> = order.allowed.iter().map(|key| format!("`{key}`")).collect();
+    let allowed = match allowed.as_slice() {
+        [] => "no key".to_string(),
+        keys => format!("no key other than {}", keys.join(", ")),
+    };
+    let until = match &order.set_by {
+        Some(field) => format!("`{field}` is read"),
+        None => "an earlier key sets the word that it tests".to_string(),
+    };
+
+    format!(
+        "Key order: the reader logs an error and reads {allowed} until {until}. Field read conditions do not state this order."
+    )
+}
+
 /// The gaps that `result` gives, with its normalized `fields` in the order of `result.fields`.
 /// The reader gaps follow the fields' own readers, so a field that has no reader id has one.
 fn normalized_gaps(
@@ -904,6 +921,11 @@ fn normalized_gaps(
         subject: Some(GapSubject::registry(registry)),
         detail: "Defaults, enum domains other than those of keyword fields, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
     }];
+    gaps.extend(result.key_order.iter().map(|order| Gap {
+        kind: GapKind::OutsideMethod,
+        subject: Some(GapSubject::registry(registry)),
+        detail: key_order_detail(order),
+    }));
     let field_of = |path: usize| {
         result
             .fields
@@ -1216,6 +1238,7 @@ mod field_gap_tests {
             tail: true,
         };
         RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             persistent: Default::default(),

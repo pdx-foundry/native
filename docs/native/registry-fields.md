@@ -63,7 +63,7 @@ nine registries change and none loses a field. Against
 give six fields of five registries their members. Against `v52`, the dispatch walker reads a compare with a
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
-changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
+changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
 reader, adds `is_triggered_only`, and removes one civics path gap. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
@@ -497,19 +497,51 @@ stopped there, so the registry had no field. The order rule, from the engine's o
   fleet or megastructure logs "Supported user_scopes for scripted actions are megastructure and fleet"
   and is stored all the same.
 
-Result on M452 (`registry-fields/v53`): 42 named fields, each with a joined reader on the paths
-after both checks. Every field keeps "The field's alternatives do not establish one shared reader"
-and an `UnresolvedCondition` gap, and the answer keeps a `TokenPartition` gap:
+The dispatch walker follows the order rule with three general rules (`registry-fields/v56`):
 
-- The log paths stop at the `CPdxLogFileAndLine` call, so their outcome is `Unresolved`, not
-  `Rejected`. Their conditions are owner words with no named-field term, so they are `Unresolved`.
-- The walker forks again on the second test of `+0x48` (`0x100b10b50`): it does not keep the result
-  of the first test, so one alternative of each field has a contradictory condition.
-- The two check paths cover wide token intervals that overlap the field tokens, so the partition
-  check fails. This is the honest result: those paths are alternatives of every field that the
-  inventory does not attach to a field (`an_overlapping_wider_path_withholds_the_storage_of_a_singleton_field`).
-- Atlas credits a value form only for `read` equal to `[Always]`. A field read only after an order
-  check has no such answer until the answer states the order rule.
+- **Order check.** A `b.eq` or `b.ne` on a compare of an owner word (not the token), reached before
+  the path reads, converts or stores anything outside the frame, is an order check when one side only
+  logs and returns: every way from it calls only functions that
+  change no script state (`readers::changes_no_script_state`, at least one), writes only the stack and
+  ends at `ret` (`logs_and_returns` in `fields/dispatch.rs`, at most 64 instructions). The walk takes
+  the other side and does not fork, so the key keeps no condition for the check. A side that writes
+  the owner, calls anything else, or branches out of the function is no order check, and the walk
+  forks as before (`a_rejecting_side_that_writes_the_owner_is_no_order_check`).
+- **Settled comparison.** Each path keeps the outcome of the owner-word comparisons that it has
+  taken, as `EqualsAny(word, pivots)`. A later `b.eq` or `b.ne` on the same comparison takes the
+  recorded side. A call or a store outside the frame clears the record, because either can change the
+  word.
+- **Key order note.** The registry answer states each order check as an `OutsideMethod` gap that
+  starts with "Key order:": the named keys that have no path through the check, and the field whose
+  storage is the tested word, when one field stores it. Atlas does not block on it; it is the only
+  place that the order is stated, since the field read conditions leave it out.
+
+Two related rules, in the same version: a call that changes no script state after the path called a
+converter with the value token (other than a `CReader::Report*` call) does not stop the path, so the
+converted value's store is followed; and the field read normalization collapses complementary
+alternatives whose outcomes are the same `Stored` join with a destination, as it already did for
+`Joined` and `Rejected` (`collapse_equivalent_branches` in `src/session/fields.rs`).
+
+Result on M452: 41 of 42 fields read `[Always]` and 38 have a known reader. The answer has two key
+order notes: "no key other than `user_scope` until `user_scope` is read" (`0x100b10b14`) and "no key
+other than `scope` until an earlier key sets the word that it tests" (`0x100b10b6c`). The second check is
+reached only after `+0x48` is set, so a repeated `user_scope` also passes it only once `scope` is read;
+`scope` stores into `+0x40` through checks that the walk does not join, so the note names no field.
+The command grammars change too: 189 commands lose a contradictory `All[Unresolved, Unresolved]`
+alternative of the shared `Target` reader (the settled second test), and `kill_leader.ability` gains
+one `Unresolved` alternative that now stops at `keyword-store` instead of at the diagnostic.
+
+Limits, each with the condition for a change:
+
+- Only `b.eq`/`b.ne` on a value compare are settled. A `cbz`, `tbz` or ordered compare of the same word
+  forks again. Extend `settled_comparison` when a reader repeats such a test.
+- The note names the key order, not which values are accepted: the tested pivot (`0x200000`, unread)
+  is not part of the answer. Add it when Atlas needs to name the unread state.
+- The allowed keys are those with no path through the check. A key read through an inherited reader
+  or a jump-table case whose paths pass the check is not allowed, which is the engine's behavior; a
+  key whose only path stops before the check counts as allowed.
+- An order check inside a child walk (an inherited or wrapped reader) is reported on the registry,
+  not on the child.
 
 Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
 an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean

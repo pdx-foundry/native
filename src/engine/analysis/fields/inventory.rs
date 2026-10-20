@@ -1,5 +1,9 @@
+use super::dispatch::OrderCheck;
 use super::tokens::{Token, named_key};
-use super::{FieldGap, FieldGapKind, PathOutcome, ReaderJoin, RootField, TokenPath};
+use super::uses::storage_offset;
+use super::{
+    FieldGap, FieldGapKind, KeyOrder, PathOutcome, ReaderJoin, RootField, TokenPath, Value,
+};
 use std::collections::BTreeMap;
 
 pub(crate) fn fields_and_gaps(
@@ -51,6 +55,49 @@ pub(crate) fn fields_and_gaps(
         }
     }
     (fields.into_values().collect(), gaps)
+}
+
+/// The key order of each order check in `checks`: the named keys whose paths do not pass the
+/// check, and the field that sets the tested word.
+pub(super) fn key_order(
+    checks: &[OrderCheck],
+    paths: &[TokenPath],
+    fields: &[RootField],
+    partition_accounted: bool,
+) -> Vec<KeyOrder> {
+    let mut order: Vec<KeyOrder> = Vec::new();
+
+    for check in checks {
+        let passes = |field: &&RootField| {
+            field
+                .paths
+                .iter()
+                .any(|&index| paths[index].instructions.contains(&check.at))
+        };
+        let mut allowed: Vec<_> = fields
+            .iter()
+            .filter(|field| !passes(field))
+            .map(|field| field.name.clone())
+            .collect();
+        allowed.sort();
+        let set_by = match &check.tested {
+            Value::Load(word, _) => match word.as_ref() {
+                Value::Owner(at) => fields
+                    .iter()
+                    .find(|field| storage_offset(field, partition_accounted) == Some(*at))
+                    .map(|field| field.name.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let entry = KeyOrder { allowed, set_by };
+
+        if !order.contains(&entry) {
+            order.push(entry);
+        }
+    }
+
+    order
 }
 
 pub(super) fn partition_accounted(paths: &[TokenPath]) -> bool {
@@ -113,6 +160,7 @@ mod tests {
         let partition_accounted = partition_accounted(&paths);
         let offset = storage_offset(&fields[0], partition_accounted);
         let result = RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             uses: Vec::new(),
