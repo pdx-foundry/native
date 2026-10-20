@@ -140,8 +140,8 @@
     "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_container": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["OutsideMethod", "definition_names", "the root statement's block holds the definitions, each an economic unit named by its key"]],
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_customization": {
     "gaps": [],

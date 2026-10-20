@@ -101,6 +101,15 @@ fn item_rules(item: &str) -> Vec<Stated> {
                 "a `swap_type` block without a `name` field takes its name from its owner",
             ),
         }],
+        "CMiscEconomicUnitCollection" => vec![Stated {
+            functions: &[
+                "CMiscEconomicUnitCollection::ReadMember(CReader&, int)",
+                "CMiscEconomicUnit::CMiscEconomicUnit(CString const&)",
+            ],
+            rule: obstructed(
+                "the root statement's block holds the definitions, each an economic unit named by its key",
+            ),
+        }],
         "CJobType" => vec![Stated {
             functions: &[
                 "CJobType::ReadMember(CReader&, int)",
@@ -539,6 +548,24 @@ mod tests {
         let swap_rule = stated[1].as_ref().expect("the swap rule holds");
         assert!(swap_rule.forms.is_empty());
         assert_eq!(swap_rule.obstacles.len(), 1);
+    }
+
+    #[test]
+    fn a_collection_whose_block_keys_name_its_units_states_an_obstacle() {
+        let loader = load_from_reader();
+        let mut names = vec![loader.as_str()];
+        names.extend(functions(&item_rules("CMiscEconomicUnitCollection")));
+
+        let stated = stated_rules(
+            &symbols(&names),
+            &[template("CMiscEconomicUnitCollection")],
+            &BTreeSet::new(),
+            "common/country_container",
+        );
+
+        let unit_rule = stated[1].as_ref().expect("the unit rule holds");
+        assert!(unit_rule.forms.is_empty());
+        assert_eq!(unit_rule.obstacles.len(), 1);
     }
 
     #[test]

@@ -39,7 +39,7 @@ use super::directories::{self, Anchors, Constructor, Value};
 use crate::{DefinitionForm, DuplicateRule, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v8";
+pub const METHOD: &str = "loader-rules/v9";
 
 /// The register of `ReadExistingEntry`'s existing item, its third argument after `this`.
 const EXISTING_ITEM: usize = 3;
