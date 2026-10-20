@@ -331,9 +331,6 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
             ReaderKind::Block
         }
         _ if references::reader(callee).is_some() => ReaderKind::Reference,
-        // The member reader of a stack serializer, which a persistent read of the serializer
-        // joins: the wrapped member reads a block.
-        _ if callee.ends_with("::CSerializer::ReadMember(CReader&, int)") => ReaderKind::Block,
         _ if is_uniform_list(callee) => ReaderKind::Block,
         _ => ReaderKind::Unknown,
     }

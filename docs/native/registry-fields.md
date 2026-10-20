@@ -637,8 +637,9 @@ The constructor only installs its vtable at `+0`, stores `x1` at `+8` and the sc
 - **Walk.** The call of such a constructor with a stack address in `x0` and an owner address in
   `x1` records the serializer, as the [modifier-block delegate](modifier-blocks.md) does. A
   following `CReader::Read(CPersistent&)` with the reader in `x0` and that stack address in `x1`
-  joins the serializer's `ReadMember` with the wrapped member (`Owner(+0x330)`) in `x0`; its kind
-  is `Block`. Any other call while the serializer is recorded stops the path, as before.
+  stores a `Block` at the wrapped member (`+0x330`), with the serializer's `ReadMember` as its
+  reader. The kind comes from that proven read, not from the reader's name: a serializer reader
+  that another join names keeps no kind. Any other call while the serializer is recorded stops the path, as before.
 - **Members.** When every path of a field joins one serializer reader, the field's members are
   that reader's keys, walked with the serializer as receiver and the wrapped member at slot `+8`
   (`persistent::embedded`).

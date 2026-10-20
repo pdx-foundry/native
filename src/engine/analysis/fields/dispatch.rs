@@ -1370,13 +1370,12 @@ fn explore_member_with_wrapped_owner(
                         && state.value("x1") == Some(Value::Stack(stack))
                         && let Some(reader) = serializer_reader
                     {
-                        let mut arguments = state.registers.clone();
-                        arguments.insert("x0".into(), Value::Owner(owner));
-                        arguments.insert("x1".into(), Value::Reader(0));
-                        let join = ReaderJoin::Joined {
+                        // The proven read establishes a block at the wrapped member.
+                        let join = ReaderJoin::Stored {
                             callee: reader,
-                            arguments,
-                            tail: row.operation == "b",
+                            kind: crate::ReaderKind::Block,
+                            destination: Some(owner),
+                            repeat: crate::RepeatBehavior::Unknown,
                         };
                         leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
                         break;

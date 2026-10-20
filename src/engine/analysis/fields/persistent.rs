@@ -126,9 +126,11 @@ pub(super) fn embedded(
         let serializer_readers: BTreeSet<_> = joins
             .iter()
             .map(|join| match join {
-                super::ReaderJoin::Joined { callee, .. } => {
-                    serializer_slot(callee).map(|slot| (callee.clone(), slot))
-                }
+                super::ReaderJoin::Stored {
+                    callee,
+                    kind: crate::ReaderKind::Block,
+                    ..
+                } => serializer_slot(callee).map(|slot| (callee.clone(), slot)),
                 _ => None,
             })
             .collect();
