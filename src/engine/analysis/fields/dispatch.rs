@@ -860,6 +860,18 @@ fn apply(
                     };
                     state.stored = Some((join, at, width));
                 }
+                if input.key_readers.value_token != 0
+                    && width == 4
+                    && state.value(operand) == Some(value_token_word(input.key_readers))
+                {
+                    let join = ReaderJoin::Stored {
+                        callee: VALUE_TOKEN_STORE.into(),
+                        kind: crate::ReaderKind::Keyword,
+                        destination: Some(at),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    state.stored = Some((join, at, width));
+                }
                 if let Some(Value::Converted(converter)) = state.value(operand) {
                     let callee = input.symbol_index.name(input.symbols, converter);
                     let join = ReaderJoin::Stored {
@@ -1218,7 +1230,8 @@ fn explore_member_with_wrapped_owner(
                 declined.push(state.finish(row.address, PathOutcome::Rejected));
                 break;
             }
-            if row.operation == "ret" && state.converted.is_some() {
+            // A converted value that is never stored leaves an earlier id store as the read.
+            if row.operation == "ret" && state.converted.is_some() && state.stored.is_none() {
                 let unstored = stop("keyword-store", Obstacle::Unsupported);
                 leaves.push(state.finish(row.address, PathOutcome::Gap(unstored)));
                 break;
@@ -1381,6 +1394,19 @@ fn explore_member_with_wrapped_owner(
                     }
                     break;
                 }
+                // A converter of the value token goes on past a store of its id. The id store
+                // stays the path's read until the converted value is stored.
+                if row.operation == "bl"
+                    && let Some(target) = target
+                    && state.stored.as_ref().is_none_or(stores_value_token_id)
+                    && converts_value_token(input, target, &state)
+                {
+                    state.clobber_call();
+                    state.assign("x0", Some(Value::Converted(target)));
+                    state.converted = Some(target);
+                    state.keyword_conditions = Some(state.conditions.len());
+                    continue;
+                }
                 let harmless = target
                     .and_then(|address| input.symbol_index.name(input.symbols, address))
                     .is_some_and(readers::changes_no_script_state);
@@ -1421,16 +1447,6 @@ fn explore_member_with_wrapped_owner(
                         break;
                     }
                     state.clobber_call();
-                    continue;
-                }
-                if row.operation == "bl"
-                    && let Some(target) = target
-                    && converts_value_token(input, target, &state)
-                {
-                    state.clobber_call();
-                    state.assign("x0", Some(Value::Converted(target)));
-                    state.converted = Some(target);
-                    state.keyword_conditions = Some(state.conditions.len());
                     continue;
                 }
                 if let Some(target) = target {
@@ -2768,6 +2784,16 @@ fn value_token_word(bindings: &super::KeyReaders) -> Value {
     Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
 }
 
+/// The reader that stores the value token's id in an owner member. Any token is accepted; the
+/// tokens that mean something are known only where the member is used, so the keyword's domain
+/// stays unknown.
+const VALUE_TOKEN_STORE: &str = "value token id";
+
+/// Whether `stored` is the store of the value token's id.
+fn stores_value_token_id(stored: &(ReaderJoin, i64, i64)) -> bool {
+    matches!(&stored.0, ReaderJoin::Stored { callee, .. } if callee == VALUE_TOKEN_STORE)
+}
+
 /// The reader that stores whether the value token is `yes` in an owner member. Every other token
 /// stores false, so the reader accepts any token without an error.
 const TRUE_TOKEN_TEST: &str = "value token == yes";
@@ -2778,14 +2804,17 @@ const TRUE_TOKEN_TEST: &str = "value token == yes";
 const LITERAL_TOKEN_TEST: &str = "value token == literal";
 
 /// The comparison of the value token with one literal token that the flags hold, as a Boolean;
-/// `None` for any other comparison, or when the value token is not bound.
+/// `None` for any other comparison, or when the value token or `yes` is not bound: without `yes`,
+/// the literal could be it.
 fn literal_token_test(state: &State, bindings: &super::KeyReaders) -> Option<Value> {
     let Some(Flags::Values { tested, pivots }) = &state.flags else {
         return None;
     };
     let token_word = value_token_word(bindings);
 
-    (bindings.value_token != 0 && *tested == token_word && pivots.len() == 1)
+    let bound = bindings.value_token != 0 && bindings.true_token.is_some();
+
+    (bound && *tested == token_word && pivots.len() == 1)
         .then(|| Value::EqualsAny(Box::new(token_word), pivots.clone()))
 }
 
@@ -3068,6 +3097,169 @@ mod tests {
                 ..
             })
         ));
+        let unbound_yes = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let input = DispatchInput::command(
+            &other_token_test,
+            &symbols,
+            &symbol_index,
+            &[],
+            0x38,
+            &unbound_yes,
+        );
+        let (paths, _) = explore_member(&input, root);
+        assert!(
+            matches!(paths[0].outcome, PathOutcome::Gap(_)),
+            "without yes the literal could be it"
+        );
+    }
+
+    #[test]
+    fn a_member_that_stores_the_value_token_id_reads_a_keyword_of_unknown_domain() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![Symbol {
+            name: root.into(),
+            address: 0x1000,
+        }];
+        let functions = |code| {
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )])
+        };
+        let token_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278]; // the value token
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let other_word_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x27c]; // another reader word
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let byte_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278]; // the value token
+            strb w8, [x0, #0x20]; // only its low byte
+            ret
+        ));
+        let unbound_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1]; // the word of an unbound value token
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let bound = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let unbound = super::super::KeyReaders::default();
+        let outcome_with = |functions, readers| {
+            let symbol_index = SymbolIndex::new(&symbols);
+            let input =
+                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+        let outcome = |functions| outcome_with(functions, &bound);
+
+        assert!(matches!(
+            outcome(&token_store),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::Keyword,
+                destination: Some(0x20),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        assert!(matches!(outcome(&other_word_store), PathOutcome::Gap(_)));
+        assert!(matches!(outcome(&byte_store), PathOutcome::Gap(_)));
+        assert!(matches!(
+            outcome_with(&unbound_store, &unbound),
+            PathOutcome::Gap(_)
+        ));
+    }
+
+    #[test]
+    fn a_converter_of_the_value_token_supersedes_a_store_of_its_id() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "EKind TokenToEnum<EKind>(int const&)".into(),
+                address: 0x2000,
+            },
+        ];
+        let functions = |stores_converted: bool| {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            arm64!(code;
+                mov x19, x0;
+                ldr w8, [x1, #0x278]; // the value token
+                str w8, [x19, #0x24]; // its id
+                str w8, [sp, #0x10];
+                add x0, sp, #0x10;
+                bl extern 0x2000 // the converter
+            );
+            if stores_converted {
+                arm64!(code; str w0, [x19, #0x20]); // the converted keyword
+            }
+            arm64!(code; ret);
+
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.bytes(),
+                },
+            )])
+        };
+        let readers = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let outcome = |stores_converted| {
+            let functions = functions(stores_converted);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+
+        assert!(
+            matches!(
+                &outcome(true),
+                PathOutcome::Reader(ReaderJoin::Stored {
+                    callee,
+                    kind: crate::ReaderKind::Keyword,
+                    destination: Some(0x20),
+                    ..
+                }) if callee.contains("TokenToEnum")
+            ),
+            "{:?}",
+            outcome(true)
+        );
+        assert!(
+            matches!(
+                &outcome(false),
+                PathOutcome::Reader(ReaderJoin::Stored {
+                    callee,
+                    destination: Some(0x24),
+                    ..
+                }) if callee == VALUE_TOKEN_STORE
+            ),
+            "the id store stands when the converted value is not stored: {:?}",
+            outcome(false)
+        );
     }
 
     #[test]
