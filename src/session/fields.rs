@@ -116,7 +116,7 @@ fn shape(
     references: &ReferenceFacts,
 ) -> FieldShape {
     let reads_key_list =
-        matches!(join, ReaderJoin::Joined { callee, .. } if appends_each_key(callee));
+        matches!(join, ReaderJoin::Joined { callee, .. } if reads_key_list(callee));
     let value = match reader.kind {
         ReaderKind::Unknown => ValueShape::Unknown,
         ReaderKind::Block => ValueShape::Block,
@@ -211,6 +211,16 @@ fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
         .all(|(hook, base)| hook.as_deref() == Some(base));
 
     KEEPING_READS.contains(&reader.read.as_str()) && base_hooks
+}
+
+/// Whether `callee` reads a list of keys, each looked up while it reads or later.
+fn reads_key_list(callee: &str) -> bool {
+    references::reader(callee).is_some_and(|reader| {
+        matches!(
+            reader.form,
+            references::ReaderForm::ImmediateList | references::ReaderForm::DeferredList
+        )
+    })
 }
 
 /// Whether `callee` looks up each key of a list while it reads and appends the item to the
@@ -1043,6 +1053,9 @@ mod tests {
             zero,
         }
     }
+    /// The deferred list reader of scripted actions on M452.
+    const DEFERRED_LIST: &str = "void NParserUtil::ReadKeyReferenceDeferredUniform<CScriptedActionDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CPdxArray<CScriptedActionDatabase::ValueType const*, int>&)";
+
     #[test]
     fn a_list_of_looked_up_keys_is_written_as_a_block() {
         let callee = |name: &str| ReaderJoin::Joined {
@@ -1066,6 +1079,7 @@ mod tests {
             )),
             ValueShape::Block
         );
+        assert_eq!(value(&callee(DEFERRED_LIST)), ValueShape::Block);
         assert_eq!(
             value(&callee(
                 "CJobTagDatabase::ValueType const* NParserUtil::ReadKeyReference<CJobTagDatabase>(CReader&, CJobTagDatabase const&, bool)"
