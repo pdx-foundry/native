@@ -1770,6 +1770,74 @@ fn an_ordered_compare_of_an_owner_word_keeps_both_sides_under_an_unresolved_cond
     assert!(result.fields.is_empty(), "{:?}", result.fields);
 }
 
+#[test]
+fn a_repeated_ordered_compare_of_an_owner_word_takes_only_the_side_that_the_first_allows() {
+    use crate::engine::analysis::readers::destination;
+
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        ldr w8, [x0, #0x30]; // a count in the owner
+        cmp w8, #1;
+        b.lt extern 0x1044; // the count is below 1: return
+        cmp w8, #1;
+        b.lt extern 0x1034; // never taken: the count is at least 1
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x50; // a member that no path reads
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        b extern 0x5000 // CPersistent::ReadMember
+    );
+    let result = derive(input);
+
+    let destinations: Vec<_> = result.fields[0].readers.iter().map(destination).collect();
+    assert_eq!(destinations, [Some(0x40)], "{:?}", result.fields);
+    // Another compare of the same word is not decided by the first, so the path stops.
+    let mut other = fixture();
+    other.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        ldr w8, [x0, #0x30]; // a count in the owner
+        cmp w8, #1;
+        b.lt extern 0x1044;
+        cmp w8, #5;
+        b.lt extern 0x1034;
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        add x8, x0, #0x50;
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        b extern 0x5000 // CPersistent::ReadMember
+    );
+    let result = derive(other);
+    let stop = Unresolved::at(
+        "ordered-compare-repeat",
+        0x1020,
+        0x1000,
+        Obstacle::Unsupported,
+    );
+    assert!(
+        result
+            .paths
+            .iter()
+            .any(|path| path.outcome == PathOutcome::Gap(stop.clone())),
+        "{:?}",
+        result.paths
+    );
+}
+
 /// Token 7 compares the word that `load` at `0x1010` loads with 1, branches on `b.lt` around a
 /// diagnostic, then reads an owner member.
 fn ordered_compare_of(load: Vec<u8>) -> FieldInput {
@@ -1781,7 +1849,7 @@ fn ordered_compare_of(load: Vec<u8>) -> FieldInput {
         b extern 0x5000; // CPersistent::ReadMember
         ldr w8, [x0, #0x30]; // a count in the owner
         cmp w8, #1;
-        b.lt extern 0x101c;
+        b.lt extern 0x1020;
         nop; // a diagnostic when the count is positive
         add x8, x0, #0x40; // the member
         mov x0, x1;

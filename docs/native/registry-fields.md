@@ -219,7 +219,10 @@ and `command-grammar/v28`:
   compare of a word loaded from the owner keeps both sides, each under an unresolved condition.
   `CCountryType::ReadMember` (`0x10033f6bc`): `ldr w8,[x19,#0x784]; cmp w8,#1; b.lt` around a
   diagnostic, then the read of `trade_routes_available`. A compare of any other value is still a
-  stop.
+  stop. The path remembers its side (`State::ordered`) until a call or a store outside the frame:
+  a later compare of the same word with the same pivots and the same or opposite condition takes
+  only the side that the first allows, and any other test of that word, or an ordered compare of a
+  word that an equality test settled, stops the path (`ordered-compare-repeat`).
 - **Right shift.** `lsr` makes its destination unknown, as `ubfx` does. The Boolean bit reads load
   the bit's word, shift the top bit down into a stack temporary (`ldrb w8,[x19,#0x40]; lsr w8,w8,#7`
   at `0x10033f380`; `ldr w8,[x19,#0x40]; lsr w8,w8,#0x1f` at `0x10033f760`), call `Read(bool&)` and
@@ -234,8 +237,8 @@ Result: 37 more root fields in 20 registries (for example `country_types` `relat
 more registries complete for fields (129 to 142). No field is lost and no known reader becomes
 unknown. Command grammar: the 22 `*_event` effects and `fire_on_action` gain a `scopes` key whose
 reader is not established, and `create_leader`, `create_saved_leader` and `clone_leader` gain the
-Boolean `skip_background_generation`. Some commands keep more read alternatives (both sides of each
-compare), with the same reader result.
+Boolean `skip_background_generation`. `change_dominant_species` stops one more path at
+`ordered-compare-repeat`, with the same reader result.
 
 Limits: the walk does not resolve the compare, so a field read on only one side keeps an
 unresolved condition. Still stopped: `blr` on the reader's lexer (`ldr x0,[x20,#0x30]; ldr x8,[x0];
