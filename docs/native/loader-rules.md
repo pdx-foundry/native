@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v7`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v8`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
@@ -180,6 +180,63 @@ hand, which no method checks:
 - `CDesignerDatabase::Init` (`A ship design named "%s" already exists! %s`) and
   `CEventManager::ReadEventsFile` (`an event with id [%s] already exists! %s`) log a duplicate;
   what they keep is not read.
+
+## Definition text after the read
+
+`keeps_definition_text` says whether the loader or the item keeps a definition's script text after
+the read, so that later engine code could read a key that the item's reader does not handle.
+Atlas may answer "not a field" for a config key only where it is `Known(false)` and
+`registry_fields` is `Complete`.
+
+Facts from `c621723d…` (M452):
+
+- The engine has no kept script tree. `CReader` reads tokens from a `CLexer` once, in order.
+- `TSingleObjectGameDatabase<…>::LoadFromReader` (`0x100a46bec` for policy categories) reads each
+  statement's key (`CLexer::Tok`, then `CString(char const*)` on the stack, freed after the
+  statement) and passes the reader to `ReadNewEntry` (`0x100a4710c`) or to `ReadExistingEntry`.
+  Those construct or reset the item and call its read: `CPersistent::Read(CReader&)`
+  (`0x1025b43bc`) directly or through slot `0x20`. The direct calls of all 164 `LoadFromReader`
+  bodies are only string and compare helpers, `CLexer::Tok`, `_calloc`, the item constructor and
+  the array or hash insertion, `CPersistent::Read`, `ReadSimpleStatement`,
+  `ParseAdvancedStatement` (an `@variable`), `CreateInlineScriptReader` with a recursive
+  `LoadFromReader`, `ReportMalformed` and `CPdxIntegerFlags::CreateFlagIndex`. None copies text.
+  The method assumes this for every template database and does not read the bodies.
+- `CPersistent::Read` calls `ReadWithoutInitPostRead`, which gives each statement to the item's
+  `ReadMember`, then the two post-read hooks. `CPersistent::ReadMember` (`0x1025b4438`) tail-calls
+  `CReader::ReportUnexpected()`, which reports and skips the statement.
+- Text outlives a read only where a reader copies tokens into a string: `CMetaScriptTemplate::Read`
+  (`0x10094b018`, scripted effects, scripted triggers and script values; `BuildFromSource` reads
+  the copy later with a new lexer) and `CPostInitModifier::CPostInitModifier(CReader&, CModifier*,
+  bool)` (a modifier block's text, read again by `ProcessModifier`). Inline scripts are expanded
+  during the read.
+
+**Rule.** `keeps_definition_text` is `Known(false)` when every template database of the registry
+has an item whose vtable read slot (`0x20` at each address point) holds `CPersistent::Read`. An
+item with its own `Read` (`CMetaScriptTemplate`, `CZoneType::Read`, `CAstralRiftType::Read`, …) or
+with no read slot gives `Unresolved` with a gap, and so does a custom loader.
+
+**Build-wide part (gap `later_text_reads`).** Code other than the loader could reread a file. On
+M452, 107 functions other than the template `LoadFile` bodies call a lexer constructor directly
+(`CTextLexer`, `CBinLexer`): saves and hotjoin, GUI and assets, settings, console commands
+(`OnExecute_EffectFile`, …), the custom loaders' `Init` and `ReadFile` functions, the three
+`BuildFromSource` and `ProcessModifier`. The list was reviewed by name, not body by body: no name is
+a template database's function or a post-read hook, and a call through a register is not in the
+list. A probe can confirm it (below). Review the list again for a new build.
+
+Result on M452 (`loader-rules/v8`): 150 `Known(false)`, including all 19 registries whose
+`registry_fields` is `Complete`; 14 `Unresolved` because an item has its own read or no read slot (`common/job_tags`,
+`common/trait_tags`, `common/scripted_effects`, `common/scripted_triggers`, `common/script_values`,
+`common/zones`, `common/zone_slots`, `common/astral_rifts`, `common/starbase_buildings`,
+`common/starbase_levels`, `common/starbase_modules`, `common/ai_espionage/operations`,
+`common/ai_espionage/targets`, `common/component_slot_templates`); 30 `Unresolved` custom loaders.
+
+Remove or limit the rule when a template `LoadFromReader` calls anything else, when a post-read
+hook builds a reader, or when a lexer constructor gets a new caller.
+
+Fixture probe that would check the build-wide part: in a copy of one definition of each of the 19
+registries, add an unlisted root key with a block value; load to the main menu and into a game;
+expect exactly one `ReportUnexpected` line for each key at load, and then change the file on disk
+and run the game's reload commands, expecting no second report.
 
 ## File order
 

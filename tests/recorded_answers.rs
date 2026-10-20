@@ -1094,7 +1094,8 @@ fn loader_rules_read_their_registry_file() {
                 "duplicate_rule": { "Known": "LastWins" },
                 "definition_names": { "Known": [
                     { "statement": "Root", "name": { "Field": "name" } }
-                ] }
+                ] },
+                "keeps_definition_text": { "Known": false }
             },
             "completeness": "Partial",
             "gaps": [{ "kind": "UnresolvedPath",
@@ -1120,6 +1121,7 @@ fn loader_rules_read_their_registry_file() {
                 statement: DefinitionStatement::Root,
                 name: DefinitionName::Field("name".into()),
             }]),
+            keeps_definition_text: GrammarProperty::Known(false),
         }
     );
     assert!(matches!(

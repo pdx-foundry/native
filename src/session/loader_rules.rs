@@ -4,7 +4,7 @@ use super::Native;
 use super::questions::error;
 use super::{gap_for_subject, registry_gap};
 use crate::engine::analysis::loader_rules::{
-    self, DuplicateObstacle, METHOD, Naming, Obstacle, Selection,
+    self, DuplicateObstacle, KeptTextObstacle, METHOD, Naming, Obstacle, Selection,
 };
 use crate::{
     Answer, Basis, BuildId, Completeness, DefinitionForm, DuplicateRule, Error, Gap, GapKind,
@@ -16,7 +16,7 @@ const OUTSIDE_METHOD: &str = "The search covers the arguments of the loader's fi
 
 /// The build-wide rules that the answer does not carry, by the name of each gap's subject. The
 /// knowledge page states them once for the build.
-const BUILD_WIDE: [(&str, &str); 2] = [
+const BUILD_WIDE: [(&str, &str); 3] = [
     (
         "file_order",
         "The order in which the loader reads its files is a rule of the build's file system, stated once from its code and not for each registry. A live fixture control checks it for a template loader.",
@@ -24,6 +24,10 @@ const BUILD_WIDE: [(&str, &str); 2] = [
     (
         "mod_over_vanilla",
         "Whether a mod's file replaces or joins a game file in the same folder is a rule of the build's file system, stated once from its code and not for each registry. No fixture verifies it.",
+    ),
+    (
+        "later_text_reads",
+        "Whether code other than the loader reads a definition's file again later is a rule of the build, stated once from the callers of the lexer constructors and not for each registry.",
     ),
 ];
 
@@ -68,6 +72,7 @@ impl Native {
                 &loader_rules::selection(&evidence.enumerations),
                 &loader_rules::duplicate_rule(&evidence.existing_entries),
                 &loader_rules::naming(&evidence.stated),
+                &loader_rules::keeps_definition_text(&evidence.item_reads),
                 self.build(),
             ))
         })
@@ -81,6 +86,7 @@ fn normalized_rules(
     selection: &Selection,
     duplicate: &Result<DuplicateRule, DuplicateObstacle>,
     naming: &Naming,
+    kept_text: &Result<bool, KeptTextObstacle>,
     build: BuildId,
 ) -> Answer<LoaderRules> {
     let mut gaps = Vec::new();
@@ -90,6 +96,7 @@ fn normalized_rules(
         recursion: property("recursion", &selection.recursion, &mut gaps),
         duplicate_rule: duplicate_rule(duplicate, &mut gaps),
         definition_names: definition_names(naming, &mut gaps),
+        keeps_definition_text: keeps_definition_text(kept_text, &mut gaps),
     };
     gaps.extend(BUILD_WIDE.map(|(rule, detail)| {
         gap_for_subject(
@@ -139,6 +146,32 @@ fn duplicate_rule(
         GapKind::UnresolvedPath,
         Some(GapSubject::AnswerItem {
             name: "duplicate_rule".into(),
+        }),
+        reason,
+    ));
+
+    GrammarProperty::Unresolved
+}
+
+/// Whether the loader keeps a definition's text, or `Unresolved` with a gap whose subject is
+/// `keeps_definition_text` and whose detail is the obstacle.
+fn keeps_definition_text(
+    kept_text: &Result<bool, KeptTextObstacle>,
+    gaps: &mut Vec<Gap>,
+) -> GrammarProperty<bool> {
+    let reason = match kept_text {
+        Ok(kept) => return GrammarProperty::Known(*kept),
+        Err(KeptTextObstacle::NotFollowed) => {
+            "the method does not follow what this loader keeps of a definition"
+        }
+        Err(KeptTextObstacle::OwnRead) => {
+            "an item of the registry reads its definition with a read other than the member-reader loop"
+        }
+    };
+    gaps.push(gap_for_subject(
+        GapKind::UnresolvedPath,
+        Some(GapSubject::AnswerItem {
+            name: "keeps_definition_text".into(),
         }),
         reason,
     ));
@@ -270,6 +303,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -281,6 +315,7 @@ mod tests {
                 recursion: GrammarProperty::Known(Recursion::None),
                 duplicate_rule: GrammarProperty::Known(DuplicateRule::LastWins),
                 definition_names: GrammarProperty::Known(vec![root_key()]),
+                keeps_definition_text: GrammarProperty::Known(false),
             }
         );
         assert_eq!(answer.completeness, Completeness::Complete);
@@ -294,6 +329,7 @@ mod tests {
             [
                 (GapKind::OutsideMethod, Some("file_order")),
                 (GapKind::OutsideMethod, Some("mod_over_vanilla")),
+                (GapKind::OutsideMethod, Some("later_text_reads")),
                 (GapKind::OutsideMethod, Some("common/examples")),
             ]
         );
@@ -317,6 +353,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -354,6 +391,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -395,6 +433,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -417,6 +456,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec!["a `key` field renames a definition"],
             },
+            &Ok(false),
             build(),
         );
 
@@ -442,6 +482,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec!["definitions are named by their file name"],
             },
+            &Ok(false),
             build(),
         );
 
@@ -461,6 +502,7 @@ mod tests {
                 missing: 0,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -486,6 +528,7 @@ mod tests {
                 missing: 1,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
@@ -514,6 +557,7 @@ mod tests {
                 missing: 2,
                 obstacles: vec![],
             },
+            &Ok(false),
             build(),
         );
 
