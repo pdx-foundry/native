@@ -939,12 +939,12 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
-| `Required` | An unconditional check logs the field's absence | 32 |
-| `Cases` | A traced check depends on another field's value: one case for each value of its condition that the trace states ([traced conditional checks](#required-fields)) | 4 |
-| `Unknown` | The check depends on another field's value with no traced cases; the registry is outside the census; or the field is below a definition's fields | 245 |
-| `Optional` | Every other root field of a census registry | 2,105 |
+| `Required` | An unconditional check logs the field's absence | 30 |
+| `Cases` | A traced check depends on another field's value (one case for each value of its condition that the trace states), or the subtype census probed the registry (one case for each probed selector state, and one for the state that the empty definition stands for) | 410 |
+| `Unknown` | The check depends on another field's value with no traced or probed cases; the registry is outside the census; or the field is below a definition's fields | 243 |
+| `Optional` | Every other root field of a census registry | 1,703 |
 
-Counts at `registry-fields/v72`. A definition that meets no case of a `Cases` answer has no
+Counts at `registry-fields/v73`. A definition that meets no case of a `Cases` answer has no
 established requirement.
 
 **A recorded manual exception.** Claim: loading a definition without a field logs a report of
@@ -992,10 +992,11 @@ no event is found. `CAstralRiftType::ReadMember` reads token `0x1b8` (`event`) i
   498 omit it; `CBuildingType::InitPostRead()` tests `owner_type`), card_categories `background`,
   `background_expanded` and `icon` (`core_focus`, `selectable = no`), ship_categories `namelist`
   (`uses_name_list = no`) and missions
-  `icon` and `counter` (51 of 102) are `Unknown`. So are planet_classes `icon` and `icon_large`
-  (`CPlanetClass::PostProcess()`, a conditional check that the empty definition does not reach),
-  resolutions `resources` (the report is about a category inside it), and the six keys of which
-  traditions and ascension perks need one (`Missing effects tradition`).
+  `icon` and `counter` (51 of 102) are `Unknown`. Planet_classes `icon` and `icon_large`
+  (`CPlanetClass::PostProcess()`, a conditional check that the empty definition does not reach)
+  take the subtype census's cases below. Resolutions `resources` (the report is about a category
+  inside it) and the six keys of which traditions and ascension perks need one (`Missing effects
+  tradition`) are `Unknown` too.
 
 | Registry | Required fields (M452) | Report |
 | --- | --- | --- |
@@ -1086,6 +1087,48 @@ the condition, and the census publishes it as `FieldRequirement::Cases`, one cas
   (`minor_patron` 0, `major_patron` 1, `great_patron` 2, at `0x100a13030`). `category` is not a
   returned field of the registry (its path stops at a branch condition), so the condition names
   the key that the definition writes.
+
+**Subtype census (M452, 2026-10-20).** A second run of the same probe
+(`run-subtypes/summary.md` in the evidence directory) added, for each subtype of the Atlas
+claims, one definition that sets the subtype's selector fields and nothing else, and read all of
+them. Each registry whose selectors are stored Booleans, numbers or keywords gives every root
+field except the selectors `Cases` (`subtypes` in `binding/requirements.rs`):
+
+- One case for each probed definition: the stored state of its selectors, required where the run
+  reported the field absent.
+- One case for the state that the empty definition stands for: each probed keyword not held, or
+  the Boolean or number zero. Its answer is the empty definition's (`Required` or `Optional`);
+  a field whose empty answer is `Unknown` gets no such case. Where both values of a Boolean were
+  probed (civics `is_origin`), there is no other state.
+- Where a registry has two or more selector fields, each case states every selector, so the
+  cases do not overlap. This needs every selector's default to be zero, read from the
+  constructor: `CPlanetClass` stores `0x62432207b` at `+0x4a0`, which clears `colonizable`
+  (bit 7), `star` (bit 10) and `ringworld` (bit 22); `CDepositType` clears `is_for_colonizable`
+  (`+0x990`) and `is_null` (`+0x998`). A combination that no definition probed (a colonizable
+  star) meets no case.
+- Keyword selectors were read in the member reader: `CEspionageOperationType::ReadMember`
+  stores `target` as an enumeration at `+0x6c8`; `CSituationType::ReadMember` stores
+  `progress_direction` at `+0xb34` from `bidirectional` (`0x41e5`) or its other keyword
+  (`0x41e4`) and logs any other value.
+
+The probed definitions changed one answer from the empty definition's: planet_classes `icon` and
+`icon_large` are required for a colonizable class (`Colonizable planet class … requires a set
+icon`, `CPlanetClass::PostProcess()`). Every other probed field keeps its empty answer under
+every case.
+
+Registries left as today (known gaps), with the selector that no `FieldCondition` states:
+
+| Registry | Subtype | Selector | Why |
+| --- | --- | --- | --- |
+| agreement_presets | `has_parent` | `parent` | a key reference |
+| agreement_term_values | `resource` | `term` | a key reference |
+| deposits | `blocker` | `category` | a key reference; the deposits cases above cover the two Boolean selectors |
+| megastructures | `has_prereqs` | `prerequisites` | a block's presence |
+| missions/missions | `contract` | `category` | a key reference (the `icon` and `counter` checks skip contracts) |
+| opinion_modifiers | `triggered_opinion_modifier` | `trigger` | a block's presence; the `block_triggered` cases above stand |
+| ship_sizes | all five | `class`, `accepts_all_modifiers`, `is_bio_ship`, `carries_colony`, `hero_ship` | a key reference and a block's presence, and the keyword default of `class` (`ReadShipClass`, `+0x780`) is not shown to be zero |
+| strategic_resources | `max`, `tradable` | `max`, `tradable` | the constructor stores -1 (`-100000` fixed point) at `max` (`+0x108`), so its default is not zero |
+| traits | `leader_trait` | `leader_class` | a list's contents; the `auto_mod` cases above stand |
 
 **Check.** `cargo live fixture_required_field` loads two card categories through validation: the
 one without `name` logs `has empty 'name' field` on its own line, the other logs nothing about

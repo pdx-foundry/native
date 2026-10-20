@@ -82,7 +82,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v72";
+pub const METHOD: &str = "registry-fields/v73";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
