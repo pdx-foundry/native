@@ -266,6 +266,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         RegistryFieldResult {
+            key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
             persistent: destinations

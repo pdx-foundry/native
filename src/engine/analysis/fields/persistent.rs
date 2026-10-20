@@ -122,7 +122,8 @@ pub(super) fn embedded(
         if !reader.member.ends_with("::ReadMember(CReader&, int)") {
             continue;
         }
-        let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, &reader.member, None);
+        let (paths, mut gaps, order_checks) =
+            dispatch::explore_owner(input, symbol_index, &reader.member, None);
         let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
         // With no named key, the field keeps its unresolved members and their gap.
         if fields.is_empty() {
@@ -130,6 +131,7 @@ pub(super) fn embedded(
         }
         gaps.extend(field_gaps);
         let partition_accounted = inventory::partition_accounted(&paths);
+        let key_order = inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
         embedded.push(EmbeddedField {
             token: field.token,
             read: reader.read.clone(),
@@ -139,6 +141,7 @@ pub(super) fn embedded(
                 paths,
                 gaps,
                 partition_accounted,
+                key_order,
                 ..RegistryFieldResult::default()
             }),
         });
