@@ -204,10 +204,52 @@ belongs to one row.
 readers through the [allocation rule](#allocations-in-constructor-walks).
 
 Registry-wide gaps keep their owners: the unfollowed root paths stop at the shapes above and at
-unsupported instructions (`blr`, `ret`, `cset`, `lsr`) and branch conditions (`b.lt`,
-`b.le`, `b.gt`, `b.hi`, `b.ls`); the unnamed keys are non-singleton token paths; the unreadable
-input is the seven owners with no `ReadMember` and no [serializer root](#serializer-roots-and-the-stack-guard-sdk-835)
-(`CJobTag`, `CTraitTag`, `CLivingStandard`, …).
+unsupported instructions (`blr`, `ret`, `cset`) and branch conditions on values other than an
+owner word ([ordered compares](#ordered-owner-compares-and-right-shifts)); the unnamed keys are
+non-singleton token paths; the unreadable input is the seven owners with no `ReadMember` and no
+[serializer root](#serializer-roots-and-the-stack-guard-sdk-835) (`CJobTag`, `CTraitTag`,
+`CLivingStandard`, …).
+
+### Ordered owner compares and right shifts
+
+Three local rules of the dispatch walk (`fields/dispatch.rs`), on M452 at `registry-fields/v64`
+and `command-grammar/v28`:
+
+- **Ordered compare of an owner word.** A `b.lt`, `b.ge`, `b.gt`, `b.le`, `b.hi`, `b.ls`, … after a
+  compare of a word loaded from the owner with one constant keeps each side that the word can take,
+  under an unresolved condition (`ordered_sides`). A load at least as wide as the compare can hold
+  every value; a narrower load may be zero- or sign-extended (the walk does not keep which), so a
+  side counts only when both extensions agree, and otherwise the path stops
+  (`ordered-compare-range`). Every store outside the frame and every call forgets the sides.
+  `CCountryType::ReadMember` (`0x10033f6bc`): `ldr w8,[x19,#0x784]; cmp w8,#1; b.lt` around a
+  diagnostic, then the read of `trade_routes_available`. A compare of any other value is still a
+  stop. The path remembers its side (`State::ordered`) until a call or a store outside the frame:
+  a later compare of the same word with the same pivots and the same or opposite condition takes
+  only the side that the first allows, and any other test of that word, or an ordered compare of a
+  word that an equality test settled, stops the path (`ordered-compare-repeat`).
+- **Right shift.** `lsr` makes its destination unknown, as `ubfx` does. The Boolean bit reads load
+  the bit's word, shift the top bit down into a stack temporary (`ldrb w8,[x19,#0x40]; lsr w8,w8,#7`
+  at `0x10033f380`; `ldr w8,[x19,#0x40]; lsr w8,w8,#0x1f` at `0x10033f760`), call `Read(bool&)` and
+  merge the byte back; the temporary's old value does not matter.
+- **Floating-point move.** `fmov` makes its destination unknown (`fmov s8,#1.5` in
+  `CTrait::ReadMember` and `CShipSize::ReadMember`).
+
+Result: 37 more root fields in 20 registries (for example `country_types` `relations`,
+`share_survey_data`, `trade_routes_available`; `ship_sizes` `accepts_all_modifiers`,
+`auto_upgrade`; `species_classes` `playable`; `pop_jobs` `auto_generate_description`; `allow`,
+`potential` and similar blocks of resolutions, espionage operation types, tradable actions), and 13
+more registries complete for fields (129 to 142). No field is lost and no known reader becomes
+unknown. Command grammar: the 22 `*_event` effects and `fire_on_action` gain a `scopes` key whose
+reader is not established, and `create_leader`, `create_saved_leader` and `clone_leader` gain the
+Boolean `skip_background_generation`. `change_dominant_species` stops one more path at
+`ordered-compare-repeat`, with the same reader result.
+
+Limits: the walk does not resolve the compare, so a field read on only one side keeps an
+unresolved condition. Still stopped: `blr` on the reader's lexer (`ldr x0,[x20,#0x30]; ldr x8,[x0];
+ldr x8,[x8,#0x10]; blr x8`, then a test of the token kind at `+0x18` against `4` and `0x13`) in
+`CShipSize::ReadMember` and `CTrait::ReadMember`: a value-token-kind switch, which needs its own
+rule; and `ret` or `lsl` paths of `traits` `leader_class`, `forced_happiness`. Remove the compare
+rule when a build's owner compare selects which key is read.
 
 ### Inherited member readers (SDK-838)
 

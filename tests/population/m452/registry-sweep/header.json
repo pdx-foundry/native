@@ -2,10 +2,10 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "relationships": {
     "fields": {
-      "complete": 129,
+      "complete": 142,
       "denominator": 194,
-      "partial": 56,
-      "rate": 0.6649,
+      "partial": 43,
+      "rate": 0.732,
       "unsupported": 9
     },
     "naming_rules": {
@@ -17,42 +17,42 @@
     },
     "numerics": {
       "complete": 270,
-      "denominator": 620,
-      "rate": 0.4355,
-      "undetermined": 350
+      "denominator": 643,
+      "rate": 0.4199,
+      "undetermined": 373
     },
     "reader_kinds": {
-      "complete": 1902,
-      "denominator": 2336,
-      "failed": 345,
-      "partial": 89,
-      "rate": 0.8142
+      "complete": 1922,
+      "denominator": 2373,
+      "failed": 368,
+      "partial": 83,
+      "rate": 0.8099
     },
     "references": {
       "complete": 40,
-      "denominator": 390,
-      "rate": 0.1026,
-      "undetermined": 350
+      "denominator": 413,
+      "rate": 0.0969,
+      "undetermined": 373
     },
     "scope_context": {
-      "complete": 1680,
-      "denominator": 2336,
-      "failed": 441,
-      "partial": 215,
-      "rate": 0.7192
+      "complete": 1694,
+      "denominator": 2373,
+      "failed": 462,
+      "partial": 217,
+      "rate": 0.7139
     },
     "shapes_and_conditions": {
-      "complete": 1776,
-      "denominator": 2336,
-      "failed": 329,
-      "partial": 231,
-      "rate": 0.7603
+      "complete": 1790,
+      "denominator": 2373,
+      "failed": 350,
+      "partial": 233,
+      "rate": 0.7543
     },
     "weights": {
       "complete": 104,
-      "denominator": 600,
-      "rate": 0.1733,
-      "undetermined": 496
+      "denominator": 623,
+      "rate": 0.1669,
+      "undetermined": 519
     }
   }
 }
