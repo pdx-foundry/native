@@ -1685,6 +1685,55 @@ fn an_object_constructed_at_an_array_end_and_read_there_joins_its_collection() {
     assert!(derive(emplaced_nested_fixture(0x28)).collections.is_empty());
 }
 
+#[test]
+fn an_object_that_an_inherited_reader_behind_an_import_stub_constructs_joins_its_collection() {
+    let inherited = "CBase::ReadMember(CReader&, int)";
+    let mut input = emplaced_nested_fixture(0x30);
+    let body = arm64!(at 0xc000;
+        cmp w2, #7; // token 7
+        b.eq extern 0xc010;
+        mov w0, #0; // not handled
+        ret;
+        mov x19, x0; // owner
+        mov x20, x1; // reader
+        add x0, x19, #0x40; // the array
+        ldr w8, [x19, #0x54]; // its count
+        add w1, w8, #1;
+        bl extern 0x9600; // CPdxArray<CChild, int>::SetSizeAndEmplace<>
+        ldr x8, [x19, #0x48]; // its objects
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30; // the element size
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10; // the last object
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.functions[0].code = arm64!(at 0x1000;
+        b extern 0x9800 // the import stub of CBase::ReadMember
+    );
+    input.functions.push(Function {
+        name: inherited.into(),
+        address: 0xc000,
+        code: body,
+    });
+    input.stubs.insert(0x9800, 0xc000);
+    input.symbols.extend([
+        Symbol {
+            name: inherited.into(),
+            address: 0x9800,
+        },
+        Symbol {
+            name: inherited.into(),
+            address: 0xc000,
+        },
+    ]);
+
+    let result = derive(input);
+
+    assert_eq!(result.collections.len(), 1, "{:?}", result.gaps);
+    assert_eq!(result.collections[0].offset, 0x40);
+}
+
 /// The nested fixture with `CChild` built inline: `_bzero` on the object, a member constructor on
 /// `+0x10`, then the primary address point stored at `+0`, as `CTechnology::ReadMember` builds
 /// `CTechnologySwap` on M452. The read's vtable slot is a constant pointer of the image.

@@ -176,6 +176,19 @@
     "district_planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]},
     "planet_modifier": {"Listed": ["Pops", "Orbital Stations", "Space Stations", "Military Ships", "Civilian Ships", "Science Ships", "Fleets", "Countries", "Armies", "Leaders", "Planets", "Ship Components", "Pop Factions", "Transport Ships", "Deposits", "Megastructures", "Habitability", "Starbases", "Economic Units", "Star Systems", "Waystations", "Federations", "Espionage", "AI Economy", "Ship Design Stats", "Astral Rift", "Cosmic Storm Influence Field", "Owned Ships", "Galactic Community", "Colony"]}
   },
-  "common/starbase_modules": {},
+  "common/starbase_modules": {
+    "triggered_country_modifier": "Unresolved",
+    "triggered_country_modifier.modifier": "Enclosing",
+    "triggered_planet_modifier": "Unresolved",
+    "triggered_planet_modifier.modifier": "Enclosing",
+    "triggered_station_modifier": "Unresolved",
+    "triggered_station_modifier.modifier": "Enclosing",
+    "triggered_system_modifier": "Unresolved",
+    "triggered_system_modifier.modifier": "Enclosing",
+    "triggered_waystation_network_country_modifier": "Unresolved",
+    "triggered_waystation_network_country_modifier.modifier": "Enclosing",
+    "triggered_waystation_network_system_modifier": "Unresolved",
+    "triggered_waystation_network_system_modifier.modifier": "Enclosing"
+  },
   "common/species_rights/citizenship_types": {}
 }

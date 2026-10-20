@@ -221,11 +221,11 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   `CString(char const*)` on the key text, so it is an `UnnamedField` gap instead of an
   unfollowed path.
 - **Limits.**
-  - The 9 `triggered_*_modifier` keys of the starbase template are named fields with an
-    `UnresolvedReader` gap, not triggered modifier clauses. The nested-object pass enters inherited
-    readers since `registry-fields/v56` ([objects constructed at an array's
-    end](#objects-constructed-at-an-arrays-end)), which joins the component template's triggered
-    modifiers, but the starbase answers did not change; their stop is not yet read.
+  - The nested-object pass enters inherited readers, through their import stubs, since
+    `registry-fields/v56` ([objects constructed at an array's
+    end](#objects-constructed-at-an-arrays-end)). Six `triggered_*_modifier` keys of the starbase
+    template now read triggered modifier clauses in both registries; the other three keep an
+    `UnresolvedReader` gap, and their stop is not yet read.
   - The other starbase fields without one shared reader belong to census families above:
     `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
     loop), `triggered_component_set` (an inserted struct), `name` and `desc`
@@ -503,7 +503,8 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
 - **Inherited and value readers.** The pass enters the inherited readers and value readers that the
   binding collects (`readers::is_inheritable_member`, `readers::is_member_value_reader`), and
   `collect_objects` scans their direct calls for classes, so an object that only the base reader
-  constructs joins. The walk also writes the token into the reader's token word, as the dispatch
+  constructs joins. A call through an import stub that `FieldInput::stubs` binds to an entered
+  reader runs as a branch to its body. The walk also writes the token into the reader's token word, as the dispatch
   walk does, so a value reader that loads the token from the reader sees it.
 - **M452.** `CComponentTemplate::ReadMember` (`0x1001dd284`) handles `hostile_aura` (token
   `0x3542`) by `SetSizeAndEmplace` (`0x1001f6858`) on `+0x7c8`, then `madd`/`sub` with `#0x278` to
@@ -514,8 +515,12 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
   `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
   `system_wide`, `modifier`. Through the entered base reader, `triggered_ship_modifier` and
-  `triggered_ship_design_modifier` of each key now read triggered modifier clauses. The field sweep
-  and every other registry are unchanged.
+  `triggered_ship_design_modifier` of each key now read triggered modifier clauses. Through the
+  stub of `CStarbaseComponent<T>::ReadMember`, `common/starbase_modules` and
+  `common/starbase_buildings` each gain six triggered modifier clauses (`planet`, `country`,
+  `station`, `system`, `waystation_network_system`, `waystation_network_country`), whose category
+  masks stay `Unresolved` in `tests/expected/m452/modifier-containers.json`; the field sweep's known
+  reader kinds go from 1866 to 1878. Every other registry is unchanged.
 - **Remove or limit the rule** when a build's resizing constructs its new element other than by
   the class's default construction, when the root reads an element other than the last one, or
   when a resizing's element size comes from a computed value.

@@ -78,15 +78,29 @@ pub(super) fn discover(
                     || readers::is_member_value_reader(&function.name))
         })
         .collect();
-    let entered: BTreeSet<u64> = factories
+    let mut entered: BTreeSet<u64> = factories
         .iter()
         .chain(&inherited)
         .map(|function| function.address)
         .collect();
+    // A call can reach an inherited reader through an import stub that the image binds to its
+    // body. The walk runs each such stub as a branch to the body.
+    let stub_branches: Vec<(u64, [u8; 4])> = input
+        .stubs
+        .iter()
+        .filter(|(_, body)| entered.contains(body))
+        .filter_map(|(&stub, &body)| Some((stub, branch_to(stub, body)?)))
+        .collect();
+    entered.extend(stub_branches.iter().map(|(stub, _)| stub));
     let ranges: Vec<_> = std::iter::once(root)
         .chain(factories)
         .chain(inherited)
         .map(|function| (function.address, function.code.as_slice()))
+        .chain(
+            stub_branches
+                .iter()
+                .map(|(stub, branch)| (*stub, branch.as_slice())),
+        )
         .collect();
     let Ok(code) = Code::decode(&ranges) else {
         return Vec::new();
@@ -361,6 +375,16 @@ pub(super) fn discover(
         });
     }
     collections
+}
+
+/// The encoding of `b body` at `from`, when the distance fits the branch's 26-bit word offset.
+fn branch_to(from: u64, body: u64) -> Option<[u8; 4]> {
+    const B: u32 = 0x1400_0000;
+    let words = (body as i64).checked_sub(from as i64)? / 4;
+
+    (-(1 << 25)..1 << 25)
+        .contains(&words)
+        .then(|| (B | (words as u32 & 0x03ff_ffff)).to_le_bytes())
 }
 
 /// Construct an object of `objects[index]` at the end of the owner array that the resizing's
