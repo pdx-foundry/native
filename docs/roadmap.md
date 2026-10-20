@@ -175,9 +175,11 @@ is still its own task, as the [development policy](development-policy.md) says.
   a definition without the field loads with no diagnostic.
 - The lookup category of a string field (`localisation`, `<sprite>`, `filepath`, `<type>`) is an
   engine fact at the field's use site. It is Native work, not a reason.
-- A config key that the engine never reads answers "not a field" where Native's field list for its
-  block is complete: the claim is covered and joins the CWT disagreement review. The reader is
-  checked first, because a key can be formed at run time.
+- A config key that the engine never reads answers "not a field" only where Native's answer for
+  its block is `Complete` and carries no gap that reaches the key: no `OutsideMethod` limit, no
+  inherited reader, nested reader or dynamic name that the method did not follow. The claim is then
+  covered and joins the CWT disagreement review. The reader is checked first, because a key can be
+  formed at run time. Elsewhere the claim stays open.
 
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims
