@@ -2359,3 +2359,50 @@ fn storage_probe_bindings() {
         }
     }
 }
+
+/// Spike (storage probe): the nested special-project `requirements` storage that an inline
+/// fixture binds for each named child, written to `STORAGE_PROBE_OUT`.
+#[test]
+#[ignore = "spike: requires STELLARIS_PATH and STORAGE_PROBE_OUT"]
+fn storage_probe_nested_bindings() {
+    let native = crate::session::installed_native();
+    let analysis = &native.bound().analysis;
+    let children = [
+        "assault_armies",
+        "carries_colony",
+        "defense_armies",
+        "fleet_power",
+        "handled_by_event_tooltip",
+        "has_technology",
+        "has_trait",
+        "is_founder_species",
+        "leader",
+        "mining_station",
+        "observation_station",
+        "research_station",
+        "shipclass_colonizer",
+        "shipclass_constructor",
+        "shipclass_military",
+        "shipclass_science_ship",
+        "shipclass_transport",
+        "size_requirement",
+        "skill",
+    ];
+    let questions = children.map(|child| {
+        crate::FixtureFieldQuestion::new("common/special_projects", "probe", child)
+            .with_parent_field("requirements")
+    });
+    let request = crate::FixtureRequest::field_outcomes(
+        "common/special_projects/native.txt",
+        "special_project = { key = probe }",
+        questions,
+    );
+    let (_, setups) = analysis.inline_fixture(&request).unwrap().unwrap();
+    let rows: Vec<_> = setups
+        .iter()
+        .map(|setup| serde_json::json!({"field": setup.field, "storage": setup.storage}))
+        .collect();
+    let output = std::env::var_os("STORAGE_PROBE_OUT").expect("STORAGE_PROBE_OUT names a file");
+
+    fs::write(output, serde_json::to_vec_pretty(&rows).unwrap()).unwrap();
+}
