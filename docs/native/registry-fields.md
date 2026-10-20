@@ -64,7 +64,7 @@ give six fields of five registries their members. Against `v52`, the dispatch wa
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
 changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against `v57`, the literal-token test (below) adds `scripted_actions.context_menu_ordering` and `steal_planet_output.mode`. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against `v57`, the literal-token test (below) adds `scripted_actions.context_menu_ordering` and `steal_planet_output.mode`. Against `v58`, value text (below) gives 47 registry fields, 44 of them in events, a `String` reader, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -102,6 +102,17 @@ lookups, so the diff drops only members that match their serde defaults.
   an element from an unknown call cannot establish the shape. A stack `CString` made from the
   value token's text and passed to an owner call reads `String` with no destination, by a stated
   rule ([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)).
+- **Value text.** A reader that measures the value token's text (`strlen` of the text pointer,
+  `ldr x…, [reader, #0x288]` on M452) and assigns the text and that length to an owner
+  `std::basic_string` (`__assign_external(char const*, unsigned long)`) reads `String/Replace` at
+  that member. The walk follows `strlen` only when the assignment comes next with no conditional
+  branch or other call between (`assigns_next`): a reader that tests the length instead, as
+  `text_color_code` of patrons does, keeps its stop at `strlen`. A path that measures the text and
+  joins no reader keeps that stop too, so a key is never lost. On M452 this reads `title` and
+  `message_desc` of every event kind, `upgrade` (astral actions), `entity` (section templates),
+  `risk_event` (technologies) and about 25 command keys (`custom_tooltip`, `has_term_value`, …).
+  `id` and `base` of events stay stopped: after the assignment they pass the member to
+  `CEventManager::IsValidIDTag`, which the walk cannot prove leaves it unchanged.
 - **The `yes` test.** A reader that compares the value token with the token `yes` alone, sets a
   register from the result (`cmp`, `cset …,eq`) and stores that register to an owner member reads
   `Boolean/Replace`. Every other token stores false and logs nothing, so the reader accepts any

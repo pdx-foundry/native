@@ -17,42 +17,42 @@
     },
     "numerics": {
       "complete": 269,
-      "denominator": 634,
-      "rate": 0.4243,
-      "undetermined": 365
+      "denominator": 631,
+      "rate": 0.4263,
+      "undetermined": 362
     },
     "reader_kinds": {
-      "complete": 1843,
+      "complete": 1846,
       "denominator": 2278,
-      "failed": 360,
+      "failed": 357,
       "partial": 75,
-      "rate": 0.809
+      "rate": 0.8104
     },
     "references": {
       "complete": 40,
-      "denominator": 405,
-      "rate": 0.0988,
-      "undetermined": 365
+      "denominator": 402,
+      "rate": 0.0995,
+      "undetermined": 362
     },
     "scope_context": {
-      "complete": 1662,
+      "complete": 1665,
       "denominator": 2278,
-      "failed": 435,
+      "failed": 432,
       "partial": 181,
-      "rate": 0.7296
+      "rate": 0.7309
     },
     "shapes_and_conditions": {
-      "complete": 1724,
+      "complete": 1727,
       "denominator": 2278,
-      "failed": 344,
+      "failed": 341,
       "partial": 210,
-      "rate": 0.7568
+      "rate": 0.7581
     },
     "weights": {
       "complete": 104,
-      "denominator": 593,
-      "rate": 0.1754,
-      "undetermined": 489
+      "denominator": 590,
+      "rate": 0.1763,
+      "undetermined": 486
     }
   }
 }
