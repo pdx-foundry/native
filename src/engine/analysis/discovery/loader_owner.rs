@@ -86,7 +86,15 @@ pub fn loader_owner(
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
 ) -> LoaderOwner {
-    let entries = functions
+    route_owner(functions, loader_entries(functions, reads), reads, builders)
+}
+
+/// The functions of `functions` that call the file enumeration: where a loader's route starts.
+fn loader_entries(
+    functions: &BTreeMap<u64, Vec<Instruction>>,
+    reads: &LoaderReads<'_>,
+) -> Vec<u64> {
+    functions
         .iter()
         .filter(|(_, rows)| {
             !FunctionAddresses::of(rows)
@@ -94,9 +102,31 @@ pub fn loader_owner(
                 .is_disjoint(reads.enumerations)
         })
         .map(|(&start, _)| start)
-        .collect();
+        .collect()
+}
 
-    route_owner(functions, entries, reads, builders)
+/// The starts of the functions on the route from `entries`: the entries and every function of
+/// `functions` that the route calls directly. A called function that calls the file enumeration
+/// itself is not followed.
+fn route(
+    addresses: &BTreeMap<u64, FunctionAddresses>,
+    entries: Vec<u64>,
+    reads: &LoaderReads<'_>,
+) -> BTreeSet<u64> {
+    let follows = |call: &u64| {
+        addresses
+            .get(call)
+            .is_some_and(|callee| callee.calls.is_disjoint(reads.enumerations))
+    };
+    let mut pending = entries;
+    let mut route = BTreeSet::new();
+    while let Some(start) = pending.pop() {
+        if route.insert(start) {
+            pending.extend(addresses[&start].calls.iter().filter(|call| follows(call)));
+        }
+    }
+
+    route
 }
 
 /// The owner that the loader in `functions` builds for the directory that the enumeration calls
@@ -178,19 +208,7 @@ fn route_owner(
         .iter()
         .map(|(&start, rows)| (start, FunctionAddresses::of(rows)))
         .collect();
-    let follows = |call: &u64| {
-        addresses
-            .get(call)
-            .is_some_and(|callee| callee.calls.is_disjoint(reads.enumerations))
-    };
-    let mut pending = entries;
-    let mut route = BTreeSet::new();
-    while let Some(start) = pending.pop() {
-        if route.insert(start) {
-            pending.extend(addresses[&start].calls.iter().filter(|call| follows(call)));
-        }
-    }
-
+    let route = route(&addresses, entries, reads);
     let built: BTreeSet<&String> = route
         .iter()
         .flat_map(|start| addresses[start].calls.union(&addresses[start].formed))
@@ -240,15 +258,20 @@ pub struct ObjectRead {
 }
 
 /// The one object that the loader in `functions`, every decoded function of one database by its
-/// start, reads with its statement reader, with the start of the function that reads it. `None`
-/// when no function or several read one.
+/// start, reads with its statement reader on its route from the file enumeration, with the start
+/// of the function that reads it. `None` when no function or several read one.
 pub fn read_object(
     functions: &BTreeMap<u64, Vec<Instruction>>,
     reads: &LoaderReads<'_>,
     builders: &BTreeMap<u64, String>,
 ) -> Option<(u64, ObjectRead)> {
-    let mut found = functions.iter().flat_map(|(&start, rows)| {
-        object_reads(rows, &FunctionAddresses::of(rows), reads, builders)
+    let addresses: BTreeMap<u64, FunctionAddresses> = functions
+        .iter()
+        .map(|(&start, rows)| (start, FunctionAddresses::of(rows)))
+        .collect();
+    let route = route(&addresses, loader_entries(functions, reads), reads);
+    let mut found = route.into_iter().flat_map(|start| {
+        object_reads(&functions[&start], &addresses[&start], reads, builders)
             .into_iter()
             .map(move |read| (start, read))
     });
@@ -920,6 +943,40 @@ mod tests {
             read_with(0xa0),
             LoaderOwner::Several(vec!["COther".into(), "COwner".into()])
         );
+    }
+
+    #[test]
+    fn the_read_object_is_read_on_the_loader_route() {
+        let mut code = Arm64::at(READ_FILE);
+        let statement = code.here();
+        arm64!(code; add x0, sp, #0x70);
+        code.call(READ_STATEMENT);
+        code.address(8, OWNER_POINT);
+        arm64!(code;
+            str x8, [x19]
+            ; ldr x8, [x19]
+            ; ldr x8, [x8, #0x20]
+            ; add x1, sp, #0x70
+            ; mov x0, x19
+            ; blr x8
+            ; b extern statement as usize
+        );
+        let reads = LoaderReads {
+            enumerations: &BTreeSet::from([ENUMERATE]),
+            statement_reads: &BTreeSet::from([READ_STATEMENT]),
+            token_offset: TOKEN_OFFSET,
+            token_names: &BTreeMap::new(),
+        };
+        let read_file = decoded(code, READ_FILE);
+        let read_from = |next: u64| {
+            let functions = BTreeMap::from([loader(next), read_file.clone()]);
+
+            read_object(&functions, &reads, &builders()).map(|(start, read)| (start, read.class))
+        };
+
+        assert_eq!(read_from(READ_FILE), Some((READ_FILE, "COwner".into())));
+        // A method of the database that the loader does not call reads no item.
+        assert_eq!(read_from(QUERY), None);
     }
 
     #[test]

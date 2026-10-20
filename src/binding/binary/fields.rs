@@ -212,8 +212,9 @@ fn loader_part_points(
     };
     let functions = super::loader_owners::own_functions(text, symbols.symbols, search.database);
     let statement_reads = addresses(symbols, STATEMENT_READER).into_iter().collect();
+    let anchors = super::constructors::anchors(symbols.symbols);
     let reads = loader_owner::LoaderReads {
-        enumerations: &BTreeSet::new(),
+        enumerations: &anchors.file_enumerations,
         statement_reads: &statement_reads,
         token_offset: search.reader_token_offset,
         token_names: &BTreeMap::new(),
@@ -228,26 +229,58 @@ fn loader_part_points(
         read.register,
         Some(read.call),
     );
+    let is_address_point =
+        |point: u64| super::families::point_class(symbols.symbols, data, point).is_some();
+    // Offsets that two parts give different points have no point.
+    let mut conflicts = BTreeSet::new();
 
     for (&offset, targets) in build.member_calls.range(1..) {
-        let classes: BTreeSet<&str> = symbols
-            .at(targets)
-            .filter_map(|symbol| Some(symbol.name.split_once("::")?.0))
-            .collect();
-        let [class] = classes.into_iter().collect::<Vec<_>>()[..] else {
+        let Some(class) = method_class(symbols, targets) else {
             continue;
         };
         let Some(rows) = default_constructor(text, symbols, class) else {
             continue;
         };
         let part = inline_build::inline_build(&rows, 0, 0, None);
+        let Some(part_points) = inline_build::part_points(&build, offset, &part, is_address_point)
+        else {
+            continue;
+        };
 
-        if let Some(part_points) = inline_build::part_points(&build, offset, &part) {
-            points.extend(part_points);
+        for (at, point) in part_points {
+            if *points.entry(at).or_insert(point) != point {
+                conflicts.insert(at);
+            }
         }
     }
 
+    points.retain(|at, _| !conflicts.contains(at));
+
     Ok(points)
+}
+
+/// The one class whose methods every call target in `targets` is. `None` when a target has no
+/// symbol or a symbol that names no class, or when the targets are methods of several classes.
+fn method_class<'a>(symbols: IndexedSymbols<'a>, targets: &BTreeSet<u64>) -> Option<&'a str> {
+    let mut classes = BTreeSet::new();
+
+    for &target in targets {
+        let names: Vec<_> = symbols.at(&BTreeSet::from([target])).collect();
+
+        if names.is_empty() {
+            return None;
+        }
+
+        for symbol in names {
+            classes.insert(super::receivers::method_class(&symbol.name)?);
+        }
+    }
+
+    let [class] = classes.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(class)
 }
 
 /// The decoded body of `class`'s one default constructor `Class::Class()`, after the symbols of
@@ -258,7 +291,7 @@ fn default_constructor(
     symbols: IndexedSymbols<'_>,
     class: &str,
 ) -> Option<Vec<Instruction>> {
-    let name = format!("{class}::{class}()");
+    let name = format!("{class}::{}()", super::receivers::unqualified_base(class));
     let entries: BTreeSet<u64> = symbols.named(&name).map(|symbol| symbol.address).collect();
     let mut bodies = Vec::new();
 
@@ -1455,6 +1488,33 @@ pub(super) fn key_readers(
 mod tests {
     use super::*;
     use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_with_fixups};
+
+    #[test]
+    fn a_part_is_the_one_class_whose_methods_every_call_reaches() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = vec![
+            symbol("Outer::Part<int>::operator=(Outer::Part<int>&&)", 0x10),
+            symbol("Outer::Part<int>::Clear()", 0x20),
+            symbol("Other::Clear()", 0x30),
+            symbol("_memcpy", 0x40),
+        ];
+        let index = crate::binding::binary::symbols::SymbolIndex::new(&symbols);
+        let indexed = index.over(&symbols);
+        let class = |targets: &[u64]| method_class(indexed, &targets.iter().copied().collect());
+
+        assert_eq!(class(&[0x10, 0x20]), Some("Outer::Part<int>"));
+        assert_eq!(class(&[0x10, 0x30]), None);
+        // A target that names no class, or has no symbol, may be a call on another object.
+        assert_eq!(class(&[0x10, 0x40]), None);
+        assert_eq!(class(&[0x10, 0x50]), None);
+        assert_eq!(
+            super::super::receivers::unqualified_base("Outer::Part<int>"),
+            "Part"
+        );
+    }
 
     #[test]
     fn the_read_only_sections_hold_the_jump_tables_and_the_string_literals() {

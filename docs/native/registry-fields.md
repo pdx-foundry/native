@@ -1740,18 +1740,23 @@ Pitfalls:
 A custom-loader owner whose own constructors do not build its items' parts takes the address points
 that the loader's inline build installs (`loader_part_points` in `binding/binary/fields.rs`,
 `discovery/inline_build.rs`). The build is the code of the loader's one
-[read object](#custom-loader-owners), walked from the store of the owner's address point to the
-read call. The walk follows each branch, visits each position once, and keeps the registers that
-hold the object plus an offset (through `mov`, `add` and store writeback) and the addresses that
-`adrp` and `add` form. A direct call that the build makes with the object plus an offset in `x0`
-names a part: when every such call at that offset is a method of one class `Part`, and `Part` has
-one default constructor `Part::Part()`, the same walk over that constructor, from `x0`, gives the
-part's stores. Their points, shifted by the offset, become the owner's points at offsets that the
-owner's constructors do not establish.
+[read object](#custom-loader-owners) on its route from the file enumeration
+(`loader_owner::read_object`), walked from the store of the owner's address point to the read
+call. The walk follows each branch and keeps the registers that hold the object plus an offset
+(through `mov`, `add` and store writeback) and the addresses that `adrp` and `add` form. Where
+paths meet it keeps what they agree on and walks on again until no path brings a new state, so the
+stores are those of any path. A branch out of the code or through a register marks the build open;
+code that ends in a call (a landing pad's `_Unwind_Resume`) ends there. A direct call that the
+build makes with the object plus an offset in `x0` names a part: when every call target at that
+offset has a symbol and is a method of one class `Part` (the name before the last top-level `::`),
+and `Part` has one default constructor (`Outer::Part<T>::Part()`), the same walk over that
+constructor, from `x0`, gives the part's stores. Their vtable address points, shifted by the
+offset, become the owner's points at offsets that the owner's constructors do not establish.
 
-- **Check, not only an assumption.** The shifted points count only when the build itself stores at
-  least one of them and stores no other value at any of their offsets, and when the part's
-  constructor stores one value at each offset (`inline_build::part_points`).
+- **Check, not only an assumption.** Neither build may be open. The part's constructor must store
+  one formed address and no other value at each of its offsets. A shifted point counts only where
+  the loader stores no other value, and at least one of them must be a store of the loader's own
+  (`inline_build::part_points`). An offset that two parts give different points has none.
 - **M452.** `CNameListDatabase::Init()` calls `SNameListContent::operator=(SNameListContent&&)`
   with the list plus `0x10`. `SNameListContent::SNameListContent()` (`0x1009950a0`;
   `0x1009957ac` only branches to it) stores eight vtables. The build's branch that constructs the
@@ -1770,7 +1775,10 @@ owner's constructors do not establish.
   earlier vtable words. Running `SNameListContent::SNameListContent()` stops at the 64-path
   limit. The walk reads stores; it does not run calls.
 - Pitfall: a part that the build constructs on the stack and copies in is not seen. Only stores
-  into the object count.
+  into the object count; byte and halfword stores are not read.
+- Pitfall: `Part::Part()` also stores member vtables that are not the part's own, such as
+  `0x1030648e8` at `+0x8`; the loader's build stores other values there (`+0x18` in the list), so
+  those offsets keep no point.
 
 ### Pre-trigger blocks
 
