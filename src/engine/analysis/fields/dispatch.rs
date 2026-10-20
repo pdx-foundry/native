@@ -2307,7 +2307,7 @@ fn diagnostic_side_instruction(row: &Instruction) -> bool {
     match row.operation.as_str() {
         "mov" | "movz" | "movk" | "add" | "sub" | "adrp" | "adr" | "cmp" | "tst" | "cset"
         | "csel" | "nop" | "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" | "ldur"
-        | "ldp" => true,
+        | "ldursb" | "ldp" => true,
         "str" | "stur" | "strb" | "strh" | "stp" => stores_to_a_frame_slot(&row.operands),
         _ => false,
     }
