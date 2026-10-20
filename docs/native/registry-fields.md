@@ -1219,7 +1219,15 @@ converts after the call (17 fields on M452, such as `common/traits` `requires_tr
 `Block` and the family `NotApplicable`: the values are not commands, so no modifier container is
 read and the read scope is `Known([])`. The identity keeps the element type. A tail call into
 an owner array is `Accumulate` ([repeat behavior](#repeat-behavior)); a stack array has no
-destination, and its repeat stays unknown. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
+destination, and its repeat stays unknown. The members are `FieldMembers::Items` with the reader of one value
+when every read alternative joins one list reader and the element `T` has a scalar read
+`CReader::Read(T&)` or `CReader::Read(T&, bool)`, whose kind the item takes (`readers.rs`
+`uniform_list_item_kind`; numeric facts stay `Unresolved`). Validated assumption: the list reader
+reads each value with that read, as `0x10004e608` does for `CString`. A list of keys (`ReadKeyReferenceUniform`,
+`ReadKeyReferenceDeferredUniform`) gives a `Reference` item, looked up as the field's `reference`
+states. Any other element type (a struct such as `CResolutionTypeBreachData` for `in_breach_of`),
+another reader on some path or a stopped path keeps `Unresolved`. At `registry-fields/v67`: 122
+fields, 112 `String`, 9 `Reference`, 1 `Integer`; 16 list blocks stay `Unresolved`. `NSerializer::ReadUniformWithCustomSerializer` is not this reader. Command
 grammar shares the reader rule: nested lists such as `create_species` `adjective.variables`
 join. 17 command answers change (`tests/population/m452/command-population/`): list and
 bit-field joins remove `reader-routing` gaps or give `Replace`, and `has_active_event` now stops

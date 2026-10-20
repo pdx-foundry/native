@@ -213,6 +213,42 @@ fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
     KEEPING_READS.contains(&reader.read.as_str()) && base_hooks
 }
 
+/// The reader of one value of the list that every alternative reads with one list reader, or
+/// `None` when an alternative reads otherwise, the readers differ, or the value's reader is not
+/// established.
+fn list_item_reader(alternatives: &[(Vec<Condition>, PathOutcome)]) -> Option<Reader> {
+    let mut callees = alternatives
+        .iter()
+        .filter_map(|(_, outcome)| match outcome {
+            PathOutcome::Rejected => None,
+            PathOutcome::Reader(ReaderJoin::Joined { callee, .. }) => Some(Some(callee)),
+            _ => Some(None),
+        });
+    let first = callees.next()??;
+    if !callees.all(|callee| callee == Some(first)) {
+        return None;
+    }
+    let kind = if reads_key_list(first) {
+        ReaderKind::Reference
+    } else {
+        readers::uniform_list_item_kind(first)?
+    };
+    let numeric = match kind {
+        ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float => {
+            crate::GrammarProperty::Unresolved
+        }
+        _ => crate::GrammarProperty::Known(None),
+    };
+
+    Some(Reader {
+        id: None,
+        kind,
+        family: BlockFamily::NotApplicable,
+        numeric,
+        scoped_operand: crate::GrammarProperty::Known(None),
+    })
+}
+
 /// Whether `callee` reads a list of keys, each looked up while it reads or later.
 fn reads_key_list(callee: &str) -> bool {
     references::reader(callee).is_some_and(|reader| {
@@ -525,6 +561,8 @@ fn ordinary_field(
         read,
         members: if matches!(shape.value, ValueShape::Scalar | ValueShape::Any) {
             FieldMembers::None
+        } else if let Some(reader) = list_item_reader(&alternatives) {
+            FieldMembers::Items { reader }
         } else {
             FieldMembers::Unresolved
         },
@@ -1055,6 +1093,46 @@ mod tests {
     }
     /// The deferred list reader of scripted actions on M452.
     const DEFERRED_LIST: &str = "void NParserUtil::ReadKeyReferenceDeferredUniform<CScriptedActionDatabase>(CGlobalDeferredDatabaseObject const&, CReader&, CPdxArray<CScriptedActionDatabase::ValueType const*, int>&)";
+
+    #[test]
+    fn a_list_names_the_reader_of_its_values_only_when_every_read_agrees() {
+        let joined = |callee: &str| {
+            (
+                Vec::new(),
+                PathOutcome::Reader(ReaderJoin::Joined {
+                    callee: callee.into(),
+                    arguments: Default::default(),
+                    tail: true,
+                }),
+            )
+        };
+        let strings = "std::__1::enable_if<!(std::is_enum<CString>::value), void>::type CReader::ReadUniform<CString>(CPdxArray<CString, int>&)";
+        let records = "std::__1::enable_if<!(std::is_enum<SRecord>::value), void>::type CReader::ReadUniform<SRecord>(CPdxArray<SRecord, int>&)";
+        let kind = |alternatives: &[(Vec<Condition>, PathOutcome)]| {
+            list_item_reader(alternatives).map(|reader| reader.kind)
+        };
+
+        assert_eq!(kind(&[joined(strings)]), Some(ReaderKind::String));
+        assert_eq!(kind(&[joined(DEFERRED_LIST)]), Some(ReaderKind::Reference));
+        assert_eq!(
+            kind(&[joined(strings), (Vec::new(), PathOutcome::Rejected)]),
+            Some(ReaderKind::String)
+        );
+        for alternatives in [
+            vec![joined(records)],
+            vec![joined(strings), joined(DEFERRED_LIST)],
+            vec![
+                joined(strings),
+                (
+                    Vec::new(),
+                    PathOutcome::Gap(crate::engine::analysis::stop::Unresolved::new("stop")),
+                ),
+            ],
+            vec![],
+        ] {
+            assert_eq!(kind(&alternatives), None);
+        }
+    }
 
     #[test]
     fn a_list_of_looked_up_keys_is_written_as_a_block() {

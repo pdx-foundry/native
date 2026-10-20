@@ -146,6 +146,12 @@ pub enum FieldMembers {
         /// not cover it.
         value_forms: crate::GrammarProperty<Vec<ScalarForm>>,
     },
+    /// A block of bare values, such as `tags = { a b }`, each read by `reader`. For a list of
+    /// keys, each key is looked up as the field's `reference` states.
+    Items {
+        /// The reader of one value of the list.
+        reader: Reader,
+    },
     /// The child fields have not been established.
     Unresolved,
 }

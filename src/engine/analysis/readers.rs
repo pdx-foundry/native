@@ -340,17 +340,41 @@ pub(crate) fn classify_callee(callee: &str) -> ReaderKind {
 /// to the array that it receives. The template's `enable_if` return type differs for an
 /// enumeration element and for any other element.
 pub(crate) fn is_uniform_list(callee: &str) -> bool {
-    let Some(rest) = callee.strip_prefix("std::__1::enable_if<") else {
-        return false;
-    };
-    let Some((_, reader)) = rest.split_once(", void>::type CReader::ReadUniform<") else {
-        return false;
-    };
-    let Some((element, parameter)) = reader.split_once(">(") else {
-        return false;
-    };
+    uniform_list_element(callee).is_some()
+}
 
-    parameter == format!("CPdxArray<{}, int>&)", element.trim_end())
+/// The kind of one value of the `ReadUniform<T>` list reader `callee`: the scalar kind of the
+/// reader's own value read, `CReader::Read(T&)` or `CReader::Read(T&, bool)`. `None` for an
+/// element that no scalar read takes.
+pub(crate) fn uniform_list_item_kind(callee: &str) -> Option<ReaderKind> {
+    let element = uniform_list_element(callee)?;
+
+    [
+        format!("CReader::Read({element}&)"),
+        format!("CReader::Read({element}&, bool)"),
+    ]
+    .iter()
+    .map(|read| classify_callee(read))
+    .find(|kind| {
+        matches!(
+            kind,
+            ReaderKind::Boolean
+                | ReaderKind::Integer
+                | ReaderKind::Float
+                | ReaderKind::FixedPoint
+                | ReaderKind::String
+        )
+    })
+}
+
+/// The element type of the `ReadUniform<T>(CPdxArray<T, int>&)` list reader `callee`.
+fn uniform_list_element(callee: &str) -> Option<&str> {
+    let rest = callee.strip_prefix("std::__1::enable_if<")?;
+    let (_, reader) = rest.split_once(", void>::type CReader::ReadUniform<")?;
+    let (element, parameter) = reader.split_once(">(")?;
+    let element = element.trim_end();
+
+    (parameter == format!("CPdxArray<{element}, int>&)")).then_some(element)
 }
 
 /// Whether the join is a shared scoped numeric reader.
