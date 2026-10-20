@@ -499,23 +499,26 @@ stopped there, so the registry had no field. The order rule, from the engine's o
 
 The dispatch walker follows the order rule with three general rules (`registry-fields/v56`):
 
-- **Order check.** A `b.eq` or `b.ne` on a compare of an owner word (not the token), reached before
-  the path reads, converts or stores anything outside the frame, is an order check when one side only
-  logs and returns: every way from it calls only functions that
-  change no script state (`readers::changes_no_script_state`), calls at least one diagnostic writer
-  (`readers::DIAGNOSTICS`; a location helper or a string release alone is not a diagnostic), writes
-  only the stack and reaches its own `ret` (`logs_and_returns` in `fields/dispatch.rs`, at most 128
-  instructions over all ways, so a loop fails). The walk takes
+- **Order check.** A `b.eq` or `b.ne` on a compare of a word loaded from the owner is an order
+  check when the path has not yet read anything and one side only logs and returns. "Not yet read"
+  (`reads_nothing_yet`): every instruction so far is in the reader, none is a call or a store outside
+  the frame, and no reader idiom has started (stored, converted or copied value, value text, target,
+  emplace). "Only logs and returns" (`logs_and_returns`): every way from the side runs only register
+  moves and arithmetic, loads, compares, frame stores and branches inside the reader
+  (`diagnostic_side_instruction`, an allow list), calls only functions that change no script state
+  (`readers::changes_no_script_state`), calls at least one diagnostic writer (`readers::DIAGNOSTICS`;
+  a location helper or a string release alone is not one), and reaches its own `ret`, within 128
+  instructions over all ways, so a loop fails. The walk takes
   the other side and does not fork, so the key keeps no condition for the check. A side that writes
   the owner, calls anything else, or branches out of the function is no order check, and the walk
   forks as before (`a_rejecting_side_that_writes_the_owner_is_no_order_check`).
 - **Settled comparison.** Each path keeps the outcome of the owner-word comparisons that it has
-  taken, as `EqualsAny(word, pivots)`. A later `b.eq` or `b.ne` on the same comparison takes the
+  taken, as `EqualsAny(word, pivots)`. Frame words and other values are never settled. A later `b.eq` or `b.ne` on the same comparison takes the
   recorded side. A call or a store outside the frame clears the record, because either can change the
   word; a compound reader call that the walk follows (such as a string emplace) clears it too.
 - **Key order note.** The registry answer states each order check as an `OutsideMethod` gap that
-  starts with "Key order:": the named keys that have no path through the check, and the field whose
-  storage is the tested word, when one field stores it. Atlas does not block on it; it is the only
+  starts with "Key order:": the named keys that some path reads without crossing the check, and the
+  field whose storage is the tested word, when exactly one field stores it. Atlas does not block on it; it is the only
   place that the order is stated, since the field read conditions leave it out.
 
 Two related rules, in the same version: a call that changes no script state after the path called a
@@ -526,8 +529,9 @@ alternatives whose outcomes are the same `Stored` join with a destination, as it
 
 Result on M452: 41 of 42 fields read `[Always]` and 38 have a known reader. The answer has two key
 order notes: "no key other than `user_scope` until `user_scope` is read" (`0x100b10b14`) and "no key
-other than `scope` until an earlier key sets the word that it tests" (`0x100b10b6c`). The second check is
-reached only after `+0x48` is set, so a repeated `user_scope` also passes it only once `scope` is read;
+other than `scope`, `user_scope` until an earlier key sets the word that it tests" (`0x100b10b6c`).
+The second check is reached only after `+0x48` is set: the first `user_scope` skips it, so the note
+allows `user_scope`, but a repeated `user_scope` crosses it and is rejected until `scope` is read.
 `scope` stores into `+0x40` through checks that the walk does not join, so the note names no field.
 The command grammars change too: 189 commands lose a contradictory `All[Unresolved, Unresolved]`
 alternative of the shared `Target` reader (the settled second test), and `kill_leader.ability` gains
@@ -539,9 +543,10 @@ Limits, each with the condition for a change:
   forks again. Extend `settled_comparison` when a reader repeats such a test.
 - The note names the key order, not which values are accepted: the tested pivot (`0x200000`, unread)
   is not part of the answer. Add it when Atlas needs to name the unread state.
-- The allowed keys are those with no path through the check. A key read through an inherited reader
-  or a jump-table case whose paths pass the check is not allowed, which is the engine's behavior; a
-  key whose only path stops before the check counts as allowed.
+- A key is held by the check only when every path of it crosses the check; a key with one path
+  that skips it is allowed, although its other paths are rejected in the state that reaches the check
+  (the repeated `user_scope` above). The note does not state that state. Add it when Atlas needs the
+  order of a repeated key.
 - Only owner walks follow order checks: the registry root, its collection objects and its embedded
   objects (`DispatchInput::follows_order_checks`). An order check inside a collection or embedded
   object is a note on the parent field; one inside an inherited or wrapped reader of the root is a

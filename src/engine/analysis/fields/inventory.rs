@@ -57,8 +57,8 @@ pub(crate) fn fields_and_gaps(
     (fields.into_values().collect(), gaps)
 }
 
-/// The key order of each order check in `checks`: the named keys whose paths do not pass the
-/// check, and the field that sets the tested word.
+/// The key order of each order check in `checks`: the named keys that some path reads without
+/// crossing the check, and the field that sets the tested word.
 pub(super) fn key_order(
     checks: &[OrderCheck],
     paths: &[TokenPath],
@@ -68,11 +68,13 @@ pub(super) fn key_order(
     let mut order: Vec<KeyOrder> = Vec::new();
 
     for check in checks {
+        // A key is held by the check only when every path of it crosses the check.
         let passes = |field: &&RootField| {
-            field
-                .paths
-                .iter()
-                .any(|&index| paths[index].instructions.contains(&check.at))
+            !field.paths.is_empty()
+                && field
+                    .paths
+                    .iter()
+                    .all(|&index| paths[index].instructions.contains(&check.at))
         };
         let mut allowed: Vec<_> = fields
             .iter()
@@ -238,5 +240,36 @@ mod tests {
 
         assert_eq!(setter(&["first"]), Some("first".into()));
         assert_eq!(setter(&["first", "second"]), None);
+    }
+
+    #[test]
+    fn a_key_read_on_some_path_without_the_check_passes_it() {
+        let token = || Token {
+            name: Some("key".into()),
+            constructor: 0,
+        };
+        let check = OrderCheck {
+            at: 0x1000,
+            tested: Value::Load(Box::new(Value::Owner(STORED_AT)), 8),
+        };
+        let allowed = |crossings: &[bool]| {
+            let mut paths = vec![path([i32::MIN as i64, 4], PathOutcome::Rejected)];
+            for &crosses in crossings {
+                let mut read = path([5, 5], string_field());
+                if crosses {
+                    read.instructions = vec![check.at];
+                }
+                paths.push(read);
+            }
+            paths.push(path([6, i32::MAX as i64], PathOutcome::Rejected));
+            let (fields, _) = fields_and_gaps(&paths, &BTreeMap::from([(5, token())]));
+
+            key_order(std::slice::from_ref(&check), &paths, &fields, false)[0]
+                .allowed
+                .clone()
+        };
+
+        assert!(allowed(&[true, true]).is_empty());
+        assert_eq!(allowed(&[true, false]), vec!["key".to_string()]);
     }
 }

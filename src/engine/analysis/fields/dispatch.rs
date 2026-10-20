@@ -2112,12 +2112,7 @@ fn settled_comparison(
     let Some(Flags::Values { tested, pivots }) = &state.flags else {
         return None;
     };
-    if !matches!(condition, "eq" | "ne")
-        || matches!(
-            tested,
-            Value::Token | Value::TokenWord(_) | Value::Constant(_)
-        )
-    {
+    if !matches!(condition, "eq" | "ne") || !is_owner_word(tested) {
         return None;
     }
     let target = *number(&row.operands).and_then(|a| indexes.get(&(a as u64)))?;
@@ -2138,19 +2133,7 @@ fn settled_comparison(
         });
     }
 
-    // An order check tests a word of the definition before the path reads or writes anything.
-    let writes = state.path.iter().any(|address| {
-        indexes.get(address).is_some_and(|&index| {
-            let row = &rows[index];
-            row.operation.starts_with("st") && !row.operands.contains("[sp")
-        })
-    });
-    let unread =
-        !writes && state.stored.is_none() && state.converted.is_none() && state.temporary.is_none();
-    if !input.follows_order_checks
-        || !unread
-        || !matches!(tested, Value::Load(word, _) if matches!(word.as_ref(), Value::Owner(_)))
-    {
+    if !input.follows_order_checks || !reads_nothing_yet(state, rows, indexes) {
         return None;
     }
     let rejects = |side| logs_and_returns(rows, side, indexes, input);
@@ -2170,6 +2153,50 @@ fn settled_comparison(
         equal,
         check: Some(check),
     })
+}
+
+/// Whether `value` is a word that the walk loaded from the owner. Only such a word is settled:
+/// a call or a store outside the frame is the only way the walk can see it change.
+fn is_owner_word(value: &Value) -> bool {
+    matches!(value, Value::Load(word, _) if matches!(word.as_ref(), Value::Owner(_)))
+}
+
+/// Whether the path has not yet read, converted or stored anything: every instruction so far is
+/// in this function and is neither a call nor a store outside the frame, and no reader idiom has
+/// started.
+fn reads_nothing_yet(state: &State, rows: &[Instruction], indexes: &BTreeMap<u64, usize>) -> bool {
+    let only_local_frame_work = state.path.iter().all(|address| {
+        indexes.get(address).is_some_and(|&index| {
+            let row = &rows[index];
+            let call = matches!(row.operation.as_str(), "bl" | "blr" | "br");
+            let store = row.operation.starts_with("st") && !row.operands.contains("[sp");
+            !call && !store
+        })
+    });
+
+    only_local_frame_work
+        && state.stored.is_none()
+        && state.converted.is_none()
+        && state.temporary.is_none()
+        && state.value_read.is_none()
+        && state.keyword_conditions.is_none()
+        && state.copied_tokens.is_empty()
+        && state.value_strings.is_empty()
+        && state.value_token_words.is_empty()
+        && state.targets.is_empty()
+        && state.emplaced.is_empty()
+}
+
+/// The instructions that a diagnostic side may run besides its calls and branches: register
+/// moves and arithmetic, loads, compares, and stores to the frame.
+fn diagnostic_side_instruction(row: &Instruction) -> bool {
+    match row.operation.as_str() {
+        "mov" | "movz" | "movk" | "add" | "sub" | "adrp" | "adr" | "cmp" | "tst" | "cset"
+        | "csel" | "nop" | "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" | "ldur"
+        | "ldp" => true,
+        "str" | "stur" | "strb" | "strh" | "stp" => row.operands.contains("[sp"),
+        _ => false,
+    }
 }
 
 /// The most instructions that [`logs_and_returns`] examines, over all its ways.
@@ -2227,10 +2254,8 @@ fn logs_and_returns(
                     Some(next) => pending.push((next, logged)),
                     None => return false,
                 },
-                operation if operation.starts_with("st") && !row.operands.contains("[sp") => {
-                    return false;
-                }
-                _ => {}
+                _ if diagnostic_side_instruction(row) => {}
+                _ => return false,
             }
         }
     }
@@ -2406,7 +2431,9 @@ fn values_branch(
             };
             if token_offset.is_none() {
                 let compared = Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec());
-                next.settled.insert(compared.clone(), equal);
+                if is_owner_word(tested) {
+                    next.settled.insert(compared.clone(), equal);
+                }
                 next.conditions.push(Condition {
                     at: row.address,
                     value: Some(compared),

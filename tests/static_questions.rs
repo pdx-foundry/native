@@ -1967,7 +1967,10 @@ fn scripted_actions_read_their_keys_always_and_state_the_key_order_on_the_regist
     assert!(always("tooltip") && always("user_scope") && always("wait"));
     assert_eq!(order.len(), 2, "{order:?}");
     assert!(order[0].contains("other than `user_scope` until `user_scope` is read"));
-    assert!(order[1].contains("other than `scope` until"), "{order:?}");
+    assert!(
+        order[1].contains("other than `scope`, `user_scope` until"),
+        "{order:?}"
+    );
 }
 
 #[test]
