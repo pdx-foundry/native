@@ -190,5 +190,19 @@
     "triggered_waystation_network_system_modifier": "Unresolved",
     "triggered_waystation_network_system_modifier.modifier": "Enclosing"
   },
+  "common/starbase_buildings": {
+    "triggered_country_modifier": "Unresolved",
+    "triggered_country_modifier.modifier": "Enclosing",
+    "triggered_planet_modifier": "Unresolved",
+    "triggered_planet_modifier.modifier": "Enclosing",
+    "triggered_station_modifier": "Unresolved",
+    "triggered_station_modifier.modifier": "Enclosing",
+    "triggered_system_modifier": "Unresolved",
+    "triggered_system_modifier.modifier": "Enclosing",
+    "triggered_waystation_network_country_modifier": "Unresolved",
+    "triggered_waystation_network_country_modifier.modifier": "Enclosing",
+    "triggered_waystation_network_system_modifier": "Unresolved",
+    "triggered_waystation_network_system_modifier.modifier": "Enclosing"
+  },
   "common/species_rights/citizenship_types": {}
 }

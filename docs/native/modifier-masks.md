@@ -250,9 +250,10 @@ modifier `TryReadMember` under another `Read` breaks the rule.
 
 ### Container result
 
-On M452, `tests/expected/m452/modifier-containers.json` holds 24 registries. 19 have container fields: 69
-fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys, with no unresolved
-modifier field. The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
+On M452, `tests/expected/m452/modifier-containers.json` holds 25 registries. 19 have resolved container fields: 69
+fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys. Starbase modules and
+buildings each add six triggered modifier fields whose mask is `Unresolved` (with an `Enclosing`
+clause key each); see [registry fields](registry-fields.md#objects-constructed-at-an-arrays-end). The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
 `__common` form (psionic aura `triggered_system_modifier`, system) resolve. Tradition `modifier`
 accepts every category and tradition `triggered_modifier` has the country mask. Edict and councilor
 `modifier` accept every category through the inline default. M452 adds edict

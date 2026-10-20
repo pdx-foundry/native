@@ -903,11 +903,8 @@ fn resizing_layout(
     array_new: &BTreeSet<u64>,
 ) -> Option<EmplaceLayout> {
     let receivers = receiver_states(rows)?;
-    let counts = array_count_offsets(rows)?;
-    let [count] = counts.into_iter().collect::<Vec<_>>()[..] else {
-        return None;
-    };
     let flow = Flow::of(rows);
+    let count = incremented_count(rows, &flow, &receivers)?;
     let mut layouts = BTreeSet::new();
 
     for (index, row) in rows.iter().enumerate() {
@@ -987,6 +984,72 @@ fn branches(row: &crate::engine::analysis::decode::Instruction) -> bool {
             operation,
             "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
         )
+}
+
+/// The one receiver word that `rows` increments: `ldr wA,[R,#c]`, `add wB,wA,#1` and
+/// `str wB,[R',#c]` through receiver registers, with nothing between them that branches, is a
+/// branch target or writes `wA` or `wB`.
+fn incremented_count(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
+    receivers: &[Option<BTreeSet<String>>],
+) -> Option<u64> {
+    let member = |position: usize, base: &str, offset: &str| {
+        let base = base.strip_prefix('[')?;
+        receivers[position]
+            .as_ref()?
+            .contains(base)
+            .then(|| parse_offset(offset.trim_end_matches(']')))?
+    };
+    let mut counts = BTreeSet::new();
+
+    for (store, row) in rows.iter().enumerate() {
+        let operands: Vec<_> = row.operands.split(',').collect();
+        let ("str", [sum, base, offset]) = (row.operation.as_str(), &operands[..]) else {
+            continue;
+        };
+        let Some(count) = member(store, base, offset).filter(|_| sum.starts_with('w')) else {
+            continue;
+        };
+        let straight = |from: usize| {
+            (from + 1..=store).all(|position| {
+                !flow.branch_targets.contains(&rows[position].address)
+                    && !branches(&rows[position - 1])
+            })
+        };
+        let writes = |position: usize, register: &str| {
+            register_number(register).is_some_and(|number| {
+                crate::engine::analysis::decode::written_registers(
+                    &rows[position].operation,
+                    &rows[position].operands,
+                )
+                .contains(&number)
+            })
+        };
+        let Some(add) = (0..store).rev().find(|&position| writes(position, sum)) else {
+            continue;
+        };
+        let added: Vec<_> = rows[add].operands.split(',').collect();
+        let ("add", [_, loaded, "#1"]) = (rows[add].operation.as_str(), &added[..]) else {
+            continue;
+        };
+        let Some(load) = (0..add).rev().find(|&position| writes(position, loaded)) else {
+            continue;
+        };
+        let parts: Vec<_> = rows[load].operands.split(',').collect();
+        let loads_count = rows[load].operation == "ldr"
+            && matches!(parts[..], [_, base, offset] if member(load, base, offset) == Some(count));
+
+        if loads_count && straight(load) {
+            counts.insert(count);
+        }
+    }
+
+    let [count] = counts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(count)
 }
 
 /// The constant that the size argument of the call at `call` multiplies: the instruction before
@@ -1717,6 +1780,11 @@ mod tests {
         entered[8].operation = "cbz".into();
         entered[8].operands = "w8,#0x1014".into();
         assert!(resizing_layout(&entered, &BTreeSet::from([0x2000])).is_none());
+        // A path that enters between the count's load and its increment may add to another value.
+        let mut joined = rows.clone();
+        joined[13].operation = "cbz".into();
+        joined[13].operands = "w8,#0x102c".into();
+        assert!(resizing_layout(&joined, &BTreeSet::from([0x2000])).is_none());
     }
 
     #[test]
