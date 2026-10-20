@@ -6,7 +6,7 @@ use crate::engine::analysis::{
     evaluate::ReadOnlyData,
     fields::{
         self, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader, PersistentInput,
-        PointReader, SerializerRoot, has_owner_receiver,
+        PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
     },
     readers,
 };
@@ -176,7 +176,9 @@ pub(in crate::binding) fn read(
     }
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
     push_converters(&text, indexed, &mut functions);
+    let stack_serializers = stack_serializers(image, &text, persistent_recipe, &mut functions);
     Ok(FieldInput {
+        stack_serializers,
         key_readers: shared.key_readers.clone(),
         persistent: Some(persistent),
         loader_root,
@@ -1364,6 +1366,139 @@ fn addresses(symbols: IndexedSymbols<'_>, name: &str) -> Vec<u64> {
 }
 
 /// Add a symbol's bounded body once; whether the body is available.
+/// How many readers deep the stack serializers of serializers are collected.
+const SERIALIZER_DEPTH: usize = 4;
+
+/// The stack serializers whose constructors the input's functions call directly, by constructor
+/// entry. A constructor counts when its body only installs the vtable at `+0`, stores the wrapped
+/// member's address from `x1` at `+8` and stores further arguments beyond it
+/// ([`serializer_constructor_point`]); its member reader is the vtable's member slot. Each member
+/// reader joins the functions, and the serializers that it builds are collected in turn.
+fn stack_serializers(
+    image: &Image<'_>,
+    text: &Text,
+    recipe: &PersistentRecipe,
+    functions: &mut Vec<Function>,
+) -> BTreeMap<u64, StackSerializer> {
+    let symbols = image.index.over(image.symbols);
+    let names = Names::new(image.symbols);
+    let mut serializers = BTreeMap::new();
+    let mut callers: Vec<u64> = functions.iter().map(|function| function.address).collect();
+
+    for _ in 0..SERIALIZER_DEPTH {
+        let targets: BTreeSet<u64> = functions
+            .iter()
+            .filter(|function| callers.contains(&function.address))
+            .flat_map(|function| {
+                function
+                    .code
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, word)| {
+                        call_target(
+                            u32::from_le_bytes(*word),
+                            function.address + 4 * index as u64,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let constructors: Vec<Symbol> = symbols
+            .at(&targets)
+            .filter(|symbol| symbol.name.contains("::CSerializer::CSerializer("))
+            .filter(|symbol| !serializers.contains_key(&symbol.address))
+            .cloned()
+            .collect();
+        callers.clear();
+        for constructor in constructors {
+            let Ok((address, code)) = text.function(constructor.address) else {
+                continue;
+            };
+            let Some(point) = crate::engine::analysis::decode::decode_arm64(code, address)
+                .ok()
+                .and_then(|rows| serializer_constructor_point(&rows))
+            else {
+                continue;
+            };
+            let Some(reader) = image
+                .pointers
+                .get(&(point + recipe.member_slot))
+                .and_then(|&target| names.unique(target))
+                .filter(|name| name.ends_with("::ReadMember(CReader&, int)"))
+            else {
+                continue;
+            };
+            let Some(member) = symbols.named(reader).next().cloned() else {
+                continue;
+            };
+            push_function(text, functions, &member);
+            callers.push(member.address);
+            serializers.insert(
+                address,
+                StackSerializer {
+                    owner_slot: SERIALIZER_OWNER_SLOT,
+                    reader: reader.to_owned(),
+                },
+            );
+        }
+    }
+
+    serializers
+}
+
+/// Where a serializer's constructor stores the wrapped member's address.
+const SERIALIZER_OWNER_SLOT: i64 = 8;
+
+/// The vtable address point that a serializer constructor installs, when its body is
+/// `adrp x, page; add x, x, #off; stp x, x1, [x0]`, then only stores of other arguments at
+/// `[x0, #16]` or beyond, then `ret`.
+fn serializer_constructor_point(
+    rows: &[crate::engine::analysis::decode::Instruction],
+) -> Option<u64> {
+    let [adrp, add, pair, rest @ .., ret] = rows else {
+        return None;
+    };
+    let parts = |row: &crate::engine::analysis::decode::Instruction| {
+        row.operands
+            .split(',')
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    let number = |text: &str| crate::engine::analysis::decode::number(text.trim_start_matches('#'));
+    let (adrp_parts, add_parts, pair_parts) = (parts(adrp), parts(add), parts(pair));
+    let [vtable, page] = adrp_parts.as_slice() else {
+        return None;
+    };
+    let [added, base, offset] = add_parts.as_slice() else {
+        return None;
+    };
+    let shape = adrp.operation == "adrp"
+        && add.operation == "add"
+        && added == vtable
+        && base == vtable
+        && pair.operation == "stp"
+        && pair_parts == [vtable.clone(), "x1".to_owned(), "[x0]".to_owned()]
+        && ret.operation == "ret";
+    let beyond_owner = rest.iter().all(|row| {
+        let parts = parts(row);
+        matches!(row.operation.as_str(), "str" | "stur")
+            && matches!(parts.as_slice(), [source, base, offset]
+                if source.starts_with(['x', 'w', 'd', 's'])
+                    && source.as_str() != "x0"
+                    && base == "[x0"
+                    && offset
+                        .strip_suffix(']')
+                        .and_then(&number)
+                        .is_some_and(|offset| offset >= 16))
+    });
+
+    (shape && beyond_owner)
+        .then(|| number(page)?.checked_add(number(offset)?))
+        .flatten()
+}
+
 fn push_function(text: &Text, functions: &mut Vec<Function>, symbol: &Symbol) -> bool {
     if functions
         .iter()
@@ -2099,6 +2234,46 @@ mod tests {
             alias_on_one_path,
         ] {
             assert_eq!(clears(code), None);
+        }
+    }
+
+    #[test]
+    fn a_serializer_constructor_installs_its_vtable_and_wraps_x1_at_offset_8() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let point =
+            |code: Vec<u8>| serializer_constructor_point(&decode_arm64(&code, 0x1000).unwrap());
+        let with_scope = arm64!(at 0x1000;
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x4b0;
+            stp x8, x1, [x0];
+            str x2, [x0, #0x10]; // the scope
+            ret
+        );
+        let over_the_owner = arm64!(at 0x1000;
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x4b0;
+            stp x8, x1, [x0];
+            str x2, [x0, #8];
+            ret
+        );
+        let swapped = arm64!(at 0x1000;
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x4b0;
+            stp x1, x8, [x0];
+            ret
+        );
+        let calls = arm64!(at 0x1000;
+            adrp x8, extern 0x5000;
+            add x8, x8, #0x4b0;
+            stp x8, x1, [x0];
+            bl extern 0x6000;
+            ret
+        );
+
+        assert_eq!(point(with_scope), Some(0x54b0));
+        for code in [over_the_owner, swapped, calls] {
+            assert_eq!(point(code), None);
         }
     }
 

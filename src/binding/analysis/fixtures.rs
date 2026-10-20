@@ -305,6 +305,7 @@ mod tests {
         FieldInput {
             loader_root: None,
             serializer: None,
+            stack_serializers: Default::default(),
             owner: "Owner".into(),
             symbols: vec![
                 Symbol { address: 0x2000, name: "CCompareOperator::Read(CReader&)".into() },

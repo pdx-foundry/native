@@ -50,8 +50,21 @@ pub struct FieldInput {
     pub loader_root: Option<LoaderRoot>,
     /// The serializer whose member reader is the root, for an owner with no member reader.
     pub serializer: Option<SerializerRoot>,
+    /// The constructors of the stack serializers that the input's readers build, by entry address.
+    pub stack_serializers: BTreeMap<u64, StackSerializer>,
     /// Input collection limits that prevent a complete result.
     pub gaps: Vec<String>,
+}
+
+/// A serializer that a reader builds on its stack around one of the owner's members and reads
+/// through `CReader::Read(CPersistent&)`: its constructor installs the vtable and stores the
+/// wrapped member's address at `owner_slot`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct StackSerializer {
+    /// The receiver offset of the pointer to the wrapped member.
+    pub owner_slot: i64,
+    /// The member reader in the serializer's vtable, one of the input's functions.
+    pub reader: String,
 }
 
 /// The stack serializer through which an owner with no member reader of its own reads its root

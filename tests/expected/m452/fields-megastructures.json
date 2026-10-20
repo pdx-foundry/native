@@ -1529,27 +1529,80 @@
   "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Fields": [
+    {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "category",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "requirement": "Unknown",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    }
+   ]
+  },
   "name": "dismantle_cost",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "4c60c5ce91cf8da1",
+       "kind": "Block",
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
    }
   ],
   "read_scope": "Unresolved",
   "reader": {
-   "id": null,
-   "kind": "Unknown",
+   "id": "4c60c5ce91cf8da1",
+   "kind": "Block",
    "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Block"
   },
   "uses": []
  },
@@ -4888,27 +4941,80 @@
   "accepted_categories": "Unresolved",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Fields": [
+    {
+     "accepted_categories": "Unresolved",
+     "domain": "Unknown",
+     "entry_contexts": [],
+     "members": "Unresolved",
+     "name": "category",
+     "read": [
+      {
+       "condition": "Always",
+       "outcome": "Unresolved"
+      }
+     ],
+     "read_scope": "Unresolved",
+     "reader": {
+      "id": null,
+      "kind": "Unknown",
+      "family": "Unknown",
+      "numeric": "Unresolved",
+      "scoped_operand": "Unresolved"
+     },
+     "reference": "NotEstablished",
+     "requirement": "Unknown",
+     "shape": {
+      "repeat": "Unknown",
+      "value": "Unknown"
+     },
+     "uses": []
+    }
+   ]
+  },
   "name": "resources",
   "read": [
    {
     "condition": "Always",
-    "outcome": "Unresolved"
+    "outcome": {
+     "Read": {
+      "reader": {
+       "id": "4c60c5ce91cf8da1",
+       "kind": "Block",
+       "family": "Unknown",
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
+      },
+      "shape": {
+       "repeat": "Unknown",
+       "value": "Block"
+      }
+     }
+    }
    }
   ],
   "read_scope": "Unresolved",
   "reader": {
-   "id": null,
-   "kind": "Unknown",
+   "id": "4c60c5ce91cf8da1",
+   "kind": "Block",
    "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "requirement": "Optional",
   "shape": {
    "repeat": "Unknown",
-   "value": "Unknown"
+   "value": "Block"
   },
   "uses": []
  },

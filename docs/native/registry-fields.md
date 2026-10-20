@@ -619,6 +619,40 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   the class's default construction, when the root reads an element other than the last one, or
   when a resizing's element size comes from a computed value.
 
+### Stack serializers
+
+A reader can wrap an owner member in a serializer on its stack and read the block through it. On
+M452 `CCountryType::ReadMember` reads `resources` (`0x10033f578`): `add x1,x19,#0x330;
+add x0,sp,#0x48; mov w2,#4; bl CEconomicUnitTemplate::CSerializer::CSerializer(CEconomicUnitTemplate&,
+EScopeType)` (`0x101d14b14`), then `add x1,sp,#0x48; mov x0,x20; bl CReader::Read(CPersistent&)`.
+The constructor only installs its vtable at `+0`, stores `x1` at `+8` and the scope at `+0x10`.
+
+- **Binding.** `stack_serializers` (`binding/binary/fields.rs`) takes each
+  `*::CSerializer::CSerializer(…)` that an input function calls directly, when its body is
+  `adrp/add` of the vtable point, `stp xV,x1,[x0]`, only stores of other arguments at `[x0,#16]`
+  or beyond, and `ret` (`serializer_constructor_point`). The vtable's member slot gives the
+  serializer's `ReadMember`, which joins the functions; the serializers that it builds are
+  collected in turn, four readers deep (`CTriggeredResourceTable::CSerializer` inside the economic
+  unit's reader). `FieldInput::stack_serializers` carries them.
+- **Walk.** The call of such a constructor with a stack address in `x0` and an owner address in
+  `x1` records the serializer, as the [modifier-block delegate](modifier-blocks.md) does. A
+  following `CReader::Read(CPersistent&)` with the reader in `x0` and that stack address in `x1`
+  joins the serializer's `ReadMember` with the wrapped member (`Owner(+0x330)`) in `x0`; its kind
+  is `Block`. Any other call while the serializer is recorded stops the path, as before.
+- **Members.** When every path of a field joins one serializer reader, the field's members are
+  that reader's keys, walked with the serializer as receiver and the wrapped member at slot `+8`
+  (`persistent::embedded`).
+- **Result on M452 (`registry-fields/v68`).** 46 fields go from an `Unknown` to a `Block` reader
+  (`resources` in 33 registries, other resource tables such as `astral_actions`
+  `activation_cost`, `megastructures` `dismantle_cost`, `pop_categories` `automation_resources`);
+  47 nested paths appear, mostly `category`. The economic unit's other keys (`cost`, `upkeep`,
+  `produces`) are compared by text with `_memcmp`, not by token, so they are not named yet. No
+  command answer changes.
+- **Limits.** A serializer that the root builds inline, without a constructor call
+  (`CCountryType::ReadMember` `faction`: `stp x9,x8,[sp,#0x48]` with the
+  `SCountryInstanceProperties::CSerializer` point), is not followed. Remove the rule when a build's
+  serializer constructor writes the wrapped member or reads more than its arguments.
+
 ### Objects in a `make_shared` control block
 
 A root can build an object with `std::make_shared`, read it and move the `shared_ptr` into an

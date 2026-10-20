@@ -100,6 +100,13 @@ pub(super) fn embedded(
     names: &BTreeMap<i64, tokens::Token>,
 ) -> Vec<EmbeddedField> {
     let mut embedded = Vec::new();
+    let serializer_slot = |callee: &str| {
+        input
+            .stack_serializers
+            .values()
+            .find(|serializer| serializer.reader == callee)
+            .map(|serializer| serializer.owner_slot)
+    };
     for field in fields {
         // Every path that holds the token, including a wider one, must read the object.
         let joins: Option<Vec<_>> = paths
@@ -107,13 +114,56 @@ pub(super) fn embedded(
             .filter(|path| path.domain[0] <= field.token && field.token <= path.domain[1])
             .filter(|path| path.outcome != PathOutcome::Rejected)
             .map(|path| match &path.outcome {
-                PathOutcome::Reader(join) if readers::reads_embedded_object(join) => Some(join),
+                PathOutcome::Reader(join) => Some(join),
                 _ => None,
             })
             .collect();
         let Some(joins) = joins else {
             continue;
         };
+        // Every path reads the field through one stack serializer: its member reader gives the
+        // keys, with the wrapped member at its owner slot.
+        let serializer_readers: BTreeSet<_> = joins
+            .iter()
+            .map(|join| match join {
+                super::ReaderJoin::Joined { callee, .. } => {
+                    serializer_slot(callee).map(|slot| (callee.clone(), slot))
+                }
+                _ => None,
+            })
+            .collect();
+        if let [Some((member, slot))] = serializer_readers.iter().collect::<Vec<_>>()[..] {
+            let (paths, mut gaps, order_checks) =
+                dispatch::explore_owner(input, symbol_index, member, Some(*slot));
+            let (fields, field_gaps) = inventory::fields_and_gaps(&paths, names);
+            if fields.is_empty() {
+                continue;
+            }
+            gaps.extend(field_gaps);
+            let partition_accounted = inventory::partition_accounted(&paths);
+            let key_order =
+                inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
+            embedded.push(EmbeddedField {
+                token: field.token,
+                read: readers::PERSISTENT_READ.into(),
+                member: member.clone(),
+                fields: Box::new(RegistryFieldResult {
+                    fields,
+                    paths,
+                    gaps,
+                    partition_accounted,
+                    key_order,
+                    ..RegistryFieldResult::default()
+                }),
+            });
+            continue;
+        }
+        if !joins
+            .iter()
+            .all(|join| readers::reads_embedded_object(join))
+        {
+            continue;
+        }
         let offsets: BTreeSet<_> = joins.into_iter().map(readers::destination).collect();
         if offsets.len() != 1 {
             continue;
