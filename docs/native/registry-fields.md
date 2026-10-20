@@ -64,7 +64,7 @@ give six fields of five registries their members. Against `v52`, the dispatch wa
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
 changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -110,6 +110,18 @@ lookups, so the diff drops only members that match their serde defaults.
   idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
+- **The stored value token.** A reader that loads the value token's id from the reader
+  (`ldr w8, [x1, #0x278]` on M452, with the value token bound) and stores the whole word
+  (`str w…`) to an owner member reads `Keyword/Replace`
+  (`value token id`, `dispatch.rs`). Any token is accepted; which tokens mean something is known only
+  where the member is used, so the field's domain stays `Unknown` and the keyword-domain gap stays.
+  Atlas then credits the field and its cardinality but not its value form. When the same path then
+  converts the value token (`TokenToEnum`, `Get…FromToken`) and stores the converted value, the
+  converted keyword is the field's reader instead (`has_envoy_task.task` stores both); when the
+  converted value is not stored, the id store stays the read. On M452 this adds `attitudes.type`,
+  `diplomatic_actions.action_type` and `envoy_assignment`, `scripted_actions.category` and
+  `uses_vfx_type`, the leader commands' `sub_type`, the galaxy-setup commands' `setting`, and a
+  keyword alternative to the `side` of `join_war_on_side` and `is_war_participant`.
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13
   child fields each); in `advanced_authority_swap` the collection is established but not its
   children. The council presence branches normalize to unconditional integer reads. Objects built
@@ -222,7 +234,7 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   unfollowed path.
 - **Limits.**
   - The nested-object pass enters inherited readers, through their import stubs, since
-    `registry-fields/v57` ([objects constructed at an array's
+    `registry-fields/v58` ([objects constructed at an array's
     end](#objects-constructed-at-an-arrays-end)). Six `triggered_*_modifier` keys of the starbase
     template now read triggered modifier clauses in both registries; the other three keep an
     `UnresolvedReader` gap, and their stop is not yet read.
@@ -515,7 +527,7 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   the last element and a tail call of `Read(CPersistent&)` (`0x1025b820c`); `friendly_aura`
   (`0x3543`) does the same on `+0x7e0`. The resizing reads the count at `+0x14`, multiplies the
   capacity by `0x278` for `operator new[]`, and stores the new buffer at `+8`.
-- **Result on M452 (`registry-fields/v57`).** `common/component_templates`,
+- **Result on M452 (`registry-fields/v58`).** `common/component_templates`,
   `common/starbase_modules` and `common/starbase_buildings` change. Each of
   the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
   `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
