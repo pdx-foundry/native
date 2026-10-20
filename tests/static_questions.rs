@@ -2007,6 +2007,23 @@ fn component_templates_answer_each_root_key_as_a_root_statement() {
     assert!(members("utility_component_template").contains(&"sensor_range".into()));
     assert!(members("weapon_component_template").contains(&"missile_speed".into()));
     assert!(!members("utility_component_template").contains(&"missile_speed".into()));
+    // Each aura is a `CShipAura` that the base reader constructs at the end of an array and reads
+    // there.
+    let auras = answer
+        .value
+        .iter()
+        .find(|field| field.name == "weapon_component_template")
+        .and_then(|field| match &field.members {
+            pdx_native::FieldMembers::Fields(members) => {
+                members.iter().find(|member| member.name == "hostile_aura")
+            }
+            _ => None,
+        })
+        .unwrap();
+    let pdx_native::FieldMembers::Fields(aura) = &auras.members else {
+        panic!("{:?}", auras.members);
+    };
+    assert!(aura.iter().any(|member| member.name == "damage_per_day"));
     // The weapon and strike craft readers pass other tokens to `ReadAttackInfoValue`, then to
     // the base reader.
     for key in [
@@ -2085,6 +2102,17 @@ fn name_lists_and_random_names_are_named_by_their_loaders() {
             .iter()
             .any(|field| field.name == "character_names")
     );
+    // The loader builds each list's contents inline; `SNameListContent::SNameListContent()`
+    // gives the fleet names' reader, whose keys are fixed.
+    let fleet_names = name_lists
+        .value
+        .iter()
+        .find(|field| field.name == "fleet_names")
+        .unwrap();
+    let pdx_native::FieldMembers::Fields(keys) = &fleet_names.members else {
+        panic!("fleet names: {:?}", fleet_names.members);
+    };
+    assert!(keys.iter().any(|key| key.name == "random_names"));
     let random_names = reason("common/random_names");
     assert!(
         random_names.contains("CCompositNameFormat, CCompositNamePartList"),

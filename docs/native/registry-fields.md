@@ -64,7 +64,7 @@ give six fields of five registries their members. Against `v52`, the dispatch wa
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
 changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against `v57`, the literal-token test (below) adds `scripted_actions.context_menu_ordering` and `steal_planet_output.mode`. Against `v58`, value text (below) gives 47 registry fields, 44 of them in events, a `String` reader, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -102,12 +102,31 @@ lookups, so the diff drops only members that match their serde defaults.
   an element from an unknown call cannot establish the shape. A stack `CString` made from the
   value token's text and passed to an owner call reads `String` with no destination, by a stated
   rule ([modifier blocks](modifier-blocks.md#fixed-key-readers-sdk-675)).
+- **Value text.** A reader that measures the value token's text (`strlen` of the text pointer,
+  `ldr x…, [reader, #0x288]` on M452) and assigns the text and that length to an owner
+  `std::basic_string` (`__assign_external(char const*, unsigned long)`) reads `String/Replace` at
+  that member. The walk follows `strlen` only when the assignment comes next with no conditional
+  branch or other call between (`assigns_next`): a reader that tests the length instead, as
+  `text_color_code` of patrons does, keeps its stop at `strlen`. A path that measures the text and
+  joins no reader keeps that stop too, so a key is never lost. On M452 this reads `title` and
+  `message_desc` of every event kind, `upgrade` (astral actions), `entity` (section templates),
+  `risk_event` (technologies) and about 25 command keys (`custom_tooltip`, `has_term_value`, …).
+  `id` and `base` of events stay stopped: after the assignment they pass the member to
+  `CEventManager::IsValidIDTag`, which the walk cannot prove leaves it unchanged.
 - **The `yes` test.** A reader that compares the value token with the token `yes` alone, sets a
   register from the result (`cmp`, `cset …,eq`) and stores that register to an owner member reads
   `Boolean/Replace`. Every other token stores false and logs nothing, so the reader accepts any
   value. The binding takes `yes` from the recipe's Boolean token names
   (`PersistentRecipe::boolean_tokens`); a token table with no single `yes` binds none, and the
-  idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
+  idiom then stops at the `cset`. The same idiom with one literal token other than `yes`
+  (`cmp` of the value token with `weight`, `cset …,eq`, store: `scripted_actions.context_menu_ordering`)
+  reads `Keyword/Replace` (`value token == literal`): the field has two meanings, that token and
+  every other, and every token is accepted without a diagnostic, so its domain stays `Unknown` and
+  Atlas credits no value form. It needs `yes` bound: without it the literal could be `yes`, so the
+  idiom stops at the `cset`. A `cset` after a comparison with several tokens, or of anything
+  other than the value token, still stops. A value-token range that `csel` selects
+  (`events.event_window_type`: `cmp` of the token minus `leader_recruit` with 4, `csel …,lo`)
+  still stops at `csel`. On M452 the
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
 - **The stored value token.** A reader that loads the value token's id from the reader
@@ -233,11 +252,11 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   `CString(char const*)` on the key text, so it is an `UnnamedField` gap instead of an
   unfollowed path.
 - **Limits.**
-  - The nested-object pass (`fields/nested.rs`) runs from the owner root, and `collect_objects`
-    scans only the root, so the 9 `triggered_*_modifier` keys of the template are named fields
-    with an `UnresolvedReader` gap, not triggered modifier clauses. A repair runs the nested
-    machine from the inherited reader where every path of the field ends, after the binding
-    collects the template's factories.
+  - The nested-object pass enters inherited readers, through their import stubs, since
+    `registry-fields/v59` ([objects constructed at an array's
+    end](#objects-constructed-at-an-arrays-end)). Six `triggered_*_modifier` keys of the starbase
+    template now read triggered modifier clauses in both registries; the other three keep an
+    `UnresolvedReader` gap, and their stop is not yet read.
   - The other starbase fields without one shared reader belong to census families above:
     `section` and `component_set` (value text to a lookup), `collected_*_resources` (statement
     loop), `triggered_component_set` (an inserted struct), `name` and `desc`
@@ -492,6 +511,55 @@ establish one shared reader." Their stops:
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
 | `common/ship_sizes` `hero_ship` | Two alternatives: a block read by `Read(CPersistent&)` of owner `+0xb8`, and `Read(bool&)`. The block's reader has no family because the `CShipSize::CShipSize(int, CString const&)` walk (`0x1011e98b8`) spends its 64-path bound in a zero-fill loop at `0x1011e9f64` whose base it loads from a heap pointer, so no constructor agrees on a reader at `+0xb8`. The same bound leaves `map_icon_override` without one. | Constructor walk bound; the field's members also need a rule for a field whose alternatives differ; SDK-873. |
+
+### Objects constructed at an array's end
+
+A root can grow an array of objects by one and read the new last element in place. The collection
+pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
+`CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)` on an owner member constructs one
+`Class` at the array's end, and a `CReader::Read(CPersistent&)` of that object reads it.**
+
+- **Binding.** `collect_objects` finds the class through a direct call to the resizing, and takes
+  its layout from the resizing's body (`emplace_layout`): the count is the one receiver word that it
+  increments, the element size is the immediate that the `operator new[]` size multiplies
+  (`mov wS,#size; umull x0,wN,wS`), and the element pointer is the receiver member that keeps the
+  new buffer. Nothing between the size's `mov` and the call may branch or be a branch target, and
+  on every path from the call the buffer's register is stored before it is written or the
+  function returns. Every `operator new[]` call must agree. A class with an insertion or a moving
+  insertion keeps the insertion's layout. `ObjectReader::array_emplace` and `array_element_size` carry the result.
+- **Walk.** A first run finds the array at the resizing call and stops there. A second run starts
+  with that array holding one element, and the call counts only when the array still holds it and
+  the requested size in `x1` is two. The walk then reserves an object, installs the class's address
+  points and constant pointers, and makes the array hold two elements with its pointer one element
+  size before the new object. The root's own address arithmetic (`data + count * size - size`) then
+  reaches the object only when the root's element size is the class's. The read counts only through
+  `Read(CPersistent&)` with the reader in `x0` and that object in `x1`. The path may write no owner
+  word but the array's pointer and count, and those must still hold what the resizing left.
+- **Inherited and value readers.** The pass enters the inherited readers and value readers that the
+  binding collects (`readers::is_inheritable_member`, `readers::is_member_value_reader`), and
+  `collect_objects` scans their direct calls for classes, so an object that only the base reader
+  constructs joins. A call through an import stub that `FieldInput::stubs` binds to an entered
+  reader runs as a branch to its body. The walk also writes the token into the reader's token
+  word, as the dispatch walk does, so a value reader that loads the token from the reader sees it.
+- **M452.** `CComponentTemplate::ReadMember` (`0x1001dd284`) handles `hostile_aura` (token
+  `0x3542`) by `SetSizeAndEmplace` (`0x1001f6858`) on `+0x7c8`, then `madd`/`sub` with `#0x278` to
+  the last element and a tail call of `Read(CPersistent&)` (`0x1025b820c`); `friendly_aura`
+  (`0x3543`) does the same on `+0x7e0`. The resizing reads the count at `+0x14`, multiplies the
+  capacity by `0x278` for `operator new[]`, and stores the new buffer at `+8`.
+- **Result on M452 (`registry-fields/v59`).** `common/component_templates`,
+  `common/starbase_modules` and `common/starbase_buildings` change. Each of
+  the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
+  `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
+  `system_wide`, `modifier`. Through the entered base reader, `triggered_ship_modifier` and
+  `triggered_ship_design_modifier` of each key now read triggered modifier clauses. Through the
+  stub of `CStarbaseComponent<T>::ReadMember`, `common/starbase_modules` and
+  `common/starbase_buildings` each gain six triggered modifier clauses (`planet`, `country`,
+  `station`, `system`, `waystation_network_system`, `waystation_network_country`), whose category
+  masks stay `Unresolved` in `tests/expected/m452/modifier-containers.json`; the field sweep's known
+  reader kinds go from 1866 to 1878. Every other registry is unchanged.
+- **Remove or limit the rule** when a build's resizing constructs its new element other than by
+  the class's default construction, when the root reads an element other than the last one, or
+  when a resizing's element size comes from a computed value.
 
 ### Scripted actions: an order check before the token switch
 
@@ -1411,14 +1479,19 @@ Two loaders that the literal scan did not name, read on M452 with `examples/insp
   `CNameListDesign`, stored into the list at `+0x10` and after or on the stack as the default
   contents of `SNameListContent`. All have a member reader, so the built classes are several;
   [the read object](#custom-loader-owners) selects `CNameList`.
-- **Nested name lists stay unresolved.** `CNameList::ReadMember` reads `ship_names`,
-  `character_names` and the other lists with `CReader::Read(CPersistent&)` on embedded objects
-  (`+0x10`, `+0x68`, `+0x88`, `+0xf8`, `+0x1a0`, …), but `CNameList::CNameList()`
-  (`0x10061aa54`, used for the null object) installs no vtable there; `Init()` builds the contents
-  inline. The [embedded-object join](#embedded-object-keys) reads the owner's constructors, so these
-  fields keep `Unresolved` members. Removal route: take the loader's inline build of the read
-  object as a constructor of the owner. `language`, which the config states, is not a key of
-  `CNameList::ReadMember`, and vanilla M452 does not use it.
+- **Name-list contents come from the loader's inline build.** `CNameList::ReadMember` reads
+  `ship_names`, `character_names` and the other lists with `CReader::Read(CPersistent&)` on
+  embedded objects. `CNameList::CNameList()` (`0x10061aa54`, used for the null object) installs no
+  vtable there; `Init()` builds the contents inline. The [loader's part
+  points](#loader-part-points) give the eight readers. `fleet_names` gets its keys
+  (`random_names`, `sequential_names`, `sequential_name`). The other lists keep `Unresolved`
+  members: their readers read any key, such as `CNameListCharacter::ReadMember`, which builds a
+  `CNameListCulture` named by the key and reads it, so the walk names no key.
+- **`language` is not read.** The config states `language` for `name_list`, `species_name` and
+  `species_named_list`. `GetTokenArray()` names the token, but neither `CNameList::ReadMember`
+  (15 keys) nor `CSpeciesNames::ReadMember` (5 keys) compares it, the cold clone of
+  `CNameList::ReadMember` (`0x1028d3210`) only calls `_OUTLINED_FUNCTION_0`, and vanilla M452 does not
+  use the key. The claims are likely config errors.
 - **Why `common/random_names` has no owner.** Five keys build each class, and the switch is a
   jump table, which [root-key owners](#root-key-owners-sdk-813) do not read. The route also builds
   `CWeightedStringTable` and `CMeanTimeToHappen`, members of the two classes.
@@ -1787,6 +1860,55 @@ Pitfalls:
   `common/pop_categories` gained their modifier and weight readers with it.
 - A key whose value goes to a class helper that the dispatch walk does not follow keeps an
   `UnresolvedReader` gap. The key is still established: its path is a singleton.
+
+### Loader part points
+
+A custom-loader owner whose own constructors do not build its items' parts takes the address points
+that the loader's inline build installs (`loader_part_points` in `binding/binary/fields.rs`,
+`discovery/inline_build.rs`). The build is the code of the loader's one
+[read object](#custom-loader-owners) on its route from the file enumeration
+(`loader_owner::read_object`), walked from the store of the owner's address point to the read
+call. The walk follows each branch and keeps the registers that hold the object plus an offset
+(through `mov`, `add` and store writeback) and the addresses that `adrp` and `add` form. Where
+paths meet, a register keeps every object offset that it holds on some path and a formed address
+only when every path holds it, and the walk goes on until no path brings a new state, so the stores
+are those of any path. A branch out of the code or through a register, a store through the object
+that the walk cannot read (such as one with a register index), or a walk that does not settle marks
+the build open; code that ends in a call (a landing pad's `_Unwind_Resume`) ends there. A loader
+that names several directories infers no part points, since its read object is not scoped to one
+directory. A direct call that the
+build makes with the object plus an offset in `x0` names a part: when every call target at that
+offset has a symbol and is a method of one class `Part` (the name before the last top-level `::`),
+and `Part` has one default constructor (`Outer::Part<T>::Part()`), the same walk over that
+constructor, from `x0`, gives the part's stores. Their vtable address points, shifted by the
+offset, become the owner's points at offsets that the owner's constructors do not establish.
+
+- **Check, not only an assumption.** Neither build may be open. The part's constructor must store
+  one formed address and no other value at each of its offsets. A shifted point counts only where
+  the loader stores no other value, and at least one of them must be a store of the loader's own
+  (`inline_build::part_points`). An offset that two parts give different points has none.
+- **M452.** `CNameListDatabase::Init()` calls `SNameListContent::operator=(SNameListContent&&)`
+  with the list plus `0x10`. `SNameListContent::SNameListContent()` (`0x1009950a0`;
+  `0x1009957ac` only branches to it) stores eight vtables. The build's branch that constructs the
+  contents in place (from `0x10099734c`) stores the same eight at `+0x10`, `+0x30`, `+0x68`,
+  `+0x88`, `+0xb0`, `+0xf8`, `+0x180` and `+0x1a0`, so all eight agree.
+- **Result on M452 (`registry-fields/v60`).** Only `common/name_lists` changes. `ship_names`,
+  `planet_names`, `character_names`, `fleet_names`, `ship_class_names`, `by_rarity_names` and
+  `design_names` gain a reader identity; `fleet_names` reads its three keys (`random_names`,
+  `sequential_names`, `sequential_name`). The other lists keep `Unresolved` members (see
+  [name lists](#name-lists-and-random-names-sdk-844)).
+- **Remove or limit the rule** when a build's loader constructs a part other than by its default
+  constructor's stores, or when the owner's own constructors come to install the parts.
+- Pitfall: running the build through the constructor evaluator does not work. `_bzero` is not
+  modelled, so the flag test at `+8` splits the paths. The path that moves the contents in
+  through `operator=` keeps no vtable. The other path's copy-assign calls are opaque and forget the
+  earlier vtable words. Running `SNameListContent::SNameListContent()` stops at the 64-path
+  limit. The walk reads stores; it does not run calls.
+- Pitfall: a part that the build constructs on the stack and copies in is not seen. Only stores
+  into the object count.
+- Pitfall: `Part::Part()` also stores member vtables that are not the part's own, such as
+  `0x1030648e8` at `+0x8`; the loader's build stores other values there (`+0x18` in the list), so
+  those offsets keep no point.
 
 ### Pre-trigger blocks
 

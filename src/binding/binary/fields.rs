@@ -71,6 +71,9 @@ pub(super) const STATEMENT_READER: &str = "CReader::ReadSimpleStatement()";
 pub(in crate::binding) struct LoaderSearch<'a> {
     pub database: &'a str,
     pub reader_token_offset: u64,
+    /// Whether the loader names one directory. The part points of a loader that names several
+    /// are not inferred, since its read object is not scoped to one directory.
+    pub one_directory: bool,
 }
 
 /// Read the root of `owner`, the shared engine token constructor and the read-only data that holds
@@ -118,6 +121,7 @@ pub(in crate::binding) fn read(
             code: code.to_vec(),
         });
     }
+    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     // The nested-object pass takes `x0` as the owner, so a serializer root collects no objects.
     let objects = match serializer {
         Some(_) => Vec::new(),
@@ -135,21 +139,21 @@ pub(in crate::binding) fn read(
     if !objects.is_empty() {
         collect_owner_methods(&text, symbols, owner, &mut functions, &mut gaps);
     }
-    let loader_root = match loader {
+    let loader_root = match &loader {
         Some(search) => loader_root(
             &text,
             indexed,
             &data,
             pointers,
             owner,
-            &search,
+            search,
             persistent_recipe,
             &mut functions,
             &mut gaps,
         )?,
         None => None,
     };
-    let persistent = super::receivers::persistent(
+    let mut persistent = super::receivers::persistent(
         image,
         &text,
         &data,
@@ -157,8 +161,20 @@ pub(in crate::binding) fn read(
         owner,
         persistent_recipe,
     )?;
+    if let Some(search) = &loader {
+        let points = loader_part_points(&text, indexed, &data, owner, search)?;
+        let names = Names::new(symbols);
+        let unique_name = |address: u64| names.unique(address).map(str::to_owned);
+        for (&offset, &point) in &points {
+            if let Some(reader) =
+                super::receivers::concrete_reader(persistent_recipe, pointers, point, &unique_name)
+            {
+                persistent.readers.insert(point, reader);
+            }
+            persistent.loader_points.insert(offset as i64, point);
+        }
+    }
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
-    let stubs = push_inherited_readers(image, &text, &root, &mut functions)?;
     push_converters(&text, indexed, &mut functions);
     Ok(FieldInput {
         key_readers: shared.key_readers.clone(),
@@ -174,6 +190,130 @@ pub(in crate::binding) fn read(
         read_only_data: read_only_sections(bytes)?,
         gaps,
     })
+}
+
+/// The address points that the custom loader `search` installs, by owner offset, in each item
+/// that it builds inline. The loader's one read of an `owner` object gives the build. Each part
+/// that the build passes in `x0` at an offset to a member function of one class `Part`, where
+/// `Part::Part()` exists, takes that constructor's stores shifted by the offset, when they agree
+/// with the build's own stores ([`inline_build::part_points`]).
+fn loader_part_points(
+    text: &Text,
+    symbols: IndexedSymbols<'_>,
+    data: &ReadOnlyData,
+    owner: &str,
+    search: &LoaderSearch<'_>,
+) -> Result<BTreeMap<u64, u64>, AnalysisError> {
+    use crate::engine::analysis::discovery::{inline_build, loader_owner};
+
+    let mut points = BTreeMap::new();
+    if !search.one_directory {
+        return Ok(points);
+    }
+    let Some(owner_point) = symbols
+        .vtable_group(data, owner)
+        .and_then(|vtable| vtable.address_points.get(&0).copied())
+    else {
+        return Ok(points);
+    };
+    let functions = super::loader_owners::own_functions(text, symbols.symbols, search.database);
+    let statement_reads = addresses(symbols, STATEMENT_READER).into_iter().collect();
+    let anchors = super::constructors::anchors(symbols.symbols);
+    let reads = loader_owner::LoaderReads {
+        enumerations: &anchors.file_enumerations,
+        statement_reads: &statement_reads,
+        token_offset: search.reader_token_offset,
+        token_names: &BTreeMap::new(),
+    };
+    let builders = BTreeMap::from([(owner_point, owner.to_owned())]);
+    let Some((start, read)) = loader_owner::read_object(&functions, &reads, &builders) else {
+        return Ok(points);
+    };
+    let build = inline_build::inline_build(
+        &functions[&start],
+        read.store,
+        read.register,
+        Some(read.call),
+    );
+    let is_address_point =
+        |point: u64| super::families::point_class(symbols.symbols, data, point).is_some();
+    // Offsets that two parts give different points have no point.
+    let mut conflicts = BTreeSet::new();
+
+    for (&offset, targets) in build.member_calls.range(1..) {
+        let Some(class) = method_class(symbols, targets) else {
+            continue;
+        };
+        let Some(rows) = default_constructor(text, symbols, class) else {
+            continue;
+        };
+        let part = inline_build::inline_build(&rows, 0, 0, None);
+        let Some(part_points) = inline_build::part_points(&build, offset, &part, is_address_point)
+        else {
+            continue;
+        };
+
+        for (at, point) in part_points {
+            if *points.entry(at).or_insert(point) != point {
+                conflicts.insert(at);
+            }
+        }
+    }
+
+    points.retain(|at, _| !conflicts.contains(at));
+
+    Ok(points)
+}
+
+/// The one class whose methods every call target in `targets` is. `None` when a target has no
+/// symbol or a symbol that names no class, or when the targets are methods of several classes.
+fn method_class<'a>(symbols: IndexedSymbols<'a>, targets: &BTreeSet<u64>) -> Option<&'a str> {
+    let mut classes = BTreeSet::new();
+
+    for &target in targets {
+        let names: Vec<_> = symbols.at(&BTreeSet::from([target])).collect();
+
+        if names.is_empty() {
+            return None;
+        }
+
+        for symbol in names {
+            classes.insert(super::receivers::method_class(&symbol.name)?);
+        }
+    }
+
+    let [class] = classes.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(class)
+}
+
+/// The decoded body of `class`'s one default constructor `Class::Class()`, after the symbols of
+/// that name that only branch to another of them. `None` when there is no such body, several, or
+/// one that does not decode.
+fn default_constructor(
+    text: &Text,
+    symbols: IndexedSymbols<'_>,
+    class: &str,
+) -> Option<Vec<Instruction>> {
+    let name = format!("{class}::{}()", super::receivers::unqualified_base(class));
+    let entries: BTreeSet<u64> = symbols.named(&name).map(|symbol| symbol.address).collect();
+    let mut bodies = Vec::new();
+
+    for &entry in &entries {
+        let (address, code) = text.function(entry).ok()?;
+        let rows = crate::engine::analysis::decode::decode_arm64(code, address).ok()?;
+        let alias = declarations::branch_alias(&rows).is_some_and(|to| entries.contains(&to));
+
+        if !alias {
+            bodies.push(rows);
+        }
+    }
+
+    let [rows] = <[_; 1]>::try_from(bodies).ok()?;
+
+    Some(rows)
 }
 
 /// The member reader of `owner`'s root keys: its own `ReadMember(CReader&, int)`, or, for an owner
@@ -527,11 +667,17 @@ fn collect_objects(
     };
     let rows = crate::engine::analysis::decode::decode_arm64(&root.code, root.address)
         .map_err(|_| AnalysisError::InvalidRange)?;
-    let calls: BTreeSet<_> = rows
-        .iter()
-        .filter(|row| row.operation == "bl")
-        .filter_map(|row| u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16).ok())
-        .collect();
+    // Dispatch goes on in the inherited readers, so the objects that they read are the root's.
+    let mut calls = direct_calls(&rows);
+    for inherited in functions.iter().filter(|function| {
+        readers::is_inheritable_member(&function.name)
+            || readers::is_member_value_reader(&function.name)
+    }) {
+        let inherited_rows =
+            crate::engine::analysis::decode::decode_arm64(&inherited.code, inherited.address)
+                .map_err(|_| AnalysisError::InvalidRange)?;
+        calls.extend(direct_calls(&inherited_rows));
+    }
     let mut classes = BTreeMap::<String, Vec<&Symbol>>::new();
 
     for symbol in symbols.at(&calls) {
@@ -540,6 +686,8 @@ fn collect_objects(
         } else if let Some(class) = factory_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default().push(symbol);
         } else if let Some(class) = inserted_class(&symbol.name) {
+            classes.entry(class.to_owned()).or_default();
+        } else if let Some(class) = emplaced_class(&symbol.name) {
             classes.entry(class.to_owned()).or_default();
         }
     }
@@ -557,6 +705,9 @@ fn collect_objects(
     let names = Names::new(symbols.symbols);
     let unique_name = |address: u64| names.unique(address).map(str::to_owned);
     let operator_new: BTreeSet<_> = addresses(symbols, "operator new(unsigned long)")
+        .into_iter()
+        .collect();
+    let array_new: BTreeSet<_> = addresses(symbols, "operator new[](unsigned long)")
         .into_iter()
         .collect();
     let mut objects = Vec::new();
@@ -626,8 +777,22 @@ fn collect_objects(
                 shared_releases.push(symbol.address);
             }
         }
-        let data_offset = array_member_offset(text, &insert, array_pointer_offsets)?;
-        let count_offset = array_member_offset(text, &insert, array_count_offsets)?;
+        let emplace = addresses(symbols, &emplacement(&class));
+        // A class with an insertion or a moving insertion keeps the insertion's layout: its
+        // pointer array is another collection than the array of objects that the resizing grows.
+        let emplace_layout = match emplace.as_slice() {
+            [start] if insert.is_empty() && moving_insert.is_empty() => {
+                emplace_layout(text, *start, &array_new)
+            }
+            _ => None,
+        };
+        let (data_offset, count_offset) = match emplace_layout {
+            Some(layout) => (Some(layout.data), Some(layout.count)),
+            None => (
+                array_member_offset(text, &insert, array_pointer_offsets)?,
+                array_member_offset(text, &insert, array_count_offsets)?,
+            ),
+        };
         let owner_of_keys = reader
             .as_ref()
             .is_none_or(|bound| bound.reader.family == BlockFamily::Unknown);
@@ -667,6 +832,8 @@ fn collect_objects(
             moving_insert,
             shared_emplace_point,
             shared_releases,
+            array_emplace: emplace_layout.map_or_else(Vec::new, |_| emplace),
+            array_element_size: emplace_layout.map(|layout| layout.element_size),
             class,
             vtables: vtable.address_points,
             pointers: slots,
@@ -849,6 +1016,319 @@ fn inserted_class(name: &str) -> Option<&str> {
     let names_class = name == pointer || name == scoped_insertion(class);
 
     (names_class && !class.ends_with(" const")).then_some(class)
+}
+
+/// The class whose objects `void CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)`
+/// constructs in place at the array's end. A class with template arguments names none.
+fn emplaced_class(name: &str) -> Option<&str> {
+    let class = name
+        .strip_prefix("void CPdxArray<")?
+        .strip_suffix(", int>::SetSizeAndEmplace<>(int, const&)")?;
+
+    (!class.contains(['<', '>', ',', '*'])).then_some(class)
+}
+
+/// The resizing that constructs objects of `class` in place at a `CPdxArray`'s end.
+fn emplacement(class: &str) -> String {
+    format!("void CPdxArray<{class}, int>::SetSizeAndEmplace<>(int, const&)")
+}
+
+/// The array layout that an in-place resizing proves: its element pointer, its count and the
+/// size of one element.
+#[derive(Clone, Copy)]
+struct EmplaceLayout {
+    data: u64,
+    count: u64,
+    element_size: u64,
+}
+
+/// The layout of the resizing at `start`. The count is the receiver word that it increments.
+/// The element size is the constant that `operator new[]`'s size multiplies (`mov wS,#size;
+/// umull x0,wN,wS`), and the element pointer is the receiver member that keeps the new buffer.
+/// Every `operator new[]` call must agree.
+fn emplace_layout(text: &Text, start: u64, array_new: &BTreeSet<u64>) -> Option<EmplaceLayout> {
+    let code = text.function_within(start, INSERTION_LIMIT)?;
+    let rows = crate::engine::analysis::decode::decode_arm64(code, start).ok()?;
+
+    resizing_layout(&rows, array_new)
+}
+
+/// The layout that the decoded resizing `rows` proves, as [`emplace_layout`] reads it.
+fn resizing_layout(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    array_new: &BTreeSet<u64>,
+) -> Option<EmplaceLayout> {
+    let receivers = receiver_states(rows)?;
+    let flow = Flow::of(rows);
+    let count = incremented_count(rows, &flow, &receivers)?;
+    let mut layouts = BTreeSet::new();
+
+    for (index, row) in rows.iter().enumerate() {
+        let calls_array_new = row.operation == "bl"
+            && branch_target(&row.operands).is_some_and(|target| array_new.contains(&target));
+
+        if !calls_array_new {
+            continue;
+        }
+
+        let element_size = allocation_multiplier(rows, &flow, index)?;
+        let data = stored_allocation(rows, &flow, &receivers, index)?;
+
+        layouts.insert((data, element_size));
+    }
+
+    let [(data, element_size)] = layouts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(EmplaceLayout {
+        data,
+        count,
+        element_size,
+    })
+}
+
+/// The control flow of a decoded function: the position of each instruction address, and the
+/// addresses that a branch names.
+struct Flow {
+    positions: BTreeMap<u64, usize>,
+    branch_targets: BTreeSet<u64>,
+}
+
+impl Flow {
+    fn of(rows: &[crate::engine::analysis::decode::Instruction]) -> Self {
+        Self {
+            positions: rows
+                .iter()
+                .enumerate()
+                .map(|(position, row)| (row.address, position))
+                .collect(),
+            branch_targets: rows
+                .iter()
+                .filter(|row| branches(row))
+                .filter_map(|row| branch_target(&row.operands))
+                .collect(),
+        }
+    }
+
+    /// The positions that the instruction at `position` passes control to, or `None` when it
+    /// leaves the function or branches to an address outside it.
+    fn successors(
+        &self,
+        rows: &[crate::engine::analysis::decode::Instruction],
+        position: usize,
+    ) -> Option<Vec<usize>> {
+        let row = &rows[position];
+        let target =
+            || branch_target(&row.operands).and_then(|target| self.positions.get(&target).copied());
+
+        match row.operation.as_str() {
+            "ret" | "br" => None,
+            "b" => Some(vec![target()?]),
+            _ if branches(row) => Some(vec![target()?, position + 1]),
+            _ => Some(vec![position + 1]),
+        }
+    }
+}
+
+/// Whether `row` is a branch that may not go on to the next instruction.
+fn branches(row: &crate::engine::analysis::decode::Instruction) -> bool {
+    let operation = row.operation.as_str();
+
+    operation.starts_with("b.")
+        || matches!(
+            operation,
+            "b" | "br" | "ret" | "cbz" | "cbnz" | "tbz" | "tbnz"
+        )
+}
+
+/// The one receiver word that `rows` increments: `ldr wA,[R,#c]`, `add wB,wA,#1` and
+/// `str wB,[R',#c]` through receiver registers, with nothing between them that branches, is a
+/// branch target or writes `wA` or `wB`.
+fn incremented_count(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
+    receivers: &[Option<BTreeSet<String>>],
+) -> Option<u64> {
+    let member = |position: usize, base: &str, offset: &str| {
+        let base = base.strip_prefix('[')?;
+        receivers[position]
+            .as_ref()?
+            .contains(base)
+            .then(|| parse_offset(offset.trim_end_matches(']')))?
+    };
+    let mut counts = BTreeSet::new();
+
+    for (store, row) in rows.iter().enumerate() {
+        let operands: Vec<_> = row.operands.split(',').collect();
+        let ("str", [sum, base, offset]) = (row.operation.as_str(), &operands[..]) else {
+            continue;
+        };
+        let Some(count) = member(store, base, offset).filter(|_| sum.starts_with('w')) else {
+            continue;
+        };
+        let straight = |from: usize| {
+            (from + 1..=store).all(|position| {
+                !flow.branch_targets.contains(&rows[position].address)
+                    && !branches(&rows[position - 1])
+            })
+        };
+        let writes = |position: usize, register: &str| {
+            register_number(register).is_some_and(|number| {
+                crate::engine::analysis::decode::written_registers(
+                    &rows[position].operation,
+                    &rows[position].operands,
+                )
+                .contains(&number)
+            })
+        };
+        let Some(add) = (0..store).rev().find(|&position| writes(position, sum)) else {
+            continue;
+        };
+        let added: Vec<_> = rows[add].operands.split(',').collect();
+        let ("add", [_, loaded, "#1"]) = (rows[add].operation.as_str(), &added[..]) else {
+            continue;
+        };
+        let Some(load) = (0..add).rev().find(|&position| writes(position, loaded)) else {
+            continue;
+        };
+        let parts: Vec<_> = rows[load].operands.split(',').collect();
+        let loads_count = rows[load].operation == "ldr"
+            && matches!(parts[..], [_, base, offset] if member(load, base, offset) == Some(count));
+
+        if loads_count && straight(load) {
+            counts.insert(count);
+        }
+    }
+
+    let [count] = counts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(count)
+}
+
+/// The constant that the size argument of the call at `call` multiplies: the instruction before
+/// the call is `umull x0,wN,wS` or `mul x0,xN,xS`, and the write of `S` before it is a `mov` of an
+/// immediate. Nothing from that `mov` to the call may branch or be a branch target, so every path
+/// to the call runs the `mov`.
+fn allocation_multiplier(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
+    call: usize,
+) -> Option<u64> {
+    let multiply = rows.get(call.checked_sub(1)?)?;
+    let ["x0", _, factor] = multiply.operands.split(',').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    if !matches!(multiply.operation.as_str(), "umull" | "mul") {
+        return None;
+    }
+
+    let factor = register_number(factor)?;
+    let mut position = call;
+    let definition = loop {
+        if flow.branch_targets.contains(&rows[position].address) {
+            return None;
+        }
+
+        position = position.checked_sub(1)?;
+        let row = &rows[position];
+
+        if branches(row) {
+            return None;
+        }
+
+        if crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+            .contains(&factor)
+            && position + 1 < call
+        {
+            break row;
+        }
+    };
+    let [_, immediate] = definition.operands.split(',').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    (definition.operation == "mov").then(|| parse_offset(immediate))?
+}
+
+/// The receiver member that keeps the result of the call at `call`. The instruction after the
+/// call copies `x0` to a callee-saved register. On every path from there, that register is
+/// stored through a receiver register before any instruction writes it or the function returns,
+/// and every such store names one member.
+fn stored_allocation(
+    rows: &[crate::engine::analysis::decode::Instruction],
+    flow: &Flow,
+    receivers: &[Option<BTreeSet<String>>],
+    call: usize,
+) -> Option<u64> {
+    let copy = rows.get(call + 1)?;
+    let ["x0"] = copy.operands.split(',').skip(1).collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let kept = copy.operands.split(',').next()?;
+    let kept_number = register_number(kept).filter(|number| (19..=28).contains(number))?;
+
+    if copy.operation != "mov" {
+        return None;
+    }
+
+    let mut members = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut pending = vec![call + 2];
+
+    while let Some(position) = pending.pop() {
+        if !visited.insert(position) {
+            continue;
+        }
+
+        let row = rows.get(position)?;
+        let parts: Vec<_> = row.operands.split(',').collect();
+
+        if row.operation == "str"
+            && let [value, base, offset] = parts[..]
+            && value == kept
+            && receivers[position]
+                .as_ref()
+                .is_some_and(|receiver| receiver.contains(base.trim_start_matches('[')))
+        {
+            members.insert(parse_offset(offset.trim_end_matches(']'))?);
+            continue;
+        }
+
+        if crate::engine::analysis::decode::written_registers(&row.operation, &row.operands)
+            .contains(&kept_number)
+        {
+            return None;
+        }
+
+        pending.extend(flow.successors(rows, position)?);
+    }
+
+    let [member] = members.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(member)
+}
+
+/// The number of a general register operand such as `w8` or `x21`.
+fn register_number(operand: &str) -> Option<usize> {
+    operand
+        .strip_prefix('w')
+        .or_else(|| operand.strip_prefix('x'))?
+        .parse()
+        .ok()
+}
+
+/// The targets of the direct calls in `rows`.
+fn direct_calls(rows: &[crate::engine::analysis::decode::Instruction]) -> BTreeSet<u64> {
+    rows.iter()
+        .filter(|row| row.operation == "bl")
+        .filter_map(|row| u64::from_str_radix(row.operands.trim_start_matches("#0x"), 16).ok())
+        .collect()
 }
 
 /// The insertions of a `Class*` and of a `Class const*` into a `CPdxArray`.
@@ -1387,6 +1867,33 @@ mod tests {
     use crate::engine::analysis::analysis_support::{IMAGE_JUMP_TABLE, macho_with_fixups};
 
     #[test]
+    fn a_part_is_the_one_class_whose_methods_every_call_reaches() {
+        let symbol = |name: &str, address| Symbol {
+            name: name.into(),
+            address,
+        };
+        let symbols = vec![
+            symbol("Outer::Part<int>::operator=(Outer::Part<int>&&)", 0x10),
+            symbol("Outer::Part<int>::Clear()", 0x20),
+            symbol("Other::Clear()", 0x30),
+            symbol("_memcpy", 0x40),
+        ];
+        let index = crate::binding::binary::symbols::SymbolIndex::new(&symbols);
+        let indexed = index.over(&symbols);
+        let class = |targets: &[u64]| method_class(indexed, &targets.iter().copied().collect());
+
+        assert_eq!(class(&[0x10, 0x20]), Some("Outer::Part<int>"));
+        assert_eq!(class(&[0x10, 0x30]), None);
+        // A target that names no class, or has no symbol, may be a call on another object.
+        assert_eq!(class(&[0x10, 0x40]), None);
+        assert_eq!(class(&[0x10, 0x50]), None);
+        assert_eq!(
+            super::super::receivers::unqualified_base("Outer::Part<int>"),
+            "Part"
+        );
+    }
+
+    #[test]
     fn the_read_only_sections_hold_the_jump_tables_and_the_string_literals() {
         let sections = read_only_sections(&macho_with_fixups(6)).unwrap();
 
@@ -1426,6 +1933,56 @@ mod tests {
 
         assert_eq!(counts(insertion), Some(BTreeSet::from([0x14])));
         assert_eq!(counts(other_word), Some(BTreeSet::new()));
+    }
+
+    #[test]
+    fn a_resizing_proves_its_element_size_and_where_it_keeps_its_objects_and_count() {
+        use crate::engine::analysis::assembler::arm64;
+        use crate::engine::analysis::decode::decode_arm64;
+        let resizing = arm64!(at 0x1000;
+            stp x20, x19, [sp, #-0x20]!;
+            mov x20, x0; // the array
+            mov x19, x1; // the new count
+            ldr w8, [x20, #0x10]; // its capacity
+            mov w9, #0x278; // the element size
+            umull x0, w8, w9;
+            bl extern 0x2000; // operator new[]
+            mov x21, x0;
+            bl extern 0x3000; // a move of the old objects
+            str x21, [x20, #8]; // the new objects
+            ldr w8, [x20, #0x14]; // the count
+            add w8, w8, #1;
+            str w8, [x20, #0x14];
+            ldp x20, x19, [sp], #0x20;
+            ret
+        );
+        let rows = decode_arm64(&resizing, 0x1000).unwrap();
+        let layout = resizing_layout(&rows, &BTreeSet::from([0x2000])).unwrap();
+
+        assert_eq!(
+            (layout.data, layout.count, layout.element_size),
+            (8, 0x14, 0x278)
+        );
+        // A size that a call computes proves no element size.
+        let mut computed = rows.clone();
+        computed[4].operation = "bl".into();
+        computed[4].operands = "#0x4000".into();
+        assert!(resizing_layout(&computed, &BTreeSet::from([0x2000])).is_none());
+        // A path that skips the store keeps the new objects nowhere that the layout names.
+        let mut skipped = rows.clone();
+        skipped[8].operation = "cbz".into();
+        skipped[8].operands = "w8,#0x1034".into();
+        assert!(resizing_layout(&skipped, &BTreeSet::from([0x2000])).is_none());
+        // A path that enters between the size and its multiply may bring another size.
+        let mut entered = rows.clone();
+        entered[8].operation = "cbz".into();
+        entered[8].operands = "w8,#0x1014".into();
+        assert!(resizing_layout(&entered, &BTreeSet::from([0x2000])).is_none());
+        // A path that enters between the count's load and its increment may add to another value.
+        let mut joined = rows.clone();
+        joined[13].operation = "cbz".into();
+        joined[13].operands = "w8,#0x102c".into();
+        assert!(resizing_layout(&joined, &BTreeSet::from([0x2000])).is_none());
     }
 
     #[test]

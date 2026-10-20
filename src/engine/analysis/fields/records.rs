@@ -118,6 +118,8 @@ pub enum Value {
     InsertedBit(Box<Value>, u8),
     /// What the converter at this entry returned for the value token: an engine enum value.
     Converted(u64),
+    /// The length of the C string at an address, as `strlen` returns it.
+    TextLength(Box<Value>),
     /// A jump-table entry that the token selects.
     TableEntry(TableEntry),
     /// A code address formed from a jump-table entry: `base + (entry << shift)`.
@@ -385,6 +387,11 @@ pub struct ObjectReader {
     pub shared_emplace_point: Option<u64>,
     /// The `shared_ptr` destructors of the class that the root calls. The method runs their code.
     pub shared_releases: Vec<u64>,
+    /// Entry addresses of the in-place resizing that constructs an object at the end of a
+    /// `CPdxArray` of this class, when its layout is proven.
+    pub array_emplace: Vec<u64>,
+    /// The size of one object in that array, from the resizing's allocation.
+    pub array_element_size: Option<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
     /// Byte offset of the element count within the collection, if proven.
@@ -497,6 +504,9 @@ pub struct PersistentInput {
     /// 32-bit words in zero-fill memory, with the value that the static initializer that stores
     /// each one leaves there.
     pub initialized_words: BTreeMap<u64, u64>,
+    /// The address points that the custom loader's inline build of each item installs, by owner
+    /// offset, from the constructor of a part that the build constructs in place.
+    pub loader_points: BTreeMap<i64, u64>,
 }
 
 /// The constructors of a modifier container, which store its category mask, and where the

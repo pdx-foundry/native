@@ -112,7 +112,7 @@ fn builders(image: &Image<'_>) -> Result<BTreeMap<u64, String>, AnalysisError> {
 }
 
 /// The decoded body of every function whose name is qualified by `class`, by its start.
-fn own_functions(
+pub(super) fn own_functions(
     text: &Text<'_>,
     symbols: &[Symbol],
     class: &str,

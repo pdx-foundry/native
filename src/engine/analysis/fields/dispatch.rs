@@ -843,12 +843,18 @@ fn apply(
                 // The serializer's own members hold no owner field.
             } else if let Some(Value::Owner(at)) = location {
                 state.emplaced.clear();
-                if let Some(test) = true_token_test(input.key_readers)
-                    && state.value(operand) == Some(test)
+                if let Some(Value::EqualsAny(tested, pivots)) = state.value(operand)
+                    && *tested == value_token_word(input.key_readers)
+                    && let [literal] = pivots.as_slice()
                 {
+                    let (callee, kind) = if input.key_readers.true_token == Some(*literal) {
+                        (TRUE_TOKEN_TEST, crate::ReaderKind::Boolean)
+                    } else {
+                        (LITERAL_TOKEN_TEST, crate::ReaderKind::Keyword)
+                    };
                     let join = ReaderJoin::Stored {
-                        callee: TRUE_TOKEN_TEST.into(),
-                        kind: crate::ReaderKind::Boolean,
+                        callee: callee.into(),
+                        kind,
                         destination: Some(at),
                         repeat: crate::RepeatBehavior::Replace,
                     };
@@ -944,8 +950,8 @@ fn apply(
         ("ubfx" | "and" | "orr" | "movk" | "csel", [destination, ..]) => {
             state.assign(destination, None)
         }
-        ("cset", [destination, "eq"]) if tests_true_token(state, input.key_readers) => {
-            state.assign(destination, true_token_test(input.key_readers))
+        ("cset", [destination, "eq"]) if literal_token_test(state, input.key_readers).is_some() => {
+            state.assign(destination, literal_token_test(state, input.key_readers))
         }
         // A bit test of a value that the walk does not follow leaves the flags unknown.
         ("tst", _) => state.flags = None,
@@ -1440,6 +1446,43 @@ fn explore_member_with_wrapped_owner(
                         );
                         break;
                     }
+                    state.clobber_call();
+                    continue;
+                }
+                let callee =
+                    target.and_then(|address| input.symbol_index.name(input.symbols, address));
+                let text = value_text(input.key_readers);
+                if row.operation == "bl"
+                    && callee == Some(readers::TEXT_LENGTH)
+                    && state.value("x0") == Some(text.clone())
+                    && assigns_next(&rows, state.pc, &indexes, input)
+                {
+                    // A path that measures the text and then joins no reader ends here, as it did
+                    // before the assignment was followed.
+                    state
+                        .value_read
+                        .get_or_insert_with(|| stop("reader-routing", Obstacle::Call));
+                    state.clobber_call();
+                    state.assign("x0", Some(Value::TextLength(Box::new(text))));
+                    continue;
+                }
+                if let Some(callee) = callee
+                    && readers::assigns_string_text(callee)
+                    && let Some(Value::Owner(destination)) = state.value("x0")
+                    && state.value("x1") == Some(text.clone())
+                    && state.value("x2") == Some(Value::TextLength(Box::new(text)))
+                {
+                    let join = ReaderJoin::Stored {
+                        callee: callee.into(),
+                        kind: crate::ReaderKind::String,
+                        destination: Some(destination),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    if row.operation == "b" {
+                        leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
+                        break;
+                    }
+                    state.stored = Some((join, destination, STANDARD_STRING_SIZE));
                     state.clobber_call();
                     continue;
                 }
@@ -2773,6 +2816,60 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     CompoundCall::Continue
 }
 
+/// The most instructions that [`assigns_next`] examines.
+const MAX_ASSIGNMENT_LOOKAHEAD: usize = 16;
+
+/// Whether the code from `rows[start]` reaches a string assignment call with no conditional
+/// branch or other call first. Only then does the walk follow `strlen` of the value text: a
+/// length that the reader tests instead, as a one-character code does, keeps the stop at the call.
+fn assigns_next(
+    rows: &[Instruction],
+    start: usize,
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+) -> bool {
+    let mut index = start;
+
+    for _ in 0..MAX_ASSIGNMENT_LOOKAHEAD {
+        let Some(row) = rows.get(index) else {
+            return false;
+        };
+        index += 1;
+        match row.operation.as_str() {
+            "b" | "bl" => {
+                let Some(target) = number(&row.operands).map(|address| address as u64) else {
+                    return false;
+                };
+                if row.operation == "b"
+                    && let Some(&local) = indexes.get(&target)
+                {
+                    index = local;
+                    continue;
+                }
+
+                return input
+                    .symbol_index
+                    .name(input.symbols, target)
+                    .is_some_and(readers::assigns_string_text);
+            }
+            operation
+                if operation.starts_with('b')
+                    || operation.starts_with("cb")
+                    || operation.starts_with("tb")
+                    || operation == "ret" =>
+            {
+                return false;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+/// The size of a libc++ `std::basic_string` on a 64-bit target: three words.
+const STANDARD_STRING_SIZE: i64 = 0x18;
+
 /// The value token's word, loaded from the reader.
 fn value_token_word(bindings: &super::KeyReaders) -> Value {
     Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
@@ -2792,27 +2889,24 @@ fn stores_value_token_id(stored: &(ReaderJoin, i64, i64)) -> bool {
 /// stores false, so the reader accepts any token without an error.
 const TRUE_TOKEN_TEST: &str = "value token == yes";
 
-/// Whether the value token is the true token, as a Boolean; `None` when the true token is not
-/// bound.
-fn true_token_test(bindings: &super::KeyReaders) -> Option<Value> {
-    let true_token = bindings.true_token?;
+/// The reader that stores whether the value token is one literal token other than `yes`: a
+/// keyword with two meanings, that token and every other. Every token is accepted without an
+/// error, so the keyword's domain is not established.
+const LITERAL_TOKEN_TEST: &str = "value token == literal";
 
-    Some(Value::EqualsAny(
-        Box::new(value_token_word(bindings)),
-        vec![true_token],
-    ))
-}
-
-/// Whether the flags hold the comparison of the value token with the true token alone.
-fn tests_true_token(state: &State, bindings: &super::KeyReaders) -> bool {
+/// The comparison of the value token with one literal token that the flags hold, as a Boolean;
+/// `None` for any other comparison, or when the value token or `yes` is not bound: without `yes`,
+/// the literal could be it.
+fn literal_token_test(state: &State, bindings: &super::KeyReaders) -> Option<Value> {
     let Some(Flags::Values { tested, pivots }) = &state.flags else {
-        return false;
+        return None;
     };
+    let token_word = value_token_word(bindings);
 
-    *tested == value_token_word(bindings)
-        && bindings
-            .true_token
-            .is_some_and(|true_token| *pivots == [true_token])
+    let bound = bindings.value_token != 0 && bindings.true_token.is_some();
+
+    (bound && *tested == token_word && pivots.len() == 1)
+        .then(|| Value::EqualsAny(Box::new(token_word), pivots.clone()))
 }
 
 /// Whether the call to `target` converts the value token with a pure converter, which a
@@ -3031,7 +3125,7 @@ mod tests {
     }
 
     #[test]
-    fn a_member_that_stores_whether_the_value_token_is_yes_reads_a_boolean() {
+    fn a_member_that_stores_whether_the_value_token_is_one_token_reads_a_boolean_or_a_keyword() {
         let root = "Owner::ReadMember(CReader&, int)";
         let symbols = vec![Symbol {
             name: root.into(),
@@ -3056,7 +3150,7 @@ mod tests {
         ));
         let other_token_test = functions(arm64!(at 0x1000;
             ldr w8, [x1, #0x278];
-            mov w9, #8; // a token that is not true
+            mov w9, #8; // a token other than yes
             cmp w8, w9;
             cset w8, eq;
             strb w8, [x0, #0x20];
@@ -3085,7 +3179,33 @@ mod tests {
                 ..
             })
         ));
-        assert!(matches!(outcome(&other_token_test), PathOutcome::Gap(_)));
+        assert!(matches!(
+            outcome(&other_token_test),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::Keyword,
+                destination: Some(0x20),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        let unbound_yes = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let input = DispatchInput::command(
+            &other_token_test,
+            &symbols,
+            &symbol_index,
+            &[],
+            0x38,
+            &unbound_yes,
+        );
+        let (paths, _) = explore_member(&input, root);
+        assert!(
+            matches!(paths[0].outcome, PathOutcome::Gap(_)),
+            "without yes the literal could be it"
+        );
     }
 
     #[test]
@@ -3230,6 +3350,82 @@ mod tests {
             ),
             "the id store stands when the converted value is not stored: {:?}",
             outcome(false)
+        );
+    }
+
+    #[test]
+    fn a_string_assigned_from_the_value_text_and_its_length_reads_a_string() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let assign = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "_strlen".into(),
+                address: 0x2000,
+            },
+            Symbol {
+                name: assign.into(),
+                address: 0x3000,
+            },
+        ];
+        let functions = |measured: bool| {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            arm64!(code;
+                mov x19, x0;
+                ldr x20, [x1, #0x288]; // the value text
+                mov x0, x20
+            );
+            if measured {
+                arm64!(code; bl extern 0x2000); // strlen
+            }
+            arm64!(code;
+                mov x2, x0;
+                add x0, x19, #0xf0;
+                mov x1, x20;
+                b extern 0x3000 // assign the text and its length
+            );
+
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.bytes(),
+                },
+            )])
+        };
+        let readers = super::super::KeyReaders {
+            value_token: 0x278,
+            token_text: 0x10,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let outcome = |measured| {
+            let functions = functions(measured);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+
+        assert!(matches!(
+            outcome(true),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::String,
+                destination: Some(0xf0),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        assert!(
+            !matches!(
+                outcome(false),
+                PathOutcome::Reader(ReaderJoin::Stored { .. })
+            ),
+            "a length that is not the text's own proves no whole-text read"
         );
     }
 
