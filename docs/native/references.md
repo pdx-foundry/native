@@ -325,8 +325,8 @@ string reader stores that key.
   check passes, and the null object's check fails; read both checks before claiming what a list
   holds.
 - An immediate or deferred list reads a block of keys (`allowed_archetypes = { BIOLOGICAL LITHOID }`), not one
-  scalar: the field's shape is `Block` with `Accumulate`, and its members stay `Unresolved` until
-  a members state carries the item reader (as for `ReadUniform` lists).
+  scalar: the field's shape is `Block`, and its members are `FieldMembers::Items` with a `Reference`
+  item reader (as for [uniform lists](registry-fields.md#uniform-lists)).
 
 - A reference reader's signature does not state its lookup: `ReadKeyReference<CArmyTypeDatabase>`
   scans linearly while `ReadKeyReference<CShipSizeDatabase>` calls the map `Find`.

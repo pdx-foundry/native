@@ -3467,7 +3467,21 @@
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Items": {
+    "reader": {
+     "id": null,
+     "kind": "String",
+     "family": "NotApplicable",
+     "numeric": {
+      "Known": null
+     },
+     "scoped_operand": {
+      "Known": null
+     }
+    }
+   }
+  },
   "name": "upgrade_from",
   "read": [
    {
@@ -3789,7 +3803,21 @@
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Items": {
+    "reader": {
+     "id": null,
+     "kind": "Reference",
+     "family": "NotApplicable",
+     "numeric": {
+      "Known": null
+     },
+     "scoped_operand": {
+      "Known": null
+     }
+    }
+   }
+  },
   "name": "scripted_action",
   "read": [
    {
@@ -5200,7 +5228,21 @@
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "Unresolved",
+  "members": {
+   "Items": {
+    "reader": {
+     "id": null,
+     "kind": "Reference",
+     "family": "NotApplicable",
+     "numeric": {
+      "Known": null
+     },
+     "scoped_operand": {
+      "Known": null
+     }
+    }
+   }
+  },
   "name": "overclock_types",
   "read": [
    {
