@@ -82,10 +82,15 @@ pub(super) fn key_order(
         allowed.sort();
         let set_by = match &check.tested {
             Value::Load(word, _) => match word.as_ref() {
-                Value::Owner(at) => fields
-                    .iter()
-                    .find(|field| storage_offset(field, partition_accounted) == Some(*at))
-                    .map(|field| field.name.clone()),
+                Value::Owner(at) => {
+                    let mut setters = fields
+                        .iter()
+                        .filter(|field| storage_offset(field, partition_accounted) == Some(*at));
+                    match (setters.next(), setters.next()) {
+                        (Some(field), None) => Some(field.name.clone()),
+                        _ => None,
+                    }
+                }
                 _ => None,
             },
             _ => None,
@@ -196,5 +201,42 @@ mod tests {
             path([6, i32::MAX as i64], unresolved()),
         ];
         assert_eq!(derived(accounted), (Some(STORED_AT), 1));
+    }
+
+    #[test]
+    fn a_key_order_names_its_setter_only_when_one_field_stores_the_word() {
+        let named = |name: &str| Token {
+            name: Some(name.into()),
+            constructor: 0,
+        };
+        let tokens = |names: &[&str]| -> BTreeMap<i64, Token> {
+            (5..)
+                .zip(names)
+                .map(|(token, name)| (token, named(name)))
+                .collect()
+        };
+        let check = OrderCheck {
+            at: 0x1000,
+            tested: Value::Load(Box::new(Value::Owner(STORED_AT)), 8),
+        };
+        let setter = |names: &[&str]| {
+            let last = 4 + names.len() as i64;
+            let mut paths = vec![path([i32::MIN as i64, 4], PathOutcome::Rejected)];
+            paths.extend((5..=last).map(|token| path([token, token], string_field())));
+            paths.push(path([last + 1, i32::MAX as i64], PathOutcome::Rejected));
+            let (fields, _) = fields_and_gaps(&paths, &tokens(names));
+
+            key_order(
+                std::slice::from_ref(&check),
+                &paths,
+                &fields,
+                partition_accounted(&paths),
+            )[0]
+            .set_by
+            .clone()
+        };
+
+        assert_eq!(setter(&["first"]), Some("first".into()));
+        assert_eq!(setter(&["first", "second"]), None);
     }
 }

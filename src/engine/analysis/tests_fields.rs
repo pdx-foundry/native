@@ -640,8 +640,32 @@ fn order_check_fixture(rejection: Vec<u8>) -> FieldInput {
         name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
         address: 0xb000,
     });
+    input.symbols.push(Symbol {
+        name: "CReader::GetLineNumber() const".into(),
+        address: 0xb100,
+    });
 
     input
+}
+
+/// The read of token 7 in [`order_check_fixture`] keeps the check as a condition, and the
+/// registry states no key order.
+fn assert_no_order_check(rejection: Vec<u8>) {
+    let result = derive(order_check_fixture(rejection));
+
+    let reads: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert!(
+        reads.iter().all(|path| path
+            .conditions
+            .iter()
+            .any(|condition| condition.at == 0x1008)),
+        "{reads:?}"
+    );
+    assert!(result.key_order.is_empty());
 }
 
 #[test]
@@ -670,26 +694,56 @@ fn an_order_check_that_only_logs_leaves_the_key_read_always() {
 
 #[test]
 fn a_rejecting_side_that_writes_the_owner_is_no_order_check() {
-    let writes = arm64!(at 0x100c;
+    assert_no_order_check(arm64!(at 0x100c;
         str wzr, [x0, #0x40]; // an owner write
         ret
+    ));
+}
+
+#[test]
+fn a_side_that_only_locates_a_diagnostic_is_no_order_check() {
+    assert_no_order_check(arm64!(at 0x100c;
+        bl extern 0xb100; // CReader::GetLineNumber, no diagnostic
+        ret
+    ));
+}
+
+#[test]
+fn a_diagnostic_side_that_loops_is_no_order_check() {
+    assert_no_order_check(arm64!(at 0x100c;
+        bl extern 0xb000; // the diagnostic
+        b extern 0x100c // never returns
+    ));
+}
+
+#[test]
+fn a_string_emplace_call_unsettles_an_owner_word_test() {
+    let mut code = Arm64::at(0x1000);
+    arm64!(code;
+        cmp w2, #7; b.eq extern 0x1010;
+        mov x0, x1; b extern 0x6000;
+        mov x19, x0; mov x20, x1;
+        ldr x8, [x19, #0x48]; cmp x8, #5
     );
+    let joined = code.here() + 4;
+    arm64!(code;
+        b.ne extern joined as usize; // both sides join
+        add x0, x19, #0x80;
+        ldr w8, [x19, #0x94]; add w1, w8, #1;
+        bl extern 0xd000; // emplace, which writes the owner
+        ldr x8, [x19, #0x48]; cmp x8, #5
+    );
+    let after = code.here() + 4;
+    arm64!(code; b.ne extern after as usize; ret);
 
-    let result = derive(order_check_fixture(writes));
+    let result = derive(compound_fixture(code.bytes()));
 
-    let reads: Vec<_> = result
+    let reads = result
         .paths
         .iter()
         .filter(|path| path.domain == [7, 7])
-        .collect();
-    assert_eq!(reads.len(), 1, "{reads:?}");
-    assert!(
-        reads[0]
-            .conditions
-            .iter()
-            .any(|condition| condition.at == 0x1008)
-    );
-    assert!(result.key_order.is_empty());
+        .count();
+    assert_eq!(reads, 4, "the second test forks after the call");
 }
 
 #[test]

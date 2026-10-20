@@ -502,15 +502,17 @@ The dispatch walker follows the order rule with three general rules (`registry-f
 - **Order check.** A `b.eq` or `b.ne` on a compare of an owner word (not the token), reached before
   the path reads, converts or stores anything outside the frame, is an order check when one side only
   logs and returns: every way from it calls only functions that
-  change no script state (`readers::changes_no_script_state`, at least one), writes only the stack and
-  ends at `ret` (`logs_and_returns` in `fields/dispatch.rs`, at most 64 instructions). The walk takes
+  change no script state (`readers::changes_no_script_state`), calls at least one diagnostic writer
+  (`readers::DIAGNOSTICS`; a location helper or a string release alone is not a diagnostic), writes
+  only the stack and reaches its own `ret` (`logs_and_returns` in `fields/dispatch.rs`, at most 128
+  instructions over all ways, so a loop fails). The walk takes
   the other side and does not fork, so the key keeps no condition for the check. A side that writes
   the owner, calls anything else, or branches out of the function is no order check, and the walk
   forks as before (`a_rejecting_side_that_writes_the_owner_is_no_order_check`).
 - **Settled comparison.** Each path keeps the outcome of the owner-word comparisons that it has
   taken, as `EqualsAny(word, pivots)`. A later `b.eq` or `b.ne` on the same comparison takes the
   recorded side. A call or a store outside the frame clears the record, because either can change the
-  word.
+  word; a compound reader call that the walk follows (such as a string emplace) clears it too.
 - **Key order note.** The registry answer states each order check as an `OutsideMethod` gap that
   starts with "Key order:": the named keys that have no path through the check, and the field whose
   storage is the tested word, when one field stores it. Atlas does not block on it; it is the only
@@ -540,8 +542,11 @@ Limits, each with the condition for a change:
 - The allowed keys are those with no path through the check. A key read through an inherited reader
   or a jump-table case whose paths pass the check is not allowed, which is the engine's behavior; a
   key whose only path stops before the check counts as allowed.
-- An order check inside a child walk (an inherited or wrapped reader) is reported on the registry,
-  not on the child.
+- Only owner walks follow order checks: the registry root, its collection objects and its embedded
+  objects (`DispatchInput::follows_order_checks`). An order check inside a collection or embedded
+  object is a note on the parent field; one inside an inherited or wrapped reader of the root is a
+  note on the registry. Member readers of a field and command grammars fork at the check and keep
+  it as a condition, since their answers have no place for the note; none does so on M452.
 
 Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
 an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean

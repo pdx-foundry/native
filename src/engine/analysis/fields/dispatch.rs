@@ -41,6 +41,9 @@ pub(crate) struct DispatchInput<'a> {
     pub virtual_delegate: Option<&'a str>,
     /// A loader root to walk from its statement read instead of a member reader's entry.
     pub loader: Option<&'a LoaderRoot>,
+    /// Whether the walk follows order checks. Only an owner's walk reports them, as key order
+    /// notes; any other walk forks at the check, so its keys keep the order as a condition.
+    pub follows_order_checks: bool,
 }
 
 /// Where dispatch finds a function body by name.
@@ -84,6 +87,7 @@ impl<'a> DispatchInput<'a> {
             serializer_constructors: None,
             virtual_delegate: None,
             loader: None,
+            follows_order_checks: false,
         }
     }
 
@@ -973,6 +977,7 @@ pub(super) fn explore_owner(
             serializer_constructors: None,
             virtual_delegate: None,
             loader: None,
+            follows_order_checks: true,
         },
         root,
         owner_slot.map(|slot| (slot, 0)),
@@ -1006,6 +1011,7 @@ pub(super) fn explore_loader(
             serializer_constructors: None,
             virtual_delegate: None,
             loader: Some(loader),
+            follows_order_checks: false,
         },
         &loader.function,
     )
@@ -2141,7 +2147,8 @@ fn settled_comparison(
     });
     let unread =
         !writes && state.stored.is_none() && state.converted.is_none() && state.temporary.is_none();
-    if !unread
+    if !input.follows_order_checks
+        || !unread
         || !matches!(tested, Value::Load(word, _) if matches!(word.as_ref(), Value::Owner(_)))
     {
         return None;
@@ -2165,12 +2172,12 @@ fn settled_comparison(
     })
 }
 
-/// The most instructions that [`logs_and_returns`] examines.
-const MAX_DIAGNOSTIC_SIDE: usize = 64;
+/// The most instructions that [`logs_and_returns`] examines, over all its ways.
+const MAX_DIAGNOSTIC_SIDE: usize = 128;
 
-/// Whether every way from `rows[start]` calls a diagnostic and returns, calling nothing else that
-/// can change script state and writing only the frame. Such a side reads no key, whatever the
-/// token.
+/// Whether every way from `rows[start]` writes a diagnostic and returns, calling nothing else
+/// that can change script state and writing only the frame. Such a side reads no key, whatever
+/// the token. Each way is followed to its own `ret`, so a loop exhausts the bound and fails.
 fn logs_and_returns(
     rows: &[Instruction],
     start: usize,
@@ -2178,22 +2185,14 @@ fn logs_and_returns(
     input: &DispatchInput<'_>,
 ) -> bool {
     let local = |operand: &str| number(operand).and_then(|a| indexes.get(&(a as u64)).copied());
-    // Each way, and whether it has called a diagnostic.
+    // Each way, and whether it has written a diagnostic.
     let mut pending = vec![(start, false)];
-    // Whether the first way to reach an instruction had called a diagnostic.
-    let mut seen = BTreeMap::new();
+    let mut examined = 0;
 
     while let Some((mut index, mut logged)) = pending.pop() {
         loop {
-            if let Some(&earlier) = seen.get(&index) {
-                // A later way covers itself only when it has logged at least as much.
-                if earlier && !logged {
-                    return false;
-                }
-                break;
-            }
-            seen.insert(index, logged);
-            if seen.len() > MAX_DIAGNOSTIC_SIDE {
+            examined += 1;
+            if examined > MAX_DIAGNOSTIC_SIDE {
                 return false;
             }
             let Some(row) = rows.get(index) else {
@@ -2206,12 +2205,15 @@ fn logs_and_returns(
                 "ret" if logged => break,
                 "ret" | "br" | "blr" => return false,
                 "bl" => {
-                    let callee = number(&row.operands)
-                        .and_then(|address| input.symbol_index.name(input.symbols, address as u64));
-                    if !callee.is_some_and(readers::changes_no_script_state) {
+                    let Some(callee) = number(&row.operands)
+                        .and_then(|address| input.symbol_index.name(input.symbols, address as u64))
+                    else {
+                        return false;
+                    };
+                    if !readers::changes_no_script_state(callee) {
                         return false;
                     }
-                    logged = true;
+                    logged |= readers::DIAGNOSTICS.contains(&callee);
                 }
                 "b" => match local(target) {
                     Some(next) => index = next,
@@ -2709,10 +2711,7 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     } else {
         return CompoundCall::Unclassified;
     }
-    for register in 0..=18 {
-        state.registers.remove(&format!("x{register}"));
-    }
-    state.flags = None;
+    state.clobber_call();
     CompoundCall::Continue
 }
 

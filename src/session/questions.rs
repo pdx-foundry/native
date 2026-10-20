@@ -503,7 +503,8 @@ impl Native {
         let registry = registry.trim_end_matches('/');
         let references = facts.references;
         let mut value = normalized_fields(result, references);
-        let mut gaps = normalized_gaps(result, registry, references, &value);
+        let mut gaps = vec![method_scope_gap(registry)];
+        gaps.extend(normalized_gaps(result, registry, references, &value));
         let scope_names = facts.blocks.scope_names.as_deref();
         let clauses = super::triggered_modifiers::ClauseFacts {
             clauses: facts.triggered,
@@ -908,6 +909,15 @@ fn key_order_detail(order: &KeyOrder) -> String {
     )
 }
 
+/// What the registry field method leaves out for every registry.
+fn method_scope_gap(registry: &str) -> Gap {
+    Gap {
+        kind: GapKind::OutsideMethod,
+        subject: Some(GapSubject::registry(registry)),
+        detail: "Defaults, enum domains other than those of keyword fields, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
+    }
+}
+
 /// The gaps that `result` gives, with its normalized `fields` in the order of `result.fields`.
 /// The reader gaps follow the fields' own readers, so a field that has no reader id has one.
 fn normalized_gaps(
@@ -916,16 +926,15 @@ fn normalized_gaps(
     references: &ReferenceFacts,
     fields: &[Field],
 ) -> Vec<Gap> {
-    let mut gaps = vec![Gap {
-        kind: GapKind::OutsideMethod,
-        subject: Some(GapSubject::registry(registry)),
-        detail: "Defaults, enum domains other than those of keyword fields, occurrence limits, deeper nested grammars, and non-owner runtime callers are not established by this method.".into(),
-    }];
-    gaps.extend(result.key_order.iter().map(|order| Gap {
-        kind: GapKind::OutsideMethod,
-        subject: Some(GapSubject::registry(registry)),
-        detail: key_order_detail(order),
-    }));
+    let mut gaps: Vec<_> = result
+        .key_order
+        .iter()
+        .map(|order| Gap {
+            kind: GapKind::OutsideMethod,
+            subject: Some(GapSubject::registry(registry)),
+            detail: key_order_detail(order),
+        })
+        .collect();
     let field_of = |path: usize| {
         result
             .fields
@@ -1059,9 +1068,6 @@ fn normalized_gaps(
             _ => &[],
         };
         for mut gap in normalized_gaps(nested, registry, references, members) {
-            if gap.kind == GapKind::OutsideMethod {
-                continue;
-            }
             // A gap on the nested reader as a whole belongs to the parent field.
             let name = match &gap.subject {
                 Some(GapSubject::Field { name }) => format!("{}.{name}", parent.name),
@@ -1272,7 +1278,9 @@ mod field_gap_tests {
     fn field_gaps(result: &RegistryFieldResult) -> Vec<Gap> {
         let references = ReferenceFacts::default();
         let fields = normalized_fields(result, &references);
-        normalized_gaps(result, REGISTRY, &references, &fields)
+        let mut gaps = vec![method_scope_gap(REGISTRY)];
+        gaps.extend(normalized_gaps(result, REGISTRY, &references, &fields));
+        gaps
     }
 
     /// A persistent read whose destination holds no known reader, so its field has no identity.
@@ -1519,6 +1527,43 @@ mod field_gap_tests {
             reader_gaps[0].subject,
             Some(GapSubject::field("known.child"))
         );
+    }
+
+    #[test]
+    fn a_collection_member_key_order_is_a_note_on_the_parent_field() {
+        use crate::engine::analysis::fields::{CollectionField, KeyOrder};
+
+        let mut member = result(vec![]);
+        member.key_order = vec![KeyOrder {
+            allowed: vec!["first".into()],
+            set_by: None,
+        }];
+        let mut parent = result(vec![]);
+        parent.collections.push(CollectionField {
+            token: 7,
+            offset: 0x40,
+            owned_pointer: false,
+            data_offset: None,
+            count_offset: None,
+            class: "CChild".into(),
+            reader: None,
+            fields: Box::new(member),
+            container_mask: None,
+            construction_scopes: Vec::new(),
+        });
+
+        let notes: Vec<_> = field_gaps(&parent)
+            .into_iter()
+            .filter(|gap| gap.kind == GapKind::OutsideMethod)
+            .collect();
+
+        assert_eq!(
+            notes.len(),
+            2,
+            "the method scope and the member's key order: {notes:?}"
+        );
+        assert!(notes[1].detail.starts_with("Key order"));
+        assert_eq!(notes[1].subject, Some(GapSubject::field("known")));
     }
 
     #[test]
