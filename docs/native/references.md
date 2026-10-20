@@ -324,6 +324,9 @@ string reader stores that key.
 - A list reader's miss is not stored. The immediate list appends only objects whose validity
   check passes, and the null object's check fails; read both checks before claiming what a list
   holds.
+- An immediate list reads a block of keys (`allowed_archetypes = { BIOLOGICAL LITHOID }`), not one
+  scalar: the field's shape is `Block` with `Accumulate`, and its members stay `Unresolved` until
+  a members state carries the item reader (as for `ReadUniform` lists).
 
 - A reference reader's signature does not state its lookup: `ReadKeyReference<CArmyTypeDatabase>`
   scans linearly while `ReadKeyReference<CShipSizeDatabase>` calls the map `Find`.

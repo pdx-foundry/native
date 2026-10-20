@@ -3789,7 +3789,7 @@
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "None",
+  "members": "Unresolved",
   "name": "scripted_action",
   "read": [
    {
@@ -3809,7 +3809,7 @@
       },
       "shape": {
        "repeat": "Accumulate",
-       "value": "Scalar"
+       "value": "Block"
       }
      }
     }
@@ -3848,7 +3848,7 @@
   "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
-   "value": "Scalar"
+   "value": "Block"
   },
   "uses": []
  },
@@ -5200,7 +5200,7 @@
   "accepted_categories": "NotApplicable",
   "domain": "Unknown",
   "entry_contexts": [],
-  "members": "None",
+  "members": "Unresolved",
   "name": "overclock_types",
   "read": [
    {
@@ -5220,7 +5220,7 @@
       },
       "shape": {
        "repeat": "Accumulate",
-       "value": "Scalar"
+       "value": "Block"
       }
      }
     }
@@ -5259,7 +5259,7 @@
   "requirement": "Optional",
   "shape": {
    "repeat": "Accumulate",
-   "value": "Scalar"
+   "value": "Block"
   },
   "uses": []
  },

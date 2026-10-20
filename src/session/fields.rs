@@ -115,10 +115,14 @@ fn shape(
     persistent: Option<&ConcreteReader>,
     references: &ReferenceFacts,
 ) -> FieldShape {
+    let reads_key_list =
+        matches!(join, ReaderJoin::Joined { callee, .. } if appends_each_key(callee));
     let value = match reader.kind {
         ReaderKind::Unknown => ValueShape::Unknown,
         ReaderKind::Block => ValueShape::Block,
         ReaderKind::Skipped => ValueShape::Any,
+        // A list of keys, each looked up while it is read, is written as a block of keys.
+        ReaderKind::Reference if reads_key_list => ValueShape::Block,
         _ => ValueShape::Scalar,
     };
 
@@ -1038,6 +1042,36 @@ mod tests {
             value: Some(Value::Load(Box::new(Value::Owner(8)), 1)),
             zero,
         }
+    }
+    #[test]
+    fn a_list_of_looked_up_keys_is_written_as_a_block() {
+        let callee = |name: &str| ReaderJoin::Joined {
+            callee: name.into(),
+            arguments: Default::default(),
+            tail: true,
+        };
+        let reader = Reader {
+            id: None,
+            kind: ReaderKind::Reference,
+            family: BlockFamily::NotApplicable,
+            numeric: crate::GrammarProperty::Known(None),
+            scoped_operand: crate::GrammarProperty::Known(None),
+        };
+        let references = ReferenceFacts::default();
+        let value = |join: &ReaderJoin| shape(join, &reader, None, &references).value;
+
+        assert_eq!(
+            value(&callee(
+                "void NParserUtil::ReadKeyReferenceUniform<CJobTagDatabase, CPdxArray<CJobTag const*, int> >(CReader&, CPdxArray<CJobTag const*, int>&)"
+            )),
+            ValueShape::Block
+        );
+        assert_eq!(
+            value(&callee(
+                "CJobTagDatabase::ValueType const* NParserUtil::ReadKeyReference<CJobTagDatabase>(CReader&, CJobTagDatabase const&, bool)"
+            )),
+            ValueShape::Scalar
+        );
     }
     #[test]
     fn a_bound_delegate_tells_apart_readers_that_share_read_and_member() {

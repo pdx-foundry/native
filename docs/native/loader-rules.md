@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v8`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v9`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
@@ -226,7 +226,7 @@ M452, 107 functions other than the template `LoadFile` bodies call a lexer const
 a template database's function or a post-read hook, and a call through a register is not in the
 list. A probe can confirm it (below). Review the list again for a new build.
 
-Result on M452 (`loader-rules/v8`): 149 `Known(false)`, including all 19 registries whose
+Result on M452 (`loader-rules/v9`): 149 `Known(false)`, including all 19 registries whose
 `registry_fields` is `Complete`; 15 `Unresolved` because an item has its own read or no read slot (`common/job_tags`, `common/map_modes`,
 `common/trait_tags`, `common/scripted_effects`, `common/scripted_triggers`, `common/script_values`,
 `common/zones`, `common/zone_slots`, `common/astral_rifts`, `common/starbase_buildings`,
@@ -435,8 +435,12 @@ string comes from.
 - `common/diplomacy_economy`: the config's `type_per_file` and `name_from_file` make each file one
   definition named by the file. The template loader names each root key (`once`,
   `per_relation`) as a definition.
-- `common/country_container`: the config's `skip_root_key = collection` skips the root key; the
-  template loader names the definition `collection`.
+- `common/country_container`: the config's `skip_root_key = collection` skips the root key. The
+  template loader names its item `collection` by the root key, and the item's reader
+  (`CMiscEconomicUnitCollection::ReadMember`, `0x101c418cc`) takes the text of each key in its
+  block (reader `+0x48`), constructs `CMiscEconomicUnit(CString const&)` with it, inserts the unit
+  and reads it through its vtable: an economic unit named by that key. The answer keeps the root-key form
+  and an obstacle gap for the units, which no form states (a key at any name inside the block).
 - `swapped_technology` and `swapped_authority` agree (`name`). `swapped_civic` and `swapped_job`
   take `name`, but a swap without it takes its name from its owner.
 - `common/ambient_objects` (`name_field = name`), `common/global_ship_designs` (`name`),
@@ -496,17 +500,18 @@ All 185 listed registries have every file-selection property `Known`; none is un
 | `.txt`, every level | 2 (`common/global_ship_designs`, `common/terraform`) |
 | Every file, every level | 1 (`flags`) |
 
-Definition names: 174 `Known`, 2 `Partial` and 9 `Unresolved`; each `Partial` or `Unresolved`
+Definition names: 173 `Known`, 3 `Partial` and 9 `Unresolved`; each `Partial` or `Unresolved`
 answer has an obstacle gap.
 
 | Forms | Registries |
 | --- | ---: |
-| Root key | 163 (158 template, 5 custom) |
+| Root key | 162 (157 template, 5 custom) |
 | Root key, and swaps by `name` | 4 (`common/traditions`, `common/ascension_perks`, `common/technology`, `common/governments/authorities`) |
 | One root key, by a field | 3 (`common/ship_behaviors` by `name`, `common/special_projects` by `key`, `gfx/worldgfx` by `world`) |
 | `namespace` by value, and other root keys by `id` | 1 (`events`) |
 | No named definition (`Known`, no form) | 3 (`common/colors`, `common/start_screen_messages`, `common/terraform`) |
 | Partial: root key; the swap has an obstacle | 2 (`common/governments/civics`, `common/pop_jobs`) |
+| Partial: root key; the units in its block have an obstacle | 1 (`common/country_container`) |
 | Unresolved: an obstacle | 9 (`common/ambient_objects`, `common/component_tags`, `common/diplo_phrases`, `common/global_ship_designs`, `common/planet_classes`, `common/species_names`, `common/static_modifiers`, `flags`, `prescripted_countries`) |
 
 | Duplicate rule | Registries |
