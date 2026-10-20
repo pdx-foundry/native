@@ -330,6 +330,46 @@ pub(in crate::binding) fn existing_entry_rules(
         .collect()
 }
 
+/// The `Read(CReader&)` of each template item in `items`, from the address points of the item's
+/// vtable ([`loader_rules::item_read`]). `None` when the vtable is not found or its reads are not
+/// established.
+pub(in crate::binding) fn item_reads(
+    image: &Image<'_>,
+    recipe: &crate::binding::targets::PersistentRecipe,
+    items: &[&str],
+) -> Result<Vec<Option<String>>, AnalysisError> {
+    let symbols = image.index.over(image.symbols);
+    let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
+    let names = super::families::Names::new(image.symbols);
+    let last_slot = recipe
+        .post_read_slots
+        .into_iter()
+        .max()
+        .unwrap_or(recipe.read_slot);
+    let item_point = |point: u64| loader_rules::ItemPoint {
+        persistent_layout: (0..=last_slot)
+            .step_by(8)
+            .all(|slot| image.pointers.contains_key(&(point + slot))),
+        read: image
+            .pointers
+            .get(&(point + recipe.read_slot))
+            .and_then(|&target| names.unique(target))
+            .map(str::to_owned),
+    };
+    let item_read = |item: &&str| {
+        let group = symbols.vtable_group(&data, item)?;
+        let points: Vec<_> = group
+            .address_points
+            .values()
+            .map(|&point| item_point(point))
+            .collect();
+
+        loader_rules::item_read(&points)
+    };
+
+    Ok(items.iter().map(item_read).collect())
+}
+
 /// The targets of the primary vtable that starts at `start`: the pointer slots after its offset to
 /// the top and its type information, up to the first slot that holds no pointer.
 fn primary_slots<'a>(image: &'a Image<'_>, start: u64) -> impl Iterator<Item = u64> + 'a {

@@ -654,6 +654,11 @@ pub struct LoaderRules {
     /// How the loader names each form of definition in the registry's files. `Known` with no
     /// form means that the loader names none of its definitions.
     pub definition_names: crate::GrammarProperty<Vec<DefinitionForm>>,
+    /// Whether the loader or the item keeps a definition's script text after reading it, so that
+    /// later engine code could read a key that the item's reader does not handle. `Known(false)`
+    /// means that each statement of the definition is read once, by the item's member reader,
+    /// which reports and skips a key that it does not handle.
+    pub keeps_definition_text: crate::GrammarProperty<bool>,
 }
 
 /// What a loader does with a later definition of a key that it already holds.

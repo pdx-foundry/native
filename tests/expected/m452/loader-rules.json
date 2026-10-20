@@ -1,778 +1,778 @@
 {
   "common/agreement_presets": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_resources": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_term_values": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/agreement_terms": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_budget": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/operations": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/spynetworks": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ai_espionage/targets": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ambient_objects": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `tag` field sets the same name as the `name` field"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `tag` field sets the same name as the `name` field"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/anomalies": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/archaeological_site_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/armies": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/artifact_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ascension_perk_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ascension_perks": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/asteroid_belts": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/astral_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/astral_rifts": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/attitudes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/bombardment_stances": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/buildings": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/button_effects": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/bypass": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/casus_belli": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/cloaking_strength_levels": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_automation_exceptions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colony_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/colors": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_sets": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "component_set"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "component_set"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_slot_templates": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the loader's code for a key that it already holds has a shape that the method does not read"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the loader's code for a key that it already holds has a shape that the method does not read"], ["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_tags": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "each token of a file is a definition named by its text"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "each token of a file is a definition named by its text"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/component_templates": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "strike_craft_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "utility_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "weapon_component_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "strike_craft_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "utility_component_template"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "weapon_component_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/council_agendas": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_container": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_customization": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/card_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/focus_cards": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_focus/focus_rewards": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_limits/ownership_limits": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_limits/ship_of_size_limits": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/country_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_levels": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_objectives": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/crisis_paths": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/decisions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/deposit_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/deposits": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplo_phrases": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplomacy_economy": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/diplomatic_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/districts": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/dust_clouds": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/dynamic_text": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/economic_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/economic_plans": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/edicts": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_assets": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_operation_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/espionage_operation_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ethic_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ethics": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/event_chains": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/fallen_empires": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_law_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_laws": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_perks": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/federation_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/first_contact": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/frontend_backgrounds": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/galactic_community_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/galactic_focuses": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_concept_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_concepts": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_scenarios": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/global_ship_designs": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `name` field whose value is a block names the definition by the block's `key` field"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `name` field whose value is a block names the definition by the block's `key` field"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "common/governments": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/authorities": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["advanced_authority_swap"]}}}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["advanced_authority_swap"]}}}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/civics": {
     "gaps": [["OutsideMethod", "definition_names", "a `swap_type` block without a `name` field takes its name from its owner"]],
-    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/governments/councilors": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/greeting_overlay_sounds": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/intel_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/intel_levels": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/job_tags": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/lawsuits": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/leader_classes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/leader_tiers": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/map_modes": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/megastructure_overclock_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/megastructures": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/menace_perks": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/missions/mission_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/missions/missions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/mutations": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/named_colors": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/notification_modifiers": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/observation_station_missions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/on_actions": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/opinion_modifiers": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/callings": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/deeds": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/patrons/psionic_auras": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/personalities": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/planet_classes": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a root statement with the key `random_list` is not a definition"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a root statement with the key `random_list` is not a definition"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/planet_modifiers": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/policies": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/policy_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_faction_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/pop_jobs": {
     "gaps": [["OutsideMethod", "definition_names", "a `swappable_data` `swap_type` block without a `name` field takes its owner's key"]],
-    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/portrait_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/portrait_sets": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/precursor_civilizations": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/prescripted_flags": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/relics": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolution_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolution_groups": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resolutions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resource_converters": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/resource_regions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/script_values": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_effects": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_modifiers": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/scripted_triggers": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/section_templates": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "ship_section_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "ship_section_template"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/sector_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_behaviors": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "ship_behavior"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "ship_behavior"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_sets": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/ship_sizes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/situation_log/categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/situations": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/special_projects": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "special_project"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "special_project"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specialist_subject_perks": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specialist_subject_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_archetypes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_classes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "Merges"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_names": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/citizenship_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/colonization_controls": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/living_standards": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/migration_controls": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/military_service_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/population_controls": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/purge_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/slavery_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/species_rights/subspecies_integration_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/specimens": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/star_classes": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/star_classes/randomizers": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_buildings": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_levels": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_modules": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/starbase_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/start_screen_messages": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/static_modifiers": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/storm_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/strategic_resources": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/system_tooltips": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/system_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/target_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["technology_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["technology_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology/category": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology/tier": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/technology_ages/preftl": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/terraform": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": []}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "common/timeline_events": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/tradable_actions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/tradition_categories": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/traditions": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}, {"name": {"Field": "name"}, "statement": {"Nested": {"field_path": ["tradition_swap"]}}}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/trait_tags": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/traits": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/war_goals": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/zone_slots": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/zones": {
-    "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "keeps_definition_text", "an item of the registry reads its definition with a read other than the member-reader loop"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "dlc_metadata/dlc_recommendations": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "events": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Value", "statement": {"RootKey": "namespace"}}, {"name": {"Field": "id"}, "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Value", "statement": {"RootKey": "namespace"}}, {"name": {"Field": "id"}, "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "flags": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are image files named by their file name"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are image files named by their file name"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "gfx/portraits/sprite_configurations": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "gfx/projectiles/planet_destruction": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "gfx/worldgfx": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "world"}, "statement": {"RootKey": "gfx_settings"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "world"}, "statement": {"RootKey": "gfx_settings"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "interface/resource_groups": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "map/galaxy": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "prescripted_countries": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a root statement with the key `default` is not a definition"], ["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"], ["OutsideMethod", "definition_names", "a second loader reads root statements with the key `prescripted_country` and names them by their `key` field"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a root statement with the key `default` is not a definition"], ["OutsideMethod", "definition_names", "a `key` field in a definition's block replaces its name"], ["OutsideMethod", "definition_names", "a second loader reads root statements with the key `prescripted_country` and names them by their `key` field"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "sound/advisor_voice_types": {
     "gaps": [],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": {"Known": "LastWins"}, "extension": {"Known": null}, "keeps_definition_text": {"Known": false}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/game_rules": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/graphical_culture": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/name_lists": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   },
   "common/random_names": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "empire_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "federation_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pop_faction_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pre_communications_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "war_name_parts_list"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "empire_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "federation_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pop_faction_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "pre_communications_name_parts_list"}}, {"name": {"Field": "key"}, "statement": {"RootKey": "war_name_parts_list"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "common/random_names/base": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"]],
-    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "definitions are named by the keys of nested statements at a depth that the root key selects"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   },
   "music": {
-    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"]],
-    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "song"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "song"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
   }
 }
