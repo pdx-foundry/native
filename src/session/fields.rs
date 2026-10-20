@@ -891,7 +891,9 @@ fn members_mut(members: &mut FieldMembers) -> Vec<&mut Field> {
 
 fn prefix_condition(condition: &mut FieldCondition, parent: &str) {
     match condition {
-        FieldCondition::FieldZero { path, .. } => path.insert(0, parent.into()),
+        FieldCondition::FieldZero { path, .. } | FieldCondition::FieldKeyword { path, .. } => {
+            path.insert(0, parent.into())
+        }
         FieldCondition::All(terms) => {
             for term in terms {
                 prefix_condition(term, parent);
