@@ -694,6 +694,19 @@ fn an_order_check_that_only_logs_leaves_the_key_read_always() {
 }
 
 #[test]
+fn a_diagnostic_side_that_loads_a_signed_frame_byte_is_an_order_check() {
+    let logs = arm64!(at REJECTION;
+        ldursb w8, [x29, #-0x51]; // a string's size byte in the frame
+        bl extern 0xb000; // the diagnostic
+        ret
+    );
+
+    let result = derive(order_check_fixture(logs));
+
+    assert_eq!(result.key_order.len(), 1, "{:?}", result.paths);
+}
+
+#[test]
 fn a_rejecting_side_that_writes_the_owner_is_no_order_check() {
     assert_no_order_check(arm64!(at REJECTION;
         str wzr, [x0, #0x40]; // an owner write

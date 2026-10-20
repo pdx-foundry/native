@@ -1893,11 +1893,16 @@ Their failure shapes, from `examples/inspect --registry-fields events`:
   `location`); `strlen` or `CString::CString` of the token text (`id`, `title`, `message_desc`,
   `base`); `CTriggeredEventDescription<…>::ReadEntry(CReader&, int, EScopeType)` (`desc`);
   `shared_ptr<…>::reset` (`desc_clear`);
-- `is_triggered_only` is a `yes` test, but when `mean_time_to_happen` is already set it logs
-  `'is_triggered_only' should always come before 'mean_time_to_happen' or 'weight_multiplier'!`
-  through a `CLogStream`, whose calls (`CLogger::AccessInstance`, `CEventManager::GetLogID`, the
-  stream operators) and `ldursb` the walk does not follow. Its two alternatives give no shared
-  reader. Repair: treat a `CLogStream` diagnostic as changing no script state;
+- `is_triggered_only` is a `yes` test (`strb` at `0x1004bc3b0`). When `mean_time_to_happen`
+  (`+0x558`) is already set, it logs `'is_triggered_only' should always come before
+  'mean_time_to_happen' or 'weight_multiplier'!` through a `CLogStream`. At `registry-fields/v65`
+  it reads a Boolean (`Replace`) in each kind: the stream calls (`readers::DIAGNOSTIC_STREAM`:
+  `CLogger::AccessInstance`, the stream's `<<` operators, `__put_character_sequence`, `endl`,
+  `~CLogStream`) change no script state, `ldursb` loads as `ldrsb`, and a call that receives an
+  owner word narrower than a pointer (`w1 = [x19,#8]` for `CEventManager::GetLogID(int) const`)
+  cannot write through it. Remove the narrow-word rule only for a build whose calls take a
+  pointer in a 32-bit register. In command grammar, `add_random_research_option` stops one path
+  later (`instruction` in place of `compound-reader-overwrite`), with the same keys;
 - no field: token `11510` stores `token - 0x2fa9` for the four tokens from `0x2faa` and `0` for
   any other (`csel` after `cmp`), an inline keyword domain that the walk does not read
   (`event_window_type` in the config); the four `*_clear` keys (`option_clear`, `picture_clear`,

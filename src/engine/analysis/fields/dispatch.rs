@@ -265,6 +265,11 @@ impl State {
     }
 
     fn call_can_overwrite(&self, value: &Value) -> bool {
+        // A load narrower than a pointer cannot hold an address that the callee writes through.
+        if matches!(value, Value::Load(_, width) if *width < 8) {
+            return false;
+        }
+
         Self::owner_derived(value)
             || (Self::stack_derived(value)
                 && (self.unknown_stack_store
@@ -770,10 +775,11 @@ fn apply(
             };
             state.assign(destination, Some(value));
         }
-        ("ldr" | "ldrb" | "ldrsb" | "ldrsw" | "ldur" | "str" | "stur" | "strb", _) => {
-            // An unscaled store writes as `str` does.
+        ("ldr" | "ldrb" | "ldrsb" | "ldursb" | "ldrsw" | "ldur" | "str" | "stur" | "strb", _) => {
+            // An unscaled access reads or writes as its scaled form does.
             let operation = match row.operation.as_str() {
                 "stur" => "str",
+                "ldursb" => "ldrsb",
                 operation => operation,
             };
             let Some((operand, address)) = row.operands.split_once(',') else {
@@ -2301,7 +2307,7 @@ fn diagnostic_side_instruction(row: &Instruction) -> bool {
     match row.operation.as_str() {
         "mov" | "movz" | "movk" | "add" | "sub" | "adrp" | "adr" | "cmp" | "tst" | "cset"
         | "csel" | "nop" | "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" | "ldur"
-        | "ldp" => true,
+        | "ldursb" | "ldp" => true,
         "str" | "stur" | "strb" | "strh" | "stp" => stores_to_a_frame_slot(&row.operands),
         _ => false,
     }
@@ -3961,6 +3967,40 @@ mod tests {
         assert_eq!(state.value("w1"), None);
         state.assign("w2", state.value("x1"));
         assert_eq!(state.value("x2"), None);
+    }
+
+    #[test]
+    fn a_call_cannot_write_through_an_owner_word_narrower_than_a_pointer() {
+        let word = |width| Value::Load(Box::new(Value::Owner(8)), width);
+        let state = State {
+            settled: BTreeMap::new(),
+            ordered: BTreeMap::new(),
+            stack: BTreeMap::new(),
+            serializer: None,
+            copied_tokens: BTreeSet::new(),
+            value_strings: BTreeSet::new(),
+            value_read: None,
+            targets: BTreeSet::new(),
+            emplaced: BTreeSet::new(),
+            value_token_words: BTreeSet::new(),
+            converted: None,
+            keyword_conditions: None,
+            stored: None,
+            temporary: None,
+            saved_addresses: BTreeMap::new(),
+            unknown_stack_store: false,
+            pc: 0,
+            registers: BTreeMap::new(),
+            flags: None,
+            domain: [MIN_TOKEN, MAX_TOKEN],
+            conditions: vec![],
+            path: vec![],
+            table_case: None,
+        };
+
+        assert!(!state.call_can_overwrite(&word(4)));
+        assert!(state.call_can_overwrite(&word(8)));
+        assert!(state.call_can_overwrite(&Value::Owner(8)));
     }
     #[test]
     fn unsigned_conditions_on_a_token_word_split_at_the_signed_boundary() {
