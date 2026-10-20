@@ -26,6 +26,15 @@ const READ: u64 = 1 << 61;
 const INSERTED_CLASS: u64 = 1;
 const INSERTED_OFFSET: u64 = 2;
 const INSERTED_OBJECT: u64 = 3;
+/// The labels of an object that a resizing constructed at an array's end: the addresses of the
+/// array's pointer and count words, which the resizing writes, and the pointer that it left.
+const EMPLACED_POINTER: u64 = 4;
+const EMPLACED_COUNT: u64 = 5;
+const EMPLACED_ELEMENTS: u64 = 6;
+/// The labels of a resizing that a run reached with its array unknown: the array's owner offset
+/// and the class of its objects.
+const RESIZED_OFFSET: u64 = 7;
+const RESIZED_CLASS: u64 = 8;
 const SPAN: u64 = 0x10000;
 /// The label of the scope that an object's constructor receives, at the object's address.
 const SCOPE: u64 = 1 << 58;
@@ -64,9 +73,39 @@ pub(super) fn discover(
                 .any(|object| object.factories.contains(&function.address))
         })
         .collect();
+    // Dispatch goes on in the inherited readers and value readers, so the walk enters them.
+    let inherited: Vec<_> = input
+        .functions
+        .iter()
+        .filter(|function| {
+            function.address != root.address
+                && (readers::is_inheritable_member(&function.name)
+                    || readers::is_member_value_reader(&function.name))
+        })
+        .collect();
+    let mut entered: BTreeSet<u64> = factories
+        .iter()
+        .chain(&inherited)
+        .map(|function| function.address)
+        .collect();
+    // A call can reach an inherited reader through an import stub that the image binds to its
+    // body. The walk runs each such stub as a branch to the body.
+    let stub_branches: Vec<(u64, [u8; 4])> = input
+        .stubs
+        .iter()
+        .filter(|(_, body)| entered.contains(body))
+        .filter_map(|(&stub, &body)| Some((stub, branch_to(stub, body)?)))
+        .collect();
+    entered.extend(stub_branches.iter().map(|(stub, _)| stub));
     let ranges: Vec<_> = std::iter::once(root)
         .chain(factories)
+        .chain(inherited)
         .map(|function| (function.address, function.code.as_slice()))
+        .chain(
+            stub_branches
+                .iter()
+                .map(|(stub, branch)| (*stub, branch.as_slice())),
+        )
         .collect();
     let Ok(code) = Code::decode(&ranges) else {
         return Vec::new();
@@ -113,7 +152,7 @@ pub(super) fn discover(
             .iter()
             .any(|join| matches!(join, super::ReaderJoin::Missing(_)))
     }) {
-        let run = |owned_word: Option<(u64, Previous)>| {
+        let run = |start: Start| {
             let mut machine = Machine::new(&code, image.constant_data());
             let owner = machine.reserve(SPAN);
             let reader = machine.reserve(SPAN);
@@ -122,20 +161,31 @@ pub(super) fn discover(
             let unchanged = machine.reserve(8);
             machine.write(unchanged, 8, 1);
             let mut release = None;
-            if let Some((offset, previous)) = owned_word {
-                let value = match previous {
-                    Previous::Null => 0,
-                    Previous::Object => {
-                        let (object, destructor) = stand_in(&mut machine);
-                        release = Some((object, destructor));
-                        object
-                    }
-                };
-                machine.write(owner + offset, 8, value);
+            let mut resized = None;
+            match start {
+                Start::Unknown => {}
+                Start::Owned(offset, previous) => {
+                    let value = match previous {
+                        Previous::Null => 0,
+                        Previous::Object => {
+                            let (object, destructor) = stand_in(&mut machine);
+                            release = Some((object, destructor));
+                            object
+                        }
+                    };
+                    machine.write(owner + offset, 8, value);
+                }
+                Start::Resized(array) => {
+                    resized = one_element(&mut machine, &objects[array.class], owner, array)
+                        .map(|elements| (array, elements));
+                }
             }
             machine.set_register(0, owner);
             machine.set_register(1, reader);
             machine.set_register(2, field.token as u64);
+            if let Some(offset) = input.key_readers.reader_token {
+                machine.write(reader + offset, 4, field.token as u64);
+            }
             let paths = machine.run_paths_joining(root.address, &mut |target, machine| {
                 let target = target.ok_or_else(|| Unresolved::new("nested-indirect-call"))?;
                 if release.is_some_and(|(object, destructor)| {
@@ -148,10 +198,7 @@ pub(super) fn discover(
                     machine.label(ALLOCATED | at, machine.pc() + 4);
                     return Ok(Call::Return(Some(at)));
                 }
-                if objects
-                    .iter()
-                    .any(|object| object.factories.contains(&target))
-                {
+                if entered.contains(&target) {
                     return Ok(Call::Enter);
                 }
                 for (index, object) in objects.iter().enumerate() {
@@ -187,6 +234,20 @@ pub(super) fn discover(
                         machine.unlabel(READ | at);
                         machine.label(OBJECT | at, index as u64);
                         return Ok(Call::Return(Some(at)));
+                    }
+                    if object.array_emplace.contains(&target) {
+                        return emplace(machine, object, index, owner, resized);
+                    }
+                    if Some(target) == input.key_readers.persistent_read
+                        && machine.register(0) == Some(reader)
+                    {
+                        let at = machine.known_register(1, "read-object")?;
+                        if machine.labelled(OBJECT | at) == Some(index as u64)
+                            && machine.labelled(EMPLACED_POINTER).is_some()
+                        {
+                            machine.label(READ | at, index as u64);
+                            return Ok(Call::Return(None));
+                        }
                     }
                     if target == object.read {
                         let at = machine.known_register(0, "read-object")?;
@@ -247,10 +308,17 @@ pub(super) fn discover(
                 paths,
             }
         };
-        let first_run = run(None);
-        let joined = match first_run.join() {
-            Some(joined) => joined,
-            None => {
+        let first_run = run(Start::Unknown);
+        let joined = match (first_run.join(), first_run.resized_array()) {
+            (Some(joined), _) => joined,
+            // A resizing must find its array holding one element and grow it to two.
+            (None, Some(array)) => {
+                let Some(joined) = run(Start::Resized(array)).join() else {
+                    continue;
+                };
+                joined
+            }
+            (None, None) => {
                 // A root that keeps one owned object may first release the object that an
                 // earlier read stored. Both starting states of the word must join.
                 let Some(word) = first_run.owned_word() else {
@@ -258,7 +326,7 @@ pub(super) fn discover(
                 };
                 let joined = [Previous::Null, Previous::Object]
                     .into_iter()
-                    .map(|previous| run(Some((word, previous))).join())
+                    .map(|previous| run(Start::Owned(word, previous)).join())
                     .collect::<Option<Vec<_>>>();
                 let Some(joined) = joined else {
                     continue;
@@ -327,6 +395,116 @@ pub(super) fn discover(
         });
     }
     collections
+}
+
+/// The encoding of `b body` at `from`, when the distance fits the branch's 26-bit word offset.
+fn branch_to(from: u64, body: u64) -> Option<[u8; 4]> {
+    const B: u32 = 0x1400_0000;
+    let words = (body as i64).checked_sub(from as i64)? / 4;
+
+    (-(1 << 25)..1 << 25)
+        .contains(&words)
+        .then(|| (B | (words as u32 & 0x03ff_ffff)).to_le_bytes())
+}
+
+/// How one run of a field starts: with the owner unknown, with one owned word given, or with
+/// the array that a resizing grows holding one element.
+#[derive(Clone, Copy)]
+enum Start {
+    Unknown,
+    Owned(u64, Previous),
+    Resized(ResizedArray),
+}
+
+/// An owner array of objects that a resizing grows: its owner offset and its objects' class.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ResizedArray {
+    offset: u64,
+    class: usize,
+}
+
+/// Give `array` of `owner` one element at a fresh address, and return that address. `None` when
+/// the class's array layout is not proven.
+fn one_element(
+    machine: &mut Machine<'_>,
+    object: &super::ObjectReader,
+    owner: u64,
+    array: ResizedArray,
+) -> Option<u64> {
+    let (data, count) = (object.data_offset?, object.count_offset?);
+    let elements = machine.reserve(SPAN);
+    machine.write(owner + array.offset + data, 8, elements);
+    machine.write(owner + array.offset + count, 4, 1);
+
+    Some(elements)
+}
+
+/// Construct an object of `objects[index]` at the end of the owner array that the resizing's
+/// receiver names, as `CPdxArray<Class, int>::SetSizeAndEmplace<>` does. The run must have given
+/// that array one element (`resized`), which the root has not changed, and the root must ask for
+/// two. The array then holds two objects and points one element size before the new one, so the
+/// root's address of its last element is the new object only when the root's element size is the
+/// class's. A run that gave the array nothing labels it and stops, so the next run can.
+fn emplace(
+    machine: &mut Machine<'_>,
+    object: &super::ObjectReader,
+    index: usize,
+    owner: u64,
+    resized: Option<(ResizedArray, u64)>,
+) -> Result<Call, Unresolved> {
+    let (Some(data), Some(count), Some(size)) = (
+        object.data_offset,
+        object.count_offset,
+        object.array_element_size,
+    ) else {
+        return Err(Unresolved::new("emplace-layout"));
+    };
+    let array = machine.known_register(0, "emplace-collection")?;
+
+    if !(owner..owner + SPAN).contains(&array) || machine.labelled(INSERTED_CLASS).is_some() {
+        return Err(Unresolved::new("emplace-collection"));
+    }
+
+    let site = ResizedArray {
+        offset: array - owner,
+        class: index,
+    };
+    let Some((_, elements)) = resized.filter(|(given, _)| *given == site) else {
+        machine.label(RESIZED_OFFSET, site.offset);
+        machine.label(RESIZED_CLASS, index as u64);
+        return Err(Unresolved::new("emplace-count"));
+    };
+    let unchanged = machine.read(array + data, 8) == Some(elements)
+        && machine.read(array + count, 4) == Some(1);
+
+    if !unchanged {
+        return Err(Unresolved::new("emplace-storage-changed"));
+    }
+
+    if machine.register(1) != Some(2) {
+        return Err(Unresolved::new("emplace-growth"));
+    }
+
+    let at = machine.reserve(SPAN);
+    machine.write(array + data, 8, at - size);
+    machine.write(array + count, 4, 2);
+    for (&offset, &point) in &object.vtables {
+        machine.write(at + offset, 8, point);
+    }
+    for (&slot, &pointer) in &object.pointers {
+        machine.write(slot, 8, pointer);
+    }
+    machine.unlabel(containers::LABEL | at);
+    machine.unlabel(SCOPE | at);
+    machine.label(OBJECT | at, index as u64);
+    machine.label(EMPLACED_POINTER, array + data);
+    machine.label(EMPLACED_COUNT, array + count);
+    machine.label(EMPLACED_ELEMENTS, at - size);
+    machine.label(INSERTED_OBJECT, at);
+    machine.label(INSERTED_CLASS, index as u64);
+    machine.label(INSERTED_OFFSET, array - owner);
+
+    Ok(Call::Return(None))
 }
 
 /// What the owner word of one owned object holds before the read: nothing, or the object that an
@@ -416,12 +594,13 @@ impl FieldRun<'_> {
     /// byte written, or else the one owner word that holds the object.
     fn insertion(&self, machine: &Machine<'_>) -> Option<Insertion> {
         let (site, object) = match machine.labelled(INSERTED_OBJECT) {
-            Some(object) if !machine.has_written(self.owner, SPAN) => {
+            Some(object) if self.writes_only_emplaced_array(machine) => {
                 let site = Site {
                     class: machine.labelled(INSERTED_CLASS)?,
                     offset: machine.labelled(INSERTED_OFFSET)?,
                     owned: false,
                 };
+                (machine.labelled(READ | object) == Some(site.class)).then_some(())?;
                 (site, object)
             }
             Some(_) => return None,
@@ -436,6 +615,22 @@ impl FieldRun<'_> {
                 .labelled(INLINE_START | object)
                 .zip(machine.labelled(INLINE_READ | object)),
         })
+    }
+
+    /// Whether the path wrote no owner word but the pointer and count of the array that a
+    /// resizing constructed its object in, and those still hold what the resizing left.
+    fn writes_only_emplaced_array(&self, machine: &Machine<'_>) -> bool {
+        let written = machine.written_words(self.owner, self.owner + SPAN);
+        let (Some(pointer), Some(count)) = (
+            machine.labelled(EMPLACED_POINTER),
+            machine.labelled(EMPLACED_COUNT),
+        ) else {
+            return written.is_empty();
+        };
+        let kept = machine.read(pointer, 8) == machine.labelled(EMPLACED_ELEMENTS)
+            && machine.read(count, 4) == Some(2);
+
+        kept && written.is_subset(&BTreeSet::from([pointer, pointer + 4, count]))
     }
 
     /// The one owner word that the path wrote, when it holds an object that the path
@@ -456,6 +651,29 @@ impl FieldRun<'_> {
         };
 
         Some((site, object))
+    }
+
+    /// The one array that the run's paths reached a resizing of with the array unknown, which
+    /// the next run gives one element.
+    fn resized_array(&self) -> Option<ResizedArray> {
+        let arrays: BTreeSet<_> = self
+            .paths
+            .iter()
+            .filter_map(|path| {
+                Some((
+                    path.machine.labelled(RESIZED_OFFSET)?,
+                    path.machine.labelled(RESIZED_CLASS)?,
+                ))
+            })
+            .collect();
+        let [(offset, class)] = arrays.into_iter().collect::<Vec<_>>()[..] else {
+            return None;
+        };
+
+        Some(ResizedArray {
+            offset,
+            class: class as usize,
+        })
     }
 
     /// The owner word of a returned path that keeps its object there, which the next run gives
