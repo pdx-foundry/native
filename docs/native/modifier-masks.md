@@ -250,8 +250,10 @@ modifier `TryReadMember` under another `Read` breaks the rule.
 
 ### Container result
 
-On M452, `tests/expected/m452/modifier-containers.json` holds 25 registries. 19 have resolved container fields: 69
-fields (48 restricted, 21 every category) and 45 `Enclosing` clause keys. Starbase modules and
+On M452, `tests/expected/m452/modifier-containers.json` holds 25 registries. 20 have resolved container fields: 70
+fields (49 restricted, 21 every category) and 46 `Enclosing` clause keys. Citizenship type
+`triggered_pop_group_modifier` (pops, deposits, habitability, economic units) joined through the
+[base subobject reader](registry-fields.md#inherited-member-readers-sdk-838). Starbase modules and
 buildings each add six triggered modifier fields whose mask is `Unresolved` (with an `Enclosing`
 clause key each); see [registry fields](registry-fields.md#objects-constructed-at-an-arrays-end). The global-offset-table form (buildings `triggered_planet_modifier`, planet) and the
 `__common` form (psionic aura `triggered_system_modifier`, system) resolve. Tradition `modifier`
