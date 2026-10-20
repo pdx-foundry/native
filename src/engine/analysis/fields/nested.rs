@@ -301,7 +301,8 @@ pub(super) fn discover(
                     || symbol_index
                         .name(&input.symbols, target)
                         .is_some_and(|name| {
-                            readers::changes_no_script_state(name) || names_log_id(name)
+                            readers::changes_no_script_state(name)
+                                || names_log_id_outside(machine, name, owner)
                         })
                 {
                     return Ok(Call::Return(None));
@@ -726,13 +727,24 @@ const LOG_ID_CONCATENATIONS: [&str; 2] = [
     "operator+(CString&&, CString&&)",
 ];
 
-/// Whether `callee` builds or sets an object's log ID: a name for the engine's log, which no
-/// read or insertion uses. `SetLogID` writes only the object's log-ID string, and the
-/// concatenations and `GetLogID` write only their result.
-fn names_log_id(callee: &str) -> bool {
-    LOG_ID_CONCATENATIONS.contains(&callee)
-        || callee.ends_with("::GetLogID() const")
-        || callee.ends_with("::SetLogID(CString const&)")
+/// Whether `callee` builds or sets an object's log ID, a name for the engine's log that no read
+/// or insertion uses, and writes nothing in the owner at `owner`. `SetLogID` writes only its
+/// receiver's log-ID string, so the receiver must be outside the owner. The concatenations and
+/// `GetLogID` write only the `CString` that they return through `x8`, so `x8` must name the stack.
+fn names_log_id_outside(machine: &Machine<'_>, callee: &str, owner: u64) -> bool {
+    if callee.ends_with("::SetLogID(CString const&)") {
+        return machine
+            .register(0)
+            .is_some_and(|receiver| !(owner..owner + SPAN).contains(&receiver));
+    }
+
+    let returns_log_id =
+        LOG_ID_CONCATENATIONS.contains(&callee) || callee.ends_with("::GetLogID() const");
+
+    returns_log_id
+        && machine
+            .register(8)
+            .is_some_and(|result| machine.is_stack(result))
 }
 
 /// Where `std::make_shared` puts the object in its control block: past the control block's

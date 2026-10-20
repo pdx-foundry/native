@@ -561,6 +561,46 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   the class's default construction, when the root reads an element other than the last one, or
   when a resizing's element size comes from a computed value.
 
+### Objects in a `make_shared` control block
+
+A root can build an object with `std::make_shared`, read it and move the `shared_ptr` into an
+array. The collection pass (`fields/nested.rs`) joins that shape by a validated rule: **an
+allocation whose first word is the primary address point of
+`std::__1::__shared_ptr_emplace<Class, std::__1::allocator<Class> >` holds a `Class` at `+0x18`,
+and `CPdxArray<std::__1::shared_ptr<Class>, int>::InsertAtEmplace` moves the 16-byte
+`shared_ptr` into the array.**
+
+- **Binding.** `collect_objects` takes the control block's primary address point
+  (`ObjectReader::shared_emplace_point`) and the `shared_ptr` insertion as a moving insertion with
+  the bytes that it clears at its source (`ObjectReader::moving_insert`, a map from entry to
+  width). `moved_source_width` proves the width: on every return the source that `x2` names on
+  entry holds zero through `str xzr` (8) or `stp xzr, xzr` (16) with no offset or writeback,
+  through a register that holds the entry `x2` on every path. A store through a register that may
+  hold an address computed from it, or a call that may receive one, makes the source unknown. The
+  binding also collects the class's `shared_ptr` destructors that the root calls
+  (`shared_releases`); the walk runs their code.
+- **Walk.** A constructor call counts on an object at `block + 0x18` only when `block` is an
+  allocation's start and holds the control block's point at `+0`. The calls that build or set a log
+  ID (`SetLogID`, `GetLogID`, the two `CString` concatenations) change no script state. The moving
+  insertion zeroes the width that the binding proved at its source.
+- **M452 checks.** `CEvent::ReadMember` (`0x1004bbc9c`) reads `option`: `make_shared` stores the
+  control block's vtable `0x103049d18` point `+0x10` (`0x103049d28`) at the block, calls
+  `CEventOption::CEventOption(EScopeType)` (`0x1004dc844`) at `+0x18`, sets the log ID, reads
+  through slot `+0x20`, then calls `InsertAtEmplace<shared_ptr<CEventOption>>` (`0x1004c2d2c`) at
+  `0x1004bc83c`. The insertion clears its source with `stp xzr, xzr`. Other callers of the same
+  insertion shape: `CSituationType::ReadMember` `+0x998` and `CStarbaseLevelType::ReadMember`
+  (two). `picture_event_data` joins through the `make_shared` at `0x1004c2f58`.
+- **Result on M452 (`registry-fields/v62`).** Each of the 22 event kinds gains the members of
+  `option` (16 `CEventOption` fields: `name`, `icon`, `sound`, `trigger`, `ai_chance`, `allow`,
+  `response_text`, `custom_gui`, `exclusive_trigger`, `ai_trade_facility` and six `yes` tests)
+  and of `picture_event_data` (9), 550 member paths, both accumulating blocks. The field sweep's
+  unresolved paths go from 1271 to 1733: the new members' own stops. Every other registry is
+  unchanged; the `shared_ptr` insertions of `CSituationType` and `CStarbaseLevelType` do not
+  join yet.
+- **Remove or limit the rule** when a build's `make_shared` puts the object at another offset than
+  past the control block's vtable pointer and its two counts (libc++ `__shared_ptr_emplace`), or
+  when a `shared_ptr` insertion keeps its source.
+
 ### Scripted actions: an order check before the token switch
 
 `CScriptedActionInfo::ReadMember` (`0x100b10ae4`, M452) tests owner state before it tests the token.
@@ -1789,8 +1829,8 @@ and `pre_triggers` ([pre-trigger blocks](#pre-trigger-blocks)). 20 have no estab
 Their failure shapes, from `examples/inspect --registry-fields events`:
 
 - the path reaches a call that is not a reader: `operator new` for an object held by a
-  `shared_ptr` (`trigger`, `immediate`, `option`, `after`, `abort_trigger`, `abort_effect`,
-  `picture_event_data`, `desc`); `make_shared<…>(EScopeType const&)` (`picture`, `show_sound`,
+  `shared_ptr` (`trigger`, `immediate`, `after`, `abort_trigger`, `abort_effect`, `desc`);
+  `option` and `picture_event_data` now join ([`make_shared` objects](#objects-in-a-make_shared-control-block)); `make_shared<…>(EScopeType const&)` (`picture`, `show_sound`,
   `mean_time_to_happen`, `weight_multiplier`); `CEventTarget::CEventTarget(CToken)` (`situation`,
   `location`); `strlen` or `CString::CString` of the token text (`id`, `title`, `message_desc`,
   `base`); `CTriggeredEventDescription<…>::ReadEntry(CReader&, int, EScopeType)` (`desc`);

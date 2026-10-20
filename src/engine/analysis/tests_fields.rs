@@ -1942,6 +1942,26 @@ fn an_object_in_a_make_shared_control_block_moved_into_its_collection_joins() {
     assert_eq!(result.collections[0].offset, 0x40);
     // Another class's control block holds some other object.
     assert!(derive(shared_nested_fixture(0xc110)).collections.is_empty());
+    // A control block that no allocation made is some other memory.
+    let mut on_the_stack = shared_nested_fixture(0xc010);
+    replace(
+        &mut on_the_stack,
+        0x1018,
+        arm64!(at 0x1018; sub x0, sp, #0x40),
+    );
+    assert!(derive(on_the_stack).collections.is_empty());
+    // The address point stored past the block's start names no control block at the object.
+    let mut point_inside = shared_nested_fixture(0xc010);
+    replace(
+        &mut point_inside,
+        0x1024,
+        arm64!(at 0x1024; str x8, [x21, #8]),
+    );
+    assert!(derive(point_inside).collections.is_empty());
+    // A log ID set on the owner writes an owner word.
+    let mut owner_log_id = shared_nested_fixture(0xc010);
+    replace(&mut owner_log_id, 0x1034, arm64!(at 0x1034; mov x0, x19));
+    assert!(derive(owner_log_id).collections.is_empty());
 }
 
 /// The nested fixture with `CChild` constructed in place at the end of the owner's array at
