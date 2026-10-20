@@ -213,7 +213,7 @@ non-singleton token paths; the unreadable input is the seven owners with no `Rea
 ### Ordered owner compares and right shifts
 
 Three local rules of the dispatch walk (`fields/dispatch.rs`), on M452 at `registry-fields/v64`
-and `command-grammar/v29`:
+and `command-grammar/v28`:
 
 - **Ordered compare of an owner word.** A `b.lt`, `b.ge`, `b.gt`, `b.le`, `b.hi`, `b.ls`, … after a
   compare of a word loaded from the owner with one constant keeps each side that the word can take,
