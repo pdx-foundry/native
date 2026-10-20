@@ -380,6 +380,11 @@ pub struct ObjectReader {
     /// Entry addresses of insertion specializations that take the object from a scoped pointer
     /// and are proven to clear that pointer.
     pub moving_insert: Vec<u64>,
+    /// Entry addresses of the in-place resizing that constructs an object at the end of a
+    /// `CPdxArray` of this class, when its layout is proven.
+    pub array_emplace: Vec<u64>,
+    /// The size of one object in that array, from the resizing's allocation.
+    pub array_element_size: Option<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
     /// Byte offset of the element count within the collection, if proven.
