@@ -773,6 +773,12 @@ impl VerifiedAnalysis<'_> {
         let loader = database.map(|database| binary::fields::LoaderSearch {
             database,
             reader_token_offset: self.reader_token_offset,
+            one_directory: self.database_schedule().is_ok_and(|schedule| {
+                matches!(
+                    schedule.loader_directories.get(database),
+                    Some(crate::engine::analysis::directories::Directory::Named(_))
+                )
+            }),
         });
 
         binary::fields::read(&image, shared, owner, loader, self.persistent)

@@ -2541,6 +2541,7 @@ fn modifier_binding(offset: u32) -> fields::PersistentInput {
             ..Default::default()
         },
         initialized_words: BTreeMap::new(),
+        loader_points: Default::default(),
         readers: BTreeMap::from([(
             0xb000,
             ConcreteReader {

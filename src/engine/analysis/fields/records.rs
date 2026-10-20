@@ -497,6 +497,9 @@ pub struct PersistentInput {
     /// 32-bit words in zero-fill memory, with the value that the static initializer that stores
     /// each one leaves there.
     pub initialized_words: BTreeMap<u64, u64>,
+    /// The address points that the custom loader's inline build of each item installs, by owner
+    /// offset, from the constructor of a part that the build constructs in place.
+    pub loader_points: BTreeMap<i64, u64>,
 }
 
 /// The constructors of a modifier container, which store its category mask, and where the
