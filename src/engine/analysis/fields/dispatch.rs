@@ -1594,7 +1594,9 @@ fn explore_member_with_wrapped_owner(
                     continue;
                 }
             }
-            if let Some(settled) = settled_comparison(row, &state, &rows, &indexes, input) {
+            if let Some(settled) =
+                settled_comparison(row, &state, &rows, &indexes, input, depth == 0)
+            {
                 state.pc = settled.side;
                 state.settled.insert(settled.compared, settled.equal);
                 order_checks.extend(settled.check);
@@ -2107,6 +2109,7 @@ fn settled_comparison(
     rows: &[Instruction],
     indexes: &BTreeMap<u64, usize>,
     input: &DispatchInput<'_>,
+    root_reader: bool,
 ) -> Option<Settled> {
     let condition = row.operation.strip_prefix("b.")?;
     let Some(Flags::Values { tested, pivots }) = &state.flags else {
@@ -2133,7 +2136,9 @@ fn settled_comparison(
         });
     }
 
-    if !input.follows_order_checks || !reads_nothing_yet(state, rows, indexes) {
+    // A delegated or wrapped child starts with a fresh state that does not show the parent's
+    // reads, so only the root reader follows order checks.
+    if !input.follows_order_checks || !root_reader || !reads_nothing_yet(state, rows, indexes) {
         return None;
     }
     let rejects = |side| logs_and_returns(rows, side, indexes, input);
@@ -2194,9 +2199,19 @@ fn diagnostic_side_instruction(row: &Instruction) -> bool {
         "mov" | "movz" | "movk" | "add" | "sub" | "adrp" | "adr" | "cmp" | "tst" | "cset"
         | "csel" | "nop" | "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" | "ldur"
         | "ldp" => true,
-        "str" | "stur" | "strb" | "strh" | "stp" => row.operands.contains("[sp"),
+        "str" | "stur" | "strb" | "strh" | "stp" => stores_to_a_frame_slot(&row.operands),
         _ => false,
     }
+}
+
+/// Whether a store's address is a fixed slot of the frame: `[sp]` or `sp` with an immediate
+/// offset, not a register offset.
+fn stores_to_a_frame_slot(operands: &str) -> bool {
+    let Some((_, address)) = operands.split_once("[sp") else {
+        return false;
+    };
+
+    address.starts_with(']') || address.starts_with(",#")
 }
 
 /// The most instructions that [`logs_and_returns`] examines, over all its ways.

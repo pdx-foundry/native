@@ -504,7 +504,7 @@ The dispatch walker follows the order rule with three general rules (`registry-f
   (`reads_nothing_yet`): every instruction so far is in the reader, none is a call or a store outside
   the frame, and no reader idiom has started (stored, converted or copied value, value text, target,
   emplace). "Only logs and returns" (`logs_and_returns`): every way from the side runs only register
-  moves and arithmetic, loads, compares, frame stores and branches inside the reader
+  moves and arithmetic, loads, compares, stores to `[sp]` or `[sp, #imm]` and branches inside the reader
   (`diagnostic_side_instruction`, an allow list), calls only functions that change no script state
   (`readers::changes_no_script_state`), calls at least one diagnostic writer (`readers::DIAGNOSTICS`;
   a location helper or a string release alone is not one), and reaches its own `ret`, within 128
@@ -547,11 +547,15 @@ Limits, each with the condition for a change:
   that skips it is allowed, although its other paths are rejected in the state that reaches the check
   (the repeated `user_scope` above). The note does not state that state. Add it when Atlas needs the
   order of a repeated key.
-- Only owner walks follow order checks: the registry root, its collection objects and its embedded
-  objects (`DispatchInput::follows_order_checks`). An order check inside a collection or embedded
-  object is a note on the parent field; one inside an inherited or wrapped reader of the root is a
-  note on the registry. Member readers of a field and command grammars fork at the check and keep
-  it as a condition, since their answers have no place for the note; none does so on M452.
+- Only the root reader of an owner walk follows order checks: the registry root, its collection
+  objects and its embedded objects (`DispatchInput::follows_order_checks`). An order check inside a
+  collection or embedded object is a note on the parent field. An inherited, delegated or wrapped
+  child reader starts with a fresh state that does not show its caller's reads, so it forks at the
+  check; so do member readers of a field and command grammars, whose answers have no place for the
+  note. None of them has an order check on M452. Carry the caller's read state into the child when
+  one does.
+- Settled comparisons apply in command walks too, so the 189 command answers above change with
+  `command-grammar/v24`.
 
 Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
 an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean

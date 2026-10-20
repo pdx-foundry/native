@@ -727,6 +727,15 @@ fn a_diagnostic_side_with_an_atomic_update_is_no_order_check() {
 }
 
 #[test]
+fn a_diagnostic_side_with_a_register_offset_store_is_no_order_check() {
+    assert_no_order_check(arm64!(at REJECTION;
+        str w8, [sp, x9]; // a slot that no immediate proves
+        bl extern 0xb000; // the diagnostic
+        ret
+    ));
+}
+
+#[test]
 fn a_test_of_a_frame_word_is_never_settled() {
     let mut input = fixture();
     let mut code = Arm64::at(0x1000);
@@ -1154,6 +1163,49 @@ fn a_false_return_through_a_tail_called_ancestor_reaches_the_owner() {
         "{:?}",
         result.paths
     );
+}
+
+#[test]
+fn an_inherited_reader_does_not_follow_an_order_check() {
+    let mut input = inherited_fixture();
+    let inherited = input
+        .functions
+        .iter_mut()
+        .find(|function| function.address == 0xa000)
+        .unwrap();
+    inherited.code = arm64!(at 0xa000;
+        ldr x8, [x0, #0x48]; // a word that an earlier key stores
+        cmp x8, #0x200, lsl #12;
+        b.eq extern 0xa02c;
+        cmp w2, #8; // token 8
+        b.eq extern 0xa01c;
+        mov w0, #0; // not handled
+        ret;
+        add x8, x0, #0x48; // the inherited member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000; // CReader::Read
+        bl extern 0xb000; // the diagnostic
+        ret
+    );
+    input.symbols.push(Symbol {
+        name: "CPdxLogFileAndLine::operator()(char const*, ...)".into(),
+        address: 0xb000,
+    });
+
+    let result = derive(input);
+
+    assert!(result.key_order.is_empty());
+    let inherited = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [8, 8] && path.instructions.contains(&0xa01c));
+    assert!(inherited.clone().count() > 0);
+    assert!(inherited.into_iter().all(|path| {
+        path.conditions
+            .iter()
+            .any(|condition| condition.at == 0xa008)
+    }));
 }
 
 #[test]
