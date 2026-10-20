@@ -893,6 +893,38 @@ Pitfalls:
   the lambda captures, the resolver order and the lambda's write decide the result.
 - A logged duplicate is not a rejection; the repeat is read.
 
+**Storage observations (M452, 2026-10-20).** Fixture storage read back after two writes (`a b`,
+`b a` and each alone) gives `Replace` for every one of the 20 root fields whose open gap was "the
+read is not a tail call" and that has a storage binding: ship_sizes `max_speed`; buildings `icon`;
+districts `gridbox`, `district_background`; starbase_buildings and starbase_modules `category`,
+`custom_tooltip`, `custom_tooltip_with_modifiers`, `icon_frame`, `construction_days`,
+`scripted_effect_cooldown`, `scripted_effect_cooldown_flag` (`icon_frame` has no open claim);
+agreement_presets `parent`, `icon`; and the nested special-project `requirements.fleet_power`. Ten
+controls with a static answer agreed. The continuation does not undo the last write, so a
+continuation shape for these callers would be sound. Storage is a check, not a source: the same
+run answered none of 10 minimum claims and none of 13 lookup value forms. Atlas owns the claims
+and results: `atlas/docs/prototypes/storage-probe-spike/` (copy in
+`.local/evidence/storage-probe-2026-10-20/`). Facts found on the way:
+
+- `max_speed` is not stored as written: `7` stores raw 31500 and `1` raw 4500 at scale 100000
+  (×0.045, after `NShipMovement::UnscaleShipSpeed`). The occurrence value already has the factor.
+- A block given to a direct numeric reader (`rotation_speed = { native_probe = 1 }`) logs
+  `Malformed token` and `Unexpected token`, stores 0, and its closing brace ends the definition:
+  the definitions after it in the file are not constructed.
+- The template fixed-point reader stores 0 for `yes` with no diagnostic; the direct readers log
+  `Malformed token` for `yes`, a bare word and a quoted word and store 0. The direct `int` reader
+  stores `1.5` as 1 with no diagnostic.
+- `Ship size '<key>' contains 'icon' entry that point to unknown sprite '<text>'.File '<file>',
+  lines [<a>-<b>].` arrives during file load as `engine-parser-log` and does not join: the source
+  join reads `File: '…', Lines: […]`, not this spelling.
+- A ship-size fixture through validation replaces every vanilla ship size: 19,350 `error.log`
+  lines, the pause at 171 s, and no fixture terminal (storage `Partial`). Use the file-load window
+  for registries that other content references.
+- Only the ordinary log names two lookups: `base ship size <key> not found in database.`
+  (`ship_size.cpp:726`, file load) and `Invalid ship size for names <key> in ship size <key>`
+  (`ship_size.cpp:1257`); neither has a file or line. Sprite, localisation, sound, entity and
+  behavior fields give no message for a missing key.
+
 ## Required fields
 
 `Field.requirement` says whether a definition must contain a root field. A field is required only
@@ -903,9 +935,11 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
-| `Required` | An unconditional check logs the field's absence | 30 |
-| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below a definition's fields | 164 |
-| `Optional` | Every other root field of a census registry | 1,736 |
+| `Required` | An unconditional check logs the field's absence | 31 |
+| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below a definition's fields | 289 |
+| `Optional` | Every other root field of a census registry | 2,066 |
+
+Counts at `registry-fields/v70`.
 
 **A recorded manual exception.** Claim: loading a definition without a field logs a report of
 its absence, or logs none. Conditions: the exact M452 build, and a registry whose empty
@@ -934,11 +968,12 @@ action is missing token`), `common/astral_rifts` (an invalid stage event) and
   categories' `adoption_bonus` and `finish_bonus` are `Required` from the static check in
   `CTraditionCategory::PostReadInit()` (`0x100cda348`), which logs `is missing required field
   '…'`, and no vanilla category omits them.
-- **Joins.** Each report is joined by hand to the key that its text names. A report about a
+- **Joins.** Each report is joined by hand to the key that its text names, and where the text
+  names no returned field, to the field whose storage the logging code tests. A report about a
   localisation key, a sprite, a texture or an entity is not a field check. A report whose key is
   not a returned field leaves the other fields `Optional`: special_projects `event_scope`,
-  mutations `type`, war_goals icon, colony_automation_exceptions category, galactic_focuses
-  `trigger`, federation_laws category, patrons category, patrons/deeds attunement and counter,
+  mutations `type`, war_goals icon, colony_automation_exceptions category, federation_laws
+  category, patrons category, patrons/deeds attunement and counter,
   archaeological_site_types visible trigger, economic_plans income goals, zones `zone_sets` and
   buildings, districts zone slots, and technology `tier`.
 - **Conditional checks.** Vanilla content logs nothing, so a vanilla definition that omits a
@@ -960,7 +995,7 @@ action is missing token`), `common/astral_rifts` (an invalid stage event) and
 | country_focus/card_categories | `name`, `desc` | `has empty 'name' field`, `… 'desc' field` |
 | country_focus/focus_rewards | `category` | `The focus reward type has an invalid category value` |
 | ethics | `category`, `cost` | `Missing category for ethic`, `Non-positive cost for ethic` |
-| galactic_focuses | `effect` | `has no effect set!` |
+| galactic_focuses | `effect`, `trigger` | `has no effect set!`, `has no fulfilled trigger set!` |
 | game_concept_categories | `name`, `icon` | `has empty 'name' field`, `… 'icon' field` |
 | mutations | `icon`, `ship_components` | `has no icon`, `No components are attached to mutation` |
 | patrons | `text_color_code` | `doesn't have a text_color_code` |
@@ -984,12 +1019,56 @@ with "missing", "not set", "not specified", "must have", "must specify", "lacks"
 then the functions that form its address (`inspect --strings`). That found 19 unconditional and
 14 conditional checks; the run found the ones whose text does not use these words.
 
-**Shape.** No two checks share code. Each loads one member, tests it against its default (a null
-pointer, a zero count, `-1`, an empty string), and logs its own message through
-`CPdxLogFileAndLine` or `CLogger::Log` with `CLogStream`. `CGalacticFocus::PostReadInit()`
-(`0x10057b620`) tests the effect's child count at `+0x294` with `cbnz` before its log. The same two
-loggers make 1,230 calls from 877 functions named `InitPostRead`, `PostReadInit`, `PostProcess`,
-`PostInit`, `PostValidate` or `Validate`; most report a bad value, not an absent one.
+**Shape.** No two checks share code, and they do not share one form, so no general method reads
+them. Each logs its own message through `CPdxLogFileAndLine` or `CLogger::Log` with `CLogStream`.
+The forms on M452:
+
+- A member tested against its default (a null pointer, a zero count, `-1`, an empty string). A
+  count lives inside the member's type: `CGalacticFocus::PostReadInit()` (`0x10057b620`) tests
+  the effect's count at `+0xd4` (`+0x1c` inside the `CRootEffect` at `+0xb8`) and the trigger's
+  count at `+0x294` (`+0x7c` inside the `CRootTrigger` at `+0x218`), each with `cbz` to its log.
+- An equality between two members (`CEspionageOperationType::InitPostRead()`, below).
+- A value test inside a switch on another field, which the field's default fails (patrons
+  `position`, below).
+- A helper shared by several fields that receives the field's storage as an argument
+  (`CPatronType::ParseCountryEventID`, below).
+- A virtual call on a member pointer: `CResolutionType::PostReadInit()` (`0x100ae737c`) calls
+  slot `+0x10` of the object at `+0x40` and logs `resolution.cpp:101` when bit 0 of the result is
+  clear. The target is not resolved.
+- A test of the definition key, not of a field: the `CDiplomaticActionType(int, CString const&)`
+  constructor (`0x10041c9b8`) looks the key up with `CStaticLexer::FindTok` and logs `Diplomatic
+  action is missing token` through `CLogger::Log` when the stored token at `+0x48` is `0xc`
+  (`0x10041cbf4`). Its `PostReadInit()` has no field check, and the witness run read the item, so
+  every root field of `common/diplomatic_actions` is optional; the registry is outside the census
+  only because its report joins no key.
+
+The same two loggers make 1,230 calls from 877 functions named `InitPostRead`, `PostReadInit`,
+`PostProcess`, `PostInit`, `PostValidate` or `Validate`; most report a bad value, not an absent
+one.
+
+**Traced conditional checks (M452).** A check that depends on another field's value is not
+observed by the census's empty definition, and `FieldRequirement` has no form for a condition.
+These traces state the condition; Native publishes them only when `FieldRequirement` can carry
+cases, so the answers below are a known gap:
+
+- `CEspionageOperationType::InitPostRead()` (`0x100497188`) compares the stored `stages` (`+0x6e8`,
+  `CReader::Read(int&)`, default 0) with the size of the `stage` array (`+0x54`; each `stage` is
+  inserted at the end with `InsertAtEmplace`) and logs `does not have the expected number of
+  stages.` (`espionage_operation_type.cpp:407`) when they differ. `stage` is required when
+  `stages` is not zero. Native answers `Optional`.
+- `CPatronType::PostReadInit()` (`0x100a13198`) switches on the category byte (`+0x40`; minor 0,
+  major 1, great 2; the constructor stores 3, unset) through a byte table at `0x102ca81f9` and
+  `br x9` at `0x100a1349c`. Each set category tests `position` (`+0x110`, `+0x118`, fixed point
+  ×100000): minor and great log when x² + y² is above 1, and major logs unless the position is a
+  unit step on one axis. The constructor stores (-1, -1) (`0x100a12724`), which fails every test,
+  so `position` is required for every set category; an unset category logs its own report. Native
+  answers `Optional`.
+- `CPatronType::ParseCountryEventID(CString const&, CString const&)` (`0x100a1442c`) logs
+  `expected a %s event to be specified.` (`patron_type.cpp:451`) for an empty event string. Its
+  callers in the hook (`0x100a13c00`, `0x100a13c68`) make `first_contact_event` (`+0x278`)
+  required unless the category is great, and `covenant_event` (`+0x2a8`) required only for major;
+  a great patron parses a covenant event only when one is given. Native answers `Unknown` for
+  `first_contact_event` and `Optional` for `covenant_event`.
 
 **Check.** `cargo live fixture_required_field` loads two card categories through validation: the
 one without `name` logs `has empty 'name' field` on its own line, the other logs nothing about
@@ -1011,6 +1090,15 @@ Pitfalls:
   `CShipSize::GetAIDataRawFactor`, are not validation.
 - A registry that reads no unknown key is not a witness: a silent run proves nothing about a
   definition that the loader never read.
+- Join a report by the code that logs it, not by its text. `has no fulfilled trigger set!` tests
+  the `trigger` storage; no key is named `fulfilled_trigger`. The census first read it as a
+  non-field and left `galactic_focuses.trigger` `Optional`; every vanilla focus sets it.
+- A check on a value also catches absence when the default fails the check: patrons `position`,
+  ethics `cost`, galaxy `stars_min_dist`.
+- An empty probe item with no selector field (a patron with no `category`) skips the checks that
+  depend on it. `Optional` from such an item does not cover definitions that set the selector.
+- A count lives inside the member's type: `+0x1c` in `CRootEffect`, `+0x7c` in `CRootTrigger`.
+  Do not read the owner offset of the test as the member's start.
 
 ## Keyword domains (SDK-828)
 
@@ -2061,6 +2149,58 @@ offset, become the owner's points at offsets that the owner's constructors do no
 - Pitfall: `Part::Part()` also stores member vtables that are not the part's own, such as
   `0x1030648e8` at `+0x8`; the loader's build stores other values there (`+0x18` in the list), so
   those offsets keep no point.
+
+### Nested owners and the receiver context
+
+The method analyzes an owner wherever it meets one: the registry's root, an embedded object, a
+stack serializer and an object that a field inserts. Each analysis needs the member reader, the
+receiver, and the constructor evidence of the allocation that holds the receiver.
+
+- **Receiver.** An embedded object and a stack serializer are in their parent's allocation: the
+  receiver is the parent's offset plus the member's offset, and the parent's constructors install
+  their vtables. On M452 `CSpecialProjectType::CSpecialProjectType()` (`0x100b973cc`) stores the
+  `SProjectRequirements` vtable at `+0x5a0` (`0x100b97548`) and the `SizeRequirement` vtable at
+  `+0x5c0` (`0x100b9756c`); `CSpecialProjectType::ReadMember` reads `requirements` at `+0x5a0`
+  and `SProjectRequirements::ReadMember` reads `size_requirement` at its own `+0x20`. An inserted
+  object is a new allocation, with its own constructors. A base subobject and a member object at
+  a constant offset have the same receiver; dispatch models both (`explore_owner`,
+  `Value::Owner(offset)`, and a serializer with its owner at `(slot, owner_offset)`).
+- **Where the context is lost** (`registry-fields/v70`):
+  - `persistent::embedded` walks an embedded reader at offset 0 and keeps only dispatch: no
+    constructor join, no collection pass, no deeper embedded keys. `requirements.size_requirement`
+    is a persistent read with no reader for this reason. `scripted_actions` `ai.weight` and
+    `starbase_types` `ai_design.min` and `ratio` stop the same way; their owners are not traced.
+  - `nested_owner` gives an inserted object constructor evidence one level deep; its own objects
+    get none (`collect_objects` with no shared evidence). `events` `option.ai_trade_facility`
+    (`CEventOptionAiTradeFacility(EScopeType)` stores the `SInfoGathering` vtable at `+0x18` and
+    the `SOptionSelection` vtable at `+0xd0`, `0x1004ce918`, `0x1004ce944`) keeps
+    `info_gathering` and `option_selection` unjoined.
+  - A serializer root or a base root collects no objects, and the collection pass runs only
+    `Class::ReadMember` with `x0` as the owner. `living_standards` and `military_service_types`
+    keep `triggered_pop_group_modifier` unjoined; `citizenship_types` joins the same field through
+    the same `CSpeciesRightBase::ReadMember` because it has a reader of its own
+    (`CCitizenshipType::ReadMember` adds `0x38` to `x0` and branches to it, `0x100be58f0`).
+    `zones` `triggered_*` (a serializer root) stop the same way.
+  - A collection run that fails leaves no gap; the root path keeps only its dispatch stop (for
+    example `operator new` in `situations` `approach`).
+  - Loader part points and inherited readers are collected for the root reader only.
+- **Not this cause.** Most nested open members stop at a first-level shape, not at a lost context:
+  statement loops, collection runs that meet an unmodelled call (string concatenations other than
+  the log-ID ones, `SetDebugID`, a lookup through a virtual call), inline or nested stack
+  serializers, readers that read any key (name lists), fields with a block and a scalar
+  alternative, and owner constructor walks that stop (a static-local guard in
+  `CPatronCallingTier()`, owners with no constructor symbol). Recursion adds a level only after
+  such a shape joins.
+
+Pitfalls:
+
+- An embedded walk in the object's own coordinates cannot use any constructor evidence: the
+  parent's constructors describe parent offsets, and the member class may have no constructor
+  symbol of its own (it is often built inline).
+- A depth-2 object found by `collect_objects` without evidence still lists its keys, so the gap is
+  easy to miss: its persistent reads have no reader and no gap names the missing evidence.
+- `CPersistent::ReadMember` as a vtable's member reader means the class reads in its own `Read`
+  (for example a statement loop in `CObjectiveCounterSet::Read`); it is not a key table.
 
 ### Pre-trigger blocks
 
