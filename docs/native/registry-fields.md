@@ -64,7 +64,7 @@ give six fields of five registries their members. Against `v52`, the dispatch wa
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
 changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against `v57`, the literal-token test (below) adds `scripted_actions.context_menu_ordering` and `steal_planet_output.mode`. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -107,7 +107,15 @@ lookups, so the diff drops only members that match their serde defaults.
   `Boolean/Replace`. Every other token stores false and logs nothing, so the reader accepts any
   value. The binding takes `yes` from the recipe's Boolean token names
   (`PersistentRecipe::boolean_tokens`); a token table with no single `yes` binds none, and the
-  idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
+  idiom then stops at the `cset`. The same idiom with one literal token other than `yes`
+  (`cmp` of the value token with `weight`, `cset …,eq`, store: `scripted_actions.context_menu_ordering`)
+  reads `Keyword/Replace` (`value token == literal`): the field has two meanings, that token and
+  every other, and every token is accepted without a diagnostic, so its domain stays `Unknown` and
+  Atlas credits no value form. It needs `yes` bound: without it the literal could be `yes`, so the
+  idiom stops at the `cset`. A `cset` after a comparison with several tokens, or of anything
+  other than the value token, still stops. A value-token range that `csel` selects
+  (`events.event_window_type`: `cmp` of the token minus `leader_recruit` with 4, `csel …,lo`)
+  still stops at `csel`. On M452 the
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
 - **The stored value token.** A reader that loads the value token's id from the reader
@@ -234,7 +242,7 @@ true; on false the derived reader tail-calls `CPersistent::ReadMember` on its ba
   unfollowed path.
 - **Limits.**
   - The nested-object pass enters inherited readers, through their import stubs, since
-    `registry-fields/v58` ([objects constructed at an array's
+    `registry-fields/v59` ([objects constructed at an array's
     end](#objects-constructed-at-an-arrays-end)). Six `triggered_*_modifier` keys of the starbase
     template now read triggered modifier clauses in both registries; the other three keep an
     `UnresolvedReader` gap, and their stop is not yet read.
@@ -527,7 +535,7 @@ pass (`fields/nested.rs`) joins that shape by a validated rule: **a call to
   the last element and a tail call of `Read(CPersistent&)` (`0x1025b820c`); `friendly_aura`
   (`0x3543`) does the same on `+0x7e0`. The resizing reads the count at `+0x14`, multiplies the
   capacity by `0x278` for `operator new[]`, and stores the new buffer at `+8`.
-- **Result on M452 (`registry-fields/v58`).** `common/component_templates`,
+- **Result on M452 (`registry-fields/v59`).** `common/component_templates`,
   `common/starbase_modules` and `common/starbase_buildings` change. Each of
   the three keys' `hostile_aura` and `friendly_aura` reads an accumulating block of eight
   `CShipAura` members: `name`, `graphics`, `radius`, `stack_info`, `apply_on`, `damage_per_day`,
