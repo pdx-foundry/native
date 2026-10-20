@@ -118,6 +118,8 @@ pub enum Value {
     InsertedBit(Box<Value>, u8),
     /// What the converter at this entry returned for the value token: an engine enum value.
     Converted(u64),
+    /// The length of the C string at an address, as `strlen` returns it.
+    TextLength(Box<Value>),
     /// A jump-table entry that the token selects.
     TableEntry(TableEntry),
     /// A code address formed from a jump-table entry: `base + (entry << shift)`.

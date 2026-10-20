@@ -1449,6 +1449,43 @@ fn explore_member_with_wrapped_owner(
                     state.clobber_call();
                     continue;
                 }
+                let callee =
+                    target.and_then(|address| input.symbol_index.name(input.symbols, address));
+                let text = value_text(input.key_readers);
+                if row.operation == "bl"
+                    && callee == Some(readers::TEXT_LENGTH)
+                    && state.value("x0") == Some(text.clone())
+                    && assigns_next(&rows, state.pc, &indexes, input)
+                {
+                    // A path that measures the text and then joins no reader ends here, as it did
+                    // before the assignment was followed.
+                    state
+                        .value_read
+                        .get_or_insert_with(|| stop("reader-routing", Obstacle::Call));
+                    state.clobber_call();
+                    state.assign("x0", Some(Value::TextLength(Box::new(text))));
+                    continue;
+                }
+                if let Some(callee) = callee
+                    && readers::assigns_string_text(callee)
+                    && let Some(Value::Owner(destination)) = state.value("x0")
+                    && state.value("x1") == Some(text.clone())
+                    && state.value("x2") == Some(Value::TextLength(Box::new(text)))
+                {
+                    let join = ReaderJoin::Stored {
+                        callee: callee.into(),
+                        kind: crate::ReaderKind::String,
+                        destination: Some(destination),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    if row.operation == "b" {
+                        leaves.push(state.finish(row.address, PathOutcome::Reader(join)));
+                        break;
+                    }
+                    state.stored = Some((join, destination, STANDARD_STRING_SIZE));
+                    state.clobber_call();
+                    continue;
+                }
                 if let Some(target) = target {
                     let call = compound_call(input.key_readers, target, &mut state);
                     if matches!(call, CompoundCall::Continue)
@@ -2779,6 +2816,60 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     CompoundCall::Continue
 }
 
+/// The most instructions that [`assigns_next`] examines.
+const MAX_ASSIGNMENT_LOOKAHEAD: usize = 16;
+
+/// Whether the code from `rows[start]` reaches a string assignment call with no conditional
+/// branch or other call first. Only then does the walk follow `strlen` of the value text: a
+/// length that the reader tests instead, as a one-character code does, keeps the stop at the call.
+fn assigns_next(
+    rows: &[Instruction],
+    start: usize,
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+) -> bool {
+    let mut index = start;
+
+    for _ in 0..MAX_ASSIGNMENT_LOOKAHEAD {
+        let Some(row) = rows.get(index) else {
+            return false;
+        };
+        index += 1;
+        match row.operation.as_str() {
+            "b" | "bl" => {
+                let Some(target) = number(&row.operands).map(|address| address as u64) else {
+                    return false;
+                };
+                if row.operation == "b"
+                    && let Some(&local) = indexes.get(&target)
+                {
+                    index = local;
+                    continue;
+                }
+
+                return input
+                    .symbol_index
+                    .name(input.symbols, target)
+                    .is_some_and(readers::assigns_string_text);
+            }
+            operation
+                if operation.starts_with('b')
+                    || operation.starts_with("cb")
+                    || operation.starts_with("tb")
+                    || operation == "ret" =>
+            {
+                return false;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+/// The size of a libc++ `std::basic_string` on a 64-bit target: three words.
+const STANDARD_STRING_SIZE: i64 = 0x18;
+
 /// The value token's word, loaded from the reader.
 fn value_token_word(bindings: &super::KeyReaders) -> Value {
     Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
@@ -3259,6 +3350,82 @@ mod tests {
             ),
             "the id store stands when the converted value is not stored: {:?}",
             outcome(false)
+        );
+    }
+
+    #[test]
+    fn a_string_assigned_from_the_value_text_and_its_length_reads_a_string() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let assign = "std::__1::basic_string<char, std::__1::char_traits<char>, CPdxCommonStringAllocator>::__assign_external(char const*, unsigned long)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "_strlen".into(),
+                address: 0x2000,
+            },
+            Symbol {
+                name: assign.into(),
+                address: 0x3000,
+            },
+        ];
+        let functions = |measured: bool| {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            arm64!(code;
+                mov x19, x0;
+                ldr x20, [x1, #0x288]; // the value text
+                mov x0, x20
+            );
+            if measured {
+                arm64!(code; bl extern 0x2000); // strlen
+            }
+            arm64!(code;
+                mov x2, x0;
+                add x0, x19, #0xf0;
+                mov x1, x20;
+                b extern 0x3000 // assign the text and its length
+            );
+
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.bytes(),
+                },
+            )])
+        };
+        let readers = super::super::KeyReaders {
+            value_token: 0x278,
+            token_text: 0x10,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let outcome = |measured| {
+            let functions = functions(measured);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+
+        assert!(matches!(
+            outcome(true),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::String,
+                destination: Some(0xf0),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        assert!(
+            !matches!(
+                outcome(false),
+                PathOutcome::Reader(ReaderJoin::Stored { .. })
+            ),
+            "a length that is not the text's own proves no whole-text read"
         );
     }
 

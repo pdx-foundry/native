@@ -95,6 +95,16 @@ pub(crate) fn never_returns(callee: &str) -> bool {
     NEVER_RETURN.contains(&callee) || callee.contains("::__throw_")
 }
 
+/// Measures a C string, reading only its bytes.
+pub(crate) const TEXT_LENGTH: &str = "_strlen";
+
+/// Whether `callee` assigns a standard string from a character pointer and a length:
+/// `std::basic_string<char, …>::__assign_external(char const*, unsigned long)`.
+pub(crate) fn assigns_string_text(callee: &str) -> bool {
+    callee.starts_with("std::__1::basic_string<char, ")
+        && callee.ends_with("::__assign_external(char const*, unsigned long)")
+}
+
 /// Releases a string's heap buffer.
 pub(crate) const STRING_RELEASE: &str =
     "CPdxCommonStringAllocator::deallocate(char*, unsigned long)";
