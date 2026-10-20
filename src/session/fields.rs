@@ -743,10 +743,7 @@ fn collection_field(
             FieldMembers::Unresolved,
         ),
         None => (
-            concrete_reader_id(
-                "CPersistent::Read(CReader&)",
-                &format!("{}::ReadMember(CReader&, int)", collection.class),
-            ),
+            concrete_reader_id("CPersistent::Read(CReader&)", &collection.member),
             BlockFamily::Unknown,
             FieldMembers::Fields(
                 collection
@@ -1896,6 +1893,7 @@ mod tests {
                 container_mask: None,
                 construction_scopes: Vec::new(),
                 class: "CEntry".into(),
+                member: "CEntry::ReadMember(CReader&, int)".into(),
                 reader: None,
                 fields: Box::new(child),
             }],

@@ -382,20 +382,16 @@ pub(super) fn discover(
             .reader
             .clone()
             .filter(|bound| bound.reader.family != crate::BlockFamily::Unknown);
+        let element = owner.holding(Owner::allocation(
+            &object.class,
+            object.serializer.as_ref(),
+            object.base.as_ref(),
+            &object.objects,
+            persistent,
+        ));
         let fields = match reader {
             Some(_) => Default::default(),
-            None => super::owner_result(
-                input,
-                symbol_index,
-                &owner.holding(Owner::allocation(
-                    &object.class,
-                    object.serializer.as_ref(),
-                    object.base.as_ref(),
-                    &object.objects,
-                    persistent,
-                )),
-                names,
-            ),
+            None => super::owner_result(input, symbol_index, &element, names),
         };
         let (data_offset, count_offset) = match first.owned {
             true => (None, None),
@@ -408,6 +404,7 @@ pub(super) fn discover(
             data_offset,
             count_offset,
             class: object.class.clone(),
+            member: element.reader,
             reader,
             fields: Box::new(fields),
             container_mask,

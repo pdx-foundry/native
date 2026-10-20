@@ -451,6 +451,9 @@ pub struct CollectionField {
     pub count_offset: Option<u64>,
     /// Demangled class name of the inserted object.
     pub class: String,
+    /// The member reader of the inserted object's keys: its class's own, a stack serializer's,
+    /// or a base class's on its subobject.
+    pub member: String,
     /// The inserted object's reader when its family has a block grammar. Such a collection
     /// carries no loader fields; the family's grammar describes its members.
     pub reader: Option<PointReader>,

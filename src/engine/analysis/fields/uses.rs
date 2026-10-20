@@ -761,6 +761,7 @@ mod tests {
             container_mask: None,
             construction_scopes: Vec::new(),
             class: "CChild".into(),
+            member: "CChild::ReadMember(CReader&, int)".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {
                 key_order: Vec::new(),

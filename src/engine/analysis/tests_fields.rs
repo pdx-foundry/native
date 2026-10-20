@@ -2132,6 +2132,37 @@ fn nested_fixture() -> FieldInput {
 }
 
 #[test]
+fn a_collection_element_read_through_its_base_reader_takes_that_reader_identity() {
+    let base = "CChildBase::ReadMember(CReader&, int)";
+    let mut input = nested_fixture();
+    for symbol in input
+        .symbols
+        .iter_mut()
+        .filter(|symbol| symbol.address == 0xb000)
+    {
+        symbol.name = base.into();
+    }
+    input.functions.last_mut().unwrap().name = base.into();
+    input.objects[0].base = Some(fields::BaseRoot {
+        reader: base.into(),
+        offset: 0x8,
+    });
+    let identity = |input: FieldInput| {
+        let result = derive(input);
+        assert_eq!(
+            result.collections[0].fields.fields[0].name,
+            "new_engine_field"
+        );
+        crate::session::questions::normalized_fields(&result, &Default::default())[0]
+            .reader
+            .id
+            .clone()
+    };
+
+    assert_ne!(identity(input), identity(nested_fixture()));
+}
+
+#[test]
 fn nested_fields_require_the_constructed_read_object_to_reach_its_collection() {
     let result = derive(nested_fixture());
     assert_eq!(result.collections.len(), 1);
