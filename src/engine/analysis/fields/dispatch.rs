@@ -41,6 +41,9 @@ pub(crate) struct DispatchInput<'a> {
     pub virtual_delegate: Option<&'a str>,
     /// A loader root to walk from its statement read instead of a member reader's entry.
     pub loader: Option<&'a LoaderRoot>,
+    /// Whether the walk follows order checks. Only an owner's walk reports them, as key order
+    /// notes; any other walk forks at the check, so its keys keep the order as a condition.
+    pub follows_order_checks: bool,
 }
 
 /// Where dispatch finds a function body by name.
@@ -84,6 +87,7 @@ impl<'a> DispatchInput<'a> {
             serializer_constructors: None,
             virtual_delegate: None,
             loader: None,
+            follows_order_checks: false,
         }
     }
 
@@ -177,6 +181,9 @@ struct State {
     path: Vec<u64>,
     /// The jump-table case that this token took.
     table_case: Option<TableCase>,
+    /// The outcome of each state comparison that the path has taken (`EqualsAny` to whether
+    /// it held), until a call or a store outside the frame may change the compared memory.
+    settled: BTreeMap<Value, bool>,
 }
 /// A reader call's Boolean in a stack temporary. The loader merges it into a bit of an owner
 /// word, or copies it to an owner byte, after the call.
@@ -208,6 +215,7 @@ impl State {
             self.registers.remove(&format!("x{register}"));
         }
         self.flags = None;
+        self.settled.clear();
     }
 
     fn overlaps_stored(&self, location: &Value, width: i64) -> bool {
@@ -622,6 +630,9 @@ fn apply(
 ) -> Result<(), Unresolved> {
     if matches!(row.operation.as_str(), "str" | "stur" | "strb" | "stp") {
         state.serializer = None;
+        if !row.operands.contains("[sp") {
+            state.settled.clear();
+        }
     }
     let stop = |reason, obstacle| Unresolved::at(reason, row.address, entry, obstacle);
     let unsupported = |reason| stop(reason, Obstacle::Unsupported);
@@ -843,6 +854,18 @@ fn apply(
                     };
                     state.stored = Some((join, at, width));
                 }
+                if input.key_readers.value_token != 0
+                    && width == 4
+                    && state.value(operand) == Some(value_token_word(input.key_readers))
+                {
+                    let join = ReaderJoin::Stored {
+                        callee: VALUE_TOKEN_STORE.into(),
+                        kind: crate::ReaderKind::Keyword,
+                        destination: Some(at),
+                        repeat: crate::RepeatBehavior::Replace,
+                    };
+                    state.stored = Some((join, at, width));
+                }
                 if let Some(Value::Converted(converter)) = state.value(operand) {
                     let callee = input.symbol_index.name(input.symbols, converter);
                     let join = ReaderJoin::Stored {
@@ -951,7 +974,7 @@ pub(super) fn explore_owner(
     symbol_index: &SymbolIndex,
     root: &str,
     owner_slot: Option<i64>,
-) -> (Vec<TokenPath>, Vec<FieldGap>) {
+) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
     explore_member_with_wrapped_owner(
         &DispatchInput {
             scope: None,
@@ -966,6 +989,7 @@ pub(super) fn explore_owner(
             serializer_constructors: None,
             virtual_delegate: None,
             loader: None,
+            follows_order_checks: true,
         },
         root,
         owner_slot.map(|slot| (slot, 0)),
@@ -999,6 +1023,7 @@ pub(super) fn explore_loader(
             serializer_constructors: None,
             virtual_delegate: None,
             loader: Some(loader),
+            follows_order_checks: false,
         },
         &loader.function,
     )
@@ -1009,7 +1034,8 @@ pub(crate) fn explore_member(
     input: &DispatchInput<'_>,
     root: &str,
 ) -> (Vec<TokenPath>, Vec<FieldGap>) {
-    explore_member_with_wrapped_owner(input, root, None, None, 0, None)
+    let (paths, gaps, _) = explore_member_with_wrapped_owner(input, root, None, None, 0, None);
+    (paths, gaps)
 }
 
 /// The token paths through `root`. With `declined`, a path that returns false there instead,
@@ -1023,7 +1049,7 @@ fn explore_member_with_wrapped_owner(
     value_receiver: Option<Value>,
     depth: usize,
     mut declined: Option<&mut Vec<TokenPath>>,
-) -> (Vec<TokenPath>, Vec<FieldGap>) {
+) -> (Vec<TokenPath>, Vec<FieldGap>, Vec<OrderCheck>) {
     let mut initial = State {
         stack: BTreeMap::new(),
         serializer: None,
@@ -1052,6 +1078,7 @@ fn explore_member_with_wrapped_owner(
         conditions: vec![],
         path: vec![],
         table_case: None,
+        settled: BTreeMap::new(),
     };
     if root.ends_with(", EScopeType)")
         && let Some(scope) = &input.scope
@@ -1064,7 +1091,11 @@ fn explore_member_with_wrapped_owner(
     }
     let Some((entry, rows)) = decode_root(input, root) else {
         let missing = Unresolved::new("root-function");
-        return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
+        return (
+            vec![initial.finish(0, PathOutcome::Gap(missing))],
+            vec![],
+            vec![],
+        );
     };
     let after_last = rows.last().map_or(entry, |row| row.address + 4);
     let indexes: BTreeMap<_, _> = rows
@@ -1075,7 +1106,11 @@ fn explore_member_with_wrapped_owner(
     if let Some(loader) = input.loader {
         let Some(&start) = indexes.get(&loader.start) else {
             let missing = Unresolved::new("loader-start");
-            return (vec![initial.finish(0, PathOutcome::Gap(missing))], vec![]);
+            return (
+                vec![initial.finish(0, PathOutcome::Gap(missing))],
+                vec![],
+                vec![],
+            );
         };
         initial.pc = start;
         initial.registers = BTreeMap::from([
@@ -1089,6 +1124,7 @@ fn explore_member_with_wrapped_owner(
     let mut leaves = Vec::new();
     let mut tables = Vec::new();
     let mut table_readers = Vec::new();
+    let mut order_checks = Vec::new();
     let mut visited = 0;
     while let Some(mut state) = pending.pop() {
         visited += 1;
@@ -1188,7 +1224,8 @@ fn explore_member_with_wrapped_owner(
                 declined.push(state.finish(row.address, PathOutcome::Rejected));
                 break;
             }
-            if row.operation == "ret" && state.converted.is_some() {
+            // A converted value that is never stored leaves an earlier id store as the read.
+            if row.operation == "ret" && state.converted.is_some() && state.stored.is_none() {
                 let unstored = stop("keyword-store", Obstacle::Unsupported);
                 leaves.push(state.finish(row.address, PathOutcome::Gap(unstored)));
                 break;
@@ -1268,7 +1305,7 @@ fn explore_member_with_wrapped_owner(
                         && matches!(state.value("x2"), Some(Value::Token | Value::TokenWord(0)))
                     {
                         let child_input = input.with_owner_vtable(None);
-                        let (children, gaps) = explore_member_with_wrapped_owner(
+                        let (children, gaps, checks) = explore_member_with_wrapped_owner(
                             &child_input,
                             name.unwrap(),
                             Some((slot, owner)),
@@ -1277,6 +1314,7 @@ fn explore_member_with_wrapped_owner(
                             None,
                         );
                         tables.extend(gaps);
+                        order_checks.extend(checks);
                         leaves.extend(continued(children, &state, row.operation == "b"));
                     } else {
                         leaves.push(state.finish(
@@ -1321,7 +1359,7 @@ fn explore_member_with_wrapped_owner(
                     // A serializer's inherited reader keeps its receiver; an owner's has none.
                     let inherited_wrapped = wrapped_owner
                         .filter(|_| state.registers.get("x0") == Some(&Value::Serializer(0)));
-                    let (children, gaps) = explore_member_with_wrapped_owner(
+                    let (children, gaps, checks) = explore_member_with_wrapped_owner(
                         input,
                         inherited,
                         inherited_wrapped,
@@ -1330,6 +1368,7 @@ fn explore_member_with_wrapped_owner(
                         collects.then_some(&mut inherited_declined),
                     );
                     tables.extend(gaps);
+                    order_checks.extend(checks);
                     leaves.extend(continued(children, &state, !returns));
                     let inherited_declined = continued(inherited_declined, &state, false);
                     if !returns {
@@ -1349,10 +1388,37 @@ fn explore_member_with_wrapped_owner(
                     }
                     break;
                 }
+                // A converter of the value token goes on past a store of its id. The id store
+                // stays the path's read until the converted value is stored.
+                if row.operation == "bl"
+                    && let Some(target) = target
+                    && state.stored.as_ref().is_none_or(stores_value_token_id)
+                    && converts_value_token(input, target, &state)
+                {
+                    state.clobber_call();
+                    state.assign("x0", Some(Value::Converted(target)));
+                    state.converted = Some(target);
+                    state.keyword_conditions = Some(state.conditions.len());
+                    continue;
+                }
                 let harmless = target
                     .and_then(|address| input.symbol_index.name(input.symbols, address))
                     .is_some_and(readers::changes_no_script_state);
                 if state.stored.is_some() && harmless && row.operation == "bl" {
+                    state.clobber_call();
+                    continue;
+                }
+                // A diagnostic about a converted value changes no script state, so the path goes
+                // on to the value's store. The reader's own reports stay rejections.
+                if row.operation == "bl"
+                    && state.converted.is_some()
+                    && target
+                        .and_then(|address| input.symbol_index.name(input.symbols, address))
+                        .is_some_and(|name| {
+                            readers::changes_no_script_state(name)
+                                && !name.starts_with("CReader::Report")
+                        })
+                {
                     state.clobber_call();
                     continue;
                 }
@@ -1375,16 +1441,6 @@ fn explore_member_with_wrapped_owner(
                         break;
                     }
                     state.clobber_call();
-                    continue;
-                }
-                if row.operation == "bl"
-                    && let Some(target) = target
-                    && converts_value_token(input, target, &state)
-                {
-                    state.clobber_call();
-                    state.assign("x0", Some(Value::Converted(target)));
-                    state.converted = Some(target);
-                    state.keyword_conditions = Some(state.conditions.len());
                     continue;
                 }
                 if let Some(target) = target {
@@ -1554,6 +1610,14 @@ fn explore_member_with_wrapped_owner(
                     continue;
                 }
             }
+            if let Some(settled) =
+                settled_comparison(row, &state, &rows, &indexes, input, depth == 0)
+            {
+                state.pc = settled.side;
+                state.settled.insert(settled.compared, settled.equal);
+                order_checks.extend(settled.check);
+                continue;
+            }
             let branching = if let Some(condition) = row.operation.strip_prefix("b.") {
                 condition_branch(condition, row, &state, &indexes, entry)
             } else if matches!(row.operation.as_str(), "cbz" | "cbnz")
@@ -1586,7 +1650,7 @@ fn explore_member_with_wrapped_owner(
             .cmp(&b.domain)
             .then(a.conditions.cmp(&b.conditions))
     });
-    (leaves, tables)
+    (leaves, tables, order_checks)
 }
 
 /// Whether the code after a read (`continuation`) only restores registers and the frame, then
@@ -2028,6 +2092,208 @@ fn owner_virtual_target(input: &DispatchInput<'_>, state: &State, operand: &str)
     pointers.get(&point.checked_add(offset as u64)?).copied()
 }
 
+/// An order check: a test of an owner word, before the path reads its key's value, whose one side
+/// logs a diagnostic and returns whatever the token. The walk takes the other side, so a key's
+/// read conditions do not hold the order; the check's tested value and the paths through it state
+/// the order instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct OrderCheck {
+    /// The branch of the check.
+    pub at: u64,
+    /// The state value that the check compares.
+    pub tested: Value,
+}
+
+/// A state comparison that a branch decides without a fork.
+struct Settled {
+    /// The comparison, as an `EqualsAny` value.
+    compared: Value,
+    /// Whether the compared value equals a pivot on the side taken.
+    equal: bool,
+    /// The row index of the side taken.
+    side: usize,
+    /// The order check that the branch passes, when it is one.
+    check: Option<OrderCheck>,
+}
+
+/// How the conditional branch `row` decides a state comparison without a fork: an earlier
+/// comparison of the same state on the path settled it, or one side only logs and returns.
+/// `None` when the branch forks as usual.
+fn settled_comparison(
+    row: &Instruction,
+    state: &State,
+    rows: &[Instruction],
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+    root_reader: bool,
+) -> Option<Settled> {
+    let condition = row.operation.strip_prefix("b.")?;
+    let Some(Flags::Values { tested, pivots }) = &state.flags else {
+        return None;
+    };
+    if !matches!(condition, "eq" | "ne") || !is_owner_word(tested) {
+        return None;
+    }
+    let target = *number(&row.operands).and_then(|a| indexes.get(&(a as u64)))?;
+    let (equal_side, unequal_side) = if condition == "eq" {
+        (target, state.pc)
+    } else {
+        (state.pc, target)
+    };
+    let side = |equal| if equal { equal_side } else { unequal_side };
+    let compared = Value::EqualsAny(Box::new(tested.clone()), pivots.clone());
+
+    if let Some(&equal) = state.settled.get(&compared) {
+        return Some(Settled {
+            side: side(equal),
+            compared,
+            equal,
+            check: None,
+        });
+    }
+
+    // A delegated or wrapped child starts with a fresh state that does not show the parent's
+    // reads, so only the root reader follows order checks.
+    if !input.follows_order_checks || !root_reader || !reads_nothing_yet(state, rows, indexes) {
+        return None;
+    }
+    let rejects = |side| logs_and_returns(rows, side, indexes, input);
+    let equal = match (rejects(equal_side), rejects(unequal_side)) {
+        (true, false) => false,
+        (false, true) => true,
+        _ => return None,
+    };
+    let check = OrderCheck {
+        at: row.address,
+        tested: tested.clone(),
+    };
+
+    Some(Settled {
+        side: side(equal),
+        compared,
+        equal,
+        check: Some(check),
+    })
+}
+
+/// Whether `value` is a word that the walk loaded from the owner. Only such a word is settled:
+/// a call or a store outside the frame is the only way the walk can see it change.
+fn is_owner_word(value: &Value) -> bool {
+    matches!(value, Value::Load(word, _) if matches!(word.as_ref(), Value::Owner(_)))
+}
+
+/// Whether the path has not yet read, converted or stored anything: every instruction so far is
+/// in this function and is neither a call nor a store outside the frame, and no reader idiom has
+/// started.
+fn reads_nothing_yet(state: &State, rows: &[Instruction], indexes: &BTreeMap<u64, usize>) -> bool {
+    let only_local_frame_work = state.path.iter().all(|address| {
+        indexes.get(address).is_some_and(|&index| {
+            let row = &rows[index];
+            let call = matches!(row.operation.as_str(), "bl" | "blr" | "br");
+            let store = row.operation.starts_with("st") && !row.operands.contains("[sp");
+            !call && !store
+        })
+    });
+
+    only_local_frame_work
+        && state.stored.is_none()
+        && state.converted.is_none()
+        && state.temporary.is_none()
+        && state.value_read.is_none()
+        && state.keyword_conditions.is_none()
+        && state.copied_tokens.is_empty()
+        && state.value_strings.is_empty()
+        && state.value_token_words.is_empty()
+        && state.targets.is_empty()
+        && state.emplaced.is_empty()
+}
+
+/// The instructions that a diagnostic side may run besides its calls and branches: register
+/// moves and arithmetic, loads, compares, and stores to the frame.
+fn diagnostic_side_instruction(row: &Instruction) -> bool {
+    match row.operation.as_str() {
+        "mov" | "movz" | "movk" | "add" | "sub" | "adrp" | "adr" | "cmp" | "tst" | "cset"
+        | "csel" | "nop" | "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrsw" | "ldur"
+        | "ldp" => true,
+        "str" | "stur" | "strb" | "strh" | "stp" => stores_to_a_frame_slot(&row.operands),
+        _ => false,
+    }
+}
+
+/// Whether a store's address is a fixed slot of the frame: `[sp]` or `sp` with an immediate
+/// offset, not a register offset.
+fn stores_to_a_frame_slot(operands: &str) -> bool {
+    let Some((_, address)) = operands.split_once("[sp") else {
+        return false;
+    };
+
+    address.starts_with(']') || address.starts_with(",#")
+}
+
+/// The most instructions that [`logs_and_returns`] examines, over all its ways.
+const MAX_DIAGNOSTIC_SIDE: usize = 128;
+
+/// Whether every way from `rows[start]` writes a diagnostic and returns, calling nothing else
+/// that can change script state and writing only the frame. Such a side reads no key, whatever
+/// the token. Each way is followed to its own `ret`, so a loop exhausts the bound and fails.
+fn logs_and_returns(
+    rows: &[Instruction],
+    start: usize,
+    indexes: &BTreeMap<u64, usize>,
+    input: &DispatchInput<'_>,
+) -> bool {
+    let local = |operand: &str| number(operand).and_then(|a| indexes.get(&(a as u64)).copied());
+    // Each way, and whether it has written a diagnostic.
+    let mut pending = vec![(start, false)];
+    let mut examined = 0;
+
+    while let Some((mut index, mut logged)) = pending.pop() {
+        loop {
+            examined += 1;
+            if examined > MAX_DIAGNOSTIC_SIDE {
+                return false;
+            }
+            let Some(row) = rows.get(index) else {
+                return false;
+            };
+            let target = row.operands.rsplit(',').next().unwrap_or_default();
+            index += 1;
+
+            match row.operation.as_str() {
+                "ret" if logged => break,
+                "ret" | "br" | "blr" => return false,
+                "bl" => {
+                    let Some(callee) = number(&row.operands)
+                        .and_then(|address| input.symbol_index.name(input.symbols, address as u64))
+                    else {
+                        return false;
+                    };
+                    if !readers::changes_no_script_state(callee) {
+                        return false;
+                    }
+                    logged |= readers::DIAGNOSTICS.contains(&callee);
+                }
+                "b" => match local(target) {
+                    Some(next) => index = next,
+                    None => return false,
+                },
+                "cbz" | "cbnz" | "tbz" | "tbnz" => match local(target) {
+                    Some(next) => pending.push((next, logged)),
+                    None => return false,
+                },
+                operation if operation.starts_with("b.") => match local(target) {
+                    Some(next) => pending.push((next, logged)),
+                    None => return false,
+                },
+                _ if diagnostic_side_instruction(row) => {}
+                _ => return false,
+            }
+        }
+    }
+
+    true
+}
+
 /// Whether the instruction at `index` calls a function that never returns.
 fn aborts(rows: &[Instruction], index: usize, input: &DispatchInput<'_>) -> bool {
     rows.get(index).is_some_and(|row| {
@@ -2195,9 +2461,13 @@ fn values_branch(
                 state.pc
             };
             if token_offset.is_none() {
+                let compared = Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec());
+                if is_owner_word(tested) {
+                    next.settled.insert(compared.clone(), equal);
+                }
                 next.conditions.push(Condition {
                     at: row.address,
-                    value: Some(Value::EqualsAny(Box::new(tested.clone()), pivots.to_vec())),
+                    value: Some(compared),
                     zero: !equal,
                 });
             }
@@ -2499,16 +2769,23 @@ fn compound_call(bindings: &super::KeyReaders, target: u64, state: &mut State) -
     } else {
         return CompoundCall::Unclassified;
     }
-    for register in 0..=18 {
-        state.registers.remove(&format!("x{register}"));
-    }
-    state.flags = None;
+    state.clobber_call();
     CompoundCall::Continue
 }
 
 /// The value token's word, loaded from the reader.
 fn value_token_word(bindings: &super::KeyReaders) -> Value {
     Value::Load(Box::new(Value::Reader(bindings.value_token)), 4)
+}
+
+/// The reader that stores the value token's id in an owner member. Any token is accepted; the
+/// tokens that mean something are known only where the member is used, so the keyword's domain
+/// stays unknown.
+const VALUE_TOKEN_STORE: &str = "value token id";
+
+/// Whether `stored` is the store of the value token's id.
+fn stores_value_token_id(stored: &(ReaderJoin, i64, i64)) -> bool {
+    matches!(&stored.0, ReaderJoin::Stored { callee, .. } if callee == VALUE_TOKEN_STORE)
 }
 
 /// The reader that stores whether the value token is `yes` in an owner member. Every other token
@@ -2812,6 +3089,151 @@ mod tests {
     }
 
     #[test]
+    fn a_member_that_stores_the_value_token_id_reads_a_keyword_of_unknown_domain() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![Symbol {
+            name: root.into(),
+            address: 0x1000,
+        }];
+        let functions = |code| {
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code,
+                },
+            )])
+        };
+        let token_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278]; // the value token
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let other_word_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x27c]; // another reader word
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let byte_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278]; // the value token
+            strb w8, [x0, #0x20]; // only its low byte
+            ret
+        ));
+        let unbound_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1]; // the word of an unbound value token
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let bound = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let unbound = super::super::KeyReaders::default();
+        let outcome_with = |functions, readers| {
+            let symbol_index = SymbolIndex::new(&symbols);
+            let input =
+                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+        let outcome = |functions| outcome_with(functions, &bound);
+
+        assert!(matches!(
+            outcome(&token_store),
+            PathOutcome::Reader(ReaderJoin::Stored {
+                kind: crate::ReaderKind::Keyword,
+                destination: Some(0x20),
+                repeat: crate::RepeatBehavior::Replace,
+                ..
+            })
+        ));
+        assert!(matches!(outcome(&other_word_store), PathOutcome::Gap(_)));
+        assert!(matches!(outcome(&byte_store), PathOutcome::Gap(_)));
+        assert!(matches!(
+            outcome_with(&unbound_store, &unbound),
+            PathOutcome::Gap(_)
+        ));
+    }
+
+    #[test]
+    fn a_converter_of_the_value_token_supersedes_a_store_of_its_id() {
+        let root = "Owner::ReadMember(CReader&, int)";
+        let symbols = vec![
+            Symbol {
+                name: root.into(),
+                address: 0x1000,
+            },
+            Symbol {
+                name: "EKind TokenToEnum<EKind>(int const&)".into(),
+                address: 0x2000,
+            },
+        ];
+        let functions = |stores_converted: bool| {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            arm64!(code;
+                mov x19, x0;
+                ldr w8, [x1, #0x278]; // the value token
+                str w8, [x19, #0x24]; // its id
+                str w8, [sp, #0x10];
+                add x0, sp, #0x10;
+                bl extern 0x2000 // the converter
+            );
+            if stores_converted {
+                arm64!(code; str w0, [x19, #0x20]); // the converted keyword
+            }
+            arm64!(code; ret);
+
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.bytes(),
+                },
+            )])
+        };
+        let readers = super::super::KeyReaders {
+            value_token: 0x278,
+            ..Default::default()
+        };
+        let symbol_index = SymbolIndex::new(&symbols);
+        let outcome = |stores_converted| {
+            let functions = functions(stores_converted);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
+
+            paths[0].outcome.clone()
+        };
+
+        assert!(
+            matches!(
+                &outcome(true),
+                PathOutcome::Reader(ReaderJoin::Stored {
+                    callee,
+                    kind: crate::ReaderKind::Keyword,
+                    destination: Some(0x20),
+                    ..
+                }) if callee.contains("TokenToEnum")
+            ),
+            "{:?}",
+            outcome(true)
+        );
+        assert!(
+            matches!(
+                &outcome(false),
+                PathOutcome::Reader(ReaderJoin::Stored {
+                    callee,
+                    destination: Some(0x24),
+                    ..
+                }) if callee == VALUE_TOKEN_STORE
+            ),
+            "the id store stands when the converted value is not stored: {:?}",
+            outcome(false)
+        );
+    }
+
+    #[test]
     fn serializer_delegate_reads_the_constructor_wrapped_owner() {
         let root = "Owner::ReadMember(CReader&, int)";
         let member = "Serializer::ReadMember(CReader&, int)";
@@ -3064,6 +3486,7 @@ mod tests {
     #[test]
     fn register_widths_preserve_only_valid_provenance() {
         let mut state = State {
+            settled: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
             copied_tokens: BTreeSet::new(),

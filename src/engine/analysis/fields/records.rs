@@ -306,6 +306,18 @@ pub struct RegistryFieldResult {
     pub partition_accounted: bool,
     /// The root keys of the input's loader root, when it has one.
     pub loader: Option<LoaderKeys>,
+    /// The key order that the reader's order checks require, one entry for each check.
+    pub key_order: Vec<KeyOrder>,
+}
+
+/// One order check of a member reader: until the tested word is set, the reader logs a diagnostic
+/// and reads no key except `allowed`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct KeyOrder {
+    /// The named keys that pass the check, sorted.
+    pub allowed: Vec<String>,
+    /// The field whose read sets the tested word, when one field's storage is that word.
+    pub set_by: Option<String>,
 }
 
 /// The root keys that a loader root names, with their own path ledger. Each key's readers join

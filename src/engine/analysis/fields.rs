@@ -80,7 +80,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v56";
+pub const METHOD: &str = "registry-fields/v58";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -176,10 +176,12 @@ fn owner_result(
     tokens: &std::collections::BTreeMap<i64, Token>,
 ) -> RegistryFieldResult {
     let (reader, owner_slot) = owner.reader();
-    let (paths, mut gaps) = dispatch::explore_owner(input, symbol_index, &reader, owner_slot);
+    let (paths, mut gaps, order_checks) =
+        dispatch::explore_owner(input, symbol_index, &reader, owner_slot);
     let (fields, path_gaps) = inventory::fields_and_gaps(&paths, tokens);
     gaps.extend(path_gaps);
     let partition_accounted = inventory::partition_accounted(&paths);
+    let key_order = inventory::key_order(&order_checks, &paths, &fields, partition_accounted);
     let collections = nested::discover(input, symbol_index, owner, &fields, tokens);
     let persistent = persistent::discover(owner.persistent, &input.read_only_data, &fields);
     gaps.extend(persistent.gaps);
@@ -209,6 +211,7 @@ fn owner_result(
         paths,
         gaps,
         partition_accounted,
+        key_order,
         ..RegistryFieldResult::default()
     }
 }

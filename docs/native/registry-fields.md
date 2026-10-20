@@ -63,8 +63,8 @@ nine registries change and none loses a field. Against
 give six fields of five registries their members. Against `v52`, the dispatch walker reads a compare with a
 shifted immediate: `common/scripted_actions` names its 42 fields
 ([order check](#scripted-actions-an-order-check-before-the-token-switch)), and no other registry
-changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
-reader, adds `is_triggered_only`, and removes one civics path gap. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
+changes. Against `v55`, the [order check](#scripted-actions-an-order-check-before-the-token-switch) gives 41 of 42 scripted action fields an `Always` read and 38 a known reader, and no other registry changes. The `yes` test (compound shapes, below) gives 13 members of every event kind a Boolean
+reader, adds `is_triggered_only`, and removes one civics path gap. Against `v56`, the stored value token (below) adds five fields of three registries, and no field loses a reader. Against M451-hotfix, civics lost `multiply_by_habitability_effect_modifier` and edicts
 gained `relay_network_modifier`. Compare a new run with `registry-field-sweep --diff` ([method
 authoring](method-authoring.md#run-over-the-whole-population)).
 
@@ -110,6 +110,18 @@ lookups, so the diff drops only members that match their serde defaults.
   idiom then stops at the `cset`. A `cset` after any other comparison still stops. On M452 the
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
+- **The stored value token.** A reader that loads the value token's id from the reader
+  (`ldr w8, [x1, #0x278]` on M452, with the value token bound) and stores the whole word
+  (`str w…`) to an owner member reads `Keyword/Replace`
+  (`value token id`, `dispatch.rs`). Any token is accepted; which tokens mean something is known only
+  where the member is used, so the field's domain stays `Unknown` and the keyword-domain gap stays.
+  Atlas then credits the field and its cardinality but not its value form. When the same path then
+  converts the value token (`TokenToEnum`, `Get…FromToken`) and stores the converted value, the
+  converted keyword is the field's reader instead (`has_envoy_task.task` stores both); when the
+  converted value is not stored, the id store stays the read. On M452 this adds `attitudes.type`,
+  `diplomatic_actions.action_type` and `envoy_assignment`, `scripted_actions.category` and
+  `uses_vfx_type`, the leader commands' `sub_type`, the galaxy-setup commands' `setting`, and a
+  keyword alternative to the `side` of `join_war_on_side` and `is_war_participant`.
 - **Constructed objects.** The method reads `tradition_swap` in traditions and ascension perks (13
   child fields each); in `advanced_authority_swap` the collection is established but not its
   children. The council presence branches normalize to unconditional integer reads. Objects built
@@ -497,19 +509,65 @@ stopped there, so the registry had no field. The order rule, from the engine's o
   fleet or megastructure logs "Supported user_scopes for scripted actions are megastructure and fleet"
   and is stored all the same.
 
-Result on M452 (`registry-fields/v53`): 42 named fields, each with a joined reader on the paths
-after both checks. Every field keeps "The field's alternatives do not establish one shared reader"
-and an `UnresolvedCondition` gap, and the answer keeps a `TokenPartition` gap:
+The dispatch walker follows the order rule with three general rules (`registry-fields/v56`):
 
-- The log paths stop at the `CPdxLogFileAndLine` call, so their outcome is `Unresolved`, not
-  `Rejected`. Their conditions are owner words with no named-field term, so they are `Unresolved`.
-- The walker forks again on the second test of `+0x48` (`0x100b10b50`): it does not keep the result
-  of the first test, so one alternative of each field has a contradictory condition.
-- The two check paths cover wide token intervals that overlap the field tokens, so the partition
-  check fails. This is the honest result: those paths are alternatives of every field that the
-  inventory does not attach to a field (`an_overlapping_wider_path_withholds_the_storage_of_a_singleton_field`).
-- Atlas credits a value form only for `read` equal to `[Always]`. A field read only after an order
-  check has no such answer until the answer states the order rule.
+- **Order check.** A `b.eq` or `b.ne` on a compare of a word loaded from the owner is an order
+  check when the path has not yet read anything and one side only logs and returns. "Not yet read"
+  (`reads_nothing_yet`): every instruction so far is in the reader, none is a call or a store outside
+  the frame, and no reader idiom has started (stored, converted or copied value, value text, target,
+  emplace). "Only logs and returns" (`logs_and_returns`): every way from the side runs only register
+  moves and arithmetic, loads, compares, stores to `[sp]` or `[sp, #imm]` and branches inside the reader
+  (`diagnostic_side_instruction`, an allow list), calls only functions that change no script state
+  (`readers::changes_no_script_state`), calls at least one diagnostic writer (`readers::DIAGNOSTICS`;
+  a location helper or a string release alone is not one), and reaches its own `ret`, within 128
+  instructions over all ways, so a loop fails. The walk takes
+  the other side and does not fork, so the key keeps no condition for the check. A side that writes
+  the owner, calls anything else, or branches out of the function is no order check, and the walk
+  forks as before (`a_rejecting_side_that_writes_the_owner_is_no_order_check`).
+- **Settled comparison.** Each path keeps the outcome of the owner-word comparisons that it has
+  taken, as `EqualsAny(word, pivots)`. Frame words and other values are never settled. A later `b.eq` or `b.ne` on the same comparison takes the
+  recorded side. A call or a store outside the frame clears the record, because either can change the
+  word; a compound reader call that the walk follows (such as a string emplace) clears it too.
+- **Key order note.** The registry answer states each order check as an `OutsideMethod` gap that
+  starts with "Key order:": the named keys that some path reads without crossing the check, and the
+  field whose storage is the tested word, when exactly one field stores it. Atlas does not block on it; it is the only
+  place that the order is stated, since the field read conditions leave it out.
+
+Two related rules, in the same version: a call that changes no script state after the path called a
+converter with the value token (other than a `CReader::Report*` call) does not stop the path, so the
+converted value's store is followed; and the field read normalization collapses complementary
+alternatives whose outcomes are the same `Stored` join with a destination, as it already did for
+`Joined` and `Rejected` (`collapse_equivalent_branches` in `src/session/fields.rs`).
+
+Result on M452: 41 of 42 fields read `[Always]` and 38 have a known reader. The answer has two key
+order notes: "no key other than `user_scope` until `user_scope` is read" (`0x100b10b14`) and "no key
+other than `scope`, `user_scope` until an earlier key sets the word that it tests" (`0x100b10b6c`).
+The second check is reached only after `+0x48` is set: the first `user_scope` skips it, so the note
+allows `user_scope`, but a repeated `user_scope` crosses it and is rejected until `scope` is read.
+`scope` stores into `+0x40` through checks that the walk does not join, so the note names no field.
+The command grammars change too: 189 commands lose a contradictory `All[Unresolved, Unresolved]`
+alternative of the shared `Target` reader (the settled second test), and `kill_leader.ability` gains
+one `Unresolved` alternative that now stops at `keyword-store` instead of at the diagnostic.
+
+Limits, each with the condition for a change:
+
+- Only `b.eq`/`b.ne` on a value compare are settled. A `cbz`, `tbz` or ordered compare of the same word
+  forks again. Extend `settled_comparison` when a reader repeats such a test.
+- The note names the key order, not which values are accepted: the tested pivot (`0x200000`, unread)
+  is not part of the answer. Add it when Atlas needs to name the unread state.
+- A key is held by the check only when every path of it crosses the check; a key with one path
+  that skips it is allowed, although its other paths are rejected in the state that reaches the check
+  (the repeated `user_scope` above). The note does not state that state. Add it when Atlas needs the
+  order of a repeated key.
+- Only the root reader of an owner walk follows order checks: the registry root, its collection
+  objects and its embedded objects (`DispatchInput::follows_order_checks`). An order check inside a
+  collection or embedded object is a note on the parent field. An inherited, delegated or wrapped
+  child reader starts with a fresh state that does not show its caller's reads, so it forks at the
+  check; so do member readers of a field and command grammars, whose answers have no place for the
+  note. None of them has an order check on M452. Carry the caller's read state into the child when
+  one does.
+- Settled comparisons apply in command walks too, so the 189 command answers above change with
+  `command-grammar/v24`.
 
 Other stops in the same reader: the `0x31a` and `0x451f` paths store the value token's id at
 an owner offset and return (`ldr w8, [x20, #0x278]`, `str`, `ret`); token `0x4662` stores a Boolean
