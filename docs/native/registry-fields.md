@@ -112,12 +112,14 @@ lookups, so the diff drops only members that match their serde defaults.
   idiom reads 14 members of every event kind (`fire_only_once`, `hide_window`, `is_test_event`,
   …) and `status` of four triggers (`can_colonize`, …).
 - **The stored value token.** A reader that loads the value token's id from the reader
-  (`ldr w8, [x1, #0x278]` on M452) and stores it to an owner member reads `Keyword/Replace`
+  (`ldr w8, [x1, #0x278]` on M452, with the value token bound) and stores the whole word
+  (`str w…`) to an owner member reads `Keyword/Replace`
   (`value token id`, `dispatch.rs`). Any token is accepted; which tokens mean something is known only
   where the member is used, so the field's domain stays `Unknown` and the keyword-domain gap stays.
   Atlas then credits the field and its cardinality but not its value form. When the same path then
-  converts the value token (`TokenToEnum`, `Get…FromToken`), the converted keyword is the field's
-  reader instead (`has_envoy_task.task` stores both). On M452 this adds `attitudes.type`,
+  converts the value token (`TokenToEnum`, `Get…FromToken`) and stores the converted value, the
+  converted keyword is the field's reader instead (`has_envoy_task.task` stores both); when the
+  converted value is not stored, the id store stays the read. On M452 this adds `attitudes.type`,
   `diplomatic_actions.action_type` and `envoy_assignment`, `scripted_actions.category` and
   `uses_vfx_type`, the leader commands' `sub_type`, the galaxy-setup commands' `setting`, and a
   keyword alternative to the `side` of `join_war_on_side` and `is_war_participant`.

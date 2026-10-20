@@ -843,7 +843,10 @@ fn apply(
                     };
                     state.stored = Some((join, at, width));
                 }
-                if state.value(operand) == Some(value_token_word(input.key_readers)) {
+                if input.key_readers.value_token != 0
+                    && width == 4
+                    && state.value(operand) == Some(value_token_word(input.key_readers))
+                {
                     let join = ReaderJoin::Stored {
                         callee: VALUE_TOKEN_STORE.into(),
                         kind: crate::ReaderKind::Keyword,
@@ -1197,7 +1200,8 @@ fn explore_member_with_wrapped_owner(
                 declined.push(state.finish(row.address, PathOutcome::Rejected));
                 break;
             }
-            if row.operation == "ret" && state.converted.is_some() {
+            // A converted value that is never stored leaves an earlier id store as the read.
+            if row.operation == "ret" && state.converted.is_some() && state.stored.is_none() {
                 let unstored = stop("keyword-store", Obstacle::Unsupported);
                 leaves.push(state.finish(row.address, PathOutcome::Gap(unstored)));
                 break;
@@ -1358,8 +1362,8 @@ fn explore_member_with_wrapped_owner(
                     }
                     break;
                 }
-                // A converter of the value token supersedes a store of its id: the converted
-                // keyword is the field's value.
+                // A converter of the value token goes on past a store of its id. The id store
+                // stays the path's read until the converted value is stored.
                 if row.operation == "bl"
                     && let Some(target) = target
                     && state.stored.as_ref().is_none_or(stores_value_token_id)
@@ -1369,7 +1373,6 @@ fn explore_member_with_wrapped_owner(
                     state.assign("x0", Some(Value::Converted(target)));
                     state.converted = Some(target);
                     state.keyword_conditions = Some(state.conditions.len());
-                    state.stored = None;
                     continue;
                 }
                 let harmless = target
@@ -2860,18 +2863,30 @@ mod tests {
             str w8, [x0, #0x20];
             ret
         ));
-        let readers = super::super::KeyReaders {
+        let byte_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1, #0x278]; // the value token
+            strb w8, [x0, #0x20]; // only its low byte
+            ret
+        ));
+        let unbound_store = functions(arm64!(at 0x1000;
+            ldr w8, [x1]; // the word of an unbound value token
+            str w8, [x0, #0x20];
+            ret
+        ));
+        let bound = super::super::KeyReaders {
             value_token: 0x278,
             ..Default::default()
         };
-        let outcome = |functions| {
+        let unbound = super::super::KeyReaders::default();
+        let outcome_with = |functions, readers| {
             let symbol_index = SymbolIndex::new(&symbols);
             let input =
-                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, &readers);
+                DispatchInput::command(functions, &symbols, &symbol_index, &[], 0x38, readers);
             let (paths, _) = explore_member(&input, root);
 
             paths[0].outcome.clone()
         };
+        let outcome = |functions| outcome_with(functions, &bound);
 
         assert!(matches!(
             outcome(&token_store),
@@ -2883,6 +2898,11 @@ mod tests {
             })
         ));
         assert!(matches!(outcome(&other_word_store), PathOutcome::Gap(_)));
+        assert!(matches!(outcome(&byte_store), PathOutcome::Gap(_)));
+        assert!(matches!(
+            outcome_with(&unbound_store, &unbound),
+            PathOutcome::Gap(_)
+        ));
     }
 
     #[test]
@@ -2898,35 +2918,46 @@ mod tests {
                 address: 0x2000,
             },
         ];
-        let functions = BTreeMap::from([(
-            0x1000,
-            Function {
-                address: 0x1000,
-                code: arm64!(at 0x1000;
-                    mov x19, x0;
-                    ldr w8, [x1, #0x278]; // the value token
-                    str w8, [x19, #0x24]; // its id
-                    str w8, [sp, #0x10];
-                    add x0, sp, #0x10;
-                    bl extern 0x2000; // the converter
-                    str w0, [x19, #0x20]; // the converted keyword
-                    ret
-                ),
-            },
-        )]);
+        let functions = |stores_converted: bool| {
+            let mut code = crate::engine::analysis::assembler::Arm64::at(0x1000);
+            arm64!(code;
+                mov x19, x0;
+                ldr w8, [x1, #0x278]; // the value token
+                str w8, [x19, #0x24]; // its id
+                str w8, [sp, #0x10];
+                add x0, sp, #0x10;
+                bl extern 0x2000 // the converter
+            );
+            if stores_converted {
+                arm64!(code; str w0, [x19, #0x20]); // the converted keyword
+            }
+            arm64!(code; ret);
+
+            BTreeMap::from([(
+                0x1000,
+                Function {
+                    address: 0x1000,
+                    code: code.bytes(),
+                },
+            )])
+        };
         let readers = super::super::KeyReaders {
             value_token: 0x278,
             ..Default::default()
         };
         let symbol_index = SymbolIndex::new(&symbols);
-        let input =
-            DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+        let outcome = |stores_converted| {
+            let functions = functions(stores_converted);
+            let input =
+                DispatchInput::command(&functions, &symbols, &symbol_index, &[], 0x38, &readers);
+            let (paths, _) = explore_member(&input, root);
 
-        let (paths, _) = explore_member(&input, root);
+            paths[0].outcome.clone()
+        };
 
         assert!(
             matches!(
-                &paths[0].outcome,
+                &outcome(true),
                 PathOutcome::Reader(ReaderJoin::Stored {
                     callee,
                     kind: crate::ReaderKind::Keyword,
@@ -2935,7 +2966,19 @@ mod tests {
                 }) if callee.contains("TokenToEnum")
             ),
             "{:?}",
-            paths[0].outcome
+            outcome(true)
+        );
+        assert!(
+            matches!(
+                &outcome(false),
+                PathOutcome::Reader(ReaderJoin::Stored {
+                    callee,
+                    destination: Some(0x24),
+                    ..
+                }) if callee == VALUE_TOKEN_STORE
+            ),
+            "the id store stands when the converted value is not stored: {:?}",
+            outcome(false)
         );
     }
 
