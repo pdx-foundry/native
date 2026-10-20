@@ -22,8 +22,8 @@
 //!   every path, or keeps it in one owner pointer. So are the keys of an embedded object that
 //!   every path of a field reads, when the constructors agree on its reader and that reader has
 //!   no block family. Each such object is an owner that the same analysis walks, with its
-//!   receiver in the coordinates of the allocation that holds it, to four owners below the root;
-//!   the bound and an owner that holds itself are gaps.
+//!   receiver in the coordinates of the allocation that holds it, for the root and three owners
+//!   below it; a fourth keeps its keys, and it and an owner that holds itself are gaps.
 //! - Direct const owner methods supply local Boolean storage selections separately from loader
 //!   conditions. Other signatures do not establish the original receiver and remain unresolved.
 //!   Collection provenance is joined across loops; the enclosing selection context is unresolved.
@@ -149,7 +149,8 @@ pub fn analyze(input: &FieldInput) -> Result<RegistryFieldResult, InputError> {
     Ok(result)
 }
 
-/// How many owners deep the method analyzes: a root, then embedded and inserted owners.
+/// How many owners deep the method analyzes, the root included: an owner this deep below the
+/// root keeps its keys, and the passes that reach deeper owners leave a gap.
 pub(crate) const OWNER_DEPTH: usize = 4;
 
 /// What a member reader receives in `x0`, in the coordinates of the allocation that holds the
