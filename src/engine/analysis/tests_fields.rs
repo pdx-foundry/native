@@ -1727,6 +1727,72 @@ fn a_bit_field_read_through_a_constant_index_reaches_its_reader_call() {
 }
 
 #[test]
+fn a_top_bit_read_by_a_right_shift_reaches_its_reader_call() {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        ldrb w8, [x0, #0x20]; // the byte that holds the bit
+        lsr w8, w8, #7;
+        strb w8, [sp, #0x10];
+        mov x9, x1; // the reader
+        add x1, sp, #0x10; // a temporary, not the member
+        mov x0, x9;
+        bl extern 0x4000 // CReader::Read
+    );
+    let result = derive(input);
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+}
+
+#[test]
+fn an_ordered_compare_of_an_owner_word_keeps_both_sides_under_an_unresolved_condition() {
+    let result = derive(ordered_compare_of(arm64!(at 0x1010; ldr w8, [x0, #0x30])));
+
+    assert_eq!(result.fields.len(), 1, "{:?}", result.gaps);
+    let read: Vec<_> = result
+        .paths
+        .iter()
+        .filter(|path| path.domain == [7, 7])
+        .collect();
+    assert_eq!(read.len(), 2);
+    assert!(read.iter().all(|path| {
+        matches!(path.outcome, PathOutcome::Reader(ReaderJoin::Joined { .. }))
+            && path
+                .conditions
+                .iter()
+                .any(|condition| condition.value.is_none())
+    }));
+    // A word that is not the owner's stays a stop.
+    let result = derive(ordered_compare_of(arm64!(at 0x1010; ldr w8, [x1, #0x30])));
+    assert!(result.fields.is_empty(), "{:?}", result.fields);
+}
+
+/// Token 7 compares the word that `load` at `0x1010` loads with 1, branches on `b.lt` around a
+/// diagnostic, then reads an owner member.
+fn ordered_compare_of(load: Vec<u8>) -> FieldInput {
+    let mut input = fixture();
+    input.functions[0].code = arm64!(at 0x1000;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        ldr w8, [x0, #0x30]; // a count in the owner
+        cmp w8, #1;
+        b.lt extern 0x101c;
+        nop; // a diagnostic when the count is positive
+        add x8, x0, #0x40; // the member
+        mov x0, x1;
+        mov x1, x8;
+        b extern 0x4000 // CReader::Read
+    );
+    replace(&mut input, 0x1010, load);
+    input
+}
+
+#[test]
 fn a_default_case_can_only_reject_and_other_shared_cases_are_aliases() {
     // Tokens outside 100 to 102 read the member at 0x1030, as an inherited reader would, and
     // so do tokens 100 and 101: that case is the default.

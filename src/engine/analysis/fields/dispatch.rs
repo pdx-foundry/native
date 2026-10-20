@@ -945,9 +945,9 @@ fn apply(
                 state.assign(base, updated);
             }
         }
-        // Bit-field reads, ORs, half-word moves and selects do not set flags; their result is
-        // not followed.
-        ("ubfx" | "and" | "orr" | "movk" | "csel", [destination, ..]) => {
+        // Bit-field reads, right shifts, ORs, half-word moves, selects and floating-point moves do
+        // not set flags; their result is not followed.
+        ("ubfx" | "lsr" | "and" | "orr" | "movk" | "csel" | "fmov", [destination, ..]) => {
             state.assign(destination, None)
         }
         ("cset", [destination, "eq"]) if literal_token_test(state, input.key_readers).is_some() => {
@@ -2463,6 +2463,27 @@ fn values_branch(
             Unresolved::at("branch-target", row.address, entry, Obstacle::OutsideCode),
         );
     };
+    // An ordered compare of an owner word, such as a count, keeps both sides under a condition
+    // that the walk does not resolve.
+    if !matches!(condition, "eq" | "ne") && opposite(condition).is_some() && is_owner_word(tested) {
+        let continued = [(target, false), (state.pc, true)]
+            .into_iter()
+            .map(|(pc, zero)| {
+                let mut next = state.clone();
+                next.pc = pc;
+                next.conditions.push(Condition {
+                    at: row.address,
+                    value: None,
+                    zero,
+                });
+                next
+            })
+            .collect();
+        return Branching {
+            continued,
+            ..Branching::default()
+        };
+    }
     if !matches!(condition, "eq" | "ne") {
         return Branching::gap(
             state,
