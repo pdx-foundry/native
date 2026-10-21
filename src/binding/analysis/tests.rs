@@ -2226,7 +2226,25 @@ fn m452_schedule_rows_outside_the_template_method_are_custom_loader_candidates()
         owners[&("CSongDatabase".to_owned(), "music".to_owned())],
         LoaderOwner::Several(vec!["CMeanTimeToHappen".into(), "CSong".into()])
     );
-    assert_eq!(owners.len(), 31);
+    // The loader enumerates the text of a `CString` that it built on its stack.
+    assert_eq!(
+        directory("CSystemInitializerDataBase"),
+        named("common/solar_system_initializers")
+    );
+    assert_eq!(directory("CMessageSystem"), named("common/message_types"));
+    assert_eq!(
+        directory("CScriptableLocalizationDatabase"),
+        named("common/scripted_loc")
+    );
+    assert_eq!(owner("CSystemInitializerDataBase"), "CSystemInitializer");
+    assert_eq!(owner("CMessageSystem"), "CMessageType");
+    assert_eq!(directory("CPingMapDatabase"), named("gfx/pingmap"));
+    assert_eq!(owner("CPingMapDatabase"), "CPingMapType");
+    assert_eq!(
+        owner("CScriptableLocalizationDatabase"),
+        "CScriptableLocalization"
+    );
+    assert_eq!(owners.len(), 36);
 }
 
 #[test]

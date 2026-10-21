@@ -11,7 +11,7 @@ check a method in one task.
 
 | Operation | Source stamp | Modules | Knowledge section |
 | --- | --- | --- | --- |
-| `Native::registries` | `registry-directories/v8` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
+| `Native::registries` | `registry-directories/v9` | `discovery.rs`, `discovery/schedule.rs`, `directories.rs` | [Registry candidates and owner joins](registry-fields.md#registry-scheduling-and-owner-joins) |
 | `Native::registry_fields` | `registry-fields/v73` | `fields.rs`, `fields/control_flow.rs`, `fields/dispatch.rs`, `fields/inventory.rs`, `fields/member.rs`, `fields/nested.rs`, `fields/persistent.rs`, `fields/uses.rs`, `fields/records.rs`, `fields/tokens.rs`, `readers.rs`, `src/binding/binary/fields.rs`, `src/session/loader_kinds.rs` | [Field sweep and stops](registry-fields.md#current-sweep), [event kinds](registry-fields.md#event-kinds) |
 | `Field.reference` in `registry_fields` and `command_grammar` | `registry-fields/v73`, `command-grammar/v31` | `references.rs`, `references/initialization.rs`, `references/shapes.rs`, `src/binding/binary/references.rs` | [References and dynamic names](references.md) |
 | `Reader.numeric` in fields and command grammar | `registry-fields/v73`, `command-grammar/v31` | `numeric.rs`, `numeric/lexer.rs`, `numeric/modifier.rs`, `src/binding/binary/numeric.rs` | [Numeric conversion](numeric-conversion.md), [text lexer](text-lexer.md) |
@@ -36,7 +36,7 @@ check a method in one task.
 | `Native::modifier_category_keys` | `modifier-category-keys/v1` | `category_keys.rs`, `src/binding/binary/language.rs`, `src/session/language.rs` | [Script category keys](modifier-masks.md#script-category-keys) |
 | `Native::modifier_nodes` | `modifier-nodes/v1` | `modifier_nodes.rs`, `src/binding/binary/modifier_nodes.rs`, `src/session/modifier_nodes.rs` | [Modifier masks](modifier-masks.md) |
 | `Native::script_expansions` | `script-expansions/v1` | `expansions.rs`, `directories.rs`, `src/binding/binary/expansions.rs`, `src/session/expansions.rs` | [Script expansion](script-expansion.md) |
-| `Native::loader_rules` | `loader-rules/v9` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
+| `Native::loader_rules` | `loader-rules/v10` | `loader_rules.rs`, `directories.rs`, `src/binding/binary/definition_names.rs`, `src/binding/binary/references.rs`, `src/binding/analysis.rs`, `src/session/loader_rules.rs` | [Loader rules](loader-rules.md) |
 | `Native::derived_names` | `derived-names/v5` | `names.rs`, `strings.rs`, `src/binding/binary/names.rs`, `src/session/names.rs` | [Derived names](derived-names.md) |
 | `Game::loaded_modifiers` | `loaded-modifiers/v1` | `modifier_table.rs`, `src/engine/operations/loaded_modifiers.rs`, `src/session/loaded_modifiers.rs` | [Loaded modifier table](modifier-families.md#the-loaded-modifier-table) |
 
@@ -146,6 +146,14 @@ The listed registries go from 188 to 194 and `UnnamedRegistries` from 12 to 10 r
 `common/graphical_culture` has an owner; the other five are `Unsupported` with the reason, so
 Atlas earns no field claim from them until a method follows the built object to its read call
 or reads a jump-table root switch.
+
+The stack-`CString` loaders (2026-10-20) name `common/solar_system_initializers`,
+`common/message_types`, `common/scripted_loc`, `gfx/pingmap` and `gfx/projectiles`
+([custom-loader names](registry-fields.md#custom-loader-names)). The listed registries go from
+194 to 199 and `UnnamedRegistries` from 10 to 5 rows. The first four have an owner
+(`CSystemInitializer`, 21 fields; `CMessageType`, 15; `CScriptableLocalization`, 5;
+`CPingMapType`); `gfx/projectiles` is `Unsupported` (no owner). `--diff` names only the new
+registries.
 
 ### Accepted limits (SDK-819)
 

@@ -1,6 +1,6 @@
 # Loader rules
 
-`Native::loader_rules(registry)` (`loader-rules/v9`) states how a registry's loader selects its
+`Native::loader_rules(registry)` (`loader-rules/v10`) states how a registry's loader selects its
 files (the file-name filters and the subdirectories that it reads), what it does with a later
 definition of a key that it holds, and how it names each form of definition. The folder is the
 registry name. The file order and the mod-over-vanilla rule are stated once on this page, for the
@@ -336,7 +336,11 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     and hashes it for `GetNameList`; `CGfxCultureDatabase::Init` (`0x100846770`) builds
     `CGfxCulture(CString const&, int)` from the root key into the map that `GetCulture` searches;
     `CGameRules::InitFromFile` (`0x1006c74e8`) compares each root key with its fixed rules and
-    reports any other key.
+    reports any other key. `CSystemInitializerDataBase::InitFromFile` (`0x100aac8d8`) hashes the
+    root key, and for a new key builds `CSystemInitializer(CString const&)` from it
+    (`0x100aaca40`), which `FindInitializer` searches; the root key `random_list` (`0x2714`) goes
+    to `ReadRandomList` instead, so the rule has that obstacle and states the root-key form for the
+    other statements.
   - One root key, named by a field: `CShipBehaviorDatabase` takes only `ship_behavior`
     (`0x311c`); `CShipBehaviorReader::CreateAndRead` (`0x1011b79b4`) reads `name` into `+8`, which
     `AddBehavior` hashes and compares. `CSpecialProjectDatabase::Init` (`0x100b9ddec`) takes only
@@ -354,7 +358,13 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     `CSongDatabase::InitFromFile` (`0x1009890dc`) takes only `song` (`0x2dd4`) and builds a
     `CSong`, named by its `name` field. `CRandomNameDatabase::ReadRandomNames()` (`0x100ac0dec`)
     names each `*_name_parts_list` statement by its `key` field, which `GetPartFromList` compares;
-    a `*_name_format` statement has no name.
+    a `*_name_format` statement has no name. `CMessageSystem::ReadMessageTypes`
+    (`0x100940d64`) takes only `message_type` (`0x2d99`), reads a stack `CMessageType` through
+    `CPersistent::Read` and inserts it into its map by the member at `+8`, which
+    `CMessageType::ReadMember` reads from `key` (`0xdc`). `CScriptableLocalizationDatabase::InitFromFile`
+    (`0x100b0dec4`) builds a `CScriptableLocalization` for every root statement, whatever its key,
+    and maps it by `+0x210`, which `CScriptableLocalization::ReadMember` reads from `name` (`0x1b`):
+    `Root` / `Field("name")`.
   - No name: `CColorsDatabase::Init` (`0x1012fb45c`) reads six fixed keys (`species`, `country`,
     …) of anonymous `rgb`/`hsv` entries, read by index. `CStartScreenMessageDatabase::InitInstance`
     (`0x100c5db64`) reads `part` blocks into an array by their `location`; `localization` is text
@@ -384,6 +394,9 @@ Facts from `c621723d…` (M452), read with `examples/inspect`.
     apart. `CRandomNameDatabase::FillDatabase()` (`0x100ac03e0`, `common/random_names/base`) reads
     each fixed root key's names into a list; under `custom_star_names` and `custom_planet_names`
     each list is keyed by its nested key (`treasure_star_names`).
+    `CProjectileGfxDatabase::ReadFile` (`0x1018f5200`) reads each file of `gfx/projectiles` as the
+    database object; its `ReadMember` (`0x1018f5524`) builds a definition for each of three root
+    keys, and no lookup by name was read.
   - Repeated keys, seen while reading these loaders and not in the answer: `COnActionDatabase`,
     `CPlanetClassDatabase` and `CEmpireDesignDatabase` merge a later definition into the earlier
     one; `CFallenEmpiresDatabase` replaces it; `COpinionModifierDatabase` adds a second item that

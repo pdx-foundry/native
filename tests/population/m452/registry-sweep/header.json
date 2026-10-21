@@ -2,57 +2,57 @@
   "build": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
   "relationships": {
     "fields": {
-      "complete": 144,
-      "denominator": 194,
-      "partial": 41,
-      "rate": 0.7423,
-      "unsupported": 9
-    },
-    "naming_rules": {
-      "complete": 60,
-      "denominator": 194,
-      "partial": 124,
-      "rate": 0.3093,
+      "complete": 147,
+      "denominator": 199,
+      "partial": 42,
+      "rate": 0.7387,
       "unsupported": 10
     },
+    "naming_rules": {
+      "complete": 61,
+      "denominator": 199,
+      "partial": 127,
+      "rate": 0.3065,
+      "unsupported": 11
+    },
     "numerics": {
-      "complete": 270,
-      "denominator": 592,
-      "rate": 0.4561,
-      "undetermined": 322
+      "complete": 280,
+      "denominator": 612,
+      "rate": 0.4575,
+      "undetermined": 332
     },
     "reader_kinds": {
-      "complete": 1940,
-      "denominator": 2389,
-      "failed": 317,
-      "partial": 132,
-      "rate": 0.8121
+      "complete": 1974,
+      "denominator": 2435,
+      "failed": 327,
+      "partial": 134,
+      "rate": 0.8107
     },
     "references": {
       "complete": 40,
-      "denominator": 362,
-      "rate": 0.1105,
-      "undetermined": 322
+      "denominator": 372,
+      "rate": 0.1075,
+      "undetermined": 332
     },
     "scope_context": {
-      "complete": 1704,
-      "denominator": 2389,
-      "failed": 461,
-      "partial": 224,
-      "rate": 0.7133
+      "complete": 1736,
+      "denominator": 2435,
+      "failed": 474,
+      "partial": 225,
+      "rate": 0.7129
     },
     "shapes_and_conditions": {
-      "complete": 1807,
-      "denominator": 2389,
-      "failed": 299,
-      "partial": 283,
-      "rate": 0.7564
+      "complete": 1840,
+      "denominator": 2435,
+      "failed": 309,
+      "partial": 286,
+      "rate": 0.7556
     },
     "weights": {
       "complete": 104,
-      "denominator": 623,
-      "rate": 0.1669,
-      "undetermined": 519
+      "denominator": 636,
+      "rate": 0.1635,
+      "undetermined": 532
     }
   }
 }

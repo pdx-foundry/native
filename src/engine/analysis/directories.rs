@@ -40,6 +40,12 @@
 //! build that member from. Two assumptions hold on M452 and are not proved: the enumerating
 //! function is a member function, and the object that `CreateInstance()` allocates is the
 //! instance (it stores it to `_pInstance`).
+//!
+//! The directory can also be the text of a `CString` that the loader builds on its stack from a
+//! literal, or from the literal that a pointer slot holds, and passes through the short-string
+//! select in the same block ([`built_text_select`]). The block scan keeps a value across a forward
+//! branch when every path into the block holds it, so a frame address set in the prologue
+//! survives a branch that skips one store.
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode::{
@@ -48,7 +54,7 @@ use super::decode::{
 };
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "registry-directories/v8";
+pub const METHOD: &str = "registry-directories/v9";
 
 /// Base constructor whose `CString` argument is the content directory.
 pub const BASE_CONSTRUCTOR: &str =
@@ -120,6 +126,11 @@ pub(super) enum Value {
     Object(u64),
     /// The text of the instance's `CString` member at this offset.
     MemberText(u64),
+    /// The text of a `CString` that the scan saw built from the literal at this address.
+    Text(u64),
+    /// The text of a `CString` that the scan saw built from the literal that the pointer slot at
+    /// this address holds.
+    SlotText(u64),
 }
 
 /// What the scan knows of the database instance.
@@ -251,20 +262,40 @@ fn scan(function: &Constructor, anchors: &Anchors, instance: Instance) -> Scan {
 /// on two paths, then sets the other arguments after they join.
 ///
 /// `x0` at the entry is taken as the database instance, since a loader's enumerating functions
-/// are members of it. The one join that keeps a value is a [`member_text_select`]: its block
-/// starts with `x0` holding the text of that member.
+/// are members of it. A block that only forward branches and the word before it enter starts with
+/// the values that every one of those paths holds; a block that a backward branch enters, and
+/// every block of a function with a register jump, starts with every register unknown. The one
+/// join that keeps a value no path holds is a [`member_text_select`]: its block starts with `x0`
+/// holding the text of that member. A [`built_text_select`] gives `x0` the text of a `CString`
+/// that the same block built from a literal.
 pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Vec<EnumerationCall> {
     let words = function.code.as_chunks::<4>().0;
     let starts = block_starts(words, function.address);
     let incoming = incoming_branches(words, function.address);
+    let unmerged = unmerged_starts(words, function.address);
+    // A register jump can enter any word, so every word starts a block with nothing known.
+    let register_jump = jumps_through_register(words);
+    let mut entering: BTreeMap<u64, [Value; 32]> = BTreeMap::new();
     let mut registers = [Value::Unknown; 32];
     registers[0] = Value::Object(0);
+    let mut falls_through = true;
     let mut selected_text = None;
+    let mut built: Vec<(Value, Value)> = Vec::new();
+    let mut pending_text = None;
     let mut calls = Vec::new();
     for (index, word) in words.iter().enumerate() {
         let address = function.address + index as u64 * 4;
-        if starts.contains(&address) {
-            registers.fill(Value::Unknown);
+        if starts.contains(&address) || register_jump {
+            let branched = entering.remove(&address);
+            registers = match (falls_through, branched) {
+                _ if unmerged.contains(&address) => [Value::Unknown; 32],
+                (true, Some(branched)) => agreed(&registers, &branched),
+                (true, None) => registers,
+                (false, Some(branched)) => branched,
+                (false, None) => [Value::Unknown; 32],
+            };
+            built.clear();
+            pending_text = None;
             if let Some((join, offset)) = selected_text.take()
                 && join == address
             {
@@ -277,6 +308,12 @@ pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Ve
         }
 
         let word = u32::from_le_bytes(*word);
+        falls_through = !matches!(unconditional_branch(word), Some(Transfer::Stop));
+
+        if let Some(target) = forward_branch_target(word, address) {
+            let state = entering.entry(target).or_insert(registers);
+            *state = agreed(state, &registers);
+        }
 
         if let Some(target) = branch_with_link(word, address) {
             if anchors.file_enumerations.contains(&target) {
@@ -288,14 +325,264 @@ pub(super) fn enumeration_calls(function: &Constructor, anchors: &Anchors) -> Ve
                     depth: registers[4],
                 });
             }
+
+            // A call may change any object that it can reach, so only the object that a literal
+            // `CString` constructor builds stays known.
+            built.clear();
+            let text = match registers[1] {
+                Value::Constant(literal) => Some(Value::Text(literal)),
+                Value::Slot(slot) => Some(Value::SlotText(slot)),
+                _ => None,
+            };
+            if anchors.string_constructors.contains(&target)
+                && let (Value::Stack(_), Some(text)) = (registers[0], text)
+            {
+                built.push((registers[0], text));
+            }
+
             registers[..=18].fill(Value::Unknown);
         } else if unconditional_branch(word).is_some() {
+            // An indirect call may change any object, as a direct one may.
+            built.clear();
             registers[..=18].fill(Value::Unknown);
-        } else {
+        } else if let Some(text) =
+            built_text_select(&words[index..], address, &registers, &built, &incoming)
+        {
             step(&mut registers, word, address);
+            pending_text = Some((address + 12, text));
+        } else {
+            match stored_range(word, &registers) {
+                Stored::Nothing => {}
+                Stored::Unknown => built.clear(),
+                Stored::Stack(start, width) => built.retain(|(object, _)| {
+                    let Value::Stack(at) = *object else {
+                        return false;
+                    };
+                    let (object_end, end) =
+                        (at.wrapping_add(STRING_SIZE), start.wrapping_add(width));
+                    end <= at || object_end <= start
+                }),
+            }
+            step(&mut registers, word, address);
+        }
+
+        if let Some((at, text)) = pending_text
+            && at == address
+        {
+            registers[0] = text;
+            pending_text = None;
         }
     }
     calls
+}
+
+/// The values that two paths into one block both hold.
+fn agreed(first: &[Value; 32], second: &[Value; 32]) -> [Value; 32] {
+    std::array::from_fn(|register| match first[register] == second[register] {
+        true => first[register],
+        false => Value::Unknown,
+    })
+}
+
+/// The target of a conditional branch or `b` word at `address` that lies after it.
+fn forward_branch_target(word: u32, address: u64) -> Option<u64> {
+    let jump = (word & 0xfc00_0000 == 0x1400_0000)
+        .then(|| call_or_jump_target(word, address))
+        .flatten();
+
+    conditional_branch_target(word, address)
+        .or(jump)
+        .filter(|target| *target > address)
+}
+
+/// Whether `words` hold a register jump (`br`), whose targets the scan does not know.
+fn jumps_through_register(words: &[[u8; 4]]) -> bool {
+    words
+        .iter()
+        .any(|word| u32::from_le_bytes(*word) & 0xffff_fc1f == 0xd61f_0000)
+}
+
+/// The size of a `CString`: its text pointer or inline text, and the flag byte at `+0x17`.
+const STRING_SIZE: u64 = 0x18;
+
+/// Where one word writes memory.
+enum Stored {
+    /// The word writes no memory.
+    Nothing,
+    /// The word writes memory at an address that the scan does not know.
+    Unknown,
+    /// The word writes this many bytes from this stack address.
+    Stack(u64, u64),
+}
+
+/// Where `word` writes memory, for a store of general registers with an immediate offset from a
+/// stack address. Any other word of the load and store class that is not a load is an unknown
+/// write.
+fn stored_range(word: u32, registers: &[Value; 32]) -> Stored {
+    if !writes_memory(word) {
+        return Stored::Nothing;
+    }
+
+    let base = (word >> 5 & 31) as usize;
+    let size = u64::from(word >> 30);
+    let extent = if word & 0x3fc0_0000 == 0x3900_0000 {
+        // `str` with an unsigned scaled offset.
+        Some((i64::from(word >> 10 & 0xfff) << size, 1 << size))
+    } else if word & 0x3fe0_0000 == 0x3800_0000 {
+        // `stur` and the pre- and post-indexed `str`, with a signed 9-bit offset.
+        let offset = i64::from(((word >> 12 & 0x1ff) as i32) << 23 >> 23);
+        let post_indexed = word & 0xc00 == 0x400;
+        Some((if post_indexed { 0 } else { offset }, 1 << size))
+    } else if word & 0x3e40_0000 == 0x2800_0000 {
+        // `stp` of two 32-bit or 64-bit registers.
+        let scale = if word >> 31 == 1 { 8 } else { 4 };
+        let offset = i64::from(((word >> 15 & 0x7f) as i32) << 25 >> 25) * scale;
+        let post_indexed = word >> 23 & 3 == 1;
+        Some((if post_indexed { 0 } else { offset }, 2 * scale as u64))
+    } else {
+        None
+    };
+    let address = match (base, registers[base]) {
+        (31, _) => Some(0),
+        (_, Value::Stack(at)) => Some(at),
+        _ => None,
+    };
+
+    match (extent, address) {
+        (Some((offset, width)), Some(at)) => Stored::Stack(at.wrapping_add_signed(offset), width),
+        _ => Stored::Unknown,
+    }
+}
+
+/// Whether `word` is a store: a load and store class word that is not a load. A register word is
+/// a store when its `opc` is `00` (or `10` for a vector register); a pair or exclusive word when
+/// its `L` bit is clear. Any other word of the class, such as an atomic, counts as a store.
+fn writes_memory(word: u32) -> bool {
+    if word & 0x0a00_0000 != 0x0800_0000 {
+        return false;
+    }
+
+    let opc = word >> 22 & 3;
+    let vector = word & 0x0400_0000 != 0;
+    let register = word & 0x3a00_0000 == 0x3800_0000;
+    let pair = word & 0x3a00_0000 == 0x2800_0000;
+    let exclusive = word & 0x3f00_0000 == 0x0800_0000;
+    let literal = word & 0x3b00_0000 == 0x1800_0000;
+
+    match () {
+        _ if literal => false,
+        _ if register => opc == 0 || (vector && opc == 2),
+        _ if pair || exclusive => word & 0x0040_0000 == 0,
+        _ => true,
+    }
+}
+
+/// The addresses in `words`, which start at `address`, where a block starts with no known value:
+/// each target of a backward branch.
+fn unmerged_starts(words: &[[u8; 4]], address: u64) -> BTreeSet<u64> {
+    words
+        .iter()
+        .enumerate()
+        .filter_map(|(index, word)| {
+            let at = address + index as u64 * 4;
+            let word = u32::from_le_bytes(*word);
+            let jump = (word & 0xfc00_0000 == 0x1400_0000)
+                .then(|| call_or_jump_target(word, at))
+                .flatten();
+
+            conditional_branch_target(word, at)
+                .or(jump)
+                .filter(|target| *target <= at)
+        })
+        .collect()
+}
+
+/// The text of the `CString` in `built` that the short-string select that starts `words`, at
+/// `address`, leaves in `x0`.
+///
+/// The select is `ldrsb wF, [flag]; ldr xP, [pointer]; cmp wF, #0; csel x0, xP, xS, lt`, with
+/// unscaled (`ldursb`, `ldur`) or scaled offsets, where `pointer` and `xS` are the address of
+/// the `CString` and `flag` its byte at `+0x17`: a long text is behind the pointer, a short one
+/// inline. No branch may enter the select after its first word.
+fn built_text_select(
+    words: &[[u8; 4]],
+    address: u64,
+    registers: &[Value; 32],
+    built: &[(Value, Value)],
+    incoming: &BTreeMap<u64, usize>,
+) -> Option<Value> {
+    let [load_flag, load_pointer, compare, select, ..] = words else {
+        return None;
+    };
+    let (flag, flag_base, flag_offset) = signed_byte_load(u32::from_le_bytes(*load_flag))?;
+    let (pointer, pointer_base, pointer_offset) = pointer_load(u32::from_le_bytes(*load_pointer))?;
+    let compares_flag = u32::from_le_bytes(*compare) == 0x7100_001f | (flag as u32) << 5;
+    let (destination, taken, other, condition) = conditional_select(u32::from_le_bytes(*select))?;
+    let location = |base: usize, offset: i64| match (base, registers[base]) {
+        (31, _) => Some(Value::Stack(offset as u64)),
+        (_, Value::Stack(at)) => Some(Value::Stack(at.wrapping_add_signed(offset))),
+        _ => None,
+    };
+    let object = location(pointer_base, pointer_offset)?;
+    let Value::Stack(at) = object else {
+        return None;
+    };
+    // Neither load may overwrite a register that a later word of the select reads.
+    let registers_distinct =
+        flag != pointer && flag != pointer_base && other != flag && other != pointer;
+    let shape = compares_flag
+        && registers_distinct
+        && destination == 0
+        && taken == pointer
+        && condition == LESS_THAN
+        && registers[other] == object
+        && location(flag_base, flag_offset) == Some(Value::Stack(at.wrapping_add(0x17)));
+    let entered_only_at_its_start =
+        (1..4).all(|word| !incoming.contains_key(&(address + word * 4)));
+    let (_, text) = built.iter().find(|(location, _)| *location == object)?;
+
+    (shape && entered_only_at_its_start).then_some(*text)
+}
+
+/// The condition code `lt` of a conditional select.
+const LESS_THAN: u32 = 0b1011;
+
+/// The destination, base register and offset of a 32-bit `ldrsb` with a scaled or an unscaled
+/// immediate offset.
+fn signed_byte_load(word: u32) -> Option<(usize, usize, i64)> {
+    if let Some((destination, base, offset)) = ldrsb_immediate(word) {
+        return Some((destination, base, offset as i64));
+    }
+
+    (word & 0xffe0_0c00 == 0x38c0_0000).then(|| unscaled(word))
+}
+
+/// The destination, base register and offset of a 64-bit `ldr` with a scaled or an unscaled
+/// immediate offset.
+fn pointer_load(word: u32) -> Option<(usize, usize, i64)> {
+    if let Some((destination, base, offset)) = ldr_immediate(word) {
+        return Some((destination, base, offset as i64));
+    }
+
+    (word & 0xffe0_0c00 == 0xf840_0000).then(|| unscaled(word))
+}
+
+/// The destination, base register and signed 9-bit offset of an unscaled load.
+fn unscaled(word: u32) -> (usize, usize, i64) {
+    let offset = i64::from(((word >> 12 & 0x1ff) as i32) << 23 >> 23);
+
+    ((word & 31) as usize, (word >> 5 & 31) as usize, offset)
+}
+
+/// The destination, the register taken when the condition holds, the other register and the
+/// condition of a 64-bit `csel`.
+fn conditional_select(word: u32) -> Option<(usize, usize, usize, u32)> {
+    (word & 0xffe0_0c00 == 0x9a80_0000).then_some((
+        (word & 31) as usize,
+        (word >> 5 & 31) as usize,
+        (word >> 16 & 31) as usize,
+        word >> 12 & 15,
+    ))
 }
 
 /// The addresses in `words`, which start at `address`, where a basic block starts: each target of
@@ -698,6 +985,10 @@ pub fn enumerated_directories(
                     .get(&slot)
                     .and_then(|literal| directory_path(strings, *literal)),
                 Value::MemberText(offset) => members.get(&offset).cloned(),
+                Value::Text(literal) => directory_path(strings, literal),
+                Value::SlotText(slot) => pointers
+                    .get(&slot)
+                    .and_then(|literal| directory_path(strings, *literal)),
                 Value::Unknown | Value::Stack(_) | Value::Object(_) => None,
             };
 
@@ -937,6 +1228,150 @@ mod tests {
             &strings(),
         );
         assert_eq!(constructed, BTreeMap::from([(0, "map/other".into())]));
+    }
+
+    /// A loader that builds a stack `CString` at `x29 - 0x30` from the text that `text` puts in
+    /// `x1`, after `before`, and enumerates it through the short-string select.
+    fn built_text_loader(
+        text: fn(&mut Arm64),
+        before: fn(&mut Arm64),
+        select: fn(&mut Arm64),
+    ) -> Constructor {
+        let mut code = Arm64::at(0x1000);
+        arm64!(code; add x29, sp, #0x40);
+        before(&mut code);
+        text(&mut code);
+        arm64!(code; sub x19, x29, #0x30; sub x0, x29, #0x30);
+        code.call(STRING);
+        select(&mut code);
+        code.call(ENUMERATE);
+
+        function(code.bytes())
+    }
+    fn unscaled_select(code: &mut Arm64) {
+        arm64!(code
+            ; ldursb w8, [x29, #-0x19] // the CString's flag byte at +0x17
+            ; ldur x9, [x29, #-0x30] // its text pointer
+            ; cmp w8, #0
+            ; csel x0, x9, x19, lt
+        );
+    }
+
+    #[test]
+    fn the_text_of_a_stack_string_that_the_loader_builds_names_it() {
+        let named = |loader: Constructor| {
+            loader_directory(
+                &[loader],
+                &BTreeMap::new(),
+                &anchors(),
+                &strings(),
+                &pointers(),
+            )
+        };
+        let named_examples = Directory::Named("common/examples".into());
+        let examples = |code: &mut Arm64| {
+            code.address(1, EXAMPLES);
+        };
+        let slot = |code: &mut Arm64| {
+            code.load(1, SLOT);
+        };
+
+        assert_eq!(
+            named(built_text_loader(slot, |_| {}, unscaled_select)),
+            named_examples
+        );
+
+        assert_eq!(
+            named(built_text_loader(examples, |_| {}, unscaled_select)),
+            named_examples
+        );
+        // A forward branch that skips a store keeps the frame address that both paths hold.
+        let skip = |code: &mut Arm64| arm64!(code; cbz w0, >skip; strb w1, [x2]; skip:);
+        assert_eq!(
+            named(built_text_loader(examples, skip, unscaled_select)),
+            named_examples
+        );
+
+        let other_frame = |code: &mut Arm64| arm64!(code; cbz w0, >skip; add x29, sp, #0x50; skip:);
+        assert_eq!(
+            named(built_text_loader(examples, other_frame, unscaled_select)),
+            Directory::Missing
+        );
+        let loop_back = |code: &mut Arm64| arm64!(code; back: ; cbz w0, <back);
+        assert_eq!(
+            named(built_text_loader(examples, loop_back, unscaled_select)),
+            Directory::Missing
+        );
+        let other_string = |code: &mut Arm64| {
+            arm64!(code
+                ; ldursb w8, [x29, #-0x19] // the CString's flag byte at +0x17
+                ; ldur x9, [x29, #-0x30] // its text pointer
+                ; cmp w8, #0
+                ; csel x0, x9, x20, lt // another register than the CString's address
+            )
+        };
+        assert_eq!(
+            named(built_text_loader(examples, |_| {}, other_string)),
+            Directory::Missing
+        );
+    }
+
+    #[test]
+    fn a_stack_string_that_may_change_before_its_select_names_nothing() {
+        let named = |loader: Constructor| {
+            loader_directory(
+                &[loader],
+                &BTreeMap::new(),
+                &anchors(),
+                &strings(),
+                &pointers(),
+            )
+        };
+        let examples = |code: &mut Arm64| {
+            code.address(1, EXAMPLES);
+        };
+        let overwritten = |code: &mut Arm64| {
+            arm64!(code; stur xzr, [x29, #-0x30]); // a store into the CString's text pointer
+            unscaled_select(code);
+        };
+        let indirect_call = |code: &mut Arm64| {
+            arm64!(code; blr x10); // an unknown callee that may change the CString
+            unscaled_select(code);
+        };
+        let reused_register = |code: &mut Arm64| {
+            arm64!(code
+                ; ldursb w8, [x29, #-0x19] // the CString's flag byte at +0x17
+                ; ldur x8, [x29, #-0x30] // its text pointer, over the flag
+                ; cmp w8, #0
+                ; csel x0, x8, x19, lt
+            );
+        };
+        let register_jump = |code: &mut Arm64| {
+            arm64!(code; cbz w0, >skip; br x10; skip:); // a jump that may enter any word
+        };
+        let away_store = |code: &mut Arm64| {
+            arm64!(code; stur xzr, [x29, #-0x40]); // a store below the CString
+            unscaled_select(code);
+        };
+
+        assert_eq!(
+            named(built_text_loader(examples, |_| {}, away_store)),
+            Directory::Named("common/examples".into())
+        );
+        type Emit = fn(&mut Arm64);
+        let nothing: Emit = |_| {};
+        let cases: [(Emit, Emit); 4] = [
+            (nothing, overwritten),
+            (nothing, indirect_call),
+            (nothing, reused_register),
+            (register_jump, unscaled_select),
+        ];
+        for (before, select) in cases {
+            assert_eq!(
+                named(built_text_loader(examples, before, select)),
+                Directory::Missing
+            );
+        }
     }
 
     #[test]
