@@ -24,6 +24,66 @@ pub(in crate::binding) struct RequirementCensus {
     pub conditional: &'static [(&'static str, &'static str)],
     /// Fields whose absence check a static trace states by the definition's other fields.
     pub traced: &'static [TracedRequirement],
+    /// Registries whose definitions the census also probed with stored selector fields set.
+    pub subtypes: &'static [SubtypeCensus],
+}
+
+/// The definitions of one registry that the census probed with selector fields set, beside its
+/// empty definition.
+pub(in crate::binding) struct SubtypeCensus {
+    pub registry: &'static str,
+    /// The stored state of the selector fields in each probed definition, and the fields whose
+    /// absence it reported.
+    pub probed: &'static [(&'static [TracedCondition], &'static [&'static str])],
+    /// The stored state that no probed definition holds, for which the empty definition stands,
+    /// when one condition states it.
+    pub other: Option<&'static [TracedCondition]>,
+}
+
+impl SubtypeCensus {
+    /// Whether `field` is a selector of the probed states.
+    fn selects(&self, field: &str) -> bool {
+        self.probed
+            .iter()
+            .flat_map(|(state, _)| state.iter())
+            .chain(self.other.into_iter().flatten())
+            .any(|term| term.field() == field)
+    }
+
+    /// One case for each probed state, and one for the other state where `empty` (the empty
+    /// definition's answer) is established.
+    fn cases(&self, field: &str, empty: &FieldRequirement) -> FieldRequirement {
+        let mut cases: Vec<_> = self
+            .probed
+            .iter()
+            .map(|(state, reported)| RequirementCase {
+                condition: all(state),
+                required: reported.contains(&field),
+            })
+            .collect();
+        let empty_required = match empty {
+            FieldRequirement::Required => Some(true),
+            FieldRequirement::Optional => Some(false),
+            _ => None,
+        };
+
+        if let (Some(state), Some(required)) = (self.other, empty_required) {
+            cases.push(RequirementCase {
+                condition: all(state),
+                required,
+            });
+        }
+
+        FieldRequirement::Cases(cases)
+    }
+}
+
+/// The condition that every term of `state` holds.
+fn all(state: &[TracedCondition]) -> FieldCondition {
+    match state {
+        [term] => term.condition(),
+        terms => FieldCondition::All(terms.iter().map(TracedCondition::condition).collect()),
+    }
 }
 
 /// The cases of one field's conditional absence check, from a static trace of its hook.
@@ -46,7 +106,27 @@ pub(in crate::binding) enum TracedCondition {
     },
 }
 
+/// The stored scalar of `field` is zero, or nonzero.
+const fn zero(field: &'static str, zero: bool) -> TracedCondition {
+    TracedCondition::Zero { field, zero }
+}
+
+/// The stored keyword of `field` is, or is not, `keyword`.
+const fn keyword(field: &'static str, keyword: &'static str, equal: bool) -> TracedCondition {
+    TracedCondition::Keyword {
+        field,
+        keyword,
+        equal,
+    }
+}
+
 impl TracedCondition {
+    fn field(&self) -> &'static str {
+        match *self {
+            TracedCondition::Zero { field, .. } | TracedCondition::Keyword { field, .. } => field,
+        }
+    }
+
     fn condition(&self) -> FieldCondition {
         match *self {
             TracedCondition::Zero { field, zero } => FieldCondition::FieldZero {
@@ -84,13 +164,25 @@ impl RequirementCensus {
                 })
                 .collect();
 
-            FieldRequirement::Cases(cases)
-        } else if listed(self.required) {
+            return FieldRequirement::Cases(cases);
+        }
+
+        let empty = if listed(self.required) {
             FieldRequirement::Required
         } else if listed(self.conditional) || !self.registries.contains(&registry) {
             FieldRequirement::Unknown
         } else {
             FieldRequirement::Optional
+        };
+        let subtypes = self
+            .subtypes
+            .iter()
+            .find(|subtypes| subtypes.registry == registry)
+            .filter(|subtypes| self.registries.contains(&registry) && !subtypes.selects(field));
+
+        match subtypes {
+            Some(subtypes) => subtypes.cases(field, &empty),
+            None => empty,
         }
     }
 }
@@ -166,6 +258,7 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("events", "picture"),
         ("events", "title"),
     ],
+    subtypes: M452_SUBTYPES,
     traced: &[
         // `CEspionageOperationType::InitPostRead()` logs unless `stages` equals the count of
         // `stage` blocks.
@@ -270,6 +363,124 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         },
     ],
 };
+
+/// The M452 subtype census of 2026-10-20: definitions probed with selector fields set. A
+/// registry with any selector that is a key reference, a block or a list, or whose selector
+/// defaults are not all zero, keeps its empty-definition answer: a probed case would also cover
+/// the unprobed values of the selector it cannot state
+/// (`docs/native/registry-fields.md`, "Required fields").
+const M452_SUBTYPES: &[SubtypeCensus] = &[
+    SubtypeCensus {
+        registry: "common/armies",
+        probed: &[(&[zero("is_pop_spawned", false)], &[])],
+        other: Some(&[zero("is_pop_spawned", true)]),
+    },
+    SubtypeCensus {
+        registry: "common/districts",
+        probed: &[(&[zero("default_starting_district", false)], &[])],
+        other: Some(&[zero("default_starting_district", true)]),
+    },
+    SubtypeCensus {
+        registry: "common/economic_categories",
+        probed: &[(&[zero("hidden", false)], &[])],
+        other: Some(&[zero("hidden", true)]),
+    },
+    SubtypeCensus {
+        registry: "common/espionage_operation_types",
+        probed: &[
+            (&[keyword("target", "army", true)], &["on_roll_failed"]),
+            (&[keyword("target", "country", true)], &["on_roll_failed"]),
+            (
+                &[keyword("target", "federation", true)],
+                &["on_roll_failed"],
+            ),
+            (&[keyword("target", "fleet", true)], &["on_roll_failed"]),
+            (
+                &[keyword("target", "megastructure", true)],
+                &["on_roll_failed"],
+            ),
+            (
+                &[keyword("target", "pop_faction", true)],
+                &["on_roll_failed"],
+            ),
+            (
+                &[keyword("target", "spynetwork", true)],
+                &["on_roll_failed"],
+            ),
+            (&[keyword("target", "starbase", true)], &["on_roll_failed"]),
+        ],
+        other: Some(&[
+            keyword("target", "army", false),
+            keyword("target", "country", false),
+            keyword("target", "federation", false),
+            keyword("target", "fleet", false),
+            keyword("target", "megastructure", false),
+            keyword("target", "pop_faction", false),
+            keyword("target", "spynetwork", false),
+            keyword("target", "starbase", false),
+        ]),
+    },
+    SubtypeCensus {
+        registry: "common/governments/civics",
+        probed: &[
+            (&[zero("is_origin", true)], &[]),
+            (&[zero("is_origin", false)], &[]),
+        ],
+        other: None,
+    },
+    // The constructor clears all three selector bits of the word at `+0x4a0` (`CPlanetClass`).
+    SubtypeCensus {
+        registry: "common/planet_classes",
+        probed: &[
+            (
+                &[
+                    zero("colonizable", false),
+                    zero("star", true),
+                    zero("ringworld", true),
+                ],
+                &["icon", "icon_large"],
+            ),
+            (
+                &[
+                    zero("colonizable", true),
+                    zero("star", true),
+                    zero("ringworld", true),
+                ],
+                &[],
+            ),
+            (
+                &[
+                    zero("colonizable", true),
+                    zero("star", false),
+                    zero("ringworld", true),
+                ],
+                &[],
+            ),
+            (
+                &[
+                    zero("colonizable", true),
+                    zero("star", true),
+                    zero("ringworld", false),
+                ],
+                &[],
+            ),
+        ],
+        other: None,
+    },
+    SubtypeCensus {
+        registry: "common/situations",
+        probed: &[(
+            &[keyword("progress_direction", "bidirectional", true)],
+            &["stages"],
+        )],
+        other: Some(&[keyword("progress_direction", "bidirectional", false)]),
+    },
+    SubtypeCensus {
+        registry: "common/static_modifiers",
+        probed: &[(&[zero("icon_frame", false)], &[])],
+        other: Some(&[zero("icon_frame", true)]),
+    },
+];
 
 const M452_CENSUS_REGISTRIES: &[&str] = &[
     "common/agreement_presets",
@@ -461,7 +672,7 @@ mod tests {
             FieldRequirement::Optional
         );
         assert_eq!(
-            requirement("common/planet_classes", "icon"),
+            requirement("common/ship_categories", "namelist"),
             FieldRequirement::Unknown
         );
         assert_eq!(
@@ -489,6 +700,39 @@ mod tests {
         };
         assert_eq!(position.len(), 3);
         assert!(position.iter().all(|case| case.required));
+    }
+
+    #[test]
+    fn a_probed_subtype_gives_its_case_and_the_empty_definition_the_other_state() {
+        let requirement = |registry, field| M452_REQUIREMENTS.requirement(registry, field);
+        let spawned = |zero| FieldCondition::FieldZero {
+            path: vec!["is_pop_spawned".into()],
+            zero,
+        };
+
+        assert_eq!(
+            requirement("common/armies", "spawn_chance"),
+            FieldRequirement::Cases(vec![
+                RequirementCase {
+                    condition: spawned(false),
+                    required: false,
+                },
+                RequirementCase {
+                    condition: spawned(true),
+                    required: false,
+                },
+            ])
+        );
+        assert_eq!(
+            requirement("common/armies", "is_pop_spawned"),
+            FieldRequirement::Optional
+        );
+
+        let FieldRequirement::Cases(icon) = requirement("common/planet_classes", "icon") else {
+            panic!("planet class icon has no cases");
+        };
+        let required: Vec<_> = icon.iter().map(|case| case.required).collect();
+        assert_eq!(required, [true, false, false, false]);
     }
 
     #[test]

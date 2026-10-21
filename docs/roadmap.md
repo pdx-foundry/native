@@ -189,6 +189,10 @@ is still its own task, as the [development policy](development-policy.md) says.
   keyword condition) and whether the field is required; there is no new `Field` property. The
   routes are census reports joined by the code that logs them, the one-launch probe extended, and
   traced conditional checks recorded as data ([required fields](native/registry-fields.md#required-fields)).
+- Subtype census as cases: each probed selector state is a case, and the empty definition's
+  answer is a case for the state that no probe holds, so no answer gets worse. A registry with
+  several selectors states them all in each case, only where its constructor shows every
+  selector's default is zero; other selectors stay as today and are listed as gaps.
 
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims
