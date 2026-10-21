@@ -82,10 +82,15 @@ fn fields(
             continue;
         }
         // A modifier block's or a parameter list's reader takes no scope, and its entries are
-        // not read in one.
+        // not read in one. A block entry of any key reads its own keys, which the root's paths
+        // answer.
         if matches!(
             field.members,
-            crate::FieldMembers::ModifierBlock(_) | crate::FieldMembers::AnyKey { .. }
+            crate::FieldMembers::ModifierBlock(_)
+                | crate::FieldMembers::AnyKey {
+                    value_forms: Some(_),
+                    ..
+                }
         ) {
             field.read_scope = GrammarProperty::Known(vec![]);
             continue;
@@ -536,6 +541,64 @@ mod tests {
                 vec![reader, ("x2", Value::Stack(8))]
             )),
             ["read-scope: scope-argument"]
+        );
+    }
+
+    #[test]
+    fn only_a_scalar_entry_of_any_key_reads_in_no_scope() {
+        use crate::engine::analysis::fields::ReaderJoin;
+        use serde_json::json;
+
+        let any_key = |value_forms: Option<GrammarProperty<Vec<crate::ScalarForm>>>| -> Field {
+            let mut field: Field = serde_json::from_value(json!({
+                "name": "block",
+                "reader": { "id": null, "kind": "Block", "family": "Unknown",
+                    "numeric": "Unresolved", "scoped_operand": "Unresolved" },
+                "shape": { "value": "Block", "repeat": "Unknown" }, "read": [],
+                "members": "Unresolved", "domain": "Unknown", "uses": [],
+                "reference": "NotEstablished", "entry_contexts": [], "read_scope": "Unresolved",
+                "accepted_categories": "NotApplicable",
+                "requirement": "Unknown"
+            }))
+            .unwrap();
+            field.members = crate::FieldMembers::AnyKey {
+                entry: Box::new(field.clone()),
+                key_reference: crate::FieldReference::NotEstablished,
+                value_forms,
+            };
+            field
+        };
+        let root = RootField {
+            name: "block".into(),
+            token: 7,
+            constructor: 0,
+            paths: vec![],
+            readers: vec![ReaderJoin::Joined {
+                callee: "CReader::Read(CPersistent&)".into(),
+                arguments: [("x0".to_owned(), Value::Reader(0))].into(),
+                tail: true,
+            }],
+        };
+        let scope = |field: Field| {
+            let mut values = [field];
+            let mut gaps = Vec::new();
+            fields(
+                &mut values,
+                std::slice::from_ref(&root),
+                &[],
+                None,
+                &mut gaps,
+            );
+            let [value] = values;
+
+            (value.read_scope, gaps.len())
+        };
+
+        // A block entry reads its own keys: the root's read gives no scope, and says why.
+        assert_eq!(scope(any_key(None)), (GrammarProperty::Unresolved, 1));
+        assert_eq!(
+            scope(any_key(Some(GrammarProperty::Unresolved))),
+            (GrammarProperty::Known(vec![]), 0)
         );
     }
 

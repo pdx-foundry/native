@@ -2381,7 +2381,9 @@ for each key (`fields.rs`, `any_key_entry`; `registry-fields/v75`).
   with `CReader::Read(CPersistent&)` (`0x100992ad4`). An empty key goes to `CPersistent::ReadMember`;
   the planted key does not take that branch.
 - **Result on M452 (`registry-fields/v75`).** `common/name_lists` `character_names` gets
-  `AnyKey` with a `CNameListCulture` entry (repeat `Accumulate`) of 22 keys: the eighteen name
+  `AnyKey` with a `CNameListCulture` entry (repeat `Accumulate`) of 22 keys, and keeps its
+  own read scope unresolved (`no-scope-parameter`): only a scalar entry, a parameter list, reads
+  in no scope. The entry's keys are: the eighteen name
   lists (`first_names`, `full_names_female`, `regnal_second_names_male`, …) as string lists, the
   three `use_full_regnal_name*` Booleans, and `weight`, which keeps no shared reader. The
   modifier blocks' parameter lists (`description_parameters`) keep their scalar entry. Atlas does
@@ -2403,8 +2405,8 @@ for each key (`fields.rs`, `any_key_entry`; `registry-fields/v75`).
     not any key.
 - **Limits.** The planted key matches no fixed key, so a reader that compares the key by an inline
   byte loop against a constant and reads the same object either way is not told apart; a
-  `_memcmp` or `_strcmp` stops the run. Entry members take the read-scope, numeric, scoped-operand
-  and storage passes below an empty path segment; the entry's own read scope is not
+  `_memcmp` or `_strcmp` stops the run. Entry members take the read-scope, numeric, scoped-operand,
+  storage and gap passes below an empty path segment; the entry's own read scope is not
   established. Remove or limit the rule when a build's any-key reader reads a key before its
   object is in the array, or inserts other than at the count.
 

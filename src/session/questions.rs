@@ -1060,23 +1060,32 @@ fn normalized_gaps(
         }
     }
     for (token, nested) in result.nested_results() {
-        let Some((parent, built)) = result
-            .fields
-            .iter()
-            .zip(fields)
-            .find(|(root, _)| root.token == token)
-        else {
+        // The entry of a reader of any key is the one field that `fields` holds at this level,
+        // with an empty name.
+        let entry = (token == fields::ANY_KEY && result.any_key.is_some())
+            .then(|| fields.first())
+            .flatten();
+        let built = entry.or_else(|| {
+            result
+                .fields
+                .iter()
+                .zip(fields)
+                .find(|(root, _)| root.token == token)
+                .map(|(_, built)| built)
+        });
+        let Some(built) = built else {
             continue;
         };
         let members = match &built.members {
             crate::FieldMembers::Fields(members) => members.as_slice(),
+            crate::FieldMembers::AnyKey { entry, .. } => std::slice::from_ref(entry.as_ref()),
             _ => &[],
         };
         for mut gap in normalized_gaps(nested, registry, references, members) {
             // A gap on the nested reader as a whole belongs to the parent field.
             let name = match &gap.subject {
-                Some(GapSubject::Field { name }) => format!("{}.{name}", parent.name),
-                _ => parent.name.clone(),
+                Some(GapSubject::Field { name }) => format!("{}.{name}", built.name),
+                _ => built.name.clone(),
             };
             gap.subject = Some(GapSubject::field(name));
             gaps.push(gap);
@@ -1282,6 +1291,85 @@ mod field_gap_tests {
             gaps,
             partition_accounted: true,
         }
+    }
+
+    /// `result` with one more field, `names`, that reads an embedded object whose reader reads
+    /// any key: each key inserts an object whose one key, `weight`, keeps no reader.
+    fn any_key_result() -> RegistryFieldResult {
+        use crate::engine::analysis::fields::{ANY_KEY, CollectionField, EmbeddedField};
+
+        let missing = || ReaderJoin::Missing(Unresolved::new("reader-routing"));
+        let path = |domain: [i64; 2]| TokenPath {
+            domain,
+            conditions: vec![],
+            instructions: vec![0x3000],
+            terminal: 0x3000,
+            outcome: PathOutcome::Reader(missing()),
+        };
+        let mut element = result(vec![]);
+        element.fields = vec![RootField {
+            name: "weight".into(),
+            token: 9,
+            constructor: 0x2100,
+            paths: vec![0],
+            readers: vec![missing()],
+        }];
+        element.paths = vec![path([9, 9])];
+        let mut embedded = result(vec![]);
+        embedded.fields = vec![];
+        embedded.paths = vec![path([i32::MIN as i64, i32::MAX as i64])];
+        embedded.any_key = Some(0);
+        embedded.collections = vec![CollectionField {
+            token: ANY_KEY,
+            offset: 8,
+            owned_pointer: false,
+            data_offset: Some(8),
+            count_offset: Some(0x14),
+            class: "CEntry".into(),
+            member: "CEntry::ReadMember(CReader&, int)".into(),
+            reader: None,
+            fields: Box::new(element),
+            container_mask: None,
+            construction_scopes: Vec::new(),
+        }];
+        let read = ReaderJoin::Joined {
+            callee: "CReader::Read(CPersistent&)".into(),
+            arguments: BTreeMap::new(),
+            tail: true,
+        };
+        let mut parent = result(vec![]);
+        parent.fields.push(RootField {
+            name: "names".into(),
+            token: 5,
+            constructor: 0x2200,
+            paths: vec![1],
+            readers: vec![read.clone()],
+        });
+        parent.paths.push(TokenPath {
+            domain: [5, 5],
+            conditions: vec![],
+            instructions: vec![0x1100],
+            terminal: 0x1100,
+            outcome: PathOutcome::Reader(read),
+        });
+        parent.embedded = vec![EmbeddedField {
+            token: 5,
+            read: "CReader::Read(CPersistent&)".into(),
+            member: "CNames::ReadMember(CReader&, int)".into(),
+            fields: Box::new(embedded),
+        }];
+        parent
+    }
+
+    #[test]
+    fn a_gap_of_an_any_key_entry_reaches_the_answer() {
+        let gaps = field_gaps(&any_key_result());
+
+        assert!(
+            gaps.iter().any(|gap| gap.kind == GapKind::UnresolvedReader
+                && gap.subject == Some(GapSubject::field("names..weight"))),
+            "{gaps:#?}"
+        );
     }
 
     /// The gaps of `result` with its normalized fields.
