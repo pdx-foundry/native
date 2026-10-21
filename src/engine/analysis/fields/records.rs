@@ -324,7 +324,7 @@ pub struct RegistryFieldResult {
     pub embedded: Vec<EmbeddedField>,
     /// The token path through which the member reader reads any key, when it compares no token,
     /// reads the key's text and inserts one object for it. The object is the collection whose
-    /// token is [`ANY_KEY`].
+    /// token is `ANY_KEY`.
     pub any_key: Option<usize>,
     /// The accepted names of each keyword field, sorted, by the field's token, or why they are
     /// not established.
