@@ -940,9 +940,9 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
 | `Required` | An unconditional check logs the field's absence | 30 |
-| `Cases` | A traced check depends on another field's value (one case for each value of its condition that the trace states), or the subtype census probed the registry (one case for each probed selector state, and one for the state that the empty definition stands for) | 410 |
+| `Cases` | A traced check depends on another field's value (one case for each value of its condition that the trace states), or the subtype census probed the registry (one case for each probed selector state, and one for the state that the empty definition stands for) | 267 |
 | `Unknown` | The check depends on another field's value with no traced or probed cases; the registry is outside the census; or the field is below a definition's fields | 243 |
-| `Optional` | Every other root field of a census registry | 1,703 |
+| `Optional` | Every other root field of a census registry | 1,846 |
 
 Counts at `registry-fields/v73`. A definition that meets no case of a `Cases` answer has no
 established requirement.
@@ -1091,8 +1091,10 @@ the condition, and the census publishes it as `FieldRequirement::Cases`, one cas
 **Subtype census (M452, 2026-10-20).** A second run of the same probe
 (`run-subtypes/summary.md` in the evidence directory) added, for each subtype of the Atlas
 claims, one definition that sets the subtype's selector fields and nothing else, and read all of
-them. Each registry whose selectors are stored Booleans, numbers or keywords gives every root
-field except the selectors `Cases` (`subtypes` in `binding/requirements.rs`):
+them. Each registry whose selectors are all stored Booleans, numbers or keywords gives every
+root field except the selectors `Cases` (`subtypes` in `binding/requirements.rs`). A registry
+with any other selector keeps its empty-definition answer: the probe set that selector only at
+its default, so a case that leaves it out would also cover its unprobed values.
 
 - One case for each probed definition: the stored state of its selectors, required where the run
   reported the field absent.
@@ -1103,9 +1105,10 @@ field except the selectors `Cases` (`subtypes` in `binding/requirements.rs`):
 - Where a registry has two or more selector fields, each case states every selector, so the
   cases do not overlap. This needs every selector's default to be zero, read from the
   constructor: `CPlanetClass` stores `0x62432207b` at `+0x4a0`, which clears `colonizable`
-  (bit 7), `star` (bit 10) and `ringworld` (bit 22); `CDepositType` clears `is_for_colonizable`
-  (`+0x990`) and `is_null` (`+0x998`). A combination that no definition probed (a colonizable
-  star) meets no case.
+  (bit 7), `star` (bit 10) and `ringworld` (bit 22). `CDepositType` also clears its two Boolean
+  selectors (`is_for_colonizable` at `+0x990`, `is_null` at `+0x998`), but deposits keep their
+  answer for the `category` selector below. A combination that no definition probed (a
+  colonizable star) meets no case.
 - Keyword selectors were read in the member reader: `CEspionageOperationType::ReadMember`
   stores `target` as an enumeration at `+0x6c8`; `CSituationType::ReadMember` stores
   `progress_direction` at `+0xb34` from `bidirectional` (`0x41e5`) or its other keyword
@@ -1122,13 +1125,13 @@ Registries left as today (known gaps), with the selector that no `FieldCondition
 | --- | --- | --- | --- |
 | agreement_presets | `has_parent` | `parent` | a key reference |
 | agreement_term_values | `resource` | `term` | a key reference |
-| deposits | `blocker` | `category` | a key reference; the deposits cases above cover the two Boolean selectors |
+| deposits | all three | `is_for_colonizable`, `is_null`, `category` | `category` is a key reference |
 | megastructures | `has_prereqs` | `prerequisites` | a block's presence |
 | missions/missions | `contract` | `category` | a key reference (the `icon` and `counter` checks skip contracts) |
-| opinion_modifiers | `triggered_opinion_modifier` | `trigger` | a block's presence; the `block_triggered` cases above stand |
+| opinion_modifiers | both | `trigger`, `block_triggered` | `trigger` is a block's presence |
 | ship_sizes | all five | `class`, `accepts_all_modifiers`, `is_bio_ship`, `carries_colony`, `hero_ship` | a key reference and a block's presence, and the keyword default of `class` (`ReadShipClass`, `+0x780`) is not shown to be zero |
 | strategic_resources | `max`, `tradable` | `max`, `tradable` | the constructor stores -1 (`-100000` fixed point) at `max` (`+0x108`), so its default is not zero |
-| traits | `leader_trait` | `leader_class` | a list's contents; the `auto_mod` cases above stand |
+| traits | both | `leader_class`, `auto_mod` | `leader_class` is a list's contents |
 
 **Check.** `cargo live fixture_required_field` loads two card categories through validation: the
 one without `name` logs `has empty 'name' field` on its own line, the other logs nothing about
