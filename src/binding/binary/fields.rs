@@ -1,7 +1,7 @@
 use crate::binding::targets::PersistentRecipe;
 use crate::engine::analysis::{
     declarations,
-    decode::{Instruction, call_or_jump_target, call_target, is_branch},
+    decode::{Instruction, add_immediate, adrp, call_or_jump_target, call_target, is_branch},
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
@@ -180,7 +180,8 @@ pub(in crate::binding) fn read(
     }
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
     push_converters(&text, indexed, &mut functions);
-    let stack_serializers = stack_serializers(image, &text, persistent_recipe, &mut functions);
+    let stack_serializers =
+        stack_serializers(image, &text, &data, persistent_recipe, &mut functions);
     Ok(FieldInput {
         base_root,
         stack_serializers,
@@ -1534,14 +1535,17 @@ fn addresses(symbols: IndexedSymbols<'_>, name: &str) -> Vec<u64> {
 /// How many readers deep the stack serializers of serializers are collected.
 const SERIALIZER_DEPTH: usize = 4;
 
-/// The stack serializers whose constructors the input's functions call directly, by constructor
-/// entry. A constructor counts when its body only installs the vtable at `+0`, stores the wrapped
-/// member's address from `x1` at `+8` and stores further arguments beyond it
-/// ([`serializer_constructor_point`]); its member reader is the vtable's member slot. Each member
-/// reader joins the functions, and the serializers that it builds are collected in turn.
+/// The stack serializers that the input's functions build, by constructor entry or by vtable
+/// address point. A constructor that a function calls directly counts when its body only installs
+/// the vtable at `+0`, stores the wrapped member's address from `x1` at `+8` and stores further
+/// arguments beyond it ([`serializer_constructor_point`]). A function that builds the serializer
+/// inline forms the address point itself ([`inline_serializer_points`]). Either way the member
+/// reader is the vtable's member slot. Each member reader joins the functions, and the
+/// serializers that it builds are collected in turn.
 fn stack_serializers(
     image: &Image<'_>,
     text: &Text,
+    data: &ReadOnlyData,
     recipe: &PersistentRecipe,
     functions: &mut Vec<Function>,
 ) -> BTreeMap<u64, StackSerializer> {
@@ -1576,7 +1580,25 @@ fn stack_serializers(
             .filter(|symbol| !serializers.contains_key(&symbol.address))
             .cloned()
             .collect();
+        let inline_points = inline_serializer_points(image, data, recipe, functions, &callers);
         callers.clear();
+        for (point, reader) in inline_points {
+            if serializers.contains_key(&point) {
+                continue;
+            }
+            let Some(member) = symbols.named(&reader).next().cloned() else {
+                continue;
+            };
+            push_function(text, functions, &member);
+            callers.push(member.address);
+            serializers.insert(
+                point,
+                StackSerializer {
+                    owner_slot: SERIALIZER_OWNER_SLOT,
+                    reader,
+                },
+            );
+        }
         for constructor in constructors {
             let Ok((address, code)) = text.function(constructor.address) else {
                 continue;
@@ -1615,6 +1637,64 @@ fn stack_serializers(
 
 /// Where a serializer's constructor stores the wrapped member's address.
 const SERIALIZER_OWNER_SLOT: i64 = 8;
+
+/// The serializer address points that the functions at `callers` form with `adrp` and `add`, with
+/// each one's member reader. A formed address counts when it is an address point of the vtable
+/// of a class named `*Serializer` (such as `CEconomicUnitTemplate::CSerializer`) whose member slot
+/// holds that class's own `ReadMember`. The walk then
+/// accepts the serializer only where a function stores the point and the wrapped member's address
+/// as one pair on its stack and reads the pair.
+fn inline_serializer_points(
+    image: &Image<'_>,
+    data: &ReadOnlyData,
+    recipe: &PersistentRecipe,
+    functions: &[Function],
+    callers: &[u64],
+) -> BTreeMap<u64, String> {
+    let names = Names::new(image.symbols);
+    let formed: BTreeSet<u64> = functions
+        .iter()
+        .filter(|function| callers.contains(&function.address))
+        .flat_map(|function| formed_addresses(&function.code, function.address))
+        .collect();
+
+    formed
+        .into_iter()
+        .filter_map(|point| {
+            let target = *image.pointers.get(&(point + recipe.member_slot))?;
+            let reader = names.unique(target)?;
+            let class = reader.strip_suffix("::ReadMember(CReader&, int)")?;
+            let is_point = class.ends_with("Serializer")
+                && super::families::point_class(image.symbols, data, point).as_deref()
+                    == Some(class);
+
+            is_point.then(|| (point, reader.to_owned()))
+        })
+        .collect()
+}
+
+/// Every address that the words at `address` form in a register through `adrp` and `add` of an
+/// immediate, read in address order. A register keeps its value through other writes, so the set
+/// can hold addresses that no path forms; callers check each one.
+fn formed_addresses(code: &[u8], address: u64) -> BTreeSet<u64> {
+    let mut values: BTreeMap<usize, u64> = BTreeMap::new();
+    let mut formed = BTreeSet::new();
+
+    for (index, word) in code.as_chunks::<4>().0.iter().enumerate() {
+        let word = u32::from_le_bytes(*word);
+        if let Some((destination, page)) = adrp(word, address + index as u64 * 4) {
+            values.insert(destination, page);
+        } else if let Some((destination, source, addend)) = add_immediate(word)
+            && let Some(&value) = values.get(&source)
+        {
+            let sum = value.wrapping_add(addend);
+            formed.insert(sum);
+            values.insert(destination, sum);
+        }
+    }
+
+    formed
+}
 
 /// The vtable address point that a serializer constructor installs, when its body is
 /// `adrp x, page; add x, x, #off; stp x, x1, [x0]`, then only stores of other arguments at

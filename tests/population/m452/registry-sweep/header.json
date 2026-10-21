@@ -17,22 +17,22 @@
     },
     "numerics": {
       "complete": 280,
-      "denominator": 612,
-      "rate": 0.4575,
-      "undetermined": 332
+      "denominator": 593,
+      "rate": 0.4722,
+      "undetermined": 313
     },
     "reader_kinds": {
-      "complete": 1974,
+      "complete": 1990,
       "denominator": 2435,
-      "failed": 327,
-      "partial": 134,
-      "rate": 0.8107
+      "failed": 308,
+      "partial": 137,
+      "rate": 0.8172
     },
     "references": {
       "complete": 40,
-      "denominator": 372,
-      "rate": 0.1075,
-      "undetermined": 332
+      "denominator": 353,
+      "rate": 0.1133,
+      "undetermined": 313
     },
     "scope_context": {
       "complete": 1736,
@@ -44,8 +44,8 @@
     "shapes_and_conditions": {
       "complete": 1840,
       "denominator": 2435,
-      "failed": 309,
-      "partial": 286,
+      "failed": 290,
+      "partial": 305,
       "rate": 0.7556
     },
     "weights": {

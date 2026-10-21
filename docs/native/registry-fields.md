@@ -574,7 +574,7 @@ establish one shared reader." Their stops:
 
 | Field | Stop on M452 | Shape and follow-up |
 | --- | --- | --- |
-| `common/country_types` `faction` | `CCountryType::ReadMember` stores the `SCountryInstanceProperties::CSerializer` address point (`0x10304b538`) and owner `+0x48` at `sp+0x48`, then calls `CReader::Read(CPersistent&)` (`0x10033f590`). The serializer's `ReadMember` writes through its owner pointer. | Stack serializer, with `CEconomicUnitTemplate::CSerializer` (SDK-849) and `CSwapCollection::CSerializer` (SDK-866); SDK-872. |
+| `common/country_types` `faction` | `CCountryType::ReadMember` stores the `SCountryInstanceProperties::CSerializer` address point (`0x10304b538`) and owner `+0x48` at `sp+0x48`, then calls `CReader::Read(CPersistent&)` (`0x10033f590`). | Joined as an [inline stack serializer](#stack-serializers) (`registry-fields/v74`); its keys stay unnamed behind `PropertiesReadMember`. |
 | `common/country_types` `modules` | An inline statement loop (`0x10033f874`): `ReadSimpleStatement`, then `CreateCountryModule(CCountry&, int, CReader&)` with the statement key at reader `+0x38`, then virtual calls on the module. | Statement loop; SDK-871. |
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
@@ -659,10 +659,47 @@ The constructor only installs its vtable at `+0`, stores `x1` at `+8` and the sc
   47 nested paths appear, mostly `category`. The economic unit's other keys (`cost`, `upkeep`,
   `produces`) are compared by text with `_memcmp`, not by token, so they are not named yet. No
   command answer changes.
-- **Limits.** A serializer that the root builds inline, without a constructor call
-  (`CCountryType::ReadMember` `faction`: `stp x9,x8,[sp,#0x48]` with the
-  `SCountryInstanceProperties::CSerializer` point), is not followed. Remove the rule when a build's
-  serializer constructor writes the wrapped member or reads more than its arguments.
+- **Inline serializers** (`registry-fields/v74`). A reader can build the serializer without a
+  constructor call: it forms the vtable address point and stores it with the wrapped member's
+  address as one pair on its stack, then reads the pair. On M452 `CCountryType::ReadMember` reads
+  `faction` so (`0x10033ec24`: `stp x9,x8,[sp,#0x48]`, `x9` the
+  `SCountryInstanceProperties::CSerializer` point, `x8` the owner plus `0x48`), and so do
+  `CJobType::ReadMember` `swappable_data` (`0x1008b4600`, a
+  `CSwapCollection<SPopJobTypeSwap,…>::CSerializer` that stores two more words at `+0x10` and
+  `+0x18`), `CAgreementPreset::ReadMember` `term_data` (`0x100047b54`) and
+  `CAgreementTermValue::ReadMember` `triggered_loyalty_change` (`0x10004e1e8`, a
+  `CTriggeredLoyaltyChangeSerializer` that wraps the whole owner and stores a scope word at
+  `+0x10`).
+  - **Binding.** `inline_serializer_points` takes each address that an input function forms with
+    `adrp` and `add` when it is an address point of a vtable of a class named `*Serializer`
+    whose member slot holds that class's own `ReadMember`. `FieldInput::stack_serializers` keys
+    such a serializer by its address point; a constructor's serializer stays keyed by the
+    constructor's entry. The same four-reader recursion collects the serializers that their
+    readers build.
+  - **Walk.** An `stp` to the frame whose first register holds such an address point and whose
+    second holds an owner address records the serializer, with the wrapped member at slot `+8`,
+    as the constructor call does. A later store to a fixed frame slot outside the serializer's
+    two words keeps it; any other store forgets it, for both forms. A store writes its registers'
+    width, so a pair of `q` registers writes 32 bytes, and a store whose width or address (a
+    writeback form) the walk does not read forgets it too. The persistent read and the
+    members then follow the constructor rule.
+  - **Result on M452 (`registry-fields/v74`).** Additions only: 19 fields go from an `Unknown`
+    reader to a `Block` reader with a serializer identity. `term_data` gets 9 keys (one
+    reference, six Booleans; `discrete_terms` and `resource_terms` stop at
+    `NSerializer::ReadUniformWithCustomSerializer`), `agreement_term_values` `ai_acceptance` 2
+    and `triggered_loyalty_change` 2 (unresolved), `pop_jobs` and `pop_categories`
+    `swappable_data` 2 (`default`, `swap_type`, unresolved: a `_strlen` and an `operator new`
+    while the serializer is recorded), `traits` `forced_integration` 2. The modifier fields that
+    `CModifierWithTooltipData::CSerializer` reads (`buildings`, `pop_jobs` and `traits`
+    `*modifier`), `spynetworks` `operations` (`CPdxArraySerializer`) and `resource_groups`
+    `localization` get only the reader: their walks name no key.
+  - **Stays a gap.** `faction` names no key: its serializer's `ReadMember` first passes the token in
+    `w1` to `PropertiesReadMember(CReader&, int, CSimpleBitMask<…>&)`, a jump table over the
+    property bits, which the walk does not follow. `global_ship_designs` `growth_stages` reads a
+    list through `NSerializer::ReadUniformWithCustomSerializer<…>`, not a stack serializer.
+- **Limits.** Remove the rules when a build's serializer constructor writes the wrapped member or
+  reads more than its arguments, or when an inline serializer's reader takes the wrapped member
+  from a word other than `+8`.
 
 ### Objects in a `make_shared` control block
 

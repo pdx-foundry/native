@@ -160,8 +160,9 @@ enum Flags {
 struct State {
     stack: BTreeMap<i64, Value>,
     serializer: Option<(i64, i64, i64)>,
-    /// The constructor that built `serializer`, when it is a stack serializer of the input.
-    serializer_constructor: Option<u64>,
+    /// The constructor that built `serializer`, or the vtable address point that the path
+    /// stored for it inline, when it is a stack serializer of the input.
+    serializer_source: Option<u64>,
     copied_tokens: BTreeSet<i64>,
     /// Stack strings made from the value token's text since the last stack store.
     value_strings: BTreeSet<i64>,
@@ -656,8 +657,10 @@ fn apply(
     wrapped_owner: Option<(i64, i64)>,
 ) -> Result<(), Unresolved> {
     if row.operation.starts_with("st") {
-        state.serializer = None;
-        state.serializer_constructor = None;
+        if !stores_beside_serializer(row, state) {
+            state.serializer = None;
+            state.serializer_source = None;
+        }
         if !row.operands.contains("[sp") {
             state.settled.clear();
             state.ordered.clear();
@@ -953,6 +956,10 @@ fn apply(
                     let width = if first.starts_with('x') { 8 } else { 4 };
                     state.save_address(at, width, state.stack_store_value(first));
                     state.save_address(at + width, width, state.stack_store_value(second));
+                    if let Some(point) = inline_serializer(state, input, first, second) {
+                        state.serializer = Some((at, SERIALIZER_OWNER_SLOT, point.1));
+                        state.serializer_source = Some(point.0);
+                    }
                 }
                 state.stack.clear();
                 state.copied_tokens.clear();
@@ -1001,6 +1008,78 @@ fn apply(
         _ => return Err(unsupported("instruction")),
     }
     Ok(())
+}
+
+/// Where an inline stack serializer holds the wrapped member's address: the word after its vtable.
+const SERIALIZER_OWNER_SLOT: i64 = 8;
+
+/// The address point and wrapped owner offset of a stack serializer that `stp first, second` builds
+/// inline: `first` holds the address point of one of the input's stack serializers and `second`
+/// an address in the owner, as the serializer's constructor would store them.
+fn inline_serializer(
+    state: &State,
+    input: &DispatchInput<'_>,
+    first: &str,
+    second: &str,
+) -> Option<(u64, i64)> {
+    let Some(Value::Constant(point)) = state.value(first).filter(|_| first.starts_with('x')) else {
+        return None;
+    };
+    let Some(Value::Owner(owner)) = state.value(second) else {
+        return None;
+    };
+    let serializer = input.stack_serializers?.get(&(point as u64))?;
+
+    (serializer.owner_slot == SERIALIZER_OWNER_SLOT).then_some((point as u64, owner))
+}
+
+/// Whether the store `row` writes a fixed frame slot outside the vtable and owner words of the
+/// path's stack serializer, so the serializer stays built. Any other store, including one whose
+/// width or address the walk does not read, may overwrite it.
+fn stores_beside_serializer(row: &Instruction, state: &State) -> bool {
+    let Some((stack, slot, _)) = state.serializer else {
+        return false;
+    };
+    let Some((operand, address)) = row.operands.split_once(',') else {
+        return false;
+    };
+    let Some(register) = register_width(operand) else {
+        return false;
+    };
+    let (address, width) = match row.operation.as_str() {
+        "stp" | "stnp" => {
+            let Some((_, address)) = address.split_once(',') else {
+                return false;
+            };
+            (address, 2 * register)
+        }
+        "str" | "stur" => (address, register),
+        "strb" | "sturb" => (address, 1),
+        "strh" | "sturh" => (address, 2),
+        _ => return false,
+    };
+    let Some(("sp", amount)) = memory(address) else {
+        return false;
+    };
+    let Some(Value::Stack(base)) = state.value("sp") else {
+        return false;
+    };
+    let at = base + amount;
+
+    at + width <= stack || at >= stack + slot + 8
+}
+
+/// The bytes that a store of the register `operand` writes: `b`, `h`, `s` or `w`, `d` or `x`,
+/// and `q` registers.
+fn register_width(operand: &str) -> Option<i64> {
+    match operand.chars().next()? {
+        'b' => Some(1),
+        'h' => Some(2),
+        's' | 'w' => Some(4),
+        'd' | 'x' => Some(8),
+        'q' => Some(16),
+        _ => None,
+    }
 }
 
 /// The entry address and instructions of the root function, or `None` when the image has no
@@ -1106,7 +1185,7 @@ fn explore_member_with_wrapped_owner(
     let mut initial = State {
         stack: BTreeMap::new(),
         serializer: None,
-        serializer_constructor: None,
+        serializer_source: None,
         copied_tokens: BTreeSet::new(),
         value_strings: BTreeSet::new(),
         value_read: None,
@@ -1348,7 +1427,7 @@ fn explore_member_with_wrapped_owner(
                             (state.value("x0"), state.value("x1"))
                     {
                         state.serializer = Some((stack, *slot, owner));
-                        state.serializer_constructor = stack_serializer.and(target);
+                        state.serializer_source = stack_serializer.and(target);
                         state.clobber_call();
                         continue;
                     }
@@ -1367,8 +1446,8 @@ fn explore_member_with_wrapped_owner(
                     // A persistent read of a stack serializer reads the wrapped owner member
                     // through the serializer's member reader.
                     let serializer_reader = state
-                        .serializer_constructor
-                        .and_then(|constructor| input.stack_serializers?.get(&constructor))
+                        .serializer_source
+                        .and_then(|source| input.stack_serializers?.get(&source))
                         .map(|serializer| serializer.reader.clone());
                     if name == Some(readers::PERSISTENT_READ)
                         && state.value("x0") == Some(Value::Reader(0))
@@ -3982,7 +4061,7 @@ mod tests {
             ordered: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
-            serializer_constructor: None,
+            serializer_source: None,
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,
@@ -4022,7 +4101,7 @@ mod tests {
             ordered: BTreeMap::new(),
             stack: BTreeMap::new(),
             serializer: None,
-            serializer_constructor: None,
+            serializer_source: None,
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,
