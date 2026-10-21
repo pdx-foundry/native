@@ -5,7 +5,7 @@ use crate::engine::analysis::{
     discovery::Symbol,
     evaluate::ReadOnlyData,
     fields::{
-        self, BaseRoot, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader,
+        self, ArrayEnd, BaseRoot, FieldInput, Function, KeyReaders, LoaderRoot, ObjectReader,
         PersistentInput, PointReader, SerializerRoot, StackSerializer, has_owner_receiver,
     },
     readers,
@@ -179,6 +179,25 @@ pub(in crate::binding) fn read(
         }
     }
     push_embedded_readers(&text, indexed, &persistent, &mut functions);
+    let key_text = shared
+        .key_readers
+        .reader_token
+        .map(|token| token + persistent_recipe.token_text);
+    let embedded_objects = embedded_objects(
+        image,
+        &text,
+        &data,
+        Nesting {
+            shared: &shared.persistent,
+            enclosing: vec![owner.to_owned()],
+        },
+        &persistent,
+        key_text,
+        persistent_recipe,
+        &mut functions,
+        &mut stubs,
+        &mut gaps,
+    )?;
     push_converters(&text, indexed, &mut functions);
     let stack_serializers =
         stack_serializers(image, &text, &data, persistent_recipe, &mut functions);
@@ -190,6 +209,7 @@ pub(in crate::binding) fn read(
         loader_root,
         serializer,
         objects,
+        embedded_objects,
         owner: owner.into(),
         symbols: symbols.to_vec(),
         functions,
@@ -578,6 +598,93 @@ fn push_embedded_readers(
     }
 }
 
+/// The objects that the member reader of each embedded object inserts, by that reader, as
+/// [`collect_objects`] finds a root's. Only a member reader that loads the key's text from the
+/// reader at `key_text` and names no token can read any key, so only such a reader's objects are
+/// collected: the others' would fill the function budget for no field.
+#[allow(clippy::too_many_arguments)] // The image parts that `read` holds, and its outputs.
+fn embedded_objects(
+    image: &Image<'_>,
+    text: &Text,
+    data: &ReadOnlyData,
+    nesting: Nesting<'_>,
+    persistent: &PersistentInput,
+    key_text: Option<u64>,
+    recipe: &PersistentRecipe,
+    functions: &mut Vec<Function>,
+    stubs: &mut BTreeMap<u64, u64>,
+    gaps: &mut Vec<String>,
+) -> Result<BTreeMap<String, Vec<ObjectReader>>, AnalysisError> {
+    let Some(key_text) = key_text else {
+        return Ok(BTreeMap::new());
+    };
+    let members: BTreeSet<&str> = persistent
+        .readers
+        .values()
+        .filter(|reader| reader.family == BlockFamily::Unknown)
+        .map(|reader| reader.member.as_str())
+        .filter(|member| {
+            functions.iter().any(|function| {
+                function.name == *member
+                    && loads_key_text(&function.code, key_text)
+                    && ignores_token(&function.code, function.address)
+            })
+        })
+        .collect();
+    let mut objects = BTreeMap::new();
+
+    for member in members {
+        let nesting = Nesting {
+            shared: nesting.shared,
+            enclosing: nesting.enclosing.clone(),
+        };
+        let inserted = collect_objects(
+            image, text, data, nesting, recipe, member, functions, stubs, gaps,
+        )?;
+
+        if !inserted.is_empty() {
+            objects.insert(member.to_owned(), inserted);
+        }
+    }
+
+    Ok(objects)
+}
+
+/// Whether a member reader names no token in `w2` before its first call or branch, as a reader
+/// that compares no token does. A decoding failure counts as naming one.
+fn ignores_token(code: &[u8], address: u64) -> bool {
+    let Ok(rows) = crate::engine::analysis::decode::decode_arm64(code, address) else {
+        return false;
+    };
+
+    rows.iter()
+        .take_while(|row| !is_branch(&row.operation) && !row.operation.starts_with("bl"))
+        .all(|row| {
+            !row.operands
+                .split(',')
+                .any(|operand| matches!(operand.trim_matches(['[', ']']), "w2" | "x2"))
+        })
+}
+
+/// Whether the words of a member reader load the key's text: `ldr xT, [xB, #key_text]`, where
+/// `xB` is the reader in `x1` at entry or a register that `mov xB, x1` copied it to. The words are
+/// read in address order and a copy is never forgotten, so this only selects candidates; the
+/// dispatch walk establishes the read.
+fn loads_key_text(code: &[u8], key_text: u64) -> bool {
+    const MOVE_FROM_X1: u32 = 0xaa01_03e0;
+    let mut readers = BTreeSet::from([1usize]);
+
+    code.as_chunks::<4>().0.iter().any(|word| {
+        let word = u32::from_le_bytes(*word);
+        if word & !0x1f == MOVE_FROM_X1 {
+            readers.insert((word & 0x1f) as usize);
+        }
+
+        crate::engine::analysis::decode::ldr_immediate(word)
+            .is_some_and(|(_, base, offset)| readers.contains(&base) && offset == key_text)
+    })
+}
+
 /// The member readers and value readers that `root` and the readers it reaches call directly,
 /// which dispatch follows as inherited readers, and the import stubs among those calls with the body that each
 /// reaches. A stub counts only when the image's fixups resolve its pointer slot to a text body of
@@ -925,14 +1032,21 @@ fn collect_objects(
                 shared_releases.push(symbol.address);
             }
         }
-        let emplace = addresses(symbols, &emplacement(&class));
+        let emplace: BTreeMap<u64, ArrayEnd> = array_ends(&class)
+            .into_iter()
+            .flat_map(|(name, end)| {
+                addresses(symbols, &name)
+                    .into_iter()
+                    .map(move |at| (at, end))
+            })
+            .collect();
         // A class with an insertion or a moving insertion keeps the insertion's layout: its
-        // pointer array is another collection than the array of objects that the resizing grows.
-        let emplace_layout = match emplace.as_slice() {
-            [start] if insert.is_empty() && moving_insert.is_empty() => {
-                emplace_layout(text, *start, &array_new)
-            }
-            _ => None,
+        // pointer array is another collection than the array of objects that the growth fills.
+        // Every growth of the class must prove the same layout.
+        let emplace_layout = if insert.is_empty() && moving_insert.is_empty() {
+            agreed_layout(text, emplace.keys(), &array_new)
+        } else {
+            None
         };
         let (data_offset, count_offset) = match emplace_layout {
             Some(layout) => (Some(layout.data), Some(layout.count)),
@@ -990,7 +1104,7 @@ fn collect_objects(
             moving_insert,
             shared_emplace_point,
             shared_releases,
-            array_emplace: emplace_layout.map_or_else(Vec::new, |_| emplace),
+            array_emplace: emplace_layout.map_or_else(BTreeMap::new, |_| emplace),
             array_element_size: emplace_layout.map(|layout| layout.element_size),
             class,
             vtables: vtable.address_points,
@@ -1186,24 +1300,53 @@ fn inserted_class(name: &str) -> Option<&str> {
     (names_class && !class.ends_with(" const")).then_some(class)
 }
 
-/// The class whose objects `void CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)`
-/// constructs in place at the array's end. A class with template arguments names none.
+/// The class whose objects a growth of a `CPdxArray` of objects constructs at the array's end:
+/// `void CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)` or
+/// `Class& CPdxArray<Class, int>::InsertAtEmplace<Class>(int, Class&&)`. A class with template
+/// arguments names none.
 fn emplaced_class(name: &str) -> Option<&str> {
-    let class = name
-        .strip_prefix("void CPdxArray<")?
-        .strip_suffix(", int>::SetSizeAndEmplace<>(int, const&)")?;
+    let class = match name.strip_prefix("void CPdxArray<") {
+        Some(resize) => resize.strip_suffix(", int>::SetSizeAndEmplace<>(int, const&)")?,
+        None => name.split_once("& CPdxArray<")?.0,
+    };
+    let names_class = array_ends(class).iter().any(|(growth, _)| growth == name);
 
-    (!class.contains(['<', '>', ',', '*'])).then_some(class)
+    (names_class && !class.contains(['<', '>', ',', '*'])).then_some(class)
 }
 
-/// The resizing that constructs objects of `class` in place at a `CPdxArray`'s end.
-fn emplacement(class: &str) -> String {
-    format!("void CPdxArray<{class}, int>::SetSizeAndEmplace<>(int, const&)")
+/// The growths that construct objects of `class` at a `CPdxArray`'s end, each with its form.
+fn array_ends(class: &str) -> [(String, ArrayEnd); 2] {
+    [
+        (
+            format!("void CPdxArray<{class}, int>::SetSizeAndEmplace<>(int, const&)"),
+            ArrayEnd::Resize,
+        ),
+        (
+            format!("{class}& CPdxArray<{class}, int>::InsertAtEmplace<{class}>(int, {class}&&)"),
+            ArrayEnd::Insert,
+        ),
+    ]
 }
 
-/// The array layout that an in-place resizing proves: its element pointer, its count and the
-/// size of one element.
-#[derive(Clone, Copy)]
+/// The layout that every growth at `starts` proves, when there is at least one and they agree.
+fn agreed_layout<'a>(
+    text: &Text,
+    starts: impl Iterator<Item = &'a u64>,
+    array_new: &BTreeSet<u64>,
+) -> Option<EmplaceLayout> {
+    let layouts = starts
+        .map(|&start| emplace_layout(text, start, array_new))
+        .collect::<Option<BTreeSet<_>>>()?;
+    let [layout] = layouts.into_iter().collect::<Vec<_>>()[..] else {
+        return None;
+    };
+
+    Some(layout)
+}
+
+/// The array layout that a growth proves: its element pointer, its count and the size of one
+/// element.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct EmplaceLayout {
     data: u64,
     count: u64,
@@ -1361,7 +1504,7 @@ fn incremented_count(
             continue;
         };
         let parts: Vec<_> = rows[load].operands.split(',').collect();
-        let loads_count = rows[load].operation == "ldr"
+        let loads_count = matches!(rows[load].operation.as_str(), "ldr" | "ldrsw")
             && matches!(parts[..], [_, base, offset] if member(load, base, offset) == Some(count));
 
         if loads_count && straight(load) {
@@ -2272,6 +2415,8 @@ pub(super) fn key_readers(
         string_from_text: addresses(symbols, "CString::CString(char const*)")
             .into_iter()
             .collect(),
+        strings: super::families::string_functions(symbols),
+        string_flag_byte: recipe.string_flag_byte,
     })
 }
 

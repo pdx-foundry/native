@@ -16,6 +16,7 @@ use crate::engine::analysis::evaluate::{Call, Code, Exit, Machine, Path, ReadOnl
 use crate::engine::analysis::readers;
 use crate::engine::analysis::receivers::ConstructorImage;
 use crate::engine::analysis::stop::Unresolved;
+use crate::engine::analysis::strings::{Arena, Effect, ITEM_KEY, Model, Sources, StringLayout};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
@@ -36,6 +37,12 @@ const EMPLACED_ELEMENTS: u64 = 6;
 const RESIZED_OFFSET: u64 = 7;
 const RESIZED_CLASS: u64 = 8;
 const SPAN: u64 = 0x10000;
+/// The label of the object that an insertion moved its new element from.
+const MOVED_SOURCE: u64 = 9;
+/// The key that a run of a reader of any key plants. No engine key is spelled so.
+const PLANTED_KEY: &str = "native any key";
+/// The functions that compare two texts.
+const TEXT_COMPARES: [&str; 3] = ["_memcmp", "_strcmp", "_strncmp"];
 /// The label of the scope that an object's constructor receives, at the object's address.
 const SCOPE: u64 = 1 << 58;
 /// The labels of an object that the root constructed inline, at its address: its allocation's
@@ -147,6 +154,21 @@ pub(super) fn discover(
         .map(|symbol| symbol.address)
         .collect();
     let scope_registers = scope_registers(&input.symbols, objects);
+    let destructors = destructors(&input.symbols, objects);
+    let text_compares: BTreeSet<u64> = input
+        .symbols
+        .iter()
+        .filter(|symbol| TEXT_COMPARES.contains(&symbol.name.as_str()))
+        .map(|symbol| symbol.address)
+        .collect();
+    let model = Model {
+        functions: &input.key_readers.strings,
+        layout: StringLayout {
+            flag_byte: input.key_readers.string_flag_byte,
+        },
+        data: &data,
+        sources: Sources::key_only(PLANTED_KEY),
+    };
     let mut collections = Vec::new();
     for field in fields.iter().filter(|field| {
         field
@@ -154,10 +176,23 @@ pub(super) fn discover(
             .iter()
             .any(|join| matches!(join, super::ReaderJoin::Missing(_)))
     }) {
+        // A reader of any key reads the key's text: the run plants one key, which the string
+        // model follows.
+        let any_key = field.token == super::ANY_KEY;
         let run = |start: Start| {
             let mut machine = Machine::new(&code, image.constant_data());
             let owner = machine.reserve(SPAN);
             let reader = machine.reserve(SPAN);
+            let mut arena = Arena::default();
+            if any_key && let Some(offset) = input.key_readers.reader_token {
+                let text = machine.reserve(SPAN);
+                for (at, byte) in PLANTED_KEY.bytes().chain([0]).enumerate() {
+                    machine.write(text + at as u64, 1, u64::from(byte));
+                }
+                machine.label(text, ITEM_KEY);
+                let key_text = offset + input.key_readers.token_text as u64;
+                machine.write(reader + key_text, 8, text);
+            }
             // A store through an unknown pointer invalidates this sentinel along with any
             // unprotected memory. Such a store could reset the collection between reads.
             let unchanged = machine.reserve(8);
@@ -251,8 +286,8 @@ pub(super) fn discover(
                         machine.label(OBJECT | at, index as u64);
                         return Ok(Call::Return(Some(at)));
                     }
-                    if object.array_emplace.contains(&target) {
-                        return emplace(machine, object, index, owner, resized);
+                    if let Some(&end) = object.array_emplace.get(&target) {
+                        return emplace(machine, object, index, owner, resized, end);
                     }
                     if Some(target) == input.key_readers.persistent_read
                         && machine.register(0) == Some(reader)
@@ -301,6 +336,21 @@ pub(super) fn discover(
                             machine.label(INSERTED_OFFSET, receiver - owner);
                             return Ok(Call::Return(None));
                         }
+                    }
+                }
+                if destructors.contains(&target)
+                    && machine.register(0).is_some()
+                    && machine.register(0) == machine.labelled(MOVED_SOURCE)
+                {
+                    return Ok(Call::Return(None));
+                }
+                if any_key {
+                    // A compare of the key's text may select a key that reads another way.
+                    if text_compares.contains(&target) {
+                        return Err(Unresolved::new("key-text-compare"));
+                    }
+                    if let Effect::Followed(call) = model.call(Some(target), machine, &mut arena)? {
+                        return Ok(call);
                     }
                 }
                 if let Some(initialized) = initialized_members(machine, objects, &zero_fill, target)
@@ -414,6 +464,27 @@ pub(super) fn discover(
     collections
 }
 
+/// The destructors of the objects' classes: `Class::~Name()`, where `Name` is the class's last
+/// name part.
+fn destructors(
+    symbols: &[crate::engine::analysis::discovery::Symbol],
+    objects: &[super::ObjectReader],
+) -> BTreeSet<u64> {
+    let names: BTreeSet<String> = objects
+        .iter()
+        .map(|object| {
+            let name = object.class.rsplit("::").next().unwrap_or(&object.class);
+            format!("{}::~{name}()", object.class)
+        })
+        .collect();
+
+    symbols
+        .iter()
+        .filter(|symbol| names.contains(&symbol.name))
+        .map(|symbol| symbol.address)
+        .collect()
+}
+
 /// The encoding of `b body` at `from`, when the distance fits the branch's 26-bit word offset.
 fn branch_to(from: u64, body: u64) -> Option<[u8; 4]> {
     const B: u32 = 0x1400_0000;
@@ -456,18 +527,22 @@ fn one_element(
     Some(elements)
 }
 
-/// Construct an object of `objects[index]` at the end of the owner array that the resizing's
-/// receiver names, as `CPdxArray<Class, int>::SetSizeAndEmplace<>` does. The run must have given
-/// that array one element (`resized`), which the root has not changed, and the root must ask for
-/// two. The array then holds two objects and points one element size before the new one, so the
-/// root's address of its last element is the new object only when the root's element size is the
-/// class's. A run that gave the array nothing labels it and stops, so the next run can.
+/// Construct an object of `objects[index]` at the end of the owner array that the growth's
+/// receiver names, as `CPdxArray<Class, int>::SetSizeAndEmplace<>` and the moving
+/// `InsertAtEmplace<Class>` do. The run must have given that array one element (`resized`), which
+/// the root has not changed. A resizing must ask for two elements; an insertion must insert at
+/// index one, the count, and move from an object of the class: its word at `+0` is the class's
+/// primary address point. The array then holds two objects and points one element size before
+/// the new one, so the root's address of its last element is the new object only when the root's
+/// element size is the class's. A run that gave the array nothing labels it and stops, so the
+/// next run can.
 fn emplace(
     machine: &mut Machine<'_>,
     object: &super::ObjectReader,
     index: usize,
     owner: u64,
     resized: Option<(ResizedArray, u64)>,
+    end: super::ArrayEnd,
 ) -> Result<Call, Unresolved> {
     let (Some(data), Some(count), Some(size)) = (
         object.data_offset,
@@ -498,7 +573,21 @@ fn emplace(
         return Err(Unresolved::new("emplace-storage-changed"));
     }
 
-    if machine.register(1) != Some(2) {
+    let grows = match end {
+        super::ArrayEnd::Resize => machine.register(1) == Some(2),
+        super::ArrayEnd::Insert => {
+            let source = machine.register(2);
+            let moves_object = source
+                .zip(object.vtables.get(&0))
+                .is_some_and(|(source, &point)| machine.read(source, 8) == Some(point));
+
+            if let Some(source) = source.filter(|_| moves_object) {
+                machine.label(MOVED_SOURCE, source);
+            }
+            machine.register(1) == Some(1) && moves_object
+        }
+    };
+    if !grows {
         return Err(Unresolved::new("emplace-growth"));
     }
 

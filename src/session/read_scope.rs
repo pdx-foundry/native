@@ -25,12 +25,14 @@ pub(super) fn registry_fields(
     );
     prefix_gaps(local_gaps, parent, gaps);
     for value in values {
-        if let crate::FieldMembers::Fields(children) = &mut value.members
-            && let Some(root) = result.fields.iter().find(|root| root.name == value.name)
+        if let Some(root) = result.fields.iter().find(|root| root.name == value.name)
             && let Some(nested) = result.nested(root.token)
+            && let Some((children, nested, segment)) =
+                super::fields::member_fields(&mut value.members, nested)
         {
             let mut path = parent.to_vec();
             path.push(value.name.clone());
+            path.extend(segment);
             registry_fields(children, nested, names, &path, gaps);
         }
     }

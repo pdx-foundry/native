@@ -211,18 +211,24 @@ fn check_description_parameters(field: &pdx_native::Field) {
     assert_eq!(field.shape.repeat, RepeatBehavior::Accumulate);
     assert_eq!(field.read_scope, GrammarProperty::Known(vec![]));
     assert_eq!(field.accepted_categories, AcceptedCategories::NotApplicable);
+    let FieldMembers::AnyKey {
+        entry, value_forms, ..
+    } = &field.members
+    else {
+        panic!("{:?}", field.members);
+    };
     assert_eq!(
-        field.members,
-        FieldMembers::AnyKey {
-            value_forms: GrammarProperty::Known(vec![
-                ScalarForm::Number,
-                ScalarForm::Text,
-                ScalarForm::Keyword("long_float".into()),
-                ScalarForm::Keyword("num64".into()),
-                ScalarForm::Keyword("unum64".into()),
-            ]),
-        }
+        value_forms,
+        &Some(GrammarProperty::Known(vec![
+            ScalarForm::Number,
+            ScalarForm::Text,
+            ScalarForm::Keyword("long_float".into()),
+            ScalarForm::Keyword("num64".into()),
+            ScalarForm::Keyword("unum64".into()),
+        ]))
     );
+    assert_eq!(entry.shape.value, ValueShape::Scalar);
+    assert_eq!(entry.shape.repeat, RepeatBehavior::Accumulate);
 }
 
 #[test]

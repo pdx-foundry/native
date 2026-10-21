@@ -50,6 +50,8 @@ pub(in crate::binding) struct PersistentRecipe {
     pub post_read_slots: [u64; 2],
     /// Offset of a modifier container's 32-bit category mask from the container's start.
     pub container_mask_offset: u64,
+    /// The string object's flag byte, which holds a short string's length.
+    pub string_flag_byte: u64,
     pub families: &'static [FamilyAnchor],
 }
 
@@ -284,6 +286,7 @@ const M45_DECLARATIONS: DeclarationRecipe = DeclarationRecipe {
         member_slot: 0x28,
         post_read_slots: [0x30, 0x38],
         container_mask_offset: 0xac,
+        string_flag_byte: M45_TEMPLATE_LAYOUT.string_tag_offset(),
         families: &[
             FamilyAnchor {
                 symbol: "CPdxModifier<ModifierType, ModifierCategory, CModifier, CDefaultPdxModifierValueReader>::Read(CReader&)",

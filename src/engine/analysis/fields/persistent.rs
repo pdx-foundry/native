@@ -127,16 +127,21 @@ pub(super) fn embedded(
         else {
             continue;
         };
+        let objects = input
+            .embedded_objects
+            .get(&member)
+            .map_or(&[][..], Vec::as_slice);
         let child = owner.holding(Owner {
             reader: member.clone(),
             receiver,
-            objects: &[],
+            objects,
             persistent: owner.persistent,
             enclosing: Vec::new(),
         });
         let result = super::owner_result(input, symbol_index, &child, names);
-        // With no named key, the field keeps its unresolved members and their gap.
-        if result.fields.is_empty() {
+        // With no named key and no reader of any key, the field keeps its unresolved members
+        // and their gap.
+        if result.fields.is_empty() && result.any_key.is_none() {
             continue;
         }
         embedded.push(EmbeddedField {

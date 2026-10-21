@@ -82,7 +82,7 @@ use super::InputError;
 use super::discovery::SymbolIndex;
 
 /// Name and revision of the method, as stamped on its answers.
-pub const METHOD: &str = "registry-fields/v74";
+pub const METHOD: &str = "registry-fields/v75";
 
 /// Find the root fields of the input's owner. The binding has established the owner, so the
 /// method does not discover candidates again. Completeness is derived, never supplied.
@@ -260,7 +260,18 @@ fn owner_result(
             ..RegistryFieldResult::default()
         };
     }
-    let collections = nested::discover(input, symbol_index, owner, &fields, tokens);
+    let mut collections = nested::discover(input, symbol_index, owner, &fields, tokens);
+    let any_key = any_key_entry(&paths).and_then(|entry| {
+        let inserted = nested::discover(input, symbol_index, owner, &[entry], tokens);
+        let joined = (!inserted.is_empty()).then_some(0);
+
+        collections.extend(inserted);
+        joined
+    });
+    // The entry answers the path that reads any key, so its unnamed-path gaps no longer apply.
+    if let Some(path) = any_key {
+        gaps.retain(|gap| gap.path != Some(path));
+    }
     let persistent = persistent::discover(owner.persistent, &input.read_only_data, &fields);
     gaps.extend(persistent.gaps);
     let embedded = persistent::embedded(
@@ -287,6 +298,7 @@ fn owner_result(
         container_masks: persistent.containers,
         collections,
         embedded,
+        any_key,
         keyword_domains,
         fields,
         paths,
@@ -295,4 +307,26 @@ fn owner_result(
         key_order,
         ..RegistryFieldResult::default()
     }
+}
+
+/// The one token path of a member reader that compares no token and reads the key's text, when
+/// the reader has no other path, as a field of no name that the collection pass runs under the
+/// token [`ANY_KEY`]: the reader reads any key.
+fn any_key_entry(paths: &[TokenPath]) -> Option<RootField> {
+    let [path] = paths else {
+        return None;
+    };
+    let compares_no_token = path.domain == [i32::MIN as i64, i32::MAX as i64];
+    let PathOutcome::Reader(join @ ReaderJoin::Missing(stop)) = &path.outcome else {
+        return None;
+    };
+    let reads_key_text = stop.reason == dispatch::KEY_TEXT;
+
+    (compares_no_token && reads_key_text).then(|| RootField {
+        name: String::new(),
+        token: ANY_KEY,
+        constructor: 0,
+        paths: vec![0],
+        readers: vec![join.clone()],
+    })
 }

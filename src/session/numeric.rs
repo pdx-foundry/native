@@ -168,6 +168,9 @@ pub(super) fn fields(
         push_gaps(gaps, GapSubject::path(&path), &limits);
         match &mut field.members {
             FieldMembers::Fields(children) => fields(children, facts, &path, gaps),
+            FieldMembers::AnyKey { entry, .. } => {
+                fields(std::slice::from_mut(entry.as_mut()), facts, &path, gaps)
+            }
             FieldMembers::ModifierBlock(block) => modifier_block(block, facts, &path, gaps),
             _ => {}
         }

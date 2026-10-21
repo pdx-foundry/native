@@ -37,16 +37,16 @@
     "scope_context": {
       "complete": 1736,
       "denominator": 2435,
-      "failed": 474,
-      "partial": 225,
+      "failed": 473,
+      "partial": 226,
       "rate": 0.7129
     },
     "shapes_and_conditions": {
-      "complete": 1840,
+      "complete": 1841,
       "denominator": 2435,
       "failed": 290,
-      "partial": 305,
-      "rate": 0.7556
+      "partial": 304,
+      "rate": 0.7561
     },
     "weights": {
       "complete": 104,

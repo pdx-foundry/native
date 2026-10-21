@@ -43,6 +43,8 @@ pub struct FieldInput {
     pub read_only_data: Vec<DataSection>,
     /// Constructed persistent classes directly reached from the root.
     pub objects: Vec<ObjectReader>,
+    /// The objects that the member reader of each embedded object inserts, by that reader.
+    pub embedded_objects: BTreeMap<String, Vec<ObjectReader>>,
     /// Constructor evidence for generic persistent member destinations.
     pub persistent: Option<PersistentInput>,
     /// The loader function whose root switch builds the owner, when a custom loader selects a
@@ -320,6 +322,10 @@ pub struct RegistryFieldResult {
     pub collections: Vec<CollectionField>,
     /// Fixed keys of the embedded objects that root fields read and that no block family reads.
     pub embedded: Vec<EmbeddedField>,
+    /// The token path through which the member reader reads any key, when it compares no token,
+    /// reads the key's text and inserts one object for it. The object is the collection whose
+    /// token is [`ANY_KEY`].
+    pub any_key: Option<usize>,
     /// The accepted names of each keyword field, sorted, by the field's token, or why they are
     /// not established.
     pub keyword_domains: BTreeMap<i64, Result<Vec<String>, &'static str>>,
@@ -412,10 +418,10 @@ pub struct ObjectReader {
     pub shared_emplace_point: Option<u64>,
     /// The `shared_ptr` destructors of the class that the root calls. The method runs their code.
     pub shared_releases: Vec<u64>,
-    /// Entry addresses of the in-place resizing that constructs an object at the end of a
-    /// `CPdxArray` of this class, when its layout is proven.
-    pub array_emplace: Vec<u64>,
-    /// The size of one object in that array, from the resizing's allocation.
+    /// Entry addresses of the calls that construct an object at the end of a `CPdxArray` of
+    /// this class, each with how it does so, when the array's layout is proven.
+    pub array_emplace: BTreeMap<u64, ArrayEnd>,
+    /// The size of one object in that array, from the growth's allocation.
     pub array_element_size: Option<u64>,
     /// Byte offset of the pointer buffer within the collection, if proven.
     pub data_offset: Option<u64>,
@@ -433,6 +439,21 @@ pub struct ObjectReader {
     pub persistent: Option<PersistentInput>,
     /// The objects that such a nested owner's member reader inserts.
     pub objects: Vec<ObjectReader>,
+}
+
+/// The token of the collection that a reader of any key fills: no engine token, which is a
+/// 32-bit word, has it.
+pub const ANY_KEY: i64 = i64::MIN;
+
+/// How a call constructs one object at the end of a `CPdxArray` of objects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ArrayEnd {
+    /// `void CPdxArray<Class, int>::SetSizeAndEmplace<>(int, const&)`: `w1` is the new size, and
+    /// the new object is default-constructed.
+    Resize,
+    /// `Class& CPdxArray<Class, int>::InsertAtEmplace<Class>(int, Class&&)`: `w1` is the index,
+    /// here the count, and the new object is moved from the object at `x2`.
+    Insert,
 }
 
 /// A root field that reads constructed objects into an owner collection.
@@ -580,4 +601,9 @@ pub struct KeyReaders {
     pub persistent_read: Option<u64>,
     /// `CString::CString(char const*)`, which makes a string from a token's text.
     pub string_from_text: Vec<u64>,
+    /// The string functions that the collection pass follows while it reads any key.
+    #[serde(skip)]
+    pub strings: crate::engine::analysis::strings::StringFunctions,
+    /// The string object's flag byte, which holds a short string's length.
+    pub string_flag_byte: u64,
 }

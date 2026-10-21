@@ -748,9 +748,6 @@ fn attach_at_every_depth(
     }
 
     for value in values.iter_mut() {
-        let crate::FieldMembers::Fields(children) = &mut value.members else {
-            continue;
-        };
         let Some(nested) = result
             .fields
             .iter()
@@ -759,8 +756,14 @@ fn attach_at_every_depth(
         else {
             continue;
         };
+        let Some((children, nested, segment)) =
+            super::fields::member_fields(&mut value.members, nested)
+        else {
+            continue;
+        };
         let mut path = parent.to_vec();
         path.push(value.name.clone());
+        path.extend(segment);
 
         attach_at_every_depth(children, nested, &path, gaps, attach);
     }
@@ -1029,7 +1032,9 @@ fn normalized_gaps(
         .iter()
         .enumerate()
         .filter(|(index, path)| {
-            matches!(path.outcome, PathOutcome::Reader(_)) && field_of(*index).is_none()
+            matches!(path.outcome, PathOutcome::Reader(_))
+                && field_of(*index).is_none()
+                && result.any_key != Some(*index)
         })
         .count();
     if unnamed > 0 {
@@ -1107,8 +1112,12 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
             });
         }
 
-        if let crate::FieldMembers::Fields(children) = &field.members {
-            storage_gaps(children, Some(&name), gaps);
+        match &field.members {
+            crate::FieldMembers::Fields(children) => storage_gaps(children, Some(&name), gaps),
+            crate::FieldMembers::AnyKey { entry, .. } => {
+                storage_gaps(std::slice::from_ref(entry.as_ref()), Some(&name), gaps)
+            }
+            _ => {}
         }
     }
 }
@@ -1244,6 +1253,7 @@ mod field_gap_tests {
             tail: true,
         };
         RegistryFieldResult {
+            any_key: None,
             key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,

@@ -23,6 +23,7 @@ fn fixture() -> FieldInput {
         key_readers: Default::default(),
         persistent: None,
         objects: vec![],
+        embedded_objects: Default::default(),
         owner: "CExample".into(),
         symbols,
         strings: BTreeMap::from([(0x8000, "new_engine_field".into())]),
@@ -2118,7 +2119,7 @@ fn nested_fixture() -> FieldInput {
         moving_insert: BTreeMap::new(),
         shared_emplace_point: None,
         shared_releases: vec![],
-        array_emplace: vec![],
+        array_emplace: Default::default(),
         array_element_size: None,
         data_offset: Some(8),
         count_offset: Some(0x14),
@@ -2290,7 +2291,7 @@ fn emplaced_nested_fixture(element_size: u32) -> FieldInput {
     let object = &mut input.objects[0];
     object.constructors.clear();
     object.insert.clear();
-    object.array_emplace = vec![0x9600];
+    object.array_emplace = BTreeMap::from([(0x9600, fields::ArrayEnd::Resize)]);
     object.array_element_size = Some(0x30);
     input
 }
@@ -2307,6 +2308,83 @@ fn an_object_constructed_at_an_array_end_and_read_there_joins_its_collection() {
     );
     // With another element size, the root reads some other object.
     assert!(derive(emplaced_nested_fixture(0x28)).collections.is_empty());
+}
+
+/// The nested fixture with a root that reads any key: it compares no token, loads the key's text
+/// from the reader at `+0x48`, builds a `CChild` on its stack, moves it to the end of the owner's
+/// array at `+0x40` with `InsertAtEmplace<CChild>` at `0x9600`, destroys the moved-from object and
+/// reads the array's last object. `compare` adds a compare of token 7 first; `key_text` drops
+/// the key's text load when false.
+fn any_key_fixture(compare: bool, key_text: bool) -> FieldInput {
+    let mut input = emplaced_nested_fixture(0x30);
+    input.key_readers.reader_token = Some(0x38);
+    input.key_readers.token_text = 0x10;
+    let mut code = Arm64::at(0x1000);
+    if compare {
+        arm64!(code;
+            cmp w2, #7; // token 7
+            b.ne extern 0x5000 // CPersistent::ReadMember
+        );
+    }
+    arm64!(code;
+        mov x19, x0; // owner
+        mov x20, x1 // reader
+    );
+    if key_text {
+        arm64!(code; ldr x21, [x20, #0x48]); // the key's text
+    }
+    code.address(8, 0xa000); // CChild's address point
+    arm64!(code;
+        str x8, [sp, #0x10]; // the object on the stack
+        add x0, x19, #0x40; // the array
+        ldr w1, [x19, #0x54]; // at its count
+        add x2, sp, #0x10;
+        bl extern 0x9600; // CPdxArray<CChild, int>::InsertAtEmplace<CChild>
+        add x0, sp, #0x10;
+        bl extern 0x9800; // CChild::~CChild
+        ldr x8, [x19, #0x48]; // its objects
+        ldrsw x9, [x19, #0x54];
+        mov w10, #0x30;
+        madd x8, x9, x10, x8;
+        sub x1, x8, x10; // the last object
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.functions[0].code = code.bytes();
+    input.symbols.extend([
+        Symbol {
+            name: "CChild& CPdxArray<CChild, int>::InsertAtEmplace<CChild>(int, CChild&&)".into(),
+            address: 0x9600,
+        },
+        Symbol {
+            name: "CChild::~CChild()".into(),
+            address: 0x9800,
+        },
+    ]);
+    input.objects[0].array_emplace = BTreeMap::from([(0x9600, fields::ArrayEnd::Insert)]);
+    input
+}
+
+#[test]
+fn a_reader_that_compares_no_token_and_reads_the_key_text_reads_any_key() {
+    let result = derive(any_key_fixture(false, true));
+
+    assert_eq!(result.any_key, Some(0), "{:?}", result.gaps);
+    let entry = result
+        .collections
+        .iter()
+        .find(|collection| collection.token == fields::ANY_KEY)
+        .unwrap();
+    assert_eq!(entry.offset, 0x40);
+    assert_eq!(entry.fields.fields[0].name, "new_engine_field");
+    assert!(
+        result.gaps.iter().all(|gap| gap.path.is_none()),
+        "{:?}",
+        result.gaps
+    );
+    // A compared token names a key, and a reader that reads no key text names its entry nothing.
+    assert_eq!(derive(any_key_fixture(true, true)).any_key, None);
+    assert_eq!(derive(any_key_fixture(false, false)).any_key, None);
 }
 
 #[test]
@@ -3502,6 +3580,8 @@ fn compound_fixture(code: Vec<u8>) -> FieldInput {
         string_read: Some(0xf000),
         persistent_read: None,
         string_from_text: vec![0x9000],
+        strings: Default::default(),
+        string_flag_byte: 0x17,
         array_data: 8,
         array_count: 0x14,
         string_stride: 0x28,

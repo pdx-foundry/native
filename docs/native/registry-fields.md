@@ -1842,9 +1842,9 @@ Two loaders that the literal scan did not name, read on M452 with `examples/insp
   embedded objects. `CNameList::CNameList()` (`0x10061aa54`, used for the null object) installs no
   vtable there; `Init()` builds the contents inline. The [loader's part
   points](#loader-part-points) give the eight readers. `fleet_names` gets its keys
-  (`random_names`, `sequential_names`, `sequential_name`). The other lists keep `Unresolved`
-  members: their readers read any key, such as `CNameListCharacter::ReadMember`, which builds a
-  `CNameListCulture` named by the key and reads it, so the walk names no key.
+  (`random_names`, `sequential_names`, `sequential_name`). `character_names` reads any key, each
+  a `CNameListCulture` ([readers of any key](#readers-of-any-key)). The other lists keep
+  `Unresolved` members; their failed shapes are in that section.
 - **`language` is not read.** The config states `language` for `name_list`, `species_name` and
   `species_named_list`. `GetTokenArray()` names the token, but neither `CNameList::ReadMember`
   (15 keys) nor `CSpeciesNames::ReadMember` (5 keys) compares it, the cold clone of
@@ -2307,10 +2307,11 @@ receiver, and the constructor evidence of the allocation that holds the receiver
     none to a class that an enclosing owner has. The analysis stops at the same bound (a fourth
     owner below the root keeps its keys), and at an owner whose reader and receiver an enclosing
     owner has: the deeper passes leave a reader gap.
-  - An embedded object collects no inserted objects: the binding collects objects for the root's
-    and each inserted object's reader only, so a collection that an embedded reader inserts stays
-    unresolved. Change this when a gap needs it; the binding would then key the objects by the
-    embedded member reader.
+  - An embedded object collects inserted objects only when its member reader can read any key
+    (`embedded_objects`, keyed by the member reader; see [readers of any
+    key](#readers-of-any-key)). Any other collection that an embedded reader inserts stays
+    unresolved: collecting the objects of every embedded reader passed the 256-function input
+    budget of `common/traits`, `common/megastructures` and `common/section_templates`.
   - The objects of a member reader are those that it, and the inherited readers that it reaches
     by calls and jumps, construct (`reached_inherited_readers`).
 - **Result on M452 (`registry-fields/v71`).** Additions only. `special_projects`
@@ -2347,6 +2348,65 @@ Pitfalls:
   parent's constructors store the member's vtables at parent offsets.
 - `CPersistent::ReadMember` as a vtable's member reader means the class reads in its own `Read`
   (for example a statement loop in `CObjectiveCounterSet::Read`); it is not a key table.
+
+### Readers of any key
+
+A member reader that compares no token and reads the key's text reads any key the same way. The
+field's members are `FieldMembers::AnyKey`, and its `entry` is the object that the reader builds
+for each key (`fields.rs`, `any_key_entry`; `registry-fields/v75`).
+
+- **Rule.** The reader's only token path covers every token and loads the key's text, the
+  reader's token word plus the token's text offset (`+0x48` on M452). Such a path stops with the
+  reason `key-text` when it joins no reader. The collection pass then runs that path under the
+  token `ANY_KEY`, with a planted key text (`native any key`) that the string model
+  (`strings.rs`) follows through `CString::CString(char const*)`, `_strlen`, `_memmove`, the string
+  allocator and `__assign_external`. The entry is the one object that every returned path inserts
+  and reads; its paths' unnamed-path gaps are dropped. A text compare (`_memcmp`, `_strcmp`,
+  `_strncmp`) stops the run (`key-text-compare`): a compared key may read another way.
+- **A moving insertion at the array's end.** `Class& CPdxArray<Class, int>::InsertAtEmplace<Class>(int, Class&&)`
+  joins as `SetSizeAndEmplace` does ([objects at an array's end](#objects-constructed-at-an-arrays-end),
+  `ArrayEnd::Insert`): at index one, the count of the one-element array that the run gives, from
+  a source whose word at `+0` is the class's primary address point. The class's destructor on that
+  moved-from source returns with no effect. The layout comes from the insertion's body, as for the
+  resizing; its count load may be `ldrsw`.
+- **Binding.** The objects of an embedded member reader are collected only when its words load
+  the key's text from the reader in `x1` (or a `mov` copy of it) and name no `w2` before the
+  first call or branch (`loads_key_text`, `ignores_token`). That only selects candidates; the
+  walk establishes the read.
+- **M452.** `CNameListCharacter::ReadMember` (`0x1009928ac`) loads the key's text
+  (`ldr x1,[x1,#0x48]`), makes a `CString` of it, and for a non-empty key stores the
+  `CNameListCulture` address point (`0x103082d38`) in a stack object, moves it to the end of the
+  array at `+8` with `InsertAtEmplace<CNameListCulture>` (`0x10099d334`; element size `0x1f0`, count
+  at `+0x14`), destroys the stack object, assigns the key to the new culture's name and reads it
+  with `CReader::Read(CPersistent&)` (`0x100992ad4`). An empty key goes to `CPersistent::ReadMember`;
+  the planted key does not take that branch.
+- **Result on M452 (`registry-fields/v75`).** `common/name_lists` `character_names` gets
+  `AnyKey` with a `CNameListCulture` entry (repeat `Accumulate`) of 22 keys: the eighteen name
+  lists (`first_names`, `full_names_female`, `regnal_second_names_male`, …) as string lists, the
+  three `use_full_regnal_name*` Booleans, and `weight`, which keeps no shared reader. The
+  modifier blocks' parameter lists (`description_parameters`) keep their scalar entry. Atlas does
+  not read `AnyKey` yet: it must match a config pattern key (`<ship_size>`, `scalar`) or a literal
+  key that the reader does not name (`default`) to `entry`, and read `value_forms` only for a
+  scalar entry.
+- **Stays a gap.** The other name lists read their keys in shapes the rule does not cover:
+  - `CNameListShipClass::ReadMember` (`0x10099484c`) compares the key with `generic` (a short-text
+    byte loop or `_memcmp`) and reads a string list; another key is looked up in
+    `CShipSizeDatabase`'s map (`Find` at `+0x58`, the null object, the validity check) and reads a
+    string list at the size's index. `CNameListShip::ReadMember` does the same and then parses the
+    value by hand (an `@` test on the lexer's token, `strcmp` with `sequential_name`).
+    `CNameListPlanet::ReadMember` looks the key up with `GetPlanetClass` and runs its own statement
+    loop. A rule for these needs text-compared fixed keys and a key reference.
+  - `CNameListArmy::ReadMember` compares token `generic` first (an inline
+    `SNameListArmyTypeReader` serializer), so its default path is not the only path; it also
+    merges a repeated key through `GetIndex`. `army_names` itself has no reader join.
+  - `CNameListByRarity::ReadMember` converts the token with `TokenToEnum<ERarity>`: keyword keys,
+    not any key.
+- **Limits.** The planted key matches no fixed key, so a reader that compares the key by an inline
+  byte loop against a constant and reads the same object either way is not told apart; a
+  `_memcmp` or `_strcmp` stops the run. Entry members take the read-scope, numeric, scoped-operand
+  and storage passes below an empty path segment; the entry's own read scope is not
+  established. Remove or limit the rule when a build's any-key reader reads a key before its
+  object is in the array, or inserts other than at the count.
 
 ### Pre-trigger blocks
 

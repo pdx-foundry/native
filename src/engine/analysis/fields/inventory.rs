@@ -167,6 +167,7 @@ mod tests {
         let partition_accounted = partition_accounted(&paths);
         let offset = storage_offset(&fields[0], partition_accounted);
         let result = RegistryFieldResult {
+            any_key: None,
             key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,
