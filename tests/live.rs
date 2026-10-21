@@ -1414,7 +1414,7 @@ async fn fixture_required_field(native: &Native) -> Outcome {
         fields
             .iter()
             .find(|field| field.name == name)
-            .map(|field| field.requirement)
+            .map(|field| field.requirement.clone())
     };
     if requirement("name") != Some(FieldRequirement::Required) {
         return Err(format!("`name` is not required: {:?}", requirement("name")).into());

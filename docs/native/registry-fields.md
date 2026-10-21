@@ -939,11 +939,13 @@ build, in `binding/requirements.rs`; a build without a census gives `Unknown` ev
 
 | Requirement | Rule | Root fields (M452) |
 | --- | --- | ---: |
-| `Required` | An unconditional check logs the field's absence | 31 |
-| `Unknown` | The check depends on another field's value; the registry is outside the census; or the field is below a definition's fields | 289 |
-| `Optional` | Every other root field of a census registry | 2,066 |
+| `Required` | An unconditional check logs the field's absence | 32 |
+| `Cases` | A traced check depends on another field's value: one case for each value of its condition that the trace states ([traced conditional checks](#required-fields)) | 4 |
+| `Unknown` | The check depends on another field's value with no traced cases; the registry is outside the census; or the field is below a definition's fields | 245 |
+| `Optional` | Every other root field of a census registry | 2,105 |
 
-Counts at `registry-fields/v70`.
+Counts at `registry-fields/v72`. A definition that meets no case of a `Cases` answer has no
+established requirement.
 
 **A recorded manual exception.** Claim: loading a definition without a field logs a report of
 its absence, or logs none. Conditions: the exact M452 build, and a registry whose empty
@@ -959,9 +961,14 @@ one `country_event`; `flags` and `common/scripted_variables` hold no blocks and 
 same mod with no files logs one line in `error.log`; the probe logs 239. A second run adds an
 unknown key `native_required_witness = yes` to each definition: the absence reports are the same,
 and 163 registries report the unknown key, which shows that they read the definition. The census
-is those 163, less three whose report joins no key: `common/diplomatic_actions` (`Diplomatic
-action is missing token`), `common/astral_rifts` (an invalid stage event) and
-`common/species_names` (the definition key is read as a species class). Probe, logs and joins:
+is those 163, less `common/species_names`, whose report joins no key (the definition key is read
+as a species class). Two reports that first joined no key are joined by their emitting code:
+`common/diplomatic_actions` `Diplomatic action is missing token` tests the definition key, not a
+field (see the shapes below), so every root field is `Optional`; `common/astral_rifts` `astral
+rift possible stage #%i: Invalid event ''` comes from `CAstralRiftType::PostReadInit()`
+(`0x100f438c4`), which looks up the string at `+0x88` with `CEventManager::GetEvent` and logs when
+no event is found. `CAstralRiftType::ReadMember` reads token `0x1b8` (`event`) into `+0x88`, so
+`event` is `Required`; all 32 vanilla rifts set it. Probe, logs and joins:
 `.local/evidence/sdk-829-required-fields-2026-10-14/`.
 
 - **Crashes.** An empty `common/technology` definition stops the game in
@@ -983,8 +990,8 @@ action is missing token`), `common/astral_rifts` (an invalid stage event) and
 - **Conditional checks.** Vanilla content logs nothing, so a vanilla definition that omits a
   candidate field shows that its check depends on another field. `buildings.building_sets` (65 of
   498 omit it; `CBuildingType::InitPostRead()` tests `owner_type`), card_categories `background`,
-  `background_expanded` and `icon` (`core_focus`, `selectable = no`), patrons
-  `first_contact_event` (2 of 14), ship_categories `namelist` (`uses_name_list = no`) and missions
+  `background_expanded` and `icon` (`core_focus`, `selectable = no`), ship_categories `namelist`
+  (`uses_name_list = no`) and missions
   `icon` and `counter` (51 of 102) are `Unknown`. So are planet_classes `icon` and `icon_large`
   (`CPlanetClass::PostProcess()`, a conditional check that the empty definition does not reach),
   resolutions `resources` (the report is about a category inside it), and the six keys of which
@@ -1043,36 +1050,42 @@ The forms on M452:
   constructor (`0x10041c9b8`) looks the key up with `CStaticLexer::FindTok` and logs `Diplomatic
   action is missing token` through `CLogger::Log` when the stored token at `+0x48` is `0xc`
   (`0x10041cbf4`). Its `PostReadInit()` has no field check, and the witness run read the item, so
-  every root field of `common/diplomatic_actions` is optional; the registry is outside the census
-  only because its report joins no key.
+  every root field of `common/diplomatic_actions` is `Optional`.
 
 The same two loggers make 1,230 calls from 877 functions named `InitPostRead`, `PostReadInit`,
 `PostProcess`, `PostInit`, `PostValidate` or `Validate`; most report a bad value, not an absent
 one.
 
 **Traced conditional checks (M452).** A check that depends on another field's value is not
-observed by the census's empty definition, and `FieldRequirement` has no form for a condition.
-These traces state the condition; Native publishes them only when `FieldRequirement` can carry
-cases, so the answers below are a known gap:
+observed by the census's empty definition. A static trace of its hook on the exact build states
+the condition, and the census publishes it as `FieldRequirement::Cases`, one case for each side
+(`traced` in `binding/requirements.rs`):
 
 - `CEspionageOperationType::InitPostRead()` (`0x100497188`) compares the stored `stages` (`+0x6e8`,
   `CReader::Read(int&)`, default 0) with the size of the `stage` array (`+0x54`; each `stage` is
   inserted at the end with `InsertAtEmplace`) and logs `does not have the expected number of
   stages.` (`espionage_operation_type.cpp:407`) when they differ. `stage` is required when
-  `stages` is not zero. Native answers `Optional`.
+  `stages` is not zero: cases `FieldZero { stages, zero: true }` (not required) and
+  `zero: false` (required).
 - `CPatronType::PostReadInit()` (`0x100a13198`) switches on the category byte (`+0x40`; minor 0,
   major 1, great 2; the constructor stores 3, unset) through a byte table at `0x102ca81f9` and
   `br x9` at `0x100a1349c`. Each set category tests `position` (`+0x110`, `+0x118`, fixed point
   ×100000): minor and great log when x² + y² is above 1, and major logs unless the position is a
   unit step on one axis. The constructor stores (-1, -1) (`0x100a12724`), which fails every test,
-  so `position` is required for every set category; an unset category logs its own report. Native
-  answers `Optional`.
+  so `position` is required for every set category: three cases, one `FieldKeyword` for each
+  category keyword. An unset category logs its own report and tests no position, so it meets no
+  case and has no established requirement.
 - `CPatronType::ParseCountryEventID(CString const&, CString const&)` (`0x100a1442c`) logs
   `expected a %s event to be specified.` (`patron_type.cpp:451`) for an empty event string. Its
   callers in the hook (`0x100a13c00`, `0x100a13c68`) make `first_contact_event` (`+0x278`)
   required unless the category is great, and `covenant_event` (`+0x2a8`) required only for major;
-  a great patron parses a covenant event only when one is given. Native answers `Unknown` for
-  `first_contact_event` and `Optional` for `covenant_event`.
+  a great patron parses a covenant event only when one is given. The cases are
+  `FieldKeyword { category, great_patron }` (`first_contact_event` not required; any other value
+  required) and `FieldKeyword { category, major_patron }` (`covenant_event` required; any other
+  value not required). `CPatronType::ReadMember` stores the category byte from the value token
+  (`minor_patron` 0, `major_patron` 1, `great_patron` 2, at `0x100a13030`). `category` is not a
+  returned field of the registry (its path stops at a branch condition), so the condition names
+  the key that the definition writes.
 
 **Check.** `cargo live fixture_required_field` loads two card categories through validation: the
 one without `name` logs `has empty 'name' field` on its own line, the other logs nothing about
@@ -1080,7 +1093,9 @@ it, and `registry_fields` gives `name` as `Required`. The message names its defi
 '<file>', Lines: [<first>-<last>]`; the fixture joins that form to the first line.
 
 **Atlas mapping.** `Required` answers a config minimum of 1; a larger minimum is a count, which
-this answer does not give. `Optional` answers a minimum of 0. `Unknown` answers neither.
+this answer does not give. `Optional` answers a minimum of 0. `Unknown` answers neither. A
+`Cases` answer gives a minimum only where Atlas can show a case's condition holds (Atlas
+decision).
 
 Accepted limits: a check that runs only when another field has a value is not observed for the
 fields that an empty definition leaves at their defaults, so such a field can be `Optional` here

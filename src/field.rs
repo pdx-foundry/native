@@ -43,7 +43,7 @@ pub enum RepeatBehavior {
 /// Whether a definition must contain a root field, or a member of a root statement such as an
 /// event kind: what the engine reports when a definition omits it while the game loads. This gives
 /// no occurrence count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum FieldRequirement {
     /// A definition without the field logs a report of its absence while the game loads.
@@ -51,9 +51,21 @@ pub enum FieldRequirement {
     /// A definition without the field logs no report of its absence while the game loads. A
     /// check that runs only when another field has a value can still report it.
     Optional,
-    /// Not established: the check depends on another field's value, the registry was not
-    /// observed, or the field is below a definition's fields.
+    /// The requirement depends on the definition's other fields. Each case holds where its
+    /// condition holds; a definition that meets no case has no established requirement.
+    Cases(Vec<RequirementCase>),
+    /// Not established: the check depends on another field's value that no case states, the
+    /// registry was not observed, or the field is below a definition's fields.
     Unknown,
+}
+
+/// A condition on a definition's other stored fields, and the requirement where it holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RequirementCase {
+    /// The stored state of the definition's other fields that this case covers.
+    pub condition: FieldCondition,
+    /// Whether a definition that meets the condition must contain the field.
+    pub required: bool,
 }
 
 /// A condition and its outcome from one path through the field's loader.
@@ -80,6 +92,16 @@ pub enum FieldCondition {
         path: Vec<String>,
         /// Whether this alternative requires zero.
         zero: bool,
+    },
+    /// The stored keyword field holds, or does not hold, one keyword. The condition is on the
+    /// stored value, so a definition without the field meets it by the field's default.
+    FieldKeyword {
+        /// Field path, including enclosing block fields.
+        path: Vec<String>,
+        /// The keyword as a definition writes it.
+        keyword: String,
+        /// Whether the condition requires that keyword; `false` requires any other value.
+        equal: bool,
     },
     /// The required state could not be expressed as a field condition.
     Unresolved,

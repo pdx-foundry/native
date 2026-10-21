@@ -134,10 +134,14 @@ for contexts and scope types.
   [registry fields](../native/registry-fields.md#repeat-behavior).
 - `Field.requirement` says whether a definition must contain a root field, or a member of a
   root statement such as an event kind: `Required` where loading a definition without it logs a
-  report of its absence, `Optional` where it logs none, and `Unknown` where the check depends on
-  another field's value, the registry is outside the build's census, or the field is below a
-  definition's fields. It gives no occurrence count. The answer is a
-  recorded census of one game run per build; a build without one gives `Unknown`. See
+  report of its absence, `Optional` where it logs none, `Cases` where the check depends on the
+  definition's other fields, and `Unknown` where such a check has no stated cases, the registry
+  is outside the build's census, or the field is below a definition's fields. Each
+  `RequirementCase` gives a `FieldCondition` on other stored root fields (`FieldZero`, or
+  `FieldKeyword` for a stored keyword) and whether the field is required where it holds; a
+  definition that meets no case has no established requirement. It gives no occurrence count.
+  The answer is a recorded census of one game run per build, with the cases of statically traced
+  checks; a build without one gives `Unknown`. See
   [registry fields](../native/registry-fields.md#required-fields).
 - `Field.read_scope` gives the read-time `this` scope alternatives for a block. `Types` is a set
   from one reader path; multiple alternatives retain different read-time entry paths. `Enclosing`

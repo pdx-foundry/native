@@ -5,8 +5,11 @@
 //! exact build of the census, and a registry whose empty definition the run read. Obstacle: the
 //! checks are one-off member tests in post-read hooks, with no shared shape, and the method
 //! cannot join a tested member to its key. Removal route: a static reading of those hooks.
-//! `docs/native/registry-fields.md`, "Required fields", has the run, the joins and the limits.
-use crate::FieldRequirement;
+//! A check that depends on another field's value is stated as cases where a static trace of its
+//! hook on the exact build gives them; the trace is the same kind of recorded exception.
+//! `docs/native/registry-fields.md`, "Required fields", has the run, the joins, the traces and
+//! the limits.
+use crate::{FieldCondition, FieldRequirement, RequirementCase};
 
 /// One build's census of required root fields.
 pub(in crate::binding) struct RequirementCensus {
@@ -16,15 +19,73 @@ pub(in crate::binding) struct RequirementCensus {
     /// `(registry, field)` pairs whose absence an unconditional check reports. A pair can be
     /// outside `registries` when a static check establishes it.
     pub required: &'static [(&'static str, &'static str)],
-    /// `(registry, field)` pairs whose absence check depends on another field's value.
+    /// `(registry, field)` pairs whose absence check depends on another field's value, with no
+    /// traced cases.
     pub conditional: &'static [(&'static str, &'static str)],
+    /// Fields whose absence check a static trace states by the definition's other fields.
+    pub traced: &'static [TracedRequirement],
+}
+
+/// The cases of one field's conditional absence check, from a static trace of its hook.
+pub(in crate::binding) struct TracedRequirement {
+    pub registry: &'static str,
+    pub field: &'static str,
+    /// Each case's condition and whether the field is required where it holds.
+    pub cases: &'static [(TracedCondition, bool)],
+}
+
+/// A condition on one stored root field of the definition.
+pub(in crate::binding) enum TracedCondition {
+    /// The field's stored scalar is zero, or nonzero.
+    Zero { field: &'static str, zero: bool },
+    /// The field's stored keyword is, or is not, `keyword`.
+    Keyword {
+        field: &'static str,
+        keyword: &'static str,
+        equal: bool,
+    },
+}
+
+impl TracedCondition {
+    fn condition(&self) -> FieldCondition {
+        match *self {
+            TracedCondition::Zero { field, zero } => FieldCondition::FieldZero {
+                path: vec![field.into()],
+                zero,
+            },
+            TracedCondition::Keyword {
+                field,
+                keyword,
+                equal,
+            } => FieldCondition::FieldKeyword {
+                path: vec![field.into()],
+                keyword: keyword.into(),
+                equal,
+            },
+        }
+    }
 }
 
 impl RequirementCensus {
     pub(in crate::binding) fn requirement(&self, registry: &str, field: &str) -> FieldRequirement {
         let listed = |pairs: &[(&str, &str)]| pairs.contains(&(registry, field));
+        let traced = self
+            .traced
+            .iter()
+            .find(|traced| traced.registry == registry && traced.field == field);
 
-        if listed(self.required) {
+        if let Some(traced) = traced {
+            let cases = traced
+                .cases
+                .iter()
+                .map(|(condition, required)| RequirementCase {
+                    condition: condition.condition(),
+                    required: *required,
+                })
+                .collect();
+
+            FieldRequirement::Cases(cases)
+        } else if listed(self.required) {
             FieldRequirement::Required
         } else if listed(self.conditional) || !self.registries.contains(&registry) {
             FieldRequirement::Unknown
@@ -41,6 +102,7 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/ai_budget", "category"),
         ("common/ai_budget", "resource"),
         ("common/archaeological_site_types", "on_roll_failed"),
+        ("common/astral_rifts", "event"),
         ("common/buildings", "category"),
         ("common/colony_automation", "category"),
         ("common/country_focus/card_categories", "desc"),
@@ -87,7 +149,6 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("common/country_focus/card_categories", "icon"),
         ("common/missions/missions", "counter"),
         ("common/missions/missions", "icon"),
-        ("common/patrons", "first_contact_event"),
         ("common/planet_classes", "icon"),
         ("common/planet_classes", "icon_large"),
         ("common/resolutions", "resources"),
@@ -104,6 +165,109 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
         ("events", "option"),
         ("events", "picture"),
         ("events", "title"),
+    ],
+    traced: &[
+        // `CEspionageOperationType::InitPostRead()` logs unless `stages` equals the count of
+        // `stage` blocks.
+        TracedRequirement {
+            registry: "common/espionage_operation_types",
+            field: "stage",
+            cases: &[
+                (
+                    TracedCondition::Zero {
+                        field: "stages",
+                        zero: true,
+                    },
+                    false,
+                ),
+                (
+                    TracedCondition::Zero {
+                        field: "stages",
+                        zero: false,
+                    },
+                    true,
+                ),
+            ],
+        },
+        // `CPatronType::PostReadInit()` tests `position` for each set category, and its default
+        // (-1, -1) fails every test. An unset category runs no position test.
+        TracedRequirement {
+            registry: "common/patrons",
+            field: "position",
+            cases: &[
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "minor_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "major_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "great_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+            ],
+        },
+        // `CPatronType::PostReadInit()` parses the first contact event for every category but
+        // great, and logs when it is empty.
+        TracedRequirement {
+            registry: "common/patrons",
+            field: "first_contact_event",
+            cases: &[
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "great_patron",
+                        equal: true,
+                    },
+                    false,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "great_patron",
+                        equal: false,
+                    },
+                    true,
+                ),
+            ],
+        },
+        // It requires the covenant event of a major patron only.
+        TracedRequirement {
+            registry: "common/patrons",
+            field: "covenant_event",
+            cases: &[
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "major_patron",
+                        equal: true,
+                    },
+                    true,
+                ),
+                (
+                    TracedCondition::Keyword {
+                        field: "category",
+                        keyword: "major_patron",
+                        equal: false,
+                    },
+                    false,
+                ),
+            ],
+        },
     ],
 };
 
@@ -124,6 +288,7 @@ const M452_CENSUS_REGISTRIES: &[&str] = &[
     "common/ascension_perks",
     "common/asteroid_belts",
     "common/astral_actions",
+    "common/astral_rifts",
     "common/attitudes",
     "common/bombardment_stances",
     "common/buildings",
@@ -150,6 +315,7 @@ const M452_CENSUS_REGISTRIES: &[&str] = &[
     "common/decisions",
     "common/deposit_categories",
     "common/deposits",
+    "common/diplomatic_actions",
     "common/districts",
     "common/dust_clouds",
     "common/dynamic_text",
@@ -300,7 +466,7 @@ mod tests {
         );
         assert_eq!(
             requirement("common/diplomatic_actions", "icon"),
-            FieldRequirement::Unknown
+            FieldRequirement::Optional
         );
         assert_eq!(
             requirement("common/tradition_categories", "adoption_bonus"),
@@ -313,6 +479,37 @@ mod tests {
         assert_eq!(
             requirement("common/galactic_focuses", "trigger"),
             FieldRequirement::Required
+        );
+        assert_eq!(
+            requirement("common/astral_rifts", "event"),
+            FieldRequirement::Required
+        );
+        let FieldRequirement::Cases(position) = requirement("common/patrons", "position") else {
+            panic!("patrons position has no cases");
+        };
+        assert_eq!(position.len(), 3);
+        assert!(position.iter().all(|case| case.required));
+    }
+
+    #[test]
+    fn a_traced_conditional_check_gives_one_case_for_each_side_of_its_condition() {
+        let stages = |zero| FieldCondition::FieldZero {
+            path: vec!["stages".into()],
+            zero,
+        };
+
+        assert_eq!(
+            M452_REQUIREMENTS.requirement("common/espionage_operation_types", "stage"),
+            FieldRequirement::Cases(vec![
+                RequirementCase {
+                    condition: stages(true),
+                    required: false,
+                },
+                RequirementCase {
+                    condition: stages(false),
+                    required: true,
+                },
+            ])
         );
     }
 }
