@@ -756,14 +756,29 @@ fn attach_at_every_depth(
         else {
             continue;
         };
-        let Some((children, nested, segment)) =
-            super::fields::member_fields(&mut value.members, nested)
-        else {
-            continue;
-        };
         let mut path = parent.to_vec();
         path.push(value.name.clone());
-        path.extend(segment);
+
+        // The entry of a reader of any key is attached as a field of the reader's result, under
+        // its own root, before its members are visited.
+        if let crate::FieldMembers::AnyKey { entry, .. } = &mut value.members {
+            let Some(root) = super::fields::any_key_root(nested) else {
+                continue;
+            };
+            let mut level = nested.clone();
+            level.fields = vec![root];
+            attach_at_every_depth(
+                std::slice::from_mut(entry.as_mut()),
+                &level,
+                &path,
+                gaps,
+                attach,
+            );
+            continue;
+        }
+        let crate::FieldMembers::Fields(children) = &mut value.members else {
+            continue;
+        };
 
         attach_at_every_depth(children, nested, &path, gaps, attach);
     }
@@ -1027,6 +1042,9 @@ fn normalized_gaps(
             });
         }
     }
+    // The path that reads any key is answered only where a field of no name, the entry, is
+    // among the returned fields.
+    let returns_entry = fields.iter().any(|field| field.name.is_empty());
     let unnamed = result
         .paths
         .iter()
@@ -1034,7 +1052,7 @@ fn normalized_gaps(
         .filter(|(index, path)| {
             matches!(path.outcome, PathOutcome::Reader(_))
                 && field_of(*index).is_none()
-                && result.any_key != Some(*index)
+                && !(result.any_key == Some(*index) && returns_entry)
         })
         .count();
     if unnamed > 0 {
@@ -1293,10 +1311,10 @@ mod field_gap_tests {
         }
     }
 
-    /// `result` with one more field, `names`, that reads an embedded object whose reader reads
-    /// any key: each key inserts an object whose one key, `weight`, keeps no reader.
-    fn any_key_result() -> RegistryFieldResult {
-        use crate::engine::analysis::fields::{ANY_KEY, CollectionField, EmbeddedField};
+    /// The result of a reader that reads any key: each key inserts an object whose one key,
+    /// `weight`, keeps no reader.
+    fn any_key_reader() -> RegistryFieldResult {
+        use crate::engine::analysis::fields::{ANY_KEY, CollectionField};
 
         let missing = || ReaderJoin::Missing(Unresolved::new("reader-routing"));
         let path = |domain: [i64; 2]| TokenPath {
@@ -1332,6 +1350,14 @@ mod field_gap_tests {
             container_mask: None,
             construction_scopes: Vec::new(),
         }];
+        embedded
+    }
+
+    /// `result` with one more field, `names`, that reads an embedded object whose reader reads
+    /// any key ([`any_key_reader`]).
+    fn any_key_result() -> RegistryFieldResult {
+        use crate::engine::analysis::fields::EmbeddedField;
+
         let read = ReaderJoin::Joined {
             callee: "CReader::Read(CPersistent&)".into(),
             arguments: BTreeMap::new(),
@@ -1356,9 +1382,44 @@ mod field_gap_tests {
             token: 5,
             read: "CReader::Read(CPersistent&)".into(),
             member: "CNames::ReadMember(CReader&, int)".into(),
-            fields: Box::new(embedded),
+            fields: Box::new(any_key_reader()),
         }];
         parent
+    }
+
+    #[test]
+    fn the_attachment_passes_visit_an_any_key_entry_under_its_own_root() {
+        let result = any_key_result();
+        let mut values = normalized_fields(&result, &ReferenceFacts::default());
+        let mut visited = Vec::new();
+        let mut record = |values: &mut [Field], level: &RegistryFieldResult, _: &mut Vec<Gap>| {
+            for value in values.iter() {
+                let token = level
+                    .fields
+                    .iter()
+                    .find(|root| root.name == value.name)
+                    .map(|root| root.token);
+                visited.push((value.name.clone(), token));
+            }
+        };
+
+        attach_at_every_depth(&mut values, &result, &[], &mut Vec::new(), &mut record);
+
+        assert!(
+            visited.contains(&(String::new(), Some(fields::ANY_KEY))),
+            "{visited:?}"
+        );
+        assert!(visited.contains(&("weight".into(), Some(9))), "{visited:?}");
+    }
+
+    #[test]
+    fn a_registry_reader_that_reads_any_key_keeps_its_unnamed_path_gap() {
+        let gaps = field_gaps(&any_key_reader());
+
+        assert!(
+            gaps.iter().any(|gap| gap.kind == GapKind::UnnamedField),
+            "{gaps:#?}"
+        );
     }
 
     #[test]

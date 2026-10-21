@@ -378,9 +378,6 @@ pub(super) fn field(
     );
     normalized
 }
-/// Normalize command children from their dispatch ledger, without registry storage or uses.
-/// `initialization` holds the receiver's initialization lookups; each joins the child keys that
-/// store its key string, and each joined read alternative keeps its own condition.
 /// The member fields of a block field and the result that holds their roots, with the path
 /// segment between the field and them: a block's own fields in `nested`, or the fields of an
 /// any-key entry in the object that `nested` inserts for each key, below the entry's empty
@@ -403,27 +400,37 @@ pub(super) fn member_fields<'a, 'b>(
     }
 }
 
-/// The entry of a member reader that reads any key: the object that it inserts for each key, as
-/// a field of no name. Its members' conditions name it with an empty segment.
-fn any_key_entry(result: &RegistryFieldResult, references: &ReferenceFacts) -> Option<Field> {
+/// The root of the entry of a member reader that reads any key: a field of no name under the
+/// token [`ANY_KEY`], whose collection is the object that the reader inserts for each key.
+pub(super) fn any_key_root(result: &RegistryFieldResult) -> Option<RootField> {
     let path = result.any_key?;
-    let collection = result
-        .collections
-        .iter()
-        .find(|collection| collection.token == ANY_KEY)?;
-    let root = RootField {
+
+    Some(RootField {
         name: String::new(),
         token: ANY_KEY,
         constructor: 0,
         paths: vec![path],
         readers: Vec::new(),
-    };
+    })
+}
+
+/// The entry of a member reader that reads any key: the object that it inserts for each key, as
+/// a field of no name. Its members' conditions name it with an empty segment.
+fn any_key_entry(result: &RegistryFieldResult, references: &ReferenceFacts) -> Option<Field> {
+    let root = any_key_root(result)?;
+    let collection = result
+        .collections
+        .iter()
+        .find(|collection| collection.token == ANY_KEY)?;
     let mut entry = collection_field(&root, collection, references);
 
     prefix_member_conditions(&mut entry, "");
     Some(entry)
 }
 
+/// Normalize command children from their dispatch ledger, without registry storage or uses.
+/// `initialization` holds the receiver's initialization lookups; each joins the child keys that
+/// store its key string, and each joined read alternative keeps its own condition.
 pub(super) fn grammar_fields(
     fields: &[RootField],
     paths: &[TokenPath],
