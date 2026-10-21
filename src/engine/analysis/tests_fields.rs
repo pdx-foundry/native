@@ -5497,6 +5497,70 @@ fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
     );
 }
 
+/// The stack serializer of [`stack_serializer_fixture`], built inline: token 7 stores the vtable
+/// address point `0x7010` and the wrapped member `+0x40` as one pair at `sp+0x10`, then a scope
+/// word beside them, and reads the pair. `overwrite` then stores over the wrapped member's word.
+fn inline_serializer_fixture(overwrite: bool) -> FieldInput {
+    let mut input = stack_serializer_fixture();
+    let mut code = Arm64::at(0x1000);
+    arm64!(code;
+        cmp w2, #7; // token 7
+        b.eq extern 0x1010;
+        add x0, x0, #0x38;
+        b extern 0x5000; // CPersistent::ReadMember
+        mov x20, x1; // the reader
+        add x9, x0, #0x40 // the wrapped member
+    );
+    code.address(8, 0x7010);
+    arm64!(code;
+        stp x8, x9, [sp, #0x10]; // the vtable address point and the wrapped member
+        mov w10, #4;
+        str x10, [sp, #0x20] // a scope word beside the pair
+    );
+    if overwrite {
+        arm64!(code; str xzr, [sp, #0x18]);
+    }
+    arm64!(code;
+        add x1, sp, #0x10;
+        mov x0, x20;
+        b extern 0x9700 // CReader::Read(CPersistent&)
+    );
+    input.functions[0].code = code.bytes();
+    let serializer = input.stack_serializers.remove(&0x9500).unwrap();
+    input.stack_serializers.insert(0x7010, serializer);
+
+    input
+}
+
+#[test]
+fn a_stack_serializer_built_inline_reads_its_members() {
+    let result = derive(inline_serializer_fixture(false));
+
+    assert!(
+        matches!(
+            &result.fields[0].readers[..],
+            [ReaderJoin::Stored { callee, kind: crate::ReaderKind::Block, destination: Some(0x40), .. }]
+                if callee.ends_with("CSerializer::ReadMember(CReader&, int)")
+        ),
+        "{:?}",
+        result.fields
+    );
+    let names: Vec<_> = result.embedded[0]
+        .fields
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    assert_eq!(names, ["nested_field"]);
+    // A store over the wrapped member's word unbuilds the serializer.
+    let result = derive(inline_serializer_fixture(true));
+    assert!(result.embedded.is_empty());
+    assert!(!matches!(
+        &result.fields[0].readers[..],
+        [ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }]
+    ));
+}
+
 #[test]
 fn an_owner_without_its_own_reader_reads_through_its_base_on_the_subobject() {
     use crate::engine::analysis::readers::destination;
