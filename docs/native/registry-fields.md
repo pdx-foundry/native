@@ -1673,11 +1673,14 @@ stack `CString`), `common/special_projects`,
   `ldur` from `x29`) after a `cbz` that skips one store; `CPingMapDatabase::Init()`
   (`0x100a29124`) builds its `CString` from the slot `_PING_MAP_DIR`. The block scan
   (`built_text_select`) gives `x0` the text when the select's flag byte is the `CString`'s
-  `+0x17`, its pointer load and the `csel`'s other register are the `CString`'s address, no
-  branch enters the select after its first word, and no other call comes between the
-  construction and the select. A forward branch into a block keeps a value that every path
-  into the block holds; a backward branch, or a register jump anywhere in the function, still
-  makes the block start with nothing known.
+  `+0x17`, its pointer load and the `csel`'s other register are the `CString`'s address, the
+  two loads write registers that no later word of the select reads, no branch enters the select
+  after its first word, and no call (direct or indirect) and no store that may reach the
+  `CString`'s 24 bytes comes between the construction and the select. A store counts as reaching
+  them unless it is an immediate-offset `str`, `stur` or `stp` from a known stack address that
+  lies outside them. A forward branch into a block keeps a value that every path into the block
+  holds; a backward branch makes its block start with nothing known, and a register jump
+  anywhere in the function makes every word start with nothing known.
 
 - **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
   both enumerate `prescripted_countries`, so it is one name. The owner join does not select one of
