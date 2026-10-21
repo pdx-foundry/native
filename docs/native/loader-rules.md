@@ -102,6 +102,25 @@ The config reads three types from one named file in `common` (`path_file`, in
 `loader_rules` gives `UnknownRegistry` for these names. A single-file loader becomes a registry
 question only when `registries()` lists it.
 
+**Reviewed reason (Milestone 5, 2026-10-20).** The config types `alert`, `alert_icon` and
+`achievement` keep no Native answer. "A reason is the last resort"
+([roadmap](../roadmap.md#milestone-5-acceptance)); these are the routes and why each fails on
+M452:
+
+| Type | Loader (M452) | Static extraction | Fixture probe |
+| --- | --- | --- | --- |
+| `alert` | `CAlertSystem::InitTypes()` lexes `common/alerts.txt` (`0x1000692e4`) and loops `ReadSimpleStatement()`; root key `alerts` (`0x4096`, branch at `0x1000693d8`) holds one block per alert type | Every registry method starts from a registry, and a registry is a content directory (decision 2026-10-12: single-file loaders are special cases). `CAlertSystem` enumerates no directory, so it stays in the `UnnamedRegistries` gap, and `registry_fields` has no owner to walk. | A fixture writes files "directly under one bounded relative registry path" and asks about a registry's definitions (`FixtureRequest`), so it cannot name this file. A probe file at `common/alerts.txt` would replace the game's file, not join it ([mod over vanilla](#mod-over-vanilla)), so every vanilla alert would be gone in the probe run. |
+| `alert_icon` | The same function; root key `icon` (`0xb5`, branch at `0x1000693cc`) reads one entry per priority, whose key the loader lowers and compares as text (`CString::ToLower`, `0x100069510`) | As for `alert`; the entries are text keys, which no registry method names. | As for `alert`. |
+| `achievement` | `CGameApplication::InitGame()` tests `VFSExists("common/achievements.txt")` (`0x1005e8ac4`), lexes the file and calls `CAchievementsManager::InitFromFile(CReader*, bool)` (`0x1005e8b48`), then `CApplication::CalculateGameFilesChecksum()` | No scheduled database and no enumeration loads it, so it is outside the `registries()` search. | As for `alert`; the file also enters the game-files checksum after the read, so a probe changes the checksum of the run. |
+
+Reopen when one of these holds: a new build moves a loader to a directory or a scheduled
+database that enumerates one (the registry search then lists it); Atlas decides that a single
+named file is a registry identity, and a method names registries by file (`path_file`) and
+reads the loader's root switch; or the fixture route gains a request for a named file outside a
+registry directory that merges with the game's file. `common/gamesetup_settings/gamesetup_settings.txt`
+(`CGameSettingsDatabase::Init()`, `0x101624370`) has the same single-file shape; no reason is
+recorded for it here.
+
 ## Duplicate definitions
 
 Facts from `c621723d…` (M452).
