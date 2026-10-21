@@ -1702,7 +1702,7 @@ fn own_native() -> Native {
 }
 
 /// Independent expectation on M452: the registries that only their database's own loader names.
-const LOADER_NAMED: [&str; 30] = [
+const LOADER_NAMED: [&str; 35] = [
     "common/ambient_objects",
     "common/colors",
     "common/component_sets",
@@ -1713,14 +1713,17 @@ const LOADER_NAMED: [&str; 30] = [
     "common/game_rules",
     "common/global_ship_designs",
     "common/graphical_culture",
+    "common/message_types",
     "common/name_lists",
     "common/on_actions",
     "common/opinion_modifiers",
     "common/planet_classes",
     "common/random_names",
     "common/random_names/base",
+    "common/scripted_loc",
     "common/section_templates",
     "common/ship_behaviors",
+    "common/solar_system_initializers",
     "common/special_projects",
     "common/species_names",
     "common/start_screen_messages",
@@ -1730,6 +1733,8 @@ const LOADER_NAMED: [&str; 30] = [
     "common/traits",
     "events",
     "flags",
+    "gfx/pingmap",
+    "gfx/projectiles",
     "gfx/worldgfx",
     "music",
     "prescripted_countries",
@@ -2167,6 +2172,7 @@ fn every_listed_registry_gets_an_answer_or_unsupported() {
         "common/random_names",
         "common/random_names/base",
         "common/ship_behaviors",
+        "gfx/projectiles",
         "gfx/worldgfx",
         "music",
         "prescripted_countries",

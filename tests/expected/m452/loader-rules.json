@@ -774,5 +774,25 @@
   "music": {
     "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
     "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": {"RootKey": "song"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+  },
+  "common/message_types": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "key"}, "statement": {"RootKey": "message_type"}}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/scripted_loc": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": {"Field": "name"}, "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": null}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "common/solar_system_initializers": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "a root statement with the key `random_list` builds a random list, not an initializer"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Partial": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "Unlimited"}}
+  },
+  "gfx/projectiles": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["OutsideMethod", "definition_names", "the database reads each file as one object, whose member reader builds an object for each of three root keys and keeps it by no name that a lookup reads"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": "Unresolved", "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
+  },
+  "gfx/pingmap": {
+    "gaps": [["UnresolvedPath", "duplicate_rule", "the method does not follow what this loader does with a key that it already holds"], ["UnresolvedPath", "keeps_definition_text", "the method does not follow what this loader keeps of a definition"]],
+    "rules": {"definition_names": {"Known": [{"name": "Key", "statement": "Root"}]}, "duplicate_rule": "Unresolved", "extension": {"Known": ".txt"}, "keeps_definition_text": "Unresolved", "name_contains": {"Known": null}, "recursion": {"Known": "None"}}
   }
 }

@@ -39,7 +39,7 @@ use super::directories::{self, Anchors, Constructor, Value};
 use crate::{DefinitionForm, DuplicateRule, Recursion};
 
 /// Method revision recorded in each answer's source.
-pub const METHOD: &str = "loader-rules/v9";
+pub const METHOD: &str = "loader-rules/v10";
 
 /// The register of `ReadExistingEntry`'s existing item, its third argument after `this`.
 const EXISTING_ITEM: usize = 3;
@@ -521,14 +521,15 @@ pub fn naming(stated: &[StatedRule]) -> Naming {
 fn text(value: Value, strings: &BTreeMap<u64, String>) -> Text {
     match value {
         Value::Constant(0) => Text::Absent,
-        Value::Constant(address) => strings
+        Value::Constant(address) | Value::Text(address) => strings
             .get(&address)
             .map_or(Text::Unknown, |literal| Text::Literal(literal.clone())),
         Value::Unknown
         | Value::Stack(_)
         | Value::Slot(_)
         | Value::Object(_)
-        | Value::MemberText(_) => Text::Unknown,
+        | Value::MemberText(_)
+        | Value::SlotText(_) => Text::Unknown,
     }
 }
 
@@ -540,7 +541,9 @@ fn depth(value: Value) -> Option<i32> {
         | Value::Stack(_)
         | Value::Slot(_)
         | Value::Object(_)
-        | Value::MemberText(_) => None,
+        | Value::MemberText(_)
+        | Value::Text(_)
+        | Value::SlotText(_) => None,
     }
 }
 
@@ -722,12 +725,12 @@ mod tests {
     }
 
     #[test]
-    fn an_argument_set_before_a_branch_target_is_not_established() {
+    fn an_argument_that_one_path_into_the_call_block_changes_is_not_established() {
         let mut code = Arm64::at(0x1000);
         code.address(2, TXT);
         arm64!(code
             ; cbz w8, >join
-            ; nop
+            ; mov x2, x9 // another text on the path that falls through
             ; join:
             ; movz x3, #0
             ; movz w4, #0

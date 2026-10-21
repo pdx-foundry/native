@@ -291,6 +291,46 @@ fn database_rules(database: &str, registry: &str) -> Vec<Stated> {
             rule: named(vec![keyed_field("song", "name")]),
         }],
         "CRandomNameDatabase" => random_name_rules(registry),
+        "CSystemInitializerDataBase" => vec![Stated {
+            functions: &[
+                "CSystemInitializerDataBase::InitFromFile(CString const&)",
+                "CSystemInitializer::CSystemInitializer(CString const&)",
+                "CSystemInitializerDataBase::ReadRandomList(CReader&)",
+            ],
+            rule: Rule {
+                forms: vec![root_key()],
+                obstacles: vec![
+                    "a root statement with the key `random_list` builds a random list, not an initializer",
+                ],
+            },
+        }],
+        "CMessageSystem" => vec![Stated {
+            functions: &[
+                "CMessageSystem::ReadMessageTypes(CReader&)",
+                "CMessageType::ReadMember(CReader&, int)",
+            ],
+            rule: named(vec![keyed_field("message_type", "key")]),
+        }],
+        "CScriptableLocalizationDatabase" => vec![Stated {
+            functions: &[
+                "CScriptableLocalizationDatabase::InitFromFile(CString const&, bool)",
+                "CScriptableLocalization::ReadMember(CReader&, int)",
+            ],
+            rule: named(vec![DefinitionForm {
+                statement: DefinitionStatement::Root,
+                name: DefinitionName::Field("name".into()),
+            }]),
+        }],
+        "CPingMapDatabase" => root_keys(&[
+            "CPingMapDatabase::Init()",
+            "CPingMapDatabase::GetType(CString const&) const",
+        ]),
+        "CProjectileGfxDatabase" => vec![Stated {
+            functions: &["CProjectileGfxDatabase::ReadMember(CReader&, int)"],
+            rule: obstructed(
+                "the database reads each file as one object, whose member reader builds an object for each of three root keys and keeps it by no name that a lookup reads",
+            ),
+        }],
         _ => vec![],
     }
 }

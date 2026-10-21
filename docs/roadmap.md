@@ -193,6 +193,14 @@ is still its own task, as the [development policy](development-policy.md) says.
   answer is a case for the state that no probe holds, so no answer gets worse. A registry with
   several selectors states them all in each case, only where its constructor shows every
   selector's default is zero; other selectors stay as today and are listed as gaps.
+- A config naming pattern that no Native derived name matches answers "the engine has no such
+  name" only where the derived-name answer is `Complete` with no gap that reaches the pattern, as
+  for a key the engine never reads. A config define that Native does not list answers "not a
+  define" under the same conditions. Covered claims join the CWT disagreement review.
+- An `on_missing` answer names `## optional` or `## required` only where the engine is explicit:
+  a logged error is required, a silent fallback optional.
+- The single-file loaders `alert`, `alert_icon` and `achievement` get a reviewed reason in the
+  knowledge page that owns them, not a registry.
 
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims

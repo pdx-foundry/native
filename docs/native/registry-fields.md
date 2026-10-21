@@ -1640,21 +1640,41 @@ the `UnnamedRegistries` gap.
 [modifier families](modifier-families.md#roots)). `UnknownRegistry` is for names that `registries()` does not list. The
 references and modifier-block methods use the same join (`references::database_directories`).
 
-On M452, 25 of the 35 rows are named, with 26 names, and three classes outside the schedule name
+On M452, 30 of the 35 rows are named, with 31 names, and three classes outside the schedule name
 four more (SDK-844): `common/ambient_objects`, `common/colors`,
 `common/component_sets`, `common/component_templates` and `common/section_templates`
 (`CShipDesignTemplatesDatabase`, [below](#one-loader-three-directories-sdk-843)),
 `common/component_tags` (`CWeaponTagDatabase`), `common/diplo_phrases`, `common/fallen_empires`,
 `common/game_rules` (`CGameRules`, unscheduled), `common/global_ship_designs`
 (`CDesignerDatabase`), `common/graphical_culture` (`CGfxCultureDatabase`, a member),
-`common/name_lists` (`CNameListDatabase`, a member), `common/on_actions`,
+`common/message_types` (`CMessageSystem`, a stack `CString`), `common/name_lists`
+(`CNameListDatabase`, a member), `common/on_actions`,
 `common/opinion_modifiers`, `common/planet_classes` (through `_PLANET_CLASSES_DIR`),
 `common/random_names` and `common/random_names/base` (`CRandomNameDatabase`, unscheduled),
-`common/ship_behaviors`, `common/special_projects`,
+`common/scripted_loc` (`CScriptableLocalizationDatabase`, a stack `CString`),
+`common/ship_behaviors`, `common/solar_system_initializers` (`CSystemInitializerDataBase`, a
+stack `CString`), `common/special_projects`,
 `common/species_names`, `common/start_screen_messages`, `common/static_modifiers`,
 `common/strategic_resources`, `common/terraform`, `common/traits`, `events` (`CEventManager`),
 `flags` (`CEmpireFlagDatabase`, through `_pEMPIRE_FLAG_FOLDER`), `gfx/worldgfx`, `music`
-(`CSongDatabase`, unscheduled) and `prescripted_countries`. None repeats a template name.
+(`CSongDatabase`, unscheduled), `gfx/pingmap` (`CPingMapDatabase`, a stack `CString` from
+`_PING_MAP_DIR`), `gfx/projectiles` (`CProjectileGfxDatabase`, a stack `CString`) and
+`prescripted_countries`. None repeats a template name.
+
+- **A `CString` on the stack.** `CSystemInitializerDataBase::Init()` (`0x100aad0a4`) builds
+  `CString(sp + 0x70, "common/solar_system_initializers")`, then selects its text with
+  `ldrsb w8, [sp, #0x87]; ldr x9, [sp, #0x70]; cmp w8, #0; csel x0, x9, x20, lt` (`x20` holds
+  `sp + 0x70`) and passes `x0` to the enumeration in the same block (`0x100aad114`).
+  `CMessageSystem::InitTypes()` (`0x10093fd4c`) and `CScriptableLocalizationDatabase::Init()`
+  (`0x100b0dbfc`) have the same shape, the message system with frame addresses (`ldursb`,
+  `ldur` from `x29`) after a `cbz` that skips one store; `CPingMapDatabase::Init()`
+  (`0x100a29124`) builds its `CString` from the slot `_PING_MAP_DIR`. The block scan
+  (`built_text_select`) gives `x0` the text when the select's flag byte is the `CString`'s
+  `+0x17`, its pointer load and the `csel`'s other register are the `CString`'s address, no
+  branch enters the select after its first word, and no other call comes between the
+  construction and the select. A forward branch into a block keeps a value that every path
+  into the block holds; a backward branch, or a register jump anywhere in the function, still
+  makes the block start with nothing known.
 
 - **One directory, two databases.** `CEmpireDesignDatabase` and `CPrescriptedSpeciesDatabase`
   both enumerate `prescripted_countries`, so it is one name. The owner join does not select one of
@@ -1672,12 +1692,10 @@ four more (SDK-844): `common/ambient_objects`, `common/colors`,
   warm-up of the file list; the database's own `Init()` enumerates the files. The ticket's caller
   shape was therefore not built. Whether a caller supplies the directory of one of the 10 rows
   below was not checked; their obstacles are in their own functions.
-- **The 10 rows that stay gaps**, by obstacle:
-  - The directory is a built path, or a `CString` on the stack (the short-string select on a
-    temporary): `CGalaxyTemplateDatabase` (`ReadFiles`; its constructors build the member `+0x30`
-    from `map/setup_scenarios`, which `ReadFiles` extends before the call), `CMessageSystem`
-    (`InitTypes`), `CPingMapDatabase`, `CProjectileGfxDatabase` (`InitInstance`),
-    `CScriptableLocalizationDatabase` and `CSystemInitializerDataBase`.
+- **The 5 rows that stay gaps**, by obstacle:
+  - The directory is a built path: `CGalaxyTemplateDatabase` (`ReadFiles`; its constructors
+    build the member `+0x30` from `map/setup_scenarios`, which `ReadFiles` extends before the
+    call).
   - A directory that is not a literal: `CPortraitDatabase` enumerates a global path, a member
     path and `gfx/portraits/portraits/substitutions`.
   - No enumeration call in the class's own functions: `CAdvisorDatabase`, `CAlertSystem` and
