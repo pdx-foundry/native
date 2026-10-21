@@ -201,6 +201,10 @@ is still its own task, as the [development policy](development-policy.md) says.
   a logged error is required, a silent fallback optional.
 - The single-file loaders `alert`, `alert_icon` and `achievement` get a reviewed reason in the
   knowledge page that owns them, not a registry.
+- 2026-10-21: `sector_focuses`, `mandates`, `ai_force_species` and `trade_conversion` get a
+  reviewed reason, "the engine never loads them" on M452 (stale CWT config), with no new answer
+  kind; it reopens when a build loads the directory. `gamesetup_setting_category` joins the
+  single-file loaders' reason ([loader rules](native/loader-rules.md#single-named-files)).
 
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims
