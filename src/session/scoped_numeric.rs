@@ -56,9 +56,11 @@ fn fields_at_path(
             &subject,
             gaps,
         );
-        if let FieldMembers::Fields(children) = &mut value.members
-            && let Some(nested) = result.nested(root.token)
+        if let Some(nested) = result.nested(root.token)
+            && let Some((children, nested, segment)) =
+                super::fields::member_fields(&mut value.members, nested)
         {
+            path.extend(segment);
             fields_at_path(children, nested, facts, numeric, &path, gaps);
         }
     }

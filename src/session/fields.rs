@@ -1,8 +1,8 @@
 //! Normalize loader paths without losing the pairing between conditions and outcomes.
 use crate::answer::opaque_id;
 use crate::engine::analysis::fields::{
-    ConcreteReader, Condition, EmbeddedField, PathOutcome, ReaderJoin, RegistryFieldResult,
-    RootField, TokenPath, Value,
+    ANY_KEY, ConcreteReader, Condition, EmbeddedField, PathOutcome, ReaderJoin,
+    RegistryFieldResult, RootField, TokenPath, Value,
 };
 use crate::engine::analysis::readers;
 use crate::engine::analysis::references::{
@@ -344,24 +344,27 @@ pub(super) fn field(
         .iter()
         .find(|embedded| embedded.token == field.token)
     {
-        normalized.members = FieldMembers::Fields(
-            embedded
-                .fields
-                .fields
-                .iter()
-                .map(|child| self::field(child, &embedded.fields, references))
-                .collect(),
-        );
+        normalized.members = match any_key_entry(&embedded.fields, references) {
+            Some(entry) => FieldMembers::AnyKey {
+                entry: Box::new(entry),
+                key_reference: FieldReference::NotEstablished,
+                value_forms: None,
+            },
+            None => FieldMembers::Fields(
+                embedded
+                    .fields
+                    .fields
+                    .iter()
+                    .map(|child| self::field(child, &embedded.fields, references))
+                    .collect(),
+            ),
+        };
 
         if reads_no_container(embedded) {
             normalized.accepted_categories = AcceptedCategories::NotApplicable;
         }
     }
-    if let FieldMembers::Fields(children) = &mut normalized.members {
-        for child in children {
-            prefix_conditions(child, &field.name);
-        }
-    }
+    prefix_member_conditions(&mut normalized, &field.name);
     if normalized.reader.kind == ReaderKind::Keyword
         && let Some(Ok(names)) = result.keyword_domains.get(&field.token)
     {
@@ -375,6 +378,56 @@ pub(super) fn field(
     );
     normalized
 }
+/// The member fields of a block field and the result that holds their roots, with the path
+/// segment between the field and them: a block's own fields in `nested`, or the fields of an
+/// any-key entry in the object that `nested` inserts for each key, below the entry's empty
+/// segment.
+pub(super) fn member_fields<'a, 'b>(
+    members: &'a mut FieldMembers,
+    nested: &'b RegistryFieldResult,
+) -> Option<(&'a mut Vec<Field>, &'b RegistryFieldResult, Option<String>)> {
+    match members {
+        FieldMembers::Fields(children) => Some((children, nested, None)),
+        FieldMembers::AnyKey { entry, .. } => {
+            let element = nested.nested(ANY_KEY)?;
+            let FieldMembers::Fields(children) = &mut entry.members else {
+                return None;
+            };
+
+            Some((children, element, Some(String::new())))
+        }
+        _ => None,
+    }
+}
+
+/// The root of the entry of a member reader that reads any key: a field of no name under the
+/// token [`ANY_KEY`], whose collection is the object that the reader inserts for each key.
+pub(super) fn any_key_root(result: &RegistryFieldResult) -> Option<RootField> {
+    let path = result.any_key?;
+
+    Some(RootField {
+        name: String::new(),
+        token: ANY_KEY,
+        constructor: 0,
+        paths: vec![path],
+        readers: Vec::new(),
+    })
+}
+
+/// The entry of a member reader that reads any key: the object that it inserts for each key, as
+/// a field of no name. Its members' conditions name it with an empty segment.
+fn any_key_entry(result: &RegistryFieldResult, references: &ReferenceFacts) -> Option<Field> {
+    let root = any_key_root(result)?;
+    let collection = result
+        .collections
+        .iter()
+        .find(|collection| collection.token == ANY_KEY)?;
+    let mut entry = collection_field(&root, collection, references);
+
+    prefix_member_conditions(&mut entry, "");
+    Some(entry)
+}
+
 /// Normalize command children from their dispatch ledger, without registry storage or uses.
 /// `initialization` holds the receiver's initialization lookups; each joins the child keys that
 /// store its key string, and each joined read alternative keeps its own condition.
@@ -872,6 +925,7 @@ fn members_mut(members: &mut FieldMembers) -> Vec<&mut Field> {
 
     match members {
         FieldMembers::Fields(members) => members.iter_mut().collect(),
+        FieldMembers::AnyKey { entry, .. } => vec![entry.as_mut()],
         FieldMembers::ModifierBlock(block) => keys(&mut block.fixed_keys),
         FieldMembers::WeightBlock(block) => keys(&mut block.fixed_keys),
         FieldMembers::TriggeredModifier(clause) => {
@@ -1855,6 +1909,7 @@ mod tests {
             readers: vec![target_join],
         };
         let result = |fields, paths, collections| RegistryFieldResult {
+            any_key: None,
             key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,

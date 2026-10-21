@@ -748,6 +748,7 @@ mod tests {
             strings: Default::default(),
             read_only_data: vec![],
             objects: vec![],
+            embedded_objects: Default::default(),
             gaps: vec![],
         }
     }
@@ -764,6 +765,7 @@ mod tests {
             member: "CChild::ReadMember(CReader&, int)".into(),
             reader: None,
             fields: Box::new(RegistryFieldResult {
+                any_key: None,
                 key_order: Vec::new(),
                 keyword_domains: Default::default(),
                 loader: None,

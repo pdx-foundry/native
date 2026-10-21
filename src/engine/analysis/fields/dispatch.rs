@@ -169,6 +169,9 @@ struct State {
     /// Where the path first made a string from the value token's text. A path that then joins
     /// no reader ends there, as it did before the string idiom was followed.
     value_read: Option<Unresolved>,
+    /// Where the path first loaded the text of the statement's key. A path that compares no
+    /// token and reads the key's text reads any key; one that then joins no reader ends there.
+    key_read: Option<Unresolved>,
     targets: BTreeSet<i64>,
     emplaced: BTreeSet<i64>,
     /// Stack words that hold the value token, as a converter's argument.
@@ -327,7 +330,7 @@ impl State {
         if let Some(temporary) = &self.temporary {
             return temporary.at_call.clone();
         }
-        let outcome = match (outcome, &self.value_read) {
+        let outcome = match (outcome, self.value_read.as_ref().or(self.key_read.as_ref())) {
             (PathOutcome::Gap(_) | PathOutcome::Reader(ReaderJoin::Missing(_)), Some(read)) => {
                 PathOutcome::Reader(ReaderJoin::Missing(read.clone()))
             }
@@ -839,6 +842,8 @@ fn apply(
                 } else {
                     4
                 };
+                let reads_key_text =
+                    width == 8 && location.is_some() && location == key_text(input);
                 // A load retains origin as a load, never as the original receiver or pointer.
                 let value = location.map(|v| {
                     if let Some((slot, owner)) = wrapped_owner
@@ -859,6 +864,9 @@ fn apply(
                     }
                 });
                 let key = register(operand).ok_or_else(|| unsupported("load-destination"))?;
+                if reads_key_text && state.key_read.is_none() {
+                    state.key_read = Some(stop(KEY_TEXT, Obstacle::Unsupported));
+                }
                 state.registers.remove(&key);
                 if let Some(value) = value {
                     state.registers.insert(key, value);
@@ -1008,6 +1016,16 @@ fn apply(
         _ => return Err(unsupported("instruction")),
     }
     Ok(())
+}
+
+/// The stop reason of a path that read the statement key's text and joined no reader.
+pub(crate) const KEY_TEXT: &str = "key-text";
+
+/// Where the reader holds the text of the statement's key: its token word's text pointer.
+fn key_text(input: &DispatchInput<'_>) -> Option<Value> {
+    let token = input.reader_token_offset? as i64;
+
+    Some(Value::Reader(token + input.key_readers.token_text))
 }
 
 /// Where an inline stack serializer holds the wrapped member's address: the word after its vtable.
@@ -1189,6 +1207,7 @@ fn explore_member_with_wrapped_owner(
         copied_tokens: BTreeSet::new(),
         value_strings: BTreeSet::new(),
         value_read: None,
+        key_read: None,
         targets: BTreeSet::new(),
         emplaced: BTreeSet::new(),
         value_token_words: BTreeSet::new(),
@@ -4065,6 +4084,7 @@ mod tests {
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,
+            key_read: None,
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),
             value_token_words: BTreeSet::new(),
@@ -4105,6 +4125,7 @@ mod tests {
             copied_tokens: BTreeSet::new(),
             value_strings: BTreeSet::new(),
             value_read: None,
+            key_read: None,
             targets: BTreeSet::new(),
             emplaced: BTreeSet::new(),
             value_token_words: BTreeSet::new(),

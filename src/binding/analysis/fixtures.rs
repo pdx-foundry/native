@@ -314,7 +314,7 @@ mod tests {
             ],
             functions: vec![Function { address: 0x1000, name: "Owner::ReadMember(CReader&, int)".into(), code }],
             stubs: Default::default(),
-            strings: Default::default(), read_only_data: vec![], objects: vec![], persistent: None, gaps: vec![], key_readers: Default::default(),
+            strings: Default::default(), read_only_data: vec![], objects: vec![], embedded_objects: Default::default(), persistent: None, gaps: vec![], key_readers: Default::default(),
         }
     }
 

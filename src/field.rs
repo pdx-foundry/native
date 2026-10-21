@@ -158,15 +158,21 @@ pub enum FieldMembers {
     WeightBlock(Box<WeightBlock>),
     /// Keys of a modifier block applied while a trigger holds, such as `triggered_modifier`.
     TriggeredModifier(Box<TriggeredModifierBlock>),
-    /// Any key, each with one scalar value, such as `description_parameters = { NAME = 7 }`. No
-    /// list limits the keys. The engine keeps every entry in order with its key's text, a
-    /// repeated key too.
+    /// Any key, each read the same way, such as `description_parameters = { NAME = 7 }` or the
+    /// cultures of a name list's `character_names`. No list limits the keys.
     AnyKey {
-        /// The written forms of a value that the engine keeps. It reports any other value, such
-        /// as a block or another keyword, as malformed and keeps the entry with an empty value. A
-        /// scripted variable or inline math value is replaced before this check; this list does
-        /// not cover it.
-        value_forms: crate::GrammarProperty<Vec<ScalarForm>>,
+        /// What the engine reads under each key: the value's reader, shape, repeat behavior and
+        /// members, as for a named field. Its `name` is empty, and a condition path names it
+        /// with an empty segment. A repeated key is read again under the entry's repeat behavior.
+        entry: Box<crate::Field>,
+        /// The lookups that the engine makes with each key. `NotEstablished` when none is
+        /// established; the key then only names its entry.
+        key_reference: FieldReference,
+        /// The written forms of a scalar value that the engine keeps; `None` when the entry's
+        /// value is a block. The engine reports any other value, such as a block or another
+        /// keyword, as malformed and keeps the entry with an empty value. A scripted variable or
+        /// inline math value is replaced before this check; this list does not cover it.
+        value_forms: Option<crate::GrammarProperty<Vec<ScalarForm>>>,
     },
     /// A block of bare values, such as `tags = { a b }`, each read by `reader`. For a list of
     /// keys, each key is looked up as the field's `reference` states.

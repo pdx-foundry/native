@@ -160,6 +160,43 @@ fn normalize(
     })
 }
 
+/// The entry of a parameter list: one scalar value, kept as text in order with its key's text, a
+/// repeated key too. Its written forms are the list's `value_forms`.
+fn parameter_entry() -> Field {
+    let reader = crate::Reader {
+        numeric: GrammarProperty::Known(None),
+        scoped_operand: GrammarProperty::Known(None),
+        id: None,
+        kind: ReaderKind::String,
+        family: BlockFamily::NotApplicable,
+    };
+    let shape = crate::FieldShape {
+        value: crate::ValueShape::Scalar,
+        repeat: crate::RepeatBehavior::Accumulate,
+    };
+
+    Field {
+        name: String::new(),
+        read: vec![crate::FieldReadAlternative {
+            condition: crate::FieldCondition::Always,
+            outcome: FieldReadOutcome::Read {
+                reader: reader.clone(),
+                shape,
+            },
+        }],
+        reader,
+        shape,
+        members: FieldMembers::None,
+        domain: crate::FieldDomain::Unknown,
+        uses: Vec::new(),
+        entry_contexts: Vec::new(),
+        read_scope: GrammarProperty::Known(Vec::new()),
+        accepted_categories: AcceptedCategories::NotApplicable,
+        reference: crate::FieldReference::NotEstablished,
+        requirement: crate::FieldRequirement::Unknown,
+    }
+}
+
 /// Give each field that the variant reads as a parameter list its `AnyKey` members. Such a block
 /// reads no modifier entries and has no command family. When the written forms are not
 /// established, a gap at the field says why.
@@ -188,7 +225,11 @@ fn any_keys(fields: &mut [Field], variant: &Variant, path: &[String], gaps: &mut
                 GrammarProperty::Unresolved
             }
         };
-        field.members = FieldMembers::AnyKey { value_forms };
+        field.members = FieldMembers::AnyKey {
+            entry: Box::new(parameter_entry()),
+            key_reference: crate::FieldReference::NotEstablished,
+            value_forms: Some(value_forms),
+        };
         field.reader.family = BlockFamily::NotApplicable;
         for alternative in &mut field.read {
             if let FieldReadOutcome::Read { reader, .. } = &mut alternative.outcome {
@@ -373,7 +414,9 @@ mod tests {
         assert_eq!(
             keys[0].members,
             FieldMembers::AnyKey {
-                value_forms: GrammarProperty::Known(vec![crate::ScalarForm::Number]),
+                entry: Box::new(parameter_entry()),
+                key_reference: crate::FieldReference::NotEstablished,
+                value_forms: Some(GrammarProperty::Known(vec![crate::ScalarForm::Number])),
             }
         );
         assert_eq!(keys[0].read_scope, GrammarProperty::Known(vec![]));
@@ -385,7 +428,9 @@ mod tests {
         assert_eq!(
             keys[1].members,
             FieldMembers::AnyKey {
-                value_forms: GrammarProperty::Unresolved,
+                entry: Box::new(parameter_entry()),
+                key_reference: crate::FieldReference::NotEstablished,
+                value_forms: Some(GrammarProperty::Unresolved),
             }
         );
         assert_eq!(gaps.len(), 1, "{gaps:?}");

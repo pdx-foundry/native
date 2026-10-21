@@ -183,6 +183,7 @@ mod tests {
 
     fn result(fields: Vec<RootField>) -> RegistryFieldResult {
         RegistryFieldResult {
+            any_key: None,
             key_order: Vec::new(),
             keyword_domains: Default::default(),
             loader: None,

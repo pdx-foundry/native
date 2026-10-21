@@ -53,7 +53,10 @@ pub fn modifier_blocks(native: &Native) -> super::Result<Value> {
             fields
                 .iter()
                 .map(|field| match &field.members {
-                    FieldMembers::AnyKey { value_forms } => {
+                    FieldMembers::AnyKey {
+                        value_forms: Some(value_forms),
+                        ..
+                    } => {
                         json!([field.name, field.reader.kind, {"AnyKey": value_forms}])
                     }
                     _ => json!([field.name, field.reader.kind]),

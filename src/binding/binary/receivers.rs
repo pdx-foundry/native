@@ -495,6 +495,7 @@ mod tests {
             read_slot: 0,
             member_slot: 0,
             post_read_slots: [0; 2],
+            string_flag_byte: 0x17,
             container_mask_offset: 0xac,
             families: &[],
         };
@@ -537,6 +538,7 @@ mod tests {
             read_slot: 0,
             member_slot: 0,
             post_read_slots: [0; 2],
+            string_flag_byte: 0x17,
             container_mask_offset: 0xac,
             families: &[],
         };
@@ -576,6 +578,7 @@ mod tests {
             read_slot: 0,
             member_slot: 0,
             post_read_slots: [0; 2],
+            string_flag_byte: 0x17,
             container_mask_offset: 0xac,
             families: &[],
         };
