@@ -574,7 +574,7 @@ establish one shared reader." Their stops:
 
 | Field | Stop on M452 | Shape and follow-up |
 | --- | --- | --- |
-| `common/country_types` `faction` | `CCountryType::ReadMember` stores the `SCountryInstanceProperties::CSerializer` address point (`0x10304b538`) and owner `+0x48` at `sp+0x48`, then calls `CReader::Read(CPersistent&)` (`0x10033f590`). The serializer's `ReadMember` writes through its owner pointer. | Stack serializer, with `CEconomicUnitTemplate::CSerializer` (SDK-849) and `CSwapCollection::CSerializer` (SDK-866); SDK-872. |
+| `common/country_types` `faction` | `CCountryType::ReadMember` stores the `SCountryInstanceProperties::CSerializer` address point (`0x10304b538`) and owner `+0x48` at `sp+0x48`, then calls `CReader::Read(CPersistent&)` (`0x10033f590`). | Joined as an [inline stack serializer](#stack-serializers) (`registry-fields/v74`); its keys stay unnamed behind `PropertiesReadMember`. |
 | `common/country_types` `modules` | An inline statement loop (`0x10033f874`): `ReadSimpleStatement`, then `CreateCountryModule(CCountry&, int, CReader&)` with the statement key at reader `+0x38`, then virtual calls on the module. | Statement loop; SDK-871. |
 | `common/map_modes` `color` | `operator new(0xf0)` of a struct with no vtable, built inline (`0x101728acc`), then an inline statement loop on reader `+0x38`. | Statement loop; SDK-871. |
 | `common/ship_sizes` `section_slots` | `CPdxArray<SSectionSlot, int>::RemoveAll()`, then an inline statement loop (`0x1011eb478`). | Statement loop; SDK-871. |
@@ -679,7 +679,9 @@ The constructor only installs its vtable at `+0`, stores `x1` at `+8` and the sc
   - **Walk.** An `stp` to the frame whose first register holds such an address point and whose
     second holds an owner address records the serializer, with the wrapped member at slot `+8`,
     as the constructor call does. A later store to a fixed frame slot outside the serializer's
-    two words keeps it; any other store forgets it, for both forms. The persistent read and the
+    two words keeps it; any other store forgets it, for both forms. A store writes its registers'
+    width, so a pair of `q` registers writes 32 bytes, and a store whose width or address (a
+    writeback form) the walk does not read forgets it too. The persistent read and the
     members then follow the constructor rule.
   - **Result on M452 (`registry-fields/v74`).** Additions only: 19 fields go from an `Unknown`
     reader to a `Block` reader with a serializer identity. `term_data` gets 9 keys (one

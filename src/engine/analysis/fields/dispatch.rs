@@ -1034,7 +1034,8 @@ fn inline_serializer(
 }
 
 /// Whether the store `row` writes a fixed frame slot outside the vtable and owner words of the
-/// path's stack serializer, so the serializer stays built. Any other store may overwrite it.
+/// path's stack serializer, so the serializer stays built. Any other store, including one whose
+/// width or address the walk does not read, may overwrite it.
 fn stores_beside_serializer(row: &Instruction, state: &State) -> bool {
     let Some((stack, slot, _)) = state.serializer else {
         return false;
@@ -1042,28 +1043,19 @@ fn stores_beside_serializer(row: &Instruction, state: &State) -> bool {
     let Some((operand, address)) = row.operands.split_once(',') else {
         return false;
     };
+    let Some(register) = register_width(operand) else {
+        return false;
+    };
     let (address, width) = match row.operation.as_str() {
-        "stp" => {
+        "stp" | "stnp" => {
             let Some((_, address)) = address.split_once(',') else {
                 return false;
             };
-            let width = if operand.starts_with(['x', 'd']) {
-                16
-            } else {
-                8
-            };
-            (address, width)
+            (address, 2 * register)
         }
-        "str" | "stur" => {
-            let width = match operand.chars().next() {
-                Some('q') => 16,
-                Some('x' | 'd') => 8,
-                _ => 4,
-            };
-            (address, width)
-        }
-        "strb" => (address, 1),
-        "strh" => (address, 2),
+        "str" | "stur" => (address, register),
+        "strb" | "sturb" => (address, 1),
+        "strh" | "sturh" => (address, 2),
         _ => return false,
     };
     let Some(("sp", amount)) = memory(address) else {
@@ -1075,6 +1067,19 @@ fn stores_beside_serializer(row: &Instruction, state: &State) -> bool {
     let at = base + amount;
 
     at + width <= stack || at >= stack + slot + 8
+}
+
+/// The bytes that a store of the register `operand` writes: `b`, `h`, `s` or `w`, `d` or `x`,
+/// and `q` registers.
+fn register_width(operand: &str) -> Option<i64> {
+    match operand.chars().next()? {
+        'b' => Some(1),
+        'h' => Some(2),
+        's' | 'w' => Some(4),
+        'd' | 'x' => Some(8),
+        'q' => Some(16),
+        _ => None,
+    }
 }
 
 /// The entry address and instructions of the root function, or `None` when the image has no

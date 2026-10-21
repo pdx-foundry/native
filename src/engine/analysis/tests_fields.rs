@@ -5499,8 +5499,8 @@ fn a_persistent_read_of_a_stack_serializer_reads_its_members() {
 
 /// The stack serializer of [`stack_serializer_fixture`], built inline: token 7 stores the vtable
 /// address point `0x7010` and the wrapped member `+0x40` as one pair at `sp+0x10`, then a scope
-/// word beside them, and reads the pair. `overwrite` then stores over the wrapped member's word.
-fn inline_serializer_fixture(overwrite: bool) -> FieldInput {
+/// word beside them, and reads the pair. `overwrite`, when given, is then stored before the read.
+fn inline_serializer_fixture(overwrite: Option<Vec<u8>>) -> FieldInput {
     let mut input = stack_serializer_fixture();
     let mut code = Arm64::at(0x1000);
     arm64!(code;
@@ -5517,8 +5517,8 @@ fn inline_serializer_fixture(overwrite: bool) -> FieldInput {
         mov w10, #4;
         str x10, [sp, #0x20] // a scope word beside the pair
     );
-    if overwrite {
-        arm64!(code; str xzr, [sp, #0x18]);
+    if let Some(store) = overwrite {
+        code.ops.extend(store);
     }
     arm64!(code;
         add x1, sp, #0x10;
@@ -5534,7 +5534,7 @@ fn inline_serializer_fixture(overwrite: bool) -> FieldInput {
 
 #[test]
 fn a_stack_serializer_built_inline_reads_its_members() {
-    let result = derive(inline_serializer_fixture(false));
+    let result = derive(inline_serializer_fixture(None));
 
     assert!(
         matches!(
@@ -5552,13 +5552,19 @@ fn a_stack_serializer_built_inline_reads_its_members() {
         .map(|field| field.name.as_str())
         .collect();
     assert_eq!(names, ["nested_field"]);
-    // A store over the wrapped member's word unbuilds the serializer.
-    let result = derive(inline_serializer_fixture(true));
-    assert!(result.embedded.is_empty());
-    assert!(!matches!(
-        &result.fields[0].readers[..],
-        [ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }]
-    ));
+    // A store over the wrapped member's word unbuilds the serializer, and so does a pair of
+    // 16-byte registers that starts below the serializer and reaches its vtable word.
+    for store in [
+        arm64!(at 0; str xzr, [sp, #0x18]),
+        arm64!(at 0; stp q0, q1, [sp, #0]),
+    ] {
+        let result = derive(inline_serializer_fixture(Some(store)));
+        assert!(result.embedded.is_empty());
+        assert!(!matches!(
+            &result.fields[0].readers[..],
+            [ReaderJoin::Joined { .. } | ReaderJoin::Stored { .. }]
+        ));
+    }
 }
 
 #[test]
