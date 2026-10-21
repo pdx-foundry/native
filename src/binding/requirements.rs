@@ -365,29 +365,15 @@ pub(in crate::binding) const M452_REQUIREMENTS: RequirementCensus = RequirementC
 };
 
 /// The M452 subtype census of 2026-10-20: definitions probed with selector fields set. A
-/// registry whose selectors include a key reference, a block or a list, or whose selector
-/// defaults are not all zero, keeps its empty-definition answer
+/// registry with any selector that is a key reference, a block or a list, or whose selector
+/// defaults are not all zero, keeps its empty-definition answer: a probed case would also cover
+/// the unprobed values of the selector it cannot state
 /// (`docs/native/registry-fields.md`, "Required fields").
 const M452_SUBTYPES: &[SubtypeCensus] = &[
     SubtypeCensus {
         registry: "common/armies",
         probed: &[(&[zero("is_pop_spawned", false)], &[])],
         other: Some(&[zero("is_pop_spawned", true)]),
-    },
-    // The constructor clears both selectors (`CDepositType`, `+0x990` and `+0x998`).
-    SubtypeCensus {
-        registry: "common/deposits",
-        probed: &[
-            (
-                &[zero("is_for_colonizable", false), zero("is_null", true)],
-                &[],
-            ),
-            (
-                &[zero("is_for_colonizable", true), zero("is_null", false)],
-                &[],
-            ),
-        ],
-        other: Some(&[zero("is_for_colonizable", true), zero("is_null", true)]),
     },
     SubtypeCensus {
         registry: "common/districts",
@@ -442,11 +428,6 @@ const M452_SUBTYPES: &[SubtypeCensus] = &[
         ],
         other: None,
     },
-    SubtypeCensus {
-        registry: "common/opinion_modifiers",
-        probed: &[(&[zero("block_triggered", false)], &[])],
-        other: Some(&[zero("block_triggered", true)]),
-    },
     // The constructor clears all three selector bits of the word at `+0x4a0` (`CPlanetClass`).
     SubtypeCensus {
         registry: "common/planet_classes",
@@ -498,11 +479,6 @@ const M452_SUBTYPES: &[SubtypeCensus] = &[
         registry: "common/static_modifiers",
         probed: &[(&[zero("icon_frame", false)], &[])],
         other: Some(&[zero("icon_frame", true)]),
-    },
-    SubtypeCensus {
-        registry: "common/traits",
-        probed: &[(&[zero("auto_mod", false)], &[])],
-        other: Some(&[zero("auto_mod", true)]),
     },
 ];
 
