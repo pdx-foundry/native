@@ -194,7 +194,8 @@ walk has `null` and its name. This is a reader of M452, shortened:
 - `dispatch.default.kind` is `persistent` (`CPersistent::ReadMember`, which reports the key as
   unexpected), `log-and-skip`, `base-reader` (one other member reader, in `reader`), `entry` (the
   path of an entry reader), `return` (no call), or `helper` (anything else).
-  `dispatch.delegates` are the other member readers that the default path calls.
+  `dispatch.delegates` are the other member readers that the paths call; the export follows the
+  ones that token paths call, and not the extra readers of an unresolved default.
 - An entry reader has one row with `token` and `key` `null`: the entry that it reads for any key.
 - `kind: store` says only that the token's path stores something. It never shows that a value is
   accepted.
@@ -288,12 +289,12 @@ the root readers of ten of the 19 registries that Native answers `Complete` (`as
 
 ### The M452 export
 
-The export of 2026-10-22 walks 275 readers in about 100 seconds; 168 are complete. Of the 187
+The export of 2026-10-22 walks 275 readers in about 100 seconds; 166 are complete. Of the 187
 registries under `common/` and `events`, 181 have root readers, and **55 have a complete reader
 tree** under the whole-block contract: every reader from the roots down is complete, rejects the
 keys that it does not enumerate, and is not an entry reader. For each of the 55, every root field
 that Native's sweep lists is a key of the tree. The conditions that fail most often, by reader:
-`loop-cut` 45, `default-unresolved` 44, `nested-unresolved` 34, `budget` 17,
+`default-unresolved` 49, `loop-cut` 45, `nested-unresolved` 34, `budget` 17,
 `default-base-incomplete` 14. If too few registries become `Complete` for the negative answers that
 Atlas needs, the next export work is these conditions by frequency, not a weaker contract.
 
