@@ -4,6 +4,7 @@ pub(crate) use analysis::{
     VerifiedAnalysis, loader_names, scoped_operand_decoder, unique_named_candidate,
 };
 mod binary;
+pub(crate) use binary::receivers::MemberHolder;
 mod compose;
 mod groups;
 pub mod inspect;

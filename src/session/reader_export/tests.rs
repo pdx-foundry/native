@@ -578,29 +578,32 @@ fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
 
 #[test]
 fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
-    let object = |read: &str, hook: &str| ConcreteReader {
-        read: read.into(),
+    let holder = |read: Option<&str>, hook: &str| MemberHolder {
         member: "CBase::ReadMember(CReader&, int)".into(),
-        post_read: [
-            Some("CPersistent::InitPostRead()".into()),
-            Some(hook.into()),
-        ],
-        family: BlockFamily::Unknown,
-        delegate: None,
+        reader: read.map(|read| crate::engine::analysis::fields::ConcreteReader {
+            read: read.into(),
+            member: "CBase::ReadMember(CReader&, int)".into(),
+            post_read: [
+                Some("CPersistent::InitPostRead()".into()),
+                Some(hook.into()),
+            ],
+            family: BlockFamily::Unknown,
+            delegate: None,
+        }),
     };
-    let base = object(
-        "CPersistent::Read(CReader&)",
-        "CPersistent::InitPostRead(CString const&, int, int)",
-    );
-    let derived = object(
-        "CPersistent::Read(CReader&)",
+    let base_hook = "CPersistent::InitPostRead(CString const&, int, int)";
+    let base = || holder(Some("CPersistent::Read(CReader&)"), base_hook);
+    let overridden_hook = holder(
+        Some("CPersistent::Read(CReader&)"),
         "CDerived::InitPostRead(CString const&, int, int)",
     );
-    let members = || BTreeSet::from(["CBase::ReadMember", "CUnread::ReadMember"]);
+    let unread = holder(None, base_hook);
+    let members = || BTreeSet::from(["CBase::ReadMember", "CUnheld::ReadMember"]);
 
     assert_eq!(
-        merging_members(members(), std::slice::from_ref(&base)),
+        merging_members(members(), &[base()]),
         BTreeSet::from(["CBase::ReadMember".to_owned()])
     );
-    assert!(merging_members(members(), &[base, derived]).is_empty());
+    assert!(merging_members(members(), &[base(), overridden_hook]).is_empty());
+    assert!(merging_members(members(), &[base(), unread]).is_empty());
 }

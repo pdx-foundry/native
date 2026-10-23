@@ -16,7 +16,8 @@ use super::questions::{
     CONDITION_OPEN, KEYWORD_DOMAIN_OPEN, READER_JOIN_OPEN, TOKEN_PATH_OPEN, UNNAMED_PATHS,
     VALUE_FORM_OPEN, storage_gap,
 };
-use crate::engine::analysis::fields::{ConcreteReader, OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
+use crate::binding::MemberHolder;
+use crate::engine::analysis::fields::{OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
 use crate::{
     AcceptedCategories, Answer, BlockFamily, Completeness, Field, FieldCondition, FieldDomain,
     FieldMembers, FieldReadAlternative, FieldReadOutcome, FieldReference, FieldRequirement,
@@ -1037,22 +1038,28 @@ fn reading(row: &Row, keeps_object: bool) -> Result<(Reader, FieldShape), OpenRe
 }
 
 /// The `members` whose objects all keep themselves on a persistent read, by the walker's rule
-/// checked on each of `readers` (every vtable's persistent reader) that holds the member. A member
-/// that no reader holds is not one: the check cannot run.
+/// checked on each of `holders` (every vtable address point) that holds the member. A member
+/// that no point holds, or a holder whose persistent read is not established, does not merge: the
+/// check cannot run.
 pub(crate) fn merging_members(
     members: BTreeSet<&str>,
-    readers: &[ConcreteReader],
+    holders: &[MemberHolder],
 ) -> BTreeSet<String> {
     members
         .into_iter()
         .filter(|member| {
-            let mut objects = readers
+            let mut objects = holders
                 .iter()
-                .filter(|reader| reader.member.strip_suffix("(CReader&, int)") == Some(*member))
+                .filter(|holder| holder.member.strip_suffix("(CReader&, int)") == Some(*member))
                 .peekable();
 
             objects.peek().is_some()
-                && objects.all(|reader| persistent_read_merges(reader.family, Some(reader)))
+                && objects.all(|holder| {
+                    holder
+                        .reader
+                        .as_ref()
+                        .is_some_and(|reader| persistent_read_merges(reader.family, Some(reader)))
+                })
         })
         .map(str::to_owned)
         .collect()

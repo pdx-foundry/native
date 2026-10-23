@@ -341,9 +341,9 @@ impl Native {
     /// persistent read ([`super::reader_export::merging_members`]); none when the executable's
     /// vtables cannot be read.
     fn merging_members(&self, export: &ReaderExport) -> BTreeSet<String> {
-        match self.bound().analysis.persistent_readers() {
-            Ok(readers) => {
-                super::reader_export::merging_members(export.persistent_members(), readers)
+        match self.bound().analysis.member_holders() {
+            Ok(holders) => {
+                super::reader_export::merging_members(export.persistent_members(), holders)
             }
             Err(_) => BTreeSet::new(),
         }

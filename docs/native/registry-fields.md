@@ -68,8 +68,8 @@ other callers of the walker's run, such as derived names, use the walker's answe
   reader: the object is a weight or modifier block, or its `Read` is `CPersistent::Read` or
   `CPersistentName::Read` with the base's two post-read hooks. The export does not name the
   object's own class, and a derived object can inherit the member reader and override a hook, so
-  every holder must pass. When no readable vtable holds it, the repeat stays `Unknown` with its
-  storage gap.
+  every holder must pass. When no vtable holds it, or a holder's `Read` slot names no persistent
+  read, the repeat stays `Unknown` with its storage gap.
 - **Limit: reader identity.** Rows do not name the reader call, so the export cannot give a
   `ReaderId`, and a key that only the export reads keeps its answer partial. Carrying the reader's
   name in each row (a schema change) removes the limit.

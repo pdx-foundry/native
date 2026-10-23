@@ -172,12 +172,19 @@ pub(super) fn constructor_calls(
     Ok(calls)
 }
 
-/// The persistent reader at every address point of every vtable whose read and member slots have
-/// unique symbols.
-pub(in crate::binding) fn persistent_readers(
+/// One vtable address point whose member slot holds a member reader.
+pub(crate) struct MemberHolder {
+    /// The member reader, such as `CSettings::ReadMember(CReader&, int)`.
+    pub member: String,
+    /// The point's persistent reader, or `None` when its `Read` slot names no persistent read.
+    pub reader: Option<crate::engine::analysis::fields::ConcreteReader>,
+}
+
+/// Every vtable address point whose member slot holds a uniquely named member reader.
+pub(in crate::binding) fn member_holders(
     image: &Image<'_>,
     recipe: &PersistentRecipe,
-) -> Result<Vec<crate::engine::analysis::fields::ConcreteReader>, AnalysisError> {
+) -> Result<Vec<MemberHolder>, AnalysisError> {
     let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let symbols = image.index.over(image.symbols);
     let names = Names::new(image.symbols);
@@ -189,7 +196,18 @@ pub(in crate::binding) fn persistent_readers(
         .filter_map(|symbol| symbol.name.strip_prefix("vtable for "))
         .filter_map(|class| symbols.vtable_group(&data, class))
         .flat_map(|group| group.address_points.into_values())
-        .filter_map(|point| concrete_reader(recipe, image.pointers, point, &name))
+        .filter_map(|point| {
+            let member = image
+                .pointers
+                .get(&point.checked_add(recipe.member_slot)?)
+                .and_then(|&at| name(at))
+                .filter(|member| member.ends_with("::ReadMember(CReader&, int)"))?;
+
+            Some(MemberHolder {
+                member,
+                reader: concrete_reader(recipe, image.pointers, point, &name),
+            })
+        })
         .collect())
 }
 

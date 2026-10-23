@@ -46,8 +46,7 @@ pub(crate) struct BoundAnalysis {
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
-    persistent_readers:
-        OnceLock<Result<Vec<crate::engine::analysis::fields::ConcreteReader>, AnalysisError>>,
+    member_holders: OnceLock<Result<Vec<binary::receivers::MemberHolder>, AnalysisError>>,
     modifier_nodes: OnceLock<
         Result<crate::engine::analysis::modifier_nodes::ModifierNodeResult, AnalysisError>,
     >,
@@ -1015,7 +1014,7 @@ impl BoundAnalysis {
             triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
-            persistent_readers: OnceLock::new(),
+            member_holders: OnceLock::new(),
             modifier_nodes: OnceLock::new(),
             category_input: OnceLock::new(),
             names: OnceLock::new(),
@@ -1497,22 +1496,23 @@ impl BoundAnalysis {
             .map_err(Clone::clone)
     }
 
-    /// The contexts of registry field blocks, derived once from the verified executable.
-    /// The persistent reader of every vtable address point in the executable: its `Read`, member
-    /// reader and post-read hooks.
-    pub(crate) fn persistent_readers(
+    /// The member reader of every vtable address point in the executable, with the point's
+    /// persistent reader (`Read`, member reader, post-read hooks), or `None` when the point's
+    /// `Read` slot names no persistent read.
+    pub(crate) fn member_holders(
         &self,
-    ) -> Result<&[crate::engine::analysis::fields::ConcreteReader], AnalysisError> {
+    ) -> Result<&[binary::receivers::MemberHolder], AnalysisError> {
         let verified = self.verified()?;
 
-        self.persistent_readers
+        self.member_holders
             .get_or_init(|| {
-                binary::receivers::persistent_readers(&verified.image(), verified.persistent)
+                binary::receivers::member_holders(&verified.image(), verified.persistent)
             })
             .as_deref()
             .map_err(Clone::clone)
     }
 
+    /// The contexts of registry field blocks, derived once from the verified executable.
     pub(crate) fn block_facts(&self) -> Result<&BlockFacts, AnalysisError> {
         let verified = self.verified()?;
         self.block_facts
