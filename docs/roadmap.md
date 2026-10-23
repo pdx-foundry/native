@@ -72,7 +72,7 @@ Linear works milestones in order. Milestones 1 to 3.5 are complete.
 | 3 | Language declarations | Effects, triggers, modifiers, categories, scopes, links and localisation commands with engine description and usage text; on_actions and entry scopes; defines; generated modifier families | Each of the five `script-docs` logs and each config name list has an engine-derived answer in the snapshot, with its gaps in the ledger; the per-area coverage figures are recorded | SDK-535 to SDK-540, SDK-562, SDK-564 to SDK-568; Atlas: SDK-570 |
 | 3.5 | Foundations | Shortcut guard; jump-table repair; stop diagnostics and the sweep report; test assembler helper; method-authoring guide; one pause owner in the worker; the review's refactors and cleanup | The shortcut guard passes; the 32 megastructure jump-table fields are found; a failed path is located from one inspector run; the sweep report groups failures by stop diagnostic; every refactor keeps parity output byte-identical | SDK-563, SDK-569, SDK-571, SDK-574, SDK-581, SDK-589, SDK-593, SDK-601 to SDK-606 |
 | 4 | Shared readers | Field shapes and conditions, nested blocks, argument grammars, references and dynamic names, numerics, weights, naming rules, modifier nodes and container categories, scope context, script parameters. Each method ticket ends with one run over its full registry or command inventory. | The council agenda test, method fixture criteria and Atlas integration checks below pass; full-inventory counts and failure shapes are recorded | SDK-541 to SDK-550, SDK-607, SDK-705; preparation SDK-596; Atlas SDK-597, SDK-625, SDK-626 and SDK-577; entry contexts SDK-608 and SDK-677; developer tracing SDK-629; acceptance test SDK-600 |
-| 5 | Registry sweep | Custom, nested and late registries; `events/`, with its event kinds and the scope that each kind sets; pre_trigger key sets; file selection, duplicate and definition-name rules; the method set, unchanged at a recorded commit, over all registries | No open gap in `common/` or `events/`: each Atlas-owned claim is covered or has a reviewed reason (see below) | SDK-551: SDK-778, SDK-779, SDK-783, SDK-784, SDK-786, SDK-787, SDK-789, SDK-794, SDK-802; SDK-552: SDK-788, SDK-790 to SDK-792, SDK-795, SDK-803, SDK-805; SDK-553: SDK-780; events SDK-702, SDK-801; pre_triggers SDK-703; Atlas SDK-781, SDK-785, SDK-793, SDK-796 to SDK-800; cost SDK-591; roadmap SDK-782 |
+| 5 | Registry sweep | Custom, nested and late registries; `events/`, with its event kinds and the scope that each kind sets; pre_trigger key sets; file selection, duplicate and definition-name rules; the method set, unchanged at a recorded commit, over all registries | Each claim class in `common/` and `events/` reaches its decided end state, and the generated config validates vanilla content with no false error (see below) | SDK-551: SDK-778, SDK-779, SDK-783, SDK-784, SDK-786, SDK-787, SDK-789, SDK-794, SDK-802; SDK-552: SDK-788, SDK-790 to SDK-792, SDK-795, SDK-803, SDK-805; SDK-553: SDK-780; events SDK-702, SDK-801; pre_triggers SDK-703; Atlas SDK-781, SDK-785, SDK-793, SDK-796 to SDK-800; cost SDK-591; roadmap SDK-782 |
 | 6 | Other formats | Transfer tests on interface, graphics, sound, map and descriptor loaders | Each family is supported or an explicit gap in the ledger | SDK-554 to SDK-556 |
 | 7 | Update rehearsal | Support the full method set on a new build with Atlas frozen; record the effort by category | Second executable passes with no Atlas change; routine update cost known | SDK-557 |
 
@@ -147,11 +147,36 @@ Milestone 5 covers every config file under `common/` and `events/` (Jackson, 202
 capture at a `main` commit of Native:
 
 1. **Coverage:** covered claims over Atlas-owned claims.
-2. **Open gaps:** uncovered claims that have no reviewed reason.
+2. **Open gaps:** uncovered claims that have no reviewed reason or class reason.
 
-Milestone 5 completes when no gap is open. Before the close, each covered claim where Atlas and
-CWT disagree is reviewed: it is a CWT error, or an Atlas or Native defect to repair. Native relationship rates and the
-headline over all files are diagnostics, not gates.
+**Stop condition (D6 option C, Jackson, 2026-10-22).** "No open gap" has no end: each remaining
+class has a different source, and some have none. Milestone 5 completes when both of these hold:
+
+1. **Each claim class has reached its end state.** Open claims are then listed by class with the
+   class reason, not one reason each.
+
+   | Class | Source | End state |
+   | --- | --- | --- |
+   | Field existence, value form and repeat under a walked reader | The Ghidra export ([design](design/ghidra-front-end.md)) | Covered, or a negative answer under the whole-block contract |
+   | Required fields (`cardinality_minimum`) | The census probe | Covered where probed; for the rest, the class reason "not probed on this build", which the next probe reopens |
+   | Read scope | Scope masks and the scope table | Covered, or a typed gap that names the obstacle; D5(a) stays a recorded exception |
+   | Use-site lookups and enum domains | Export phase 2 | Covered where a getter is followed; a class reason for the rest |
+   | CWT placeholder keys and type-level lines | Atlas joins | Covered, or "config structure, no engine fact" for the class |
+   | Content-derived documentation | Atlas's comment route | As that route decides |
+
+2. **Vanilla content gate.** The same validator (a cwtools CLI run is the smallest) checks the
+   installed vanilla content with the generated config and with the hand-written config. The
+   generated config reports no false error on vanilla content. Atlas owns the validator run.
+
+The class end states alone can close with a config that is wrong where it is covered; the vanilla
+gate alone cannot say which work remains. Before the close, each covered claim where Atlas and CWT
+disagree is reviewed: it is a CWT error, or an Atlas or Native defect to repair. Native
+relationship rates and the headline over all files are diagnostics, not gates.
+
+**Measuring a change.** `tools/measure/m5-static.sh` measures a Native change in Atlas static mode:
+it compares the change with the last accepted result (no claim may be lost) and with the baseline
+frozen at the Atlas pin ([measure](design/ghidra-front-end.md#measure)). The milestone numbers come
+from a live capture at a pin move.
 
 **A reason is the last resort.** The engine holds every engine fact somewhere. An engine-fact gap
 gets a reason only after static extraction and other routes, such as a fixture probe, were tried.
@@ -209,6 +234,11 @@ is still its own task, as the [development policy](development-policy.md) says.
 **Baseline.** A live capture on M452 at Native `4a6498f` (2026-10-19), read by Atlas `2ed1bf3` with
 its pin moved to that commit, on config revision `8574760`, covers 13,489 of 25,231 claims
 (53.46%). Of the 11,742 open gaps, 8,181 have no answer and 3,561 carry a Native gap.
+
+At the Atlas pin, Native `9fc7ced` read by Atlas `c6e77c7`, 15,268 of 24,610 claims (62.04%) are
+covered. Of the 9,342 open gaps, 5,916 have no answer and 3,426 carry a Native gap. The static
+measure at that commit gives the same gap list and the live Atlas-owned headline (32,758 of
+56,917); it is the frozen baseline of the Ghidra front end's steps.
 
 **The first sweep (done).** The first gate gave each of the 218 config types under `common/` and
 `events/` a Native registry status in the sweep report or an Atlas missing-join reason. SDK-798 and

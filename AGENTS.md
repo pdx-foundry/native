@@ -49,7 +49,8 @@ inspections (such as warnings and errors).
 - [Development policy](docs/development-policy.md) Autonomy, knowledge ownership and preservation rules.
 - [Native specification](docs/specs/native.md) Public operations, answers and behavior.
 - [Technical design](docs/design/architecture.md) Module boundaries and target composition.
-- [Simplification decision](docs/design/simplification.md) The compiler-need vision, the approved scope and the 2026-10-02 decisions.
+- [Simplification decision](docs/design/simplification.md) The compiler-need vision, the approved scope and the decisions of 2026-10-02 and later.
+- [Ghidra front end](docs/design/ghidra-front-end.md) The approved target design: a Ghidra export replaces the walker, then the package splits; the walker's callers and the Milestone 5 measure.
 - [Roadmap](docs/roadmap.md) Milestones toward full config coverage.
 - [Development improvements](docs/design/native-dx.md) Open DX items for writing and adapting methods.
 - [Config checks](docs/design/config-checks.md) Atlas-owned proposal, not an accepted design.
