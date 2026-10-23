@@ -101,7 +101,8 @@ pub mod internals {
     pub use crate::engine::analysis::names::METHOD as DERIVED_NAMES_METHOD;
     pub use crate::protocol::session::{ObservationControl, ObservationTarget};
     pub use crate::session::{
-        check_registry_load, command_grammar_stops, duration_groups, dynamic_name_commands,
-        numeric_readers, reference_readers, registry_field_stops, target_getters,
+        build_tables, check_registry_load, command_grammar_stops, duration_groups,
+        dynamic_name_commands, numeric_readers, reference_readers, registry_field_stops,
+        target_getters,
     };
 }

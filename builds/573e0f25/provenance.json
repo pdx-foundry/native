@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "build": {
+  "executable": "c621723d9c8e0c1cd153319208d30a9dfbb9e63675be86f9d0ae7debeaa7fe1b",
+  "slice": "573e0f2511317e83f47a4d11f9c48f31361fe1cbb68900aae99ca945b2e47507",
+  "version": "Cygnus v4.5.2 (9776)",
+  "architecture": "aarch64"
+ },
+ "schemas": {
+  "readers.json": 1,
+  "tables.json": 1,
+  "provenance.json": 1
+ },
+ "ghidra": {
+  "version": "12.1.4",
+  "language": "AARCH64:LE:64:AppleSilicon"
+ },
+ "export_scripts": {
+  "Export.java": "9110f0083fff1aa7b1b2efa04a83bfd2a58583a329533d01c09dd30221bfcf94",
+  "export.py": "0323a6e8e71a5288e5850f131d19bfa1f7a9b618c88acac057354c9cc5cd8b2b",
+  "rows.py": "3b83cefc4f8438df3e1da7a3ccc7a11d27d9741368b2a15dd905799b36300ed1",
+  "normalize.py": "d59f6f9e98c894bbf67eb594bd44431cbcda3fd1675b2c34b9db1cc351a3447a"
+ },
+ "date": "2026-10-22",
+ "written_by": {
+  "readers.json": "ghidra-export",
+  "tables.json": "native-tables",
+  "provenance.json": "ghidra-export"
+ }
+}

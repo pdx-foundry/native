@@ -1,0 +1,192 @@
+{
+ "build": "573e0f25",
+ "readers": [
+  {
+   "reader": "CNameListCharacter::ReadMember",
+   "why": "Reads any key: one path loads the key's text, compares no token and inserts a CNameListCulture (PR #303, registry-fields.md 'Readers of any key').",
+   "expect": {
+    "form": "entry",
+    "complete": true,
+    "rows": {
+     "*": {
+      "kind": "object-list",
+      "nested": "CNameListCulture::ReadMember"
+     }
+    }
+   }
+  },
+  {
+   "reader": "CNameListShipClass::ReadMember",
+   "why": "Compares the key's text with `generic` and looks it up in the ship sizes: not an entry reader, and its keys are not enumerated tokens.",
+   "expect": {
+    "form": "key-text",
+    "complete": false,
+    "incomplete_because": [
+     "dispatch-form",
+     "key-text-read"
+    ]
+   }
+  },
+  {
+   "reader": "CNameListShip::ReadMember",
+   "why": "The same key-text compare and lookup as CNameListShipClass.",
+   "expect": {
+    "form": "key-text",
+    "complete": false,
+    "incomplete_because": [
+     "dispatch-form",
+     "key-text-read"
+    ]
+   }
+  },
+  {
+   "reader": "CSituationType::ReadMember",
+   "why": "`stages` reads its block in a statement loop (ReadSimpleStatement) that the walk follows, so the loop is not cut.",
+   "expect": {
+    "complete": true,
+    "loops": 0,
+    "rows": {
+     "stages": {
+      "kind": "object-list",
+      "nested": "CSituationStage::ReadMember"
+     }
+    }
+   }
+  },
+  {
+   "reader": "CSwappable<SPopJobTypeSwap>::CSerializer::ReadMember",
+   "why": "Its default path calls two member readers; the export does not follow CSwappableBase::ReadMember.",
+   "expect": {
+    "complete": false,
+    "default": "helper",
+    "incomplete_because": [
+     "default-unresolved",
+     "delegate-unfollowed"
+    ]
+   }
+  },
+  {
+   "reader": "CAgreementPreset::ReadMember",
+   "why": "Its default path calls CAgreementTermData::SetPresetData before CPersistent::ReadMember.",
+   "expect": {
+    "complete": false,
+    "default": "helper",
+    "incomplete_because": [
+     "default-unresolved"
+    ]
+   }
+  },
+  {
+   "reader": "CTriggeredEventDescription<CTriggeredEventDescriptionOption>::ReadEntry",
+   "why": "A value reader: it tests the value token (a text or a block of options), not a key.",
+   "expect": {
+    "form": "value-token",
+    "complete": false,
+    "incomplete_because": [
+     "dispatch-form"
+    ]
+   }
+  },
+  {
+   "reader": "CTriggeredEventDescription<CEvent::CDescOption>::ReadEntry",
+   "why": "The event instance of the same value reader.",
+   "expect": {
+    "form": "value-token",
+    "complete": false,
+    "incomplete_because": [
+     "dispatch-form"
+    ]
+   }
+  },
+  {
+   "reader": "CAsteroidBeltType::ReadMember",
+   "why": "The root reader of `common/asteroid_belts`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CColonyAutomationCategory::ReadMember",
+   "why": "The root reader of `common/colony_automation_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CDepositCategory::ReadMember",
+   "why": "The root reader of `common/deposit_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CEthicCategory::ReadMember",
+   "why": "The root reader of `common/ethic_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CGameConceptCategory::ReadMember",
+   "why": "The root reader of `common/game_concept_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CLeaderTier::ReadMember",
+   "why": "The root reader of `common/leader_tiers`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CMissionCategory::ReadMember",
+   "why": "The root reader of `common/missions/mission_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CPolicyCategory::ReadMember",
+   "why": "The root reader of `common/policy_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CResolutionCategory::ReadMember",
+   "why": "The root reader of `common/resolution_categories`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  },
+  {
+   "reader": "CTimelineEventDefinition::ReadMember",
+   "why": "The root reader of `common/timeline_events`, which Native answers Complete with the same keys.",
+   "expect": {
+    "complete": true,
+    "default": "persistent",
+    "loops": 0
+   }
+  }
+ ]
+}

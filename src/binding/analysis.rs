@@ -1718,6 +1718,15 @@ impl BoundAnalysis {
             .map_err(Clone::clone)
     }
 
+    /// Where a reader holds the text of its statement's key and its value token: two offsets from
+    /// the reader.
+    pub(crate) fn reader_words(&self) -> (u64, u64) {
+        let persistent = &self.declarations.persistent;
+        let key_text = self.declarations.reader_token_offset + persistent.token_text;
+
+        (key_text, persistent.value_token)
+    }
+
     pub(crate) fn scope_input(
         &self,
     ) -> Result<crate::engine::analysis::scopes::ScopeInput, AnalysisError> {
