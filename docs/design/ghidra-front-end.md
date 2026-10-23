@@ -423,7 +423,9 @@ with other inputs:
 tools/measure/m5-static.sh run <name> <native commit or checkout>  # measure, gate, cumulative
 tools/measure/m5-static.sh accept <name>    # after the change merges; it passed its gate against
                                             # the current accepted run
-tools/measure/m5-static.sh freeze <name>    # a new baseline, at a pin move only
+tools/measure/m5-static.sh run --new-pin <name> <native>  # at a pin move: new Atlas, config or
+                                            # recording; no comparison
+tools/measure/m5-static.sh freeze <name>    # that run becomes the baseline and the accepted result
 ```
 
 Results are in `.local/m5/` of the main checkout: `runs/<name>/` (inputs, snapshot, reports,

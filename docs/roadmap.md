@@ -175,8 +175,9 @@ relationship rates and the headline over all files are diagnostics, not gates.
 
 **Measuring a change.** `tools/measure/m5-static.sh` measures a Native change in Atlas static mode:
 it compares the change with the last accepted result (no claim may be lost) and with the baseline
-frozen at the Atlas pin ([measure](design/ghidra-front-end.md#measure)). The milestone numbers come
-from a live capture at a pin move.
+frozen at the Atlas pin ([measure](design/ghidra-front-end.md#measure)). At a pin move, a run with
+`--new-pin` measures the new inputs with no comparison, and `freeze` makes it the new baseline. The
+milestone numbers come from a live capture at a pin move.
 
 **A reason is the last resort.** The engine holds every engine fact somewhere. An engine-fact gap
 gets a reason only after static extraction and other routes, such as a fixture probe, were tried.

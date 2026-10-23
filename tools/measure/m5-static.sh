@@ -4,6 +4,8 @@
 # baseline (the cumulative progress). See docs/design/ghidra-front-end.md#measure.
 #
 #   m5-static.sh run NAME NATIVE   NATIVE is a commit of this repository or a checkout directory
+#   m5-static.sh run --new-pin NAME NATIVE
+#                                  measure with no comparison, for new shared inputs at a pin move
 #   m5-static.sh freeze NAME       the run becomes the frozen baseline and the accepted result
 #   m5-static.sh accept NAME       the run becomes the accepted result; it must have passed its
 #                                  gate against the current accepted result
@@ -18,7 +20,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '6,9p' "$0" >&2
+  sed -n '6,11p' "$0" >&2
   exit 64
 }
 
@@ -27,10 +29,18 @@ repository=$(git -C "$tool_dir" rev-parse --show-toplevel)
 main_checkout=$(dirname "$(git -C "$tool_dir" rev-parse --path-format=absolute --git-common-dir)")
 workspace=$(dirname "$main_checkout")
 
-m5=${M5_DIR:-$main_checkout/.local/m5}
-atlas=${ATLAS:-$workspace/atlas}
-config=${CWT_CONFIG:-$workspace/cwtools-stellaris-config/config}
-recording=${M5_RECORDING:-$m5/recording}
+# Prints `$1` as an absolute path: the build changes directory before it uses these paths.
+absolute() {
+  case $1 in
+    /*) echo "$1" ;;
+    *) echo "$PWD/$1" ;;
+  esac
+}
+
+m5=$(absolute "${M5_DIR:-$main_checkout/.local/m5}")
+atlas=$(absolute "${ATLAS:-$workspace/atlas}")
+config=$(absolute "${CWT_CONFIG:-$workspace/cwtools-stellaris-config/config}")
+recording=$(absolute "${M5_RECORDING:-$m5/recording}")
 
 native_remote='https://github.com/pdx-foundry/native.git'
 binary="$m5/build/target/release/pdx-atlas"
@@ -102,9 +112,20 @@ recording_digest() {
     shasum -a 256 | cut -d' ' -f1
 }
 
+# Refuses a run name that is not one plain directory name: a run's name is its identity in the
+# gate records.
+check_name() {
+  case $1 in
+    '' | . | .. | */*) echo "A run name is one directory name, not '$1'" >&2; exit 1 ;;
+  esac
+}
+
+# Measures the run NAME of NATIVE. With `new_pin` set to `yes`, it compares with no earlier run.
 run() {
-  local name=$1 native=$2
+  local new_pin=$1 name=$2 native=$3
   local run="$m5/runs/$name"
+
+  check_name "$name"
 
   : "${STELLARIS_PATH:?STELLARIS_PATH names the installed game}"
   [ -d "$recording" ] || { echo "No recording at $recording; set M5_RECORDING" >&2; exit 1; }
@@ -124,14 +145,14 @@ run() {
   rm -f "$binary"
   build_atlas "$native_directory"
 
-  cat > "$run/inputs.json" <<EOF
-{
-  "native": "$(cat "$run/native.txt")",
-  "atlas_commit": "$atlas_commit",
-  "config_revision": "$(revision "$config")",
-  "recording_sha256": "$(recording_digest)"
-}
-EOF
+  local config_revision digest
+
+  config_revision=$(revision "$config")
+  digest=$(recording_digest)
+  python3 -I -c 'import json, sys
+keys = ("native", "atlas_commit", "config_revision", "recording_sha256")
+print(json.dumps(dict(zip(keys, sys.argv[1:])), indent=2))' \
+    "$(cat "$run/native.txt")" "$atlas_commit" "$config_revision" "$digest" > "$run/inputs.json"
 
   echo "Snapshot of $(cat "$run/native.txt")" >&2
   if ! "$binary" snapshot --static "$STELLARIS_PATH" --observations "$recording" "$run/rules.json" \
@@ -140,10 +161,15 @@ EOF
     exit 1
   fi
 
-  local baseline=()
+  local baseline=() references=()
 
-  if [ -d "$m5/accepted" ]; then
+  if [ "$new_pin" = no ] && [ -d "$m5/accepted" ]; then
     baseline=(--baseline "$m5/accepted/reports/covered")
+    references+=(--gate "$m5/accepted")
+  fi
+
+  if [ "$new_pin" = no ] && [ -d "$m5/baseline" ]; then
+    references+=(--baseline "$m5/baseline")
   fi
 
   echo "Ledger" >&2
@@ -159,16 +185,13 @@ EOF
     exit 1
   fi
 
-  local references=()
-
-  [ -d "$m5/accepted" ] && references+=(--gate "$m5/accepted")
-  [ -d "$m5/baseline" ] && references+=(--baseline "$m5/baseline")
   python3 -I "$tool_dir/m5.py" measure "$run" ${references[@]+"${references[@]}"}
 }
 
 point() {
   local link=$1 name=$2
 
+  check_name "$name"
   [ -f "$m5/runs/$name/measure.json" ] || { echo "No measured run $name in $m5/runs" >&2; exit 1; }
   ln -sfn "runs/$name" "$m5/$link"
   echo "$link: $name" >&2
@@ -177,13 +200,22 @@ point() {
 accept() {
   local name=$1
 
+  check_name "$name"
   [ -f "$m5/runs/$name/measure.json" ] || { echo "No measured run $name in $m5/runs" >&2; exit 1; }
   python3 -I "$tool_dir/m5.py" accept "$m5/runs/$name" --accepted "$m5/accepted"
   point accepted "$name"
 }
 
 case "${1:-}" in
-  run) [ $# -eq 3 ] || usage; run "$2" "$3" ;;
+  run)
+    if [ "${2:-}" = --new-pin ]; then
+      [ $# -eq 4 ] || usage
+      run yes "$3" "$4"
+    else
+      [ $# -eq 3 ] || usage
+      run no "$2" "$3"
+    fi
+    ;;
   freeze) [ $# -eq 2 ] || usage; point baseline "$2"; point accepted "$2" ;;
   accept) [ $# -eq 2 ] || usage; accept "$2" ;;
   *) usage ;;
