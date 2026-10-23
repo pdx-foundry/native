@@ -56,6 +56,9 @@ def reader_mismatches(expect, reader):
         nested = (row['nested'] or {}).get('name')
         if 'nested' in row_expect and nested != row_expect['nested']:
             problems.append(f'row {key!r} nested reader is {nested!r}, expected {row_expect["nested"]!r}')
+        callee = (row['callee'] or {}).get('name')
+        if 'callee' in row_expect and callee != row_expect['callee']:
+            problems.append(f'row {key!r} reading call is {callee!r}, expected {row_expect["callee"]!r}')
         problems.extend(branch_mismatches(key, row_expect.get('branches', {}), row.get('branches') or []))
     return problems
 

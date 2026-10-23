@@ -397,6 +397,7 @@ public class Export extends GhidraScript {
 
 			JsonObject result = new JsonObject();
 			result.addProperty("name", function.getName(true));
+			result.addProperty("symbol", rawSymbol(function));
 			result.addProperty("entry", hex(function.getEntryPoint()));
 			result.addProperty("source", keyReader ? "key" : "value");
 			result.add("switches", switches);
@@ -696,6 +697,9 @@ public class Export extends GhidraScript {
 				}
 				long scope = scopeArgument(callee, op);
 				if (scope != UNKNOWN) arguments.append(" scope=#0x").append(Long.toHexString(scope));
+				if (callee != null) arguments.append(" at=").append(hex(callee.getEntryPoint()));
+				String symbol = callee == null ? null : rawSymbol(callee);
+				if (symbol != null) arguments.append(" sym=").append(symbol);
 				return "CALL " + name + " " + prototype + arguments;
 			}
 			if (code == PcodeOp.CALLIND) {
@@ -1004,6 +1008,17 @@ public class Export extends GhidraScript {
 	private static boolean isLogCall(String name) {
 		for (String log : LOG_CALLS) if (name.startsWith(log)) return true;
 		return false;
+	}
+
+	/**
+	 * The linker's mangled symbol at a function's entry, which Ghidra keeps beside the demangled
+	 * name that it displays, or null. Native demangles it to the walker's reader identity.
+	 */
+	private String rawSymbol(Function function) {
+		for (Symbol symbol : currentProgram.getSymbolTable().getSymbols(function.getEntryPoint())) {
+			if (symbol.getName().startsWith("_Z") || symbol.getName().startsWith("__Z")) return symbol.getName();
+		}
+		return null;
 	}
 
 	private String callName(PcodeOp call) {

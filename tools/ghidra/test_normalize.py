@@ -23,13 +23,14 @@ def branch_walk(texts):
 def raw_row(token, kind='scalar', nested=None, **fields):
     row = {'token': token, 'kind': kind, 'value': 'Scalar', 'reader_kind': 'String', 'repeat': 'Replace',
            'conditional': False, 'nested': nested, 'family': None, 'items': None, 'call': None, 'branches': None,
-           'paths': {'leaves': 1, 'unknown': 0, 'truncated': False}, 'store': None, 'scope_mask': None}
+           'paths': {'leaves': 1, 'unknown': 0, 'truncated': False}, 'store': None, 'scope_mask': None,
+           'callee': None}
     row.update(fields)
     return row
 
 
 def raw_reader(name, entry, table, form='token-switch', default=('persistent', None), delegates=(), **fields):
-    reader = {'name': name, 'entry': entry, 'source': 'key', 'form': form,
+    reader = {'name': name, 'symbol': None, 'entry': entry, 'source': 'key', 'form': form,
               'switches': [{'at': '0x1', 'on_token': True, 'labels_known': True, 'cases': len(table)}],
               'compared': [row['token'] for row in table if row['token'] is not None],
               'default': {'kind': default[0], 'reader': default[1]}, 'delegates': list(delegates),
@@ -109,7 +110,8 @@ class CompletenessTests(unittest.TestCase):
         self.assertEqual(reader['incomplete_because'], ['delegate-unfollowed', 'nested-unresolved'])
 
     def test_every_member_reader_that_a_token_path_calls_is_a_delegate(self):
-        export = {'name': 'COwner::ReadMember', 'entry': '0x10', 'source': 'key', 'switches': [], 'compared': [10, 11],
+        export = {'name': 'COwner::ReadMember', 'symbol': None, 'entry': '0x10', 'source': 'key', 'switches': [],
+                  'compared': [10, 11],
                   'walks': {
                       'default': walk([(True, call('CPersistent::ReadMember'))]),
                       '10': walk([(True, call('CFirst::ReadMember')), (True, call('CSecond::ReadMember'))]),
@@ -321,6 +323,40 @@ class RowTests(unittest.TestCase):
         events = [(True, 'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x40')]
         result = rows.classify(events, [], {0x40: 'class:CScriptableValue'}, 0x3ff8)
         self.assertEqual((result['kind'], result['family'], result['nested']), ('script-value', 'Weight', None))
+
+
+class CalleeTests(unittest.TestCase):
+    STRING_READ = ('CALL CReader::Read (CReader * this, CString * param_1, bool param_2) a2=this+0xa10 a3=#0x0 '
+                   'at=0x1025b811c sym=__ZN7CReader4ReadER7CStringb')
+
+    def test_the_reading_call_is_named_and_a_constructor_or_an_insertion_is_not(self):
+        read = rows.classify([(True, self.STRING_READ)], [], {}, 1)
+        self.assertEqual(rows.reading_callee(read), {'name': 'CReader::Read', 'address': '0x1025b811c',
+                                                     'symbol': '__ZN7CReader4ReadER7CStringb'})
+
+        unmangled = rows.classify([(True, self.STRING_READ.rsplit(' sym=', 1)[0])], [], {}, 1)
+        self.assertEqual(rows.reading_callee(unmangled)['symbol'], None)
+
+        constructed = rows.classify([(True, 'CALL CStage::CStage (CStage * this) at=0x30 sym=__ZN6CStageC1Ev'),
+                                     (True, 'CALLIND slot+0x20')], [], {}, 1)
+        inserted = rows.classify([(True, 'CALL CPdxArray<CString,int>::InsertAtEmplace<> (CPdxArray<CString,int> * '
+                                         'this, int param_1) a1=this+0x140 at=0x40')], [], {}, 1)
+        self.assertEqual((constructed['kind'], rows.reading_callee(constructed)), ('object', None))
+        self.assertEqual((inserted['kind'], rows.reading_callee(inserted)), ('list', None))
+
+    def test_each_value_branch_keeps_its_reading_call_through_normalization(self):
+        persistent = ('CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x48 at=0x50 '
+                      'sym=__ZN7CReader4ReadER11CPersistent')
+        boolean = 'CALL CReader::Read (CReader * this, bool * param_1) a2=this+0x40 at=0x60 sym=__ZN7CReader4ReadERb'
+        walks = {'13': walk([(False, 'VALUETEST'), (False, persistent), (False, boolean)]),
+                 '13@block': branch_walk(['VALUEBRANCH', persistent]),
+                 '13@other': branch_walk(['VALUEBRANCH', boolean])}
+        row = export_module.token_row(13, walks['13'], walks, [], {0x48: '0x30'}, 1)
+        owner = raw_reader('COwner::ReadMember', '0x10', [row])
+
+        normalized, = normalize.normalize(export_of(owner), tables())['readers']['0x10']['rows']
+        self.assertEqual([branch['callee']['symbol'] for branch in normalized['branches']],
+                         ['__ZN7CReader4ReadER11CPersistent', '__ZN7CReader4ReadERb'])
 
 
 if __name__ == '__main__':

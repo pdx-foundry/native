@@ -100,7 +100,7 @@ const DEMANGLE_PARSE_LIMIT: u32 = 192;
 const DEMANGLE_RENDER_LIMIT: u32 = 256;
 
 /// A raw symbol name as a demangled C++ name, or unchanged when it does not demangle.
-pub(super) fn display_name(raw: &str) -> String {
+pub(crate) fn display_name(raw: &str) -> String {
     let mangled = raw.strip_prefix('_').unwrap_or(raw);
     let parse = cpp_demangle::ParseOptions::default().recursion_limit(DEMANGLE_PARSE_LIMIT);
     let render = cpp_demangle::DemangleOptions::default().recursion_limit(DEMANGLE_RENDER_LIMIT);

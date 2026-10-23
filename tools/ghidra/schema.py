@@ -11,7 +11,9 @@ import json
 import os
 import sys
 
-SCHEMA = 1
+READERS_SCHEMA = 2
+TABLES_SCHEMA = 1
+PROVENANCE_SCHEMA = 1
 FORMS = {'token-switch', 'compare-chain', 'entry', 'key-text', 'value-token'}
 DEFAULT_KINDS = {'persistent', 'base-reader', 'log-and-skip', 'return', 'miss', 'helper', 'entry'}
 CONDITIONS = {'dispatch-form', 'domain-not-enumerated', 'default-base-unfollowed', 'default-base-incomplete',
@@ -56,7 +58,7 @@ def check_tables(check, tables):
     if not check.keys('tables', tables, ['schema', 'tool', 'build', 'tokens', 'scope_types', 'reader',
                                          'manual_exceptions']):
         return
-    check.member('tables.schema', tables['schema'], {SCHEMA})
+    check.member('tables.schema', tables['schema'], {TABLES_SCHEMA})
     check.member('tables.tool', tables['tool'], {'native-tables'})
     if check.keys('tables.build', tables['build'], ['executable', 'version']):
         check.type('tables.build.executable', tables['build']['executable'], str)
@@ -89,7 +91,7 @@ def check_tables(check, tables):
 def check_readers(check, document, tokens):
     if not check.keys('readers', document, ['schema', 'tool', 'build', 'registries', 'readers']):
         return
-    check.member('readers.schema', document['schema'], {SCHEMA})
+    check.member('readers.schema', document['schema'], {READERS_SCHEMA})
     check.member('readers.tool', document['tool'], {'ghidra-export'})
     readers = document['readers']
     for name, registry in document['registries'].items():
@@ -110,9 +112,10 @@ def check_readers(check, document, tokens):
 
 
 def check_reader(check, path, reader, readers, tokens):
-    if not check.keys(path, reader, ['name', 'class', 'walked', 'error', 'dispatch', 'complete',
+    if not check.keys(path, reader, ['name', 'symbol', 'class', 'walked', 'error', 'dispatch', 'complete',
                                      'incomplete_because', 'rows', 'default_routed']):
         return
+    check.type(path + '.symbol', reader['symbol'], OPTIONAL_STRING)
     check.type(path + '.complete', reader['complete'], bool)
     for condition in reader['incomplete_because']:
         check.member(path + '.incomplete_because', condition, CONDITIONS)
@@ -140,8 +143,10 @@ def check_reader(check, path, reader, readers, tokens):
 
 def check_row(check, path, row, readers, tokens):
     if not check.keys(path, row, ['token', 'key', 'kind', 'value', 'reader_kind', 'repeat', 'conditional', 'family',
-                                  'items', 'branches', 'nested', 'scope_mask', 'enum', 'lookup', 'paths', 'store']):
+                                  'items', 'branches', 'nested', 'scope_mask', 'enum', 'lookup', 'paths', 'store',
+                                  'callee']):
         return
+    check_callee(check, path + '.callee', row['callee'])
     check.type(path + '.token', row['token'], OPTIONAL_INT)
     if row['token'] is not None and tokens.get(str(row['token'])) != row['key']:
         check.fail(path + '.key', f'{row["key"]!r} is not the token table\'s name of {row["token"]}')
@@ -163,12 +168,23 @@ def check_row(check, path, row, readers, tokens):
     for index, branch in enumerate(row['branches'] or []):
         branch_path = f'{path}.branches[{index}]'
         if check.keys(branch_path, branch, ['value_token', 'kind', 'value', 'reader_kind', 'repeat', 'family',
-                                            'items', 'nested', 'proved', 'paths']):
+                                            'items', 'nested', 'proved', 'paths', 'callee']):
+            check_callee(check, branch_path + '.callee', branch['callee'])
             check.member(branch_path + '.value_token', branch['value_token'], {'block', 'other'})
             check.member(branch_path + '.value', branch['value'], VALUES)
             check.member(branch_path + '.repeat', branch['repeat'], REPEATS)
             check.type(branch_path + '.proved', branch['proved'], bool)
             check_nested(check, branch_path + '.nested', branch['nested'], readers)
+
+
+def check_callee(check, path, callee):
+    """The reading call of a row or branch: null, or its name, entry and mangled symbol (null when the
+    build keeps none)."""
+    if callee is None or not check.keys(path, callee, ['name', 'address', 'symbol']):
+        return
+    check.type(path + '.name', callee['name'], str)
+    check.type(path + '.address', callee['address'], str)
+    check.type(path + '.symbol', callee['symbol'], OPTIONAL_STRING)
 
 
 def check_nested(check, path, nested, readers):
@@ -182,13 +198,15 @@ def check_provenance(check, provenance):
     if not check.keys('provenance', provenance, ['schema', 'build', 'schemas', 'ghidra', 'export_scripts', 'date',
                                                  'written_by']):
         return
+    check.member('provenance.schema', provenance['schema'], {PROVENANCE_SCHEMA})
     if check.keys('provenance.build', provenance['build'], ['executable', 'slice', 'version', 'architecture']):
         for field in ('executable', 'slice'):
             value = provenance['build'][field]
             if not (isinstance(value, str) and len(value) == 64):
                 check.fail(f'provenance.build.{field}', 'not a SHA-256')
     check.member('provenance.schemas', provenance['schemas'],
-                 [{'readers.json': SCHEMA, 'tables.json': SCHEMA, 'provenance.json': SCHEMA}])
+                 [{'readers.json': READERS_SCHEMA, 'tables.json': TABLES_SCHEMA,
+                   'provenance.json': PROVENANCE_SCHEMA}])
     for name, digest in provenance['export_scripts'].items():
         if not (isinstance(digest, str) and len(digest) == 64):
             check.fail(f'provenance.export_scripts.{name}', 'not a SHA-256')

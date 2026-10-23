@@ -110,7 +110,8 @@ def walk_reader(walk, constructors, yes_token):
                               if name not in (base, walk['name'])} - set(delegates))
     loops = rows.loop_bodies(every)
     return {
-        'name': walk['name'], 'entry': walk['entry'], 'source': walk['source'], 'form': form,
+        'name': walk['name'], 'symbol': walk['symbol'], 'entry': walk['entry'], 'source': walk['source'],
+        'form': form,
         'switches': walk['switches'], 'compared': walk['compared'],
         'default': {'kind': kind, 'reader': base},
         'delegates': delegates + token_delegates,
@@ -138,7 +139,7 @@ def token_row(token, token_walk, walks, reference, constructors, yes_token):
     result.update(token=token, paths={'leaves': token_walk['leaves'], 'unknown': token_walk['unknown'],
                                       'truncated': token_walk['truncated']},
                   store=rows.store_of(token_walk['events'], result), scope_mask=rows.scope_mask_of(result),
-                  branches=None)
+                  callee=rows.reading_callee(result), branches=None)
     if token is not None and f'{token}@block' in walks:
         result['branches'] = [
             branch_outcome(value_token, walks[f'{token}@{value_token}'], reference, constructors, yes_token)

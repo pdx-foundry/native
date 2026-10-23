@@ -11,22 +11,24 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-use super::fields::persistent_read_merges;
+use super::fields::{persistent_read_merges, persistent_reader_id};
 use super::questions::{
     CONDITION_OPEN, KEYWORD_DOMAIN_OPEN, READER_ALTERNATIVES_OPEN, READER_JOIN_OPEN,
     TOKEN_PATH_OPEN, UNNAMED_PATHS, VALUE_FORM_OPEN, storage_gap,
 };
-use crate::binding::MemberHolder;
+use crate::binding::{MemberHolder, display_name};
 use crate::engine::analysis::fields::{OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
 use crate::{
     AcceptedCategories, Answer, BlockFamily, Completeness, Field, FieldCondition, FieldDomain,
     FieldMembers, FieldReadAlternative, FieldReadOutcome, FieldReference, FieldRequirement,
-    FieldShape, Gap, GapKind, GapSubject, GrammarProperty, ReadScope, Reader, ReaderKind,
+    FieldShape, Gap, GapKind, GapSubject, GrammarProperty, ReadScope, Reader, ReaderId, ReaderKind,
     RepeatBehavior, ScopeId, ScopeReference, ValueShape,
 };
 
-/// The schema revision of `readers.json` and `tables.json` that this release reads.
-const SCHEMA: u32 = 1;
+/// The schema revision of `readers.json` that this release reads.
+const READERS_SCHEMA: u32 = 2;
+/// The schema revision of `tables.json` that this release reads.
+const TABLES_SCHEMA: u32 = 1;
 
 const READ_SCOPE_PREFIX: &str = "read-scope: ";
 const BRANCHES_OPEN: &str = "The key's path tests the value's token, and the reader export does not \
@@ -109,6 +111,8 @@ struct ExportRoot {
 #[derive(Debug, Deserialize)]
 struct ExportReader {
     name: Option<String>,
+    /// The reader's mangled symbol, when the build keeps one.
+    symbol: Option<String>,
     walked: bool,
     dispatch: Option<Dispatch>,
     complete: bool,
@@ -183,6 +187,15 @@ struct Outcome {
     family: Option<BlockFamily>,
     items: Option<ReaderKind>,
     nested: Option<Nested>,
+    /// The call that reads the value, when one does.
+    callee: Option<Callee>,
+}
+
+/// The call that reads a row's or a branch's value.
+#[derive(Debug, Deserialize)]
+struct Callee {
+    /// The callee's mangled symbol, when the build keeps one.
+    symbol: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -214,10 +227,13 @@ enum RowKind {
 impl RowKind {
     /// Whether a row of this kind reads its value as a block with its nested reader.
     fn reads_block(self) -> bool {
-        matches!(
-            self,
-            Self::Persistent | Self::Serializer | Self::Object | Self::ObjectList | Self::Entry
-        )
+        self.reads_object() || matches!(self, Self::Serializer | Self::Entry)
+    }
+
+    /// Whether a row of this kind reads its value into an object through the object's member
+    /// reader, as the walker's persistent reads do.
+    fn reads_object(self) -> bool {
+        matches!(self, Self::Persistent | Self::Object | Self::ObjectList)
     }
 }
 
@@ -270,13 +286,13 @@ impl ReaderExport {
         let tables: Tables =
             serde_json::from_str(files.tables).map_err(|error| format!("tables.json: {error}"))?;
 
-        for (file, schema) in [
-            ("readers.json", export.schema),
-            ("tables.json", tables.schema),
+        for (file, schema, supported) in [
+            ("readers.json", export.schema, READERS_SCHEMA),
+            ("tables.json", tables.schema, TABLES_SCHEMA),
         ] {
-            if schema != SCHEMA {
+            if schema != supported {
                 return Err(format!(
-                    "{file} has schema {schema}; this release reads schema {SCHEMA}"
+                    "{file} has schema {schema}; this release reads schema {supported}"
                 ));
             }
         }
@@ -286,28 +302,28 @@ impl ReaderExport {
         Ok(export)
     }
 
-    /// The member readers, such as `CSettings::ReadMember`, that a persistent row reads the
-    /// owner's own member with. The `Read` and post-read hooks of every object with one of them
-    /// decide whether a repeat merges.
-    pub(crate) fn persistent_members(&self) -> BTreeSet<&str> {
+    /// The member readers, such as `CSettings::ReadMember`, that a persistent or object row reads
+    /// its object with. The objects with one of them decide its identity and, for a persistent
+    /// read, whether a repeat merges ([`member_readers`]).
+    pub(crate) fn object_members(&self) -> BTreeSet<&str> {
         self.readers
             .values()
             .flat_map(|reader| &reader.rows)
             .flat_map(Row::outcomes)
-            .filter(|outcome| outcome.kind == RowKind::Persistent)
+            .filter(|outcome| outcome.kind.reads_object())
             .filter_map(walked_member)
             .collect()
     }
 
     /// Fill `answer`, Native's registry field answer for `registry`, from the export, and stamp
-    /// the merged method. `merging_members` are the [`Self::persistent_members`] whose objects
-    /// all keep themselves on a persistent read, so that a repeat merges. The answer stays unchanged, and the result
-    /// is `false`, when the export has no root reader for the registry.
+    /// the merged method. `members` are what the objects of [`Self::object_members`] establish.
+    /// The answer stays unchanged, and the result is `false`, when the export has no root reader
+    /// for the registry.
     pub(crate) fn merge(
         &self,
         registry: &str,
         layout: RootLayout,
-        merging_members: &BTreeSet<String>,
+        members: &MemberReaders,
         answer: &mut Answer<Vec<Field>>,
     ) -> bool {
         let Some(roots) = self.roots(registry) else {
@@ -315,7 +331,7 @@ impl ReaderExport {
         };
         let native_complete = answer.completeness == Completeness::Complete;
         let native_gaps = std::mem::take(&mut answer.gaps);
-        let mut merge = Merge::new(self, &native_gaps, merging_members);
+        let mut merge = Merge::new(self, &native_gaps, members);
 
         for root in roots {
             let Some(entry) = root.reader.as_deref() else {
@@ -343,7 +359,7 @@ impl ReaderExport {
 
         answer.completeness = Completeness::from_gaps(&gaps);
         answer.gaps = gaps;
-        answer.source.method = format!("registry-fields/ghidra-v{SCHEMA}");
+        answer.source.method = format!("registry-fields/ghidra-v{READERS_SCHEMA}");
 
         true
     }
@@ -747,14 +763,16 @@ struct Answered {
     conditions: bool,
     /// The field's block family shows that it reads no modifier container.
     container: bool,
+    /// The field's shared reader identity, which Native left unset.
+    identity: bool,
 }
 
 /// One merge of the export into an answer.
 struct Merge<'a> {
     export: &'a ReaderExport,
     native_gaps: &'a [Gap],
-    /// The member readers whose objects all keep themselves on a persistent read.
-    merging_members: &'a BTreeSet<String>,
+    /// What the objects of the export's member readers establish.
+    members: &'a MemberReaders,
     /// What the export answers, by field path.
     answered: BTreeMap<Vec<String>, Answered>,
     /// The gaps of added fields and the storage gaps computed again.
@@ -765,15 +783,11 @@ struct Merge<'a> {
 }
 
 impl<'a> Merge<'a> {
-    fn new(
-        export: &'a ReaderExport,
-        native_gaps: &'a [Gap],
-        merging_members: &'a BTreeSet<String>,
-    ) -> Self {
+    fn new(export: &'a ReaderExport, native_gaps: &'a [Gap], members: &'a MemberReaders) -> Self {
         Self {
             export,
             native_gaps,
-            merging_members,
+            members,
             answered: BTreeMap::new(),
             gaps: Vec::new(),
             ancestors: Vec::new(),
@@ -904,10 +918,17 @@ impl<'a> Merge<'a> {
     }
 
     /// What `row` establishes about reading its value. A row whose path tests the value's token
-    /// is read only through its two proved value branches.
+    /// is read only through its two proved value branches. One reading names its reader only when
+    /// it is the reading of every path.
     fn reading(&self, row: &Row) -> Result<Reading, OpenRead> {
         if row.branches.is_none() {
-            return self.outcome_reading(&row.outcome).map(Reading::One);
+            let (mut reader, shape) = self.outcome_reading(&row.outcome)?;
+
+            if !(row.unconditional() && row.paths_classified()) {
+                reader.id = None;
+            }
+
+            return Ok(Reading::One((reader, shape)));
         }
 
         let forms = row
@@ -936,7 +957,11 @@ impl<'a> Merge<'a> {
                 gap: (GapKind::ReaderSemantics, STORE_OPEN),
             }),
             (_, Some(kind)) if kind != ReaderKind::Unknown => {
-                Ok((plain_reader(kind, family(outcome, kind)), shape))
+                let mut reader = plain_reader(kind, family(outcome, kind));
+
+                reader.id = self.reader_id(outcome);
+
+                Ok((reader, shape))
             }
             _ => Err(OpenRead {
                 shape,
@@ -945,11 +970,37 @@ impl<'a> Merge<'a> {
         }
     }
 
+    /// The identity of the reader that `outcome` reads its value with, as the walker names it: the
+    /// persistent identity that every object with its member reader agrees on, the member reader
+    /// of a serializer, or the demangled symbol of the reading call. A serializer whose member
+    /// reader lists no key reads its values through its own `Read`, which the export does not name.
+    fn reader_id(&self, outcome: &Outcome) -> Option<ReaderId> {
+        if outcome.kind.reads_object() {
+            return self.members.ids.get(walked_member(outcome)?).cloned();
+        }
+
+        let symbol = match outcome.kind {
+            RowKind::Serializer => {
+                let entry = outcome.nested.as_ref()?.reader.as_deref()?;
+                let reader = self
+                    .export
+                    .readers
+                    .get(entry)
+                    .filter(|reader| reader.lists_keys())?;
+
+                reader.symbol.as_deref()?
+            }
+            _ => outcome.callee.as_ref()?.symbol.as_deref()?,
+        };
+
+        Some(ReaderId::from_callee(&display_name(symbol)))
+    }
+
     /// The shape that `outcome` reads, with `Merges` for a persistent read into the owner's own
     /// member whose objects keep themselves.
     fn shape(&self, outcome: &Outcome) -> FieldShape {
         let keeps_object = outcome.kind == RowKind::Persistent
-            && walked_member(outcome).is_some_and(|member| self.merging_members.contains(member));
+            && walked_member(outcome).is_some_and(|member| self.members.merging.contains(member));
 
         outcome_shape(outcome, keeps_object)
     }
@@ -975,6 +1026,7 @@ impl<'a> Merge<'a> {
             && matches!(field.read.as_slice(), [alternative] if alternative.condition == FieldCondition::Always);
         let kind_before = field.reader.kind;
         let family_before = field.reader.family;
+        let id_before = field.reader.id.is_some();
         let name = path.join(".");
         let storage_before = storage_gap(
             field,
@@ -1004,6 +1056,7 @@ impl<'a> Merge<'a> {
 
         if let Ok(Reading::One((reader, shape))) = &reading {
             storage_changed |= fill_read(field, reader, *shape);
+            answered.identity = proved && !id_before && field.reader.id.is_some();
         }
         if field.domain == FieldDomain::Unknown
             && field.reader.kind == ReaderKind::Keyword
@@ -1109,14 +1162,15 @@ impl<'a> Merge<'a> {
                 }],
             ),
         };
-        // The export names no reader identity, so an added field has none: Native's rule for a
-        // field without one is an `UnresolvedReader` gap.
+        // Native's rule for a field without a reader identity is an `UnresolvedReader` gap. A
+        // pair has no shared reader.
         let open = reading.as_ref().err().map(|open| open.gap);
         let identity = match (&reading, open) {
             (_, Some((GapKind::UnresolvedReader, _))) => None,
             (Ok(Reading::ByValueForm { .. }), _) => {
                 Some((GapKind::UnresolvedReader, READER_ALTERNATIVES_OPEN))
             }
+            (Ok(Reading::One((reader, _))), _) if reader.id.is_some() => None,
             _ => Some((GapKind::UnresolvedReader, IDENTITY_OPEN)),
         };
         let members = self.members(row.block_outcome(), path);
@@ -1192,6 +1246,7 @@ impl<'a> Merge<'a> {
         match gap.kind {
             GapKind::UnresolvedReader | GapKind::UnnamedField => {
                 answered.proved && answers_key_gap(gap)
+                    || answered.identity && detail == READER_ALTERNATIVES_OPEN
             }
             GapKind::UnresolvedPath => {
                 answered.proved && answers_key_gap(gap)
@@ -1337,32 +1392,51 @@ fn outcome_shape(outcome: &Outcome, keeps_object: bool) -> FieldShape {
     }
 }
 
-/// The `members` whose objects all keep themselves on a persistent read, by the walker's rule
-/// checked on each of `holders` (every vtable address point) that holds the member. A member
-/// that no point holds, or a holder whose persistent read is not established, does not merge: the
-/// check cannot run.
-pub(crate) fn merging_members(
-    members: BTreeSet<&str>,
-    holders: &[MemberHolder],
-) -> BTreeSet<String> {
-    members
-        .into_iter()
-        .filter(|member| {
-            let mut objects = holders
-                .iter()
-                .filter(|holder| holder.member.strip_suffix("(CReader&, int)") == Some(*member))
-                .peekable();
+/// What the objects that hold the export's member readers establish, by member reader name such
+/// as `CSettings::ReadMember`.
+#[derive(Debug, Default)]
+pub(crate) struct MemberReaders {
+    /// The members whose objects all keep themselves on a persistent read, so that a repeat
+    /// merges.
+    merging: BTreeSet<String>,
+    /// The persistent reader identity that every object with the member agrees on.
+    ids: BTreeMap<String, ReaderId>,
+}
 
-            objects.peek().is_some()
-                && objects.all(|holder| {
-                    holder
-                        .reader
-                        .as_ref()
-                        .is_some_and(|reader| persistent_read_merges(reader.family, Some(reader)))
-                })
-        })
-        .map(str::to_owned)
-        .collect()
+/// What `holders` (every vtable address point) establish about each of `members`, by the
+/// walker's rules: a repeat merges when every object that holds the member keeps itself on a
+/// persistent read, and the member has the persistent identity that all those objects give. A
+/// member that no point holds, or a holder whose persistent read is not established, gives
+/// neither: the check cannot run.
+pub(crate) fn member_readers(members: BTreeSet<&str>, holders: &[MemberHolder]) -> MemberReaders {
+    let mut readers = MemberReaders::default();
+
+    for member in members {
+        let objects: Option<Vec<_>> = holders
+            .iter()
+            .filter(|holder| holder.member.strip_suffix("(CReader&, int)") == Some(member))
+            .map(|holder| holder.reader.as_ref())
+            .collect();
+        let Some(objects) = objects.filter(|objects| !objects.is_empty()) else {
+            continue;
+        };
+        let id = persistent_reader_id(objects[0]);
+
+        if objects
+            .iter()
+            .all(|reader| persistent_read_merges(reader.family, Some(reader)))
+        {
+            readers.merging.insert(member.to_owned());
+        }
+        if objects
+            .iter()
+            .all(|reader| persistent_reader_id(reader) == id)
+        {
+            readers.ids.insert(member.to_owned(), id);
+        }
+    }
+
+    readers
 }
 
 /// The name of the walked member reader that `outcome` reads its value with.
@@ -1613,9 +1687,10 @@ fn resolve_value_forms(
     true
 }
 
-/// Fill the unknown kind and family of Native's reader from the export's. A kind that the merge
-/// establishes also gives the numeric and scoped-operand facts of that kind, where Native's
-/// numeric pass left them unresolved.
+/// Fill the unknown kind, family and identity of Native's reader from the export's. A kind that
+/// the merge establishes also gives the numeric and scoped-operand facts of that kind, where
+/// Native's numeric pass left them unresolved. The identity fills only a reader of the export's
+/// kind.
 fn fill_reader(native: &mut Reader, export: &Reader) {
     if native.kind == ReaderKind::Unknown {
         let mut kind_facts = export.clone();
@@ -1632,6 +1707,9 @@ fn fill_reader(native: &mut Reader, export: &Reader) {
     }
     if native.family == BlockFamily::Unknown {
         native.family = export.family;
+    }
+    if native.id.is_none() && native.kind == export.kind {
+        native.id = export.id.clone();
     }
 }
 

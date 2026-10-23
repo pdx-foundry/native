@@ -39,8 +39,9 @@ other callers of the walker's run, such as derived names, use the walker's answe
   domain; the `read-scope:` gaps where it gives the read scope of a proved key; the storage gap of a
   field whose storage it fills, which is computed again. A registry gap of an unfollowed path is
   removed only when the whole tree proves its keys. The gap `The field's alternatives do not
-  establish one shared reader.` stays: the export names no reader identity.
-- A field that it adds has no reader identity, so it has an `UnresolvedReader` gap, as any field
+  establish one shared reader.` is removed where a proved row gives the field its reader identity
+  (below).
+- A field that it adds without a reader identity has an `UnresolvedReader` gap, as any field
   without one. It also gets a gap for each other property that it leaves open: a `store` row
   (`ReaderSemantics`), a `branches` row whose branches are not both proved (`ValueShape::Any`,
   reader `Unknown`, `ReaderSemantics`), a condition, unclassified paths, repeat or members, the
@@ -58,8 +59,9 @@ other callers of the walker's run, such as derived names, use the walker's answe
   both branches (`proved`): the branch walk has one path, the path reads and stores nothing
   before the value test (the `VALUEBRANCH` marker of `Export.java`), reports nothing after it, and
   then reads a block for the block's value token and one scalar for any other. The field's reader
-  is then `Unknown` with the gap `The field's alternatives do not establish one shared reader.`,
-  and its members come from the block branch. A block branch that only calls `SkipBody` and a
+  is then `Unknown` with no identity and the gap `The field's alternatives do not establish one
+  shared reader.`; each alternative has its branch's reader identity, and the members come from
+  the block branch. A block branch that only calls `SkipBody` and a
   scalar branch that calls and stores nothing keep nothing (`Skipped`). The merge gives a Native
   field the pair in two cases. Native's one unresolved alternative of a field without a shared
   reader becomes the pair. Native's two alternatives under unresolved conditions, which the
@@ -105,9 +107,28 @@ other callers of the walker's run, such as derived names, use the walker's answe
   object's own class, and a derived object can inherit the member reader and override a hook, so
   every holder must pass. When no vtable holds it, or a holder's `Read` slot names no persistent
   read, the repeat stays `Unknown` with its storage gap.
-- **Limit: reader identity.** Rows do not name the reader call, so the export cannot give a
-  `ReaderId`, and a key that only the export reads keeps its answer partial. Carrying the reader's
-  name in each row (a schema change) removes the limit.
+- Reader identity (SDK-889, `readers.json` schema 2). Each row and value branch names its reading
+  call (`callee`: name, entry and mangled symbol), and each walked reader its own mangled symbol.
+  Ghidra keeps the linker's mangled symbol beside the name that it displays. The loader demangles
+  it with Native's demangler (`binding/binary/inventory.rs`, `display_name`), so the export and the
+  walker give one reader one `ReaderId`:
+  - a read call: `ReaderId::from_callee` of the demangled call, as the walker's joins;
+  - a `serializer`: its member reader, as the walker's stack serializer join (`Stored`, with the
+    serializer's `ReadMember(CReader&, int)`). A serializer whose nested reader lists no key (its
+    member reader is `CPersistent::ReadMember`, SDK-890) gets none: its own `Read` reads the values;
+  - a `persistent`, `object` or `object-list` read: the persistent identity
+    (`persistent_reader_id`) that every vtable holding its member reader agrees on, the check that
+    `Merges` uses. None when no vtable holds it or two disagree;
+  - no call that reads (a `store`, a `presence` row, a stored trigger or effect, a constructor, an
+    insertion or an assignment), or no mangled symbol (`CTriggeredEventDescription<…>::ReadEntry`
+    on M452): none.
+
+  A row's one reading names its reader only when the row is unconditional and every path is
+  classified; the gap `The field's alternatives do not establish one shared reader.` is removed
+  only for a proved row. A Native field takes the export's identity only where it has none and its
+  kind is the export's. Pitfall: the walker names a persistent read by the vtable that the owner's
+  constructor stores at the destination; the merge uses the member reader's holders, which agree
+  with it when the destination's class is one of them.
 - **Limit: keyword domains.** A complete `TokenToEnum` table gives `FieldDomain::Listed`, except
   where the walker found that the caller keeps an unknown name's fallback without a diagnostic
   (`An unknown name keeps the converter's fallback…`): that finding stays. The export does not show
@@ -119,6 +140,16 @@ On M452, 55 registries have an export tree that proves its keys. The walker answ
 alternative per key is not established (`The field's alternatives do not establish one shared
 reader.`), a `read-scope: reader-path` gap, numeric ranges, and unresolved loader conditions. An
 export row with unclassified paths does not remove them.
+
+Reader identity (SDK-889) made none of them `Complete`: each of the 33 partial ones on the accepted
+run keeps a gap that identity does not answer, such as the numeric range of a weight block's
+`days`, a `read-scope` gap of a row whose paths are not all classified, a loader condition, a
+keyword fallback or an evaluation context. Across all registries it removed 1,653 of the 2,686
+`The reader export establishes the value form, not the shared reader's identity.` gaps and 26 of the
+1,137 `The field's alternatives do not establish one shared reader.` gaps; 20 storage gaps changed
+from "waits for one shared reader" to the block reader's missing repeat rule. The M5 measure did not
+change (15,887, gained 0, lost 0): Atlas's not-a-field rule needs `Complete` with only
+`OutsideMethod` gaps, and no claim that Atlas checks waited only for an identity.
 
 **`alliance_ship_design` (`common/global_ship_designs`).** The walker answers `Scalar` (a
 Boolean); the export answers `Any`. `CShipDesign::ReadMember` (`0x1011bd5e4`) reads token `0x2f5d`

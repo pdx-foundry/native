@@ -4,6 +4,7 @@ Pure functions over the walk's event lines; export.py runs them during the walk 
 row's nested reader decides which reader the next round walks. An event line is one of:
 
     CALL <name> (<prototype>) [a<i>=this+0x<offset>] [a<i>=#0x<constant>] [scope=#0x<mask>]
+         [at=0x<entry>] [sym=<mangled symbol>]
     CALLIND slot+0x<offset>
     STORE this+0x<offset> size=<bytes> val=<source>
     REF <address> <symbol> slot0=<name> slot5=<entry>=<name>
@@ -46,6 +47,7 @@ EFFECT = re.compile(r'ReadEffect|^CEffect::Read$')
 # read (registry-fields.md, repeat behavior); `CTrigger::Read` and `CEffect::Read` merge.
 CLEARING_READER = re.compile(r'::Read(Trigger|Effect)<')
 SKIP_CONSTRUCTOR = ('CString::', 'CPdxLogFileAndLine::', 'CToken::', 'CEventTarget::', 'std::')
+NOT_READING_CALLS = r'InsertAtEmplace|SetSizeAndEmplace|make_shared|PdxMakeScopedPtr|::operator=|__assign_external'
 
 
 def is_marker(event):
@@ -53,12 +55,25 @@ def is_marker(event):
 
 
 def callee(event):
-    """The name, prototype and arguments of a CALL event, or None."""
-    match = re.match(r'CALL (.+?) (\(.*\))((?: (?:a\d+|scope)=\S+)*)$', event)
+    """The name, prototype, arguments, entry and mangled symbol of a CALL event, or None."""
+    match = re.match(r'CALL (.+?) (\(.*\))((?: (?:a\d+|scope|at|sym)=\S+)*)$', event)
     if not match:
         return None
-    arguments = dict(re.findall(r'(a\d+|scope)=(\S+)', match.group(3)))
-    return {'name': match.group(1).replace('<EXTERNAL>::', ''), 'proto': match.group(2), 'args': arguments}
+    fields = dict(re.findall(r'(a\d+|scope|at|sym)=(\S+)', match.group(3)))
+    arguments = {name: value for name, value in fields.items() if name not in ('at', 'sym')}
+    return {'name': match.group(1).replace('<EXTERNAL>::', ''), 'proto': match.group(2), 'args': arguments,
+            'address': fields.get('at'), 'symbol': fields.get('sym')}
+
+
+def reading_callee(result):
+    """The call that reads the value of a classified row or branch, as `{name, address, symbol}`, or
+    None. A constructor, an array insertion or an assignment makes or stores the value; it is not
+    the reader."""
+    call = callee(result['call']) if result.get('call') else None
+    if call is None or call['address'] is None or is_constructor(call['name']) or \
+            re.search(NOT_READING_CALLS, call['name']):
+        return None
+    return {'name': call['name'], 'address': call['address'], 'symbol': call['symbol']}
 
 
 def is_constructor(name):
@@ -335,7 +350,7 @@ def value_branch(value_token, walk, outcome):
     reads_form = outcome['value'] == form and outcome['reader_kind'] not in (None, 'Unknown')
     return {'value_token': value_token, 'kind': outcome['kind'], 'value': outcome['value'],
             'reader_kind': outcome['reader_kind'], 'repeat': outcome['repeat'], 'family': outcome['family'],
-            'items': outcome['items'], 'nested': outcome['nested'],
+            'items': outcome['items'], 'nested': outcome['nested'], 'callee': reading_callee(outcome),
             'proved': one_path and tested_first and only_the_reading and reads_form,
             'paths': {'leaves': walk['leaves'], 'unknown': walk['unknown'], 'truncated': walk['truncated']}}
 
