@@ -110,6 +110,15 @@ class CompletenessTests(unittest.TestCase):
         self.assertEqual(export_module.nested_specs(reader) >= set(reader['delegates']), True)
         self.assertIn('delegate-unfollowed', document['readers']['0x10']['incomplete_because'])
 
+    def test_a_delegate_with_an_incomplete_nested_reader_makes_the_tree_incomplete(self):
+        stage = raw_reader('CStage::ReadMember', '0x30', [raw_row(10)], default=('helper', None))
+        delegate = raw_reader('CDelegate::ReadMember', '0x20', [raw_row(13, kind='object-list', nested='0x30')])
+        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10)], delegates=['CDelegate::ReadMember'])
+        document = normalize.normalize(export_of(owner, delegate, stage), tables())
+
+        self.assertTrue(document['readers']['0x10']['complete'])
+        self.assertFalse(normalize.complete_tree(document['readers'], '0x10'))
+
     def test_a_value_branch_that_reads_an_object_without_a_reader_fails_the_nested_condition(self):
         branch = {'value_token': 'block', 'kind': 'persistent', 'value': 'Block', 'reader_kind': 'Block',
                   'repeat': 'Unknown', 'nested': None, 'paths': {'leaves': 1, 'unknown': 0, 'truncated': False}}

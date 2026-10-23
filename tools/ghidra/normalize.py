@@ -224,7 +224,7 @@ def registries(roots, locate):
 
 def complete_tree(readers, entry, seen=None):
     """Whether the whole reader tree under `entry` proves its block's key domain: every reader in
-    it is complete, rejects the keys it does not enumerate (directly or through a complete base),
+    it (nested, base and delegate readers at every depth) is complete, rejects the keys it does not enumerate (directly or through a complete base),
     and is not an entry reader."""
     seen = set() if seen is None else seen
     if entry in seen:
@@ -238,7 +238,7 @@ def complete_tree(readers, entry, seen=None):
         return False
     nested = [row['nested'] for row in reader['rows']] + \
         [branch['nested'] for row in reader['rows'] for branch in row['branches'] or []]
-    return all(complete_tree(readers, spec['reader'], seen) for spec in nested if spec)
+    return all(complete_tree(readers, spec['reader'], seen) for spec in nested + delegate_specs(reader) if spec)
 
 
 def summary(document):
