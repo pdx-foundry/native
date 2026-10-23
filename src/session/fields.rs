@@ -176,18 +176,22 @@ fn repeat(
         ReaderKind::ScopedNumeric if callee == "CVariableValue::Read(CReader&, EScopeType)" => {
             RepeatBehavior::Merges
         }
-        // The persistent read of a weight or modifier block keeps the object: a weight block
-        // keeps its entries and a modifier block its fixed keys.
-        ReaderKind::Block
-            if matches!(reader.family, BlockFamily::Weight | BlockFamily::Modifier) =>
-        {
-            RepeatBehavior::Merges
-        }
-        ReaderKind::Block if persistent.is_some_and(keeps_persistent_object) => {
+        ReaderKind::Block if persistent_read_merges(reader.family, persistent) => {
             RepeatBehavior::Merges
         }
         _ => RepeatBehavior::Unknown,
     }
+}
+
+/// Whether a repeated persistent read of a block of `family`, into an object whose persistent
+/// reader is `persistent`, merges into the object. The persistent read of a weight or modifier
+/// block keeps the object: a weight block keeps its entries and a modifier block its fixed keys.
+pub(super) fn persistent_read_merges(
+    family: BlockFamily,
+    persistent: Option<&ConcreteReader>,
+) -> bool {
+    matches!(family, BlockFamily::Weight | BlockFamily::Modifier)
+        || persistent.is_some_and(keeps_persistent_object)
 }
 
 /// Whether the persistent read of `reader` keeps the object it reads into. `CPersistent::Read`
@@ -195,7 +199,7 @@ fn repeat(
 /// `CPersistentName::Read` clears its key and variables but keeps `literal`. A hook other than
 /// the base's empty one is not read, so it keeps the rule from applying. A validated assumption
 /// stands behind the rule: a member reader changes only the storage of the key it reads.
-pub(super) fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
+fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
     const KEEPING_READS: [&str; 2] = [
         "CPersistent::Read(CReader&)",
         "CPersistentName::Read(CReader&)",

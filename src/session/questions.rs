@@ -338,7 +338,7 @@ impl Native {
     }
 
     /// The classes of `export`'s persistent rows whose persistent read keeps the object, by the
-    /// rule of the walker's repeat behavior: a class whose vtable cannot be read is not one.
+    /// walker's rule for a persistent read: a class whose vtable cannot be read is not one.
     fn kept_objects(&self, export: &ReaderExport) -> BTreeSet<String> {
         let Ok(verified) = self.bound().analysis.verified() else {
             return BTreeSet::new();
@@ -349,7 +349,9 @@ impl Native {
 
         readers
             .into_iter()
-            .filter(|(_, reader)| super::fields::keeps_persistent_object(reader))
+            .filter(|(_, reader)| {
+                super::fields::persistent_read_merges(reader.family, Some(reader))
+            })
             .map(|(class, _)| class)
             .collect()
     }
