@@ -276,18 +276,15 @@ def classify_paths(events, default_events, constructors, yes_token):
 
 def presence_row(events):
     """The row of a key whose presence stores a constant, or None. Every path reads no part of the
-    value (it calls nothing but a skip or a call that changes no script state, and tests neither the
-    value's token nor the key's text), reports nothing, and stores only constants. A skip gives
-    the form that it reads past; with no skip the value is the one scalar token that the reader
-    already holds."""
+    value (it calls nothing but one known skip, and tests neither the value's token nor the key's
+    text), and stores only constants. A skip gives the form that it reads past; with no skip the
+    value is the one scalar token that the reader already holds."""
     texts = [text for _, text in events]
-    names = [call['name'] for call in map(callee, (text for text in texts if text.startswith('CALL '))) if call]
+    calls = [callee(text) for text in texts if text.startswith('CALL ')]
     stores = [(is_always, text) for is_always, text in events if text.startswith('STORE ')]
-    skips = [name for name in names if name.startswith(SKIP_CALLS)]
-    reads_value = any(text.startswith(('CALLIND', 'VALUETEST', VALUE_BRANCH, 'KEYTEXT')) for text in texts) or \
-        any(name.startswith(REJECT_CALLS) or not name.startswith(AUXILIARY_CALLS + SKIP_CALLS) for name in names)
+    reads_value = any(text.startswith(('CALLIND', 'LOOP', 'VALUETEST', VALUE_BRANCH, 'KEYTEXT')) for text in texts)
     constant_stores = stores and all(re.search(r' val=#0x[0-9a-f]+$', text) for _, text in stores)
-    forms = {SKIP_FORMS.get(name) for name in skips} or {'Scalar'}
+    forms = {SKIP_FORMS.get(call['name']) if call else None for call in calls} or {'Scalar'}
     if reads_value or not constant_stores or len(forms) != 1 or None in forms:
         return None
     value, = forms
@@ -298,11 +295,13 @@ def value_branch(value_token, walk, outcome):
     """One branch of a row whose path tests the value's token, from `outcome`, the classification
     of the branch's walk, with `proved`: whether the walk proves what the branch reads.
 
-    A branch is proved when its walk has one path, that path reads and stores nothing before the
-    value test, reports nothing after it, and reads the branch's form after it: a block for the
-    block's value token and one scalar for any other. A block branch that only skips the block,
-    and a scalar branch that calls and stores nothing, keep nothing (`Skipped`): the reader holds
-    a scalar value's token already."""
+    A branch is proved when its walk has one path with no cut loop, that path reads and stores
+    nothing before the value test, and after it reads the branch's form with one call: a block for
+    the block's value token and one scalar for any other. The only other calls after the test may
+    be an array insertion that makes the element that the call reads into, and calls that change
+    no script state and report nothing. A block branch that only skips the block, and a scalar
+    branch that calls and stores nothing, keep nothing (`Skipped`): the reader holds a scalar
+    value's token already."""
     texts = [text for _, text in walk['events']]
     tested = texts.index(VALUE_BRANCH) if VALUE_BRANCH in texts else None
     before, after = (texts[:tested], texts[tested + 1:]) if tested is not None else (texts, [])
@@ -317,14 +316,18 @@ def value_branch(value_token, walk, outcome):
             all(SKIP_FORMS.get(name) == 'Block' for name in names) and len(names) == len(effects(after)):
         outcome = dict(outcome, value=form)
 
-    one_path = walk['leaves'] == 1 and not walk['unknown'] and not walk['truncated']
+    one_path = walk['leaves'] == 1 and not walk['unknown'] and not walk['truncated'] and \
+        not any(text.startswith('LOOP') for text in texts)
     tested_first = tested is not None and not effects(before)
-    reports = any(name.startswith(REJECT_CALLS) for name in names)
+    reading = callee(outcome['call'])['name'] if outcome.get('call') else None
+    only_the_reading = not any(text.startswith('CALLIND') for text in after) and all(
+        name == reading or 'InsertAtEmplace' in name or
+        (name.startswith(AUXILIARY_CALLS) and not name.startswith(REJECT_CALLS)) for name in names)
     reads_form = outcome['value'] == form and outcome['reader_kind'] not in (None, 'Unknown')
     return {'value_token': value_token, 'kind': outcome['kind'], 'value': outcome['value'],
             'reader_kind': outcome['reader_kind'], 'repeat': outcome['repeat'], 'family': outcome['family'],
             'items': outcome['items'], 'nested': outcome['nested'],
-            'proved': one_path and tested_first and not reports and reads_form,
+            'proved': one_path and tested_first and only_the_reading and reads_form,
             'paths': {'leaves': walk['leaves'], 'unknown': walk['unknown'], 'truncated': walk['truncated']}}
 
 

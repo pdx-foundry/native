@@ -270,6 +270,18 @@ class RowTests(unittest.TestCase):
         string.update(leaves=2, unknown=2)
         self.assertFalse(rows.value_branch('other', string, rows.classify(string['events'], [], {}, 1))['proved'])
 
+    def test_a_value_branch_with_another_reader_or_a_cut_loop_after_its_read_is_not_proved(self):
+        boolean = 'CALL CReader::Read (CReader * this, bool * param_1) a2=this+0x40'
+        for continuation in ('CALL CUnqualified::Read (CReader * param_1)', 'LOOP CReader::Read'):
+            branch = branch_walk(['VALUEBRANCH', boolean, continuation])
+            outcome = rows.value_branch('other', branch, rows.classify(branch['events'], [], {}, 1))
+            self.assertFalse(outcome['proved'], continuation)
+
+    def test_a_path_that_constructs_a_string_in_the_owner_is_no_presence_row(self):
+        events = [(True, 'CALL CString::CString (CString * this, char * param_1) a1=this+0x48'),
+                  (True, 'STORE this+0x50 size=1 val=#0x1')]
+        self.assertNotEqual(rows.classify(events, [], {}, 0x3ff8)['kind'], 'presence')
+
     def test_a_skipped_block_and_a_scalar_branch_that_does_nothing_keep_nothing(self):
         skip = branch_walk(['VALUEBRANCH', 'CALL CReader::SkipBody (CReader * this)'])
         block = rows.value_branch('block', skip, rows.classify(skip['events'], [], {}, 1))
