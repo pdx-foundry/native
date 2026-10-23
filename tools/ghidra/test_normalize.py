@@ -272,7 +272,10 @@ class RowTests(unittest.TestCase):
 
     def test_a_value_branch_with_another_reader_or_a_cut_loop_after_its_read_is_not_proved(self):
         boolean = 'CALL CReader::Read (CReader * this, bool * param_1) a2=this+0x40'
-        for continuation in ('CALL CUnqualified::Read (CReader * param_1)', 'LOOP CReader::Read'):
+        for continuation in ('CALL CUnqualified::Read (CReader * param_1)', 'LOOP CReader::Read',
+                             'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x48',
+                             'CALL 10001000 ',
+                             'CALL CString::CString (CString * this, char * param_1) a1=this+0x48'):
             branch = branch_walk(['VALUEBRANCH', boolean, continuation])
             outcome = rows.value_branch('other', branch, rows.classify(branch['events'], [], {}, 1))
             self.assertFalse(outcome['proved'], continuation)
