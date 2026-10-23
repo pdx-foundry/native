@@ -170,6 +170,13 @@ for contexts and scope types.
   never a `Complete` answer with silently unresolved properties. Reads validate the build identity,
   not the method revision.
 - The build id in `Source` is opaque to Atlas. Atlas may keep it and compare it for equality.
+- On a build with a reader export in its build directory (`builds/<slice prefix>/readers.json`),
+  `registry_fields` fills each property that the walker leaves unresolved, and each field that it
+  does not list, from the export, and removes a gap that the export answers; a property that the
+  walker establishes stays. The answer's `Source.method` is then `registry-fields/ghidra-v<schema>`
+  and `Basis` stays `StaticAnalysis`. The answer is `Complete` only when every reader in the
+  registry's reader tree proves the keys that it accepts, so a key that the answer does not list
+  is no field (the [whole-block contract](../design/ghidra-front-end.md#the-whole-block-contract-d10)).
 - Constructor-bound modifier fields expose `FieldMembers::ModifierBlock`, at the root and in the
   `FieldMembers::Fields` of a collected or embedded object that the method walks as a nested owner: fixed keys with
   reader kinds and numeric or static-modifier-reference entry forms. Each property may be partial

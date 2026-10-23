@@ -21,6 +21,112 @@ classification is resolved. An `OutsideMethod` gap states the boundary and can a
 `Complete`. Unnamed candidates, unresolved paths, unknown reader classifications and unreadable
 required input make the answer partial.
 
+## The reader export (SDK-876)
+
+`session/reader_export.rs` fills the public `registry_fields` answer from the build directory's
+reader export (`builds/<slice prefix>/readers.json` and `tables.json`, written by `tools/ghidra/`;
+[Ghidra front end](../design/ghidra-front-end.md)). The recipe compiles the files in, because a git
+dependency has no repository path at run time; a build without a directory keeps the walker's
+answer. `internals::registry_field_stops::run` gives the merged answer beside the walker's result;
+other callers of the walker's run, such as derived names, use the walker's answer.
+
+- The export only adds. It fills a property that the walker leaves `Unknown`, `Unresolved` or
+  absent, on a field whose one read alternative is `Always` and whose export row is unconditional,
+  and it adds a field that the walker does not list. It changes no established property.
+- It removes a walker gap only where it answers it: the path, reader-join and unnamed-key gaps of a
+  key whose row is proved (one unconditional reading, every path classified, a nested tree that
+  proves its keys) and the value-form gap of such a key; the keyword-domain gap where it lists the
+  domain; the `read-scope:` gaps where it gives the read scope of a proved key; the storage gap of a
+  field whose storage it fills, which is computed again. A registry gap of an unfollowed path is
+  removed only when the whole tree proves its keys. The gap `The field's alternatives do not
+  establish one shared reader.` stays: the export names no reader identity.
+- A field that it adds has no reader identity, so it has an `UnresolvedReader` gap, as any field
+  without one. It also gets a gap for each other property that it leaves open: a `store` row
+  (`ReaderSemantics`), a `branches` row (`ValueShape::Any`, reader `Unknown`, `ReaderSemantics`),
+  a condition, unclassified paths, repeat or members, the keyword domain, numeric conversion, a key
+  reference's lookup, and the read scope. An added field is therefore never complete.
+- Nested fields come only from a reader that dispatches on the key's token and lists a key. A
+  serializer whose member reader is `CPersistent::ReadMember` reads its values through its own
+  `Read`, which the export does not walk, so its block keeps unresolved members. Nested fields that
+  come from a tree that does not prove its keys carry an `UnresolvedStorage` gap. A
+  `scalar-other` row (a read into another engine type, such as a vector) keeps an unknown value
+  form.
+- `Complete` follows the whole-block contract. When every other gap is answered but a reader of the
+  tree fails, a registry gap names the key path where the tree reaches the reader and the failed
+  conditions (the gap text holds no symbol). A walker answer that is complete on its own stays
+  complete: the walker proved its keys itself (`common/cloaking_strength_levels`, whose export tree
+  is incomplete).
+- Read scope: a literal mask names its types through `tables.json`; mask 0 is `Known([])`; a scalar
+  or a list of values reads in no scope. A persistent or object block has no literal mask and keeps
+  `Unresolved` with a `read-scope: no-literal-mask` gap, as the walker's `no-scope-parameter`. The
+  D5(a) readers keep `Unresolved` with their `OutsideMethod` gap.
+- **Limit: `Merges`.** A `persistent` row that reads into the owner's own member gets `Merges`.
+  The export does not read the object's `Read` override or its post-read hooks, which the walker's
+  [persistent rule](#repeat-behavior) checks. Change the rule when a nested object with its own
+  hook resets on a repeat.
+- **Limit: reader identity.** Rows do not name the reader call, so the export cannot give a
+  `ReaderId`, and a key that only the export reads keeps its answer partial. Carrying the reader's
+  name in each row (a schema change) removes the limit.
+- **Limit: keyword domains.** A complete `TokenToEnum` table gives `FieldDomain::Listed`, except
+  where the walker found that the caller keeps an unknown name's fallback without a diagnostic
+  (`An unknown name keeps the converter's fallback…`): that finding stays. The export does not show
+  whether a caller reports an unknown name.
+
+On M452, 55 registries have an export tree that proves its keys. The walker answers 17 of them
+`Complete` on its own, and the merge adds `common/component_sets`; `common/ethic_categories` has no
+`registry_fields` answer. In the other 36, the walker's own gaps keep most partial: one read
+alternative per key is not established (`The field's alternatives do not establish one shared
+reader.`), a `read-scope: reader-path` gap, numeric ranges, and unresolved loader conditions. An
+export row with unclassified paths does not remove them.
+
+**`alliance_ship_design` (`common/global_ship_designs`).** The walker answers `Scalar` (a
+Boolean); the export answers `Any`. `CShipDesign::ReadMember` (`0x1011bd5e4`) reads token `0x2f5d`
+with `CReader::Read(bool&)`, stores the byte in the design-owner word at `+0x114` (the word that
+`ship_owner_type` sets through `TokenToEnum<EDesignOwner>`), and then continues into the code of
+`upgrades_to` (`0x36d7`): a block value reads a string list into `+0x140`, and any other value
+appends one more string to that list and reads the value text into it. The value test belongs to
+the shared continuation, not to the Boolean read, so `Scalar` stays. A consequence for content:
+`alliance_ship_design = yes` also adds `yes` to the design's `upgrades_to` list.
+
+**Other differences on M452** (the walker's answer stays):
+
+- Value form `Scalar` against the export's `Any` (a path that tests the value's token):
+  `common/buildings` `category`, `common/economic_categories` `modifier_category`,
+  `common/scripted_actions` `user_scope`, `common/scripted_modifiers` `category`.
+- Read condition: 165 keys that the walker reads under a condition are unconditional in the export
+  (110 under `events`, 38 `common/scripted_actions`, 36 `common/districts`), and 101 keys that the
+  walker reads unconditionally are conditional in the export. The two methods name different
+  conditions: the walker's are loader conditions on stored fields, the export's are paths that do
+  not reach the same reading. The merge fills no property of such a key.
+- Fields that the walker lists and the export does not: `common/global_ship_designs`
+  `custom_trade_weight`, `ship_size`, `section`, `behaviour`, `required_component`, `is_boss`,
+  `custom_military_power`, `resource_restriction`; `common/megastructure_overclock_types`
+  `country_modifier`, `modifier`. `common/component_templates`, with the 36 fields of
+  `strike_craft_component_template`, has no export root (each root key builds its own class).
+
+**Reviewed parity output.** `tests/expected/m452/fields-megastructures.json` holds the export's
+additions, each class read by hand: `prerequisites` reads a block through a serializer (`Block`;
+its members stay unresolved, because the serializer's member reader is `CPersistent::ReadMember`);
+`dismantle_cost` and `resources` gain `produces`, `upkeep`, `logistics` and `cost`, the keys of
+`CEconomicUnitTemplate::CSerializer::ReadMember`; `cycle_title` and `cycle_desc` read
+`variable_string` as a `String` (`CPersistentName::ReadMember`); and three root keys that the walker
+does not list, `build_outside_gravity_well`, `construction_blocks_and_blocked_by` and `build_type`,
+are `Any` with an unresolved condition, because their paths test the value's token.
+
+**Unlisted keys read by hand.** Twenty keys outside the export's tokens under registries whose
+tree proves its keys, read in the decompiled readers: `common/governments` `election_candidates`
+(`0x343a`) and `leader_class` (`0x325b`), `common/starbase_levels` `portrait` (`0x401e`) and
+`special_construction` (`0x3035`) are compared by no reader of the tree;
+`common/starbase_levels` `collects_trade` and `common/bypass` `bypass_effect` have no token, and no
+reader of the tree reads key text; and fourteen `default_routed` tokens (`common/bombardment_stances`
+`add_blocker_chance`, `max_blockers`; `common/bypass` `icon_large`, `move_jump_anim`, `one_to_one`,
+`show_component_tooltips`; `common/scripted_modifiers` `add_to_council_command`,
+`council_leaders`, `is_councilor_trait_for_ruler`, `should_pay_for_leader_upkeep`;
+`common/strategic_resources` `basic`, `advanced`, `strategic`, `other`) reach
+`CPersistent::ReadMember`, which calls `CReader::ReportUnexpected`. None is a wrong "not a field".
+Pitfall: `default_routed` also lists value tokens. `CStrategicResource::ReadMember` compares
+`basic`, `advanced`, `strategic` and `other` against the value token of one key, not as keys.
+
 ## Current sweep
 
 This sweep ran on M452.

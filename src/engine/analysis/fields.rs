@@ -64,6 +64,7 @@ mod control_flow;
 mod dispatch;
 mod inventory;
 mod keywords;
+pub(crate) use keywords::{OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
 mod member;
 mod nested;
 mod persistent;

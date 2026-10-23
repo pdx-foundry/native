@@ -1802,10 +1802,7 @@ fn enum_fields_list_their_names_or_say_why_not() {
         ("common/traits", "category"),
         ("common/traits", "leader_trait_type"),
     ];
-    let unjoined = [
-        ("common/ship_sizes", "construction_type"),
-        ("common/special_projects", "requirements.shipclass_starbase"),
-    ];
+    let unjoined = [("common/ship_sizes", "construction_type")];
     let native = native();
     let field = |registry: &str, path: &str| {
         let answer = native.registry_fields(registry).unwrap();
@@ -1851,6 +1848,10 @@ fn enum_fields_list_their_names_or_say_why_not() {
         assert_eq!(field.reader.kind, ReaderKind::Unknown, "{registry} {path}");
         assert!(gaps.contains(NO_READER), "{registry} {path}: {gaps:?}");
     }
+    // The key's own token selects the ship class (`GetShipClassEnumFromToken`); the value is a
+    // count, which the reader export reads as an integer.
+    let (shipclass, _) = field("common/special_projects", "requirements.shipclass_starbase");
+    assert_eq!(shipclass.reader.kind, ReaderKind::Integer);
 
     // `enum[building_category]` also names three spellings that are no category of the converter:
     // the engine logs that the building has none.

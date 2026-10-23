@@ -197,6 +197,21 @@ impl Binding {
             })
     }
 
+    /// The build's reader export, parsed on first use, or why it could not be read. `None` when
+    /// the build has no build directory.
+    pub(crate) fn reader_export(
+        &self,
+    ) -> Option<&Result<crate::session::reader_export::ReaderExport, String>> {
+        let operation = self.operation.as_ref()?;
+        let files = operation.reader_export?;
+
+        Some(
+            operation
+                .parsed_export
+                .get_or_init(|| crate::session::reader_export::ReaderExport::parse(files)),
+        )
+    }
+
     pub(crate) fn registry_bindings(
         &self,
         directories: &[String],

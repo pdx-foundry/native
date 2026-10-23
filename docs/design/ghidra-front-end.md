@@ -276,8 +276,10 @@ that the block's whole key domain is proved:
   log and skip or a complete base reader, and is not in entry mode. An entry-mode block accepts
   any key; its `AnyKey` answer is complete on its own terms but gives no negative for an unlisted
   key.
-- Any other reader in the tree makes the answer `Partial`, with a gap that names the reader and the
-  failed condition.
+- Any other reader in the tree makes the answer `Partial`. When no other gap keeps the answer
+  partial, a registry gap names the key path at which the tree reaches the reader and the failed
+  conditions; a gap's text holds no symbol. A walker answer that is complete on its own stays
+  complete.
 - The rows of a complete base reader join the derived reader's table, so a key that the base
   reads is a field. Delegation is not rejection.
 - `default_routed` stays in the export as a diagnostic.

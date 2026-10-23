@@ -33,6 +33,7 @@ mod numeric;
 pub mod numeric_readers;
 pub(crate) mod questions;
 mod read_scope;
+pub(crate) mod reader_export;
 pub mod reference_readers;
 pub mod registry_field_stops;
 mod scoped_numeric;

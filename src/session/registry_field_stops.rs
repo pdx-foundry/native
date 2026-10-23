@@ -1,5 +1,6 @@
 //! The registry field method's own result, for Native's developers: every token path, where each
-//! one stopped, and every gap before normalization, with the public answer derived from it.
+//! one stopped, and every gap before normalization, with the public answer derived from it and
+//! from the build's reader export.
 //! Addresses appear here and in no public answer. Not a consumer API.
 //!
 //! ```no_run
@@ -72,8 +73,9 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
     native.method_result(Operation::RegistryFields, || {
         let run = native.registry_field_run(registry)?;
         let entry_contexts = entry_contexts(&run, native.block_facts()?);
+        let layout = super::questions::root_layout(&run.result);
         Ok(Run {
-            answer: run.answer,
+            answer: native.with_reader_export(registry, layout, run.answer),
             result: std::sync::Arc::unwrap_or_clone(run.result),
             entry_contexts,
         })
