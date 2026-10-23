@@ -103,6 +103,13 @@ pub enum FieldCondition {
         /// Whether the condition requires that keyword; `false` requires any other value.
         equal: bool,
     },
+    /// The field's own value, as written, is a block (`block: true`) or any other value
+    /// (`block: false`). A field whose reader tests the value's token has one alternative for each
+    /// form, and its `members` describe the block's.
+    ValueForm {
+        /// Whether this alternative requires a block value.
+        block: bool,
+    },
     /// The required state could not be expressed as a field condition.
     Unresolved,
 }

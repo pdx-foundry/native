@@ -111,20 +111,16 @@ fn obstacle(conversion: &NumericConversion) -> Option<Obstacle> {
     }
 }
 
-/// Attach conversion facts and retain the obstructions that need public gaps.
-fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimits {
+/// Set the numeric and scoped-operand facts that `reader`'s kind alone establishes: a reader
+/// of no number has no numeric conversion, and only a scoped numeric reader takes a scoped
+/// operand. A numeric kind keeps an unresolved conversion.
+pub(super) fn attach_kind_facts(reader: &mut Reader) {
     reader.scoped_operand =
         if matches!(reader.kind, ReaderKind::Unknown | ReaderKind::ScopedNumeric) {
             GrammarProperty::Unresolved
         } else {
             GrammarProperty::Known(None)
         };
-    if let Some(fact) = facts.readers.iter().find_map(|(callee, fact)| {
-        (reader.id.as_ref() == Some(&ReaderId::from_callee(callee))).then_some(fact)
-    }) {
-        reader.numeric = fact.conversion.clone();
-        return limits(fact);
-    }
     reader.numeric = match reader.kind {
         ReaderKind::Boolean
         | ReaderKind::String
@@ -132,9 +128,21 @@ fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimit
         | ReaderKind::Target
         | ReaderKind::Keyword
         | ReaderKind::Skipped
+        | ReaderKind::Presence
         | ReaderKind::Block => GrammarProperty::Known(None),
         _ => GrammarProperty::Unresolved,
     };
+}
+
+/// Attach conversion facts and retain the obstructions that need public gaps.
+fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimits {
+    attach_kind_facts(reader);
+    if let Some(fact) = facts.readers.iter().find_map(|(callee, fact)| {
+        (reader.id.as_ref() == Some(&ReaderId::from_callee(callee))).then_some(fact)
+    }) {
+        reader.numeric = fact.conversion.clone();
+        return limits(fact);
+    }
     let numeric = matches!(
         reader.kind,
         ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float

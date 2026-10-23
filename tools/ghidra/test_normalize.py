@@ -15,6 +15,11 @@ def walk(events):
     return {'leaves': 1, 'unknown': 0, 'truncated': False, 'value_test': False, 'events': events}
 
 
+def branch_walk(texts):
+    """The walk of one value branch with one path through `texts`."""
+    return walk([(True, text) for text in texts])
+
+
 def raw_row(token, kind='scalar', nested=None, **fields):
     row = {'token': token, 'kind': kind, 'value': 'Scalar', 'reader_kind': 'String', 'repeat': 'Replace',
            'conditional': False, 'nested': nested, 'family': None, 'items': None, 'call': None, 'branches': None,
@@ -227,6 +232,90 @@ class RowTests(unittest.TestCase):
         constructors = [{'entry': '0x1', 'members': [],
                          'vtables': [{'offset': 0, 'address': '0x100'}, {'offset': 56, 'address': '0x200'}]}]
         self.assertEqual(export_module.primary_vtables(constructors), ['0x100'])
+
+    def test_a_path_that_reads_no_value_and_stores_a_constant_is_a_presence_row(self):
+        marker = [(True, 'STORE this+0x5fa size=1 val=#0x1')]
+        result = rows.classify(marker, [], {}, 0x3ff8)
+        self.assertEqual((result['kind'], result['value'], result['reader_kind'], result['conditional']),
+                         ('presence', 'Scalar', 'Presence', False))
+
+        skipped = [(True, 'CALL CReader::SkipToken (CReader * this)')] + marker
+        self.assertEqual(rows.classify(skipped, [], {}, 0x3ff8)['value'], 'Any')
+
+    def test_a_literal_one_byte_store_of_the_yes_token_is_an_unresolved_store(self):
+        events = [(True, 'STORE this+0x40 size=1 val=#0x3ff8')]
+        result = rows.classify(events, [], {}, 0x3ff8)
+        self.assertEqual((result['kind'], result['reader_kind']), ('store', None))
+
+    def test_a_store_that_reads_the_value_or_a_path_that_reports_is_no_presence_row(self):
+        tested = [(True, 'STORE this+0x5fa size=1 val=eq(reader+0x278,#0x3ff8)')]
+        self.assertEqual(rows.classify(tested, [], {}, 0x3ff8)['kind'], 'store')
+
+        logged = [(True, 'CALL CReader::ReportUnexpected (CReader * this)'), (True, 'STORE this+0x8 size=1 val=#0x0')]
+        self.assertNotEqual(rows.classify(logged, [], {}, 0x3ff8)['kind'], 'presence')
+
+    def test_a_value_branch_is_proved_when_the_test_comes_first_and_the_branch_reads_its_form(self):
+        persistent = branch_walk(['VALUEBRANCH', 'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x48'])
+        block = rows.value_branch('block', persistent, rows.classify(persistent['events'], [], {0x48: '0x30'}, 1))
+        boolean = branch_walk(['VALUEBRANCH', 'CALL CReader::Read (CReader * this, bool * param_1) a2=this+0x40'])
+        other = rows.value_branch('other', boolean, rows.classify(boolean['events'], [], {}, 1))
+
+        self.assertEqual((block['proved'], block['kind'], block['value'], block['nested']),
+                         (True, 'persistent', 'Block', '0x30'))
+        self.assertEqual((other['proved'], other['reader_kind'], other['value']), (True, 'Boolean', 'Scalar'))
+
+    def test_a_value_branch_after_a_read_or_on_several_paths_is_not_proved(self):
+        read_first = branch_walk(['CALL CReader::Read (CReader * this, bool * param_1)', 'STORE this+0x114 size=4 val=op61',
+                                  'VALUEBRANCH', 'CALL CReader::ReadUniform<CString> (CReader * this, CPdxArray * '
+                                  'param_1) a2=this+0x140'])
+        outcome = rows.value_branch('block', read_first, rows.classify(read_first['events'], [], {}, 1))
+        self.assertFalse(outcome['proved'])
+
+        string = branch_walk(['VALUEBRANCH', 'CALL CReader::Read (CReader * this, CString * param_1, bool param_2)'])
+        string.update(leaves=2, unknown=2)
+        self.assertFalse(rows.value_branch('other', string, rows.classify(string['events'], [], {}, 1))['proved'])
+
+    def test_a_value_branch_with_another_reader_or_a_cut_loop_after_its_read_is_not_proved(self):
+        boolean = 'CALL CReader::Read (CReader * this, bool * param_1) a2=this+0x40'
+        for continuation in ('CALL CUnqualified::Read (CReader * param_1)', 'LOOP CReader::Read',
+                             'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x48',
+                             'CALL 10001000 ',
+                             'CALL CString::CString (CString * this, char * param_1) a1=this+0x48'):
+            branch = branch_walk(['VALUEBRANCH', boolean, continuation])
+            outcome = rows.value_branch('other', branch, rows.classify(branch['events'], [], {}, 1))
+            self.assertFalse(outcome['proved'], continuation)
+
+    def test_an_insertion_alone_or_a_repeated_read_proves_no_branch(self):
+        insert = branch_walk(['VALUEBRANCH', 'CALL CPdxArray<CString,int>::InsertAtEmplace<> '
+                                             '(CPdxArray<CString,int> * this, int param_1) a1=this+0x140'])
+        self.assertFalse(rows.value_branch('block', insert, rows.classify(insert['events'], [], {}, 1))['proved'])
+
+        persistent = branch_walk(['VALUEBRANCH', 'CALL CReader::Read (CReader * this, CPersistent * param_1) '
+                                                 'a2=this+0x48'])
+        persistent['repeated_calls'] = True
+        outcome = rows.value_branch('block', persistent, rows.classify(persistent['events'], [], {0x48: '0x30'}, 1))
+        self.assertFalse(outcome['proved'])
+
+    def test_a_path_that_constructs_a_string_in_the_owner_is_no_presence_row(self):
+        events = [(True, 'CALL CString::CString (CString * this, char * param_1) a1=this+0x48'),
+                  (True, 'STORE this+0x50 size=1 val=#0x1')]
+        self.assertNotEqual(rows.classify(events, [], {}, 0x3ff8)['kind'], 'presence')
+
+    def test_a_skipped_block_and_a_scalar_branch_that_does_nothing_keep_nothing(self):
+        skip = branch_walk(['VALUEBRANCH', 'CALL CReader::SkipBody (CReader * this)'])
+        block = rows.value_branch('block', skip, rows.classify(skip['events'], [], {}, 1))
+        nothing = branch_walk(['VALUEBRANCH'])
+        other = rows.value_branch('other', nothing, rows.classify(nothing['events'], [], {}, 1))
+
+        self.assertEqual((block['proved'], block['reader_kind'], block['value']), (True, 'Skipped', 'Block'))
+        self.assertEqual((other['proved'], other['reader_kind'], other['value']), (True, 'Skipped', 'Scalar'))
+
+    def test_an_emplaced_string_that_the_path_reads_one_value_into_is_an_appended_scalar(self):
+        events = [(True, 'CALL CPdxArray<CString,int>::InsertAtEmplace<> (CPdxArray<CString,int> * this, int param_1) '
+                         'a1=this+0x140'),
+                  (True, 'CALL CReader::Read (CReader * this, CString * param_1, bool param_2) a3=#0x0')]
+        result = rows.classify(events, [], {}, 0x3ff8)
+        self.assertEqual((result['kind'], result['reader_kind'], result['repeat']), ('scalar', 'String', 'Accumulate'))
 
     def test_a_script_value_is_a_weight_family_row(self):
         events = [(True, 'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x40')]

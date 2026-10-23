@@ -8,7 +8,10 @@ row's nested reader decides which reader the next round walks. An event line is 
     STORE this+0x<offset> size=<bytes> val=<source>
     REF <address> <symbol> slot0=<name> slot5=<entry>=<name>
     LOOP <calls of the loop body, separated by ;>
-    KEYTEXT | VALUETEST | SWITCHDEFAULT | SWITCHMISS
+    KEYTEXT | VALUETEST | VALUEBRANCH | SWITCHDEFAULT | SWITCHMISS
+
+VALUETEST is a test of the value's token that the walk does not decide; VALUEBRANCH, in a walk of
+one value branch, is the test that the branch's value token decides.
 """
 import re
 
@@ -22,12 +25,15 @@ AUXILIARY_CALLS = ('CPdxLogFileAndLine::', 'CReader::ReportUnexpected', 'CReader
              'CLogger::', 'CLogStream::', 'CString::CString', 'CString::~CString',
              'CPdxCommonStringAllocator::deallocate', 'operator+', '___stack_chk_fail')
 SKIP_CALLS = ('CReader::Skip',)
+# The value form that each skip call reads past.
+SKIP_FORMS = {'CReader::SkipToken': 'Any', 'CReader::SkipBody': 'Block'}
 # Calls that report or log a key, so that a path that makes one rejects the key.
 REJECT_CALLS = ('CReader::ReportUnexpected', 'CPdxLogFileAndLine::operator()', 'CLogger::Log')
 TEXT_COMPARES = ('_memcmp', '_strcmp', '_strncmp', 'strcmp', 'CString::operator==')
 # A loop body that calls one of these reads a list or the reader's statements: the walk followed it.
 LOOP_HELPERS = re.compile(r'ReadUniform|InsertAtEmplace|^CReader::Read|^CReader::ParseAdvancedStatement|on=reader$')
-MARKERS = ('SWITCHDEFAULT', 'LOOP', 'SWITCHMISS', 'VALUETEST', 'KEYTEXT')
+VALUE_BRANCH = 'VALUEBRANCH'
+MARKERS = ('SWITCHDEFAULT', 'LOOP', 'SWITCHMISS', 'VALUETEST', VALUE_BRANCH, 'KEYTEXT')
 
 SCALAR_TYPES = {
     'bool': 'Boolean', 'CFixedPoint': 'FixedPoint', 'float': 'Float', 'double': 'Float', 'CString': 'String',
@@ -106,6 +112,11 @@ def classify_paths(events, default_events, constructors, yes_token):
     if base_calls and all(text in default_events for text in base_calls) and \
             not any(text.startswith(('CALL ', 'CALLIND', 'STORE')) and text not in default_events for text in plain):
         return row('default-routed')
+
+    stored_yes = any(stores_yes(text, yes_token) for _, text in events if text.startswith('STORE '))
+    presence = None if stored_yes else presence_row(events)
+    if presence:
+        return presence
 
     always = {text for is_always, text in events if is_always}
     calls = [(text in always, callee(text), text) for text in texts if text.startswith('CALL ')]
@@ -201,7 +212,9 @@ def classify_paths(events, default_events, constructors, yes_token):
             if element is None:
                 array = re.match(r'CPdxArray<([\w:]+(?:<[^<>]*>)?),int>::InsertAtEmplace<', name)
                 element = unwrap(array.group(1)) if array else None
-            if element in ('CString', 'int', 'uint'):
+            # An empty element that the path then reads one scalar into is one appended value: the
+            # scalar read below classifies it.
+            if element in ('CString', 'int', 'uint') and not scalar_read:
                 return row('list', 'Block', 'Block', repeat='Accumulate', always=is_always,
                            items='String' if element == 'CString' else 'Integer', call=text)
             if element and (virtual_read or constructed_class() is not None):
@@ -227,8 +240,6 @@ def classify_paths(events, default_events, constructors, yes_token):
             return row('effect', 'Block', 'Block', repeat='Replace', always=is_always, family='Effect')
         if re.search(r'val=call:(CRootTrigger|CTrigger|CAndTrigger)::C', store):
             return row('trigger', 'Block', 'Block', repeat='Replace', always=is_always, family='Trigger')
-        if f'val=#{yes_token:#x}' in store and 'size=1' in store:
-            return row('scalar', 'Scalar', 'Boolean', repeat='Replace', always=is_always)
 
     constructed = constructed_class()
     if constructed and virtual_read:
@@ -260,6 +271,73 @@ def classify_paths(events, default_events, constructors, yes_token):
     if stores:
         return row('store', always=stores[0][0])
     return row('unclassified')
+
+
+def stores_yes(store, yes_token):
+    """Whether a STORE event writes the literal `yes` token into one byte. It proves neither a
+    Boolean, which needs the value test (`eq(reader+0x278, yes)`), nor a presence marker, since the
+    literal may stand in for a read; such a path stays an unresolved `store` row."""
+    return f'val=#{yes_token:#x}' in store and 'size=1' in store
+
+
+def presence_row(events):
+    """The row of a key whose presence stores a constant, or None. Every path reads no part of the
+    value (it calls nothing but one known skip, and tests neither the value's token nor the key's
+    text), and stores only constants. A skip gives the form that it reads past; with no skip the
+    value is the one scalar token that the reader already holds."""
+    texts = [text for _, text in events]
+    calls = [callee(text) for text in texts if text.startswith('CALL ')]
+    stores = [(is_always, text) for is_always, text in events if text.startswith('STORE ')]
+    reads_value = any(text.startswith(('CALLIND', 'LOOP', 'VALUETEST', VALUE_BRANCH, 'KEYTEXT')) for text in texts)
+    constant_stores = stores and all(re.search(r' val=#0x[0-9a-f]+$', text) for _, text in stores)
+    forms = {SKIP_FORMS.get(call['name']) if call else None for call in calls} or {'Scalar'}
+    if reads_value or not constant_stores or len(forms) != 1 or None in forms:
+        return None
+    value, = forms
+    return row('presence', value, 'Presence', repeat='Replace', always=all(is_always for is_always, _ in stores))
+
+
+def value_branch(value_token, walk, outcome):
+    """One branch of a row whose path tests the value's token, from `outcome`, the classification
+    of the branch's walk, with `proved`: whether the walk proves what the branch reads.
+
+    A branch is proved when its walk has one path with no cut loop, that path reads and stores
+    nothing before the value test, and after it reads the branch's form with one call: a block for
+    the block's value token and one scalar for any other. The only other call after the test may
+    be an array insertion that makes the element that the call reads into; an insertion alone reads
+    nothing. A path that makes one call twice (`repeated_calls`, which the walk records because its
+    events keep one copy of each) is no proof. A block branch that only skips the block, and a scalar
+    branch that calls and stores nothing, keep nothing (`Skipped`): the reader holds a scalar
+    value's token already."""
+    texts = [text for _, text in walk['events']]
+    tested = texts.index(VALUE_BRANCH) if VALUE_BRANCH in texts else None
+    before, after = (texts[:tested], texts[tested + 1:]) if tested is not None else (texts, [])
+    effects = lambda part: [text for text in part if text.startswith(('CALL ', 'CALLIND', 'STORE'))]
+    names = [call['name'] for call in map(callee, effects(after)) if call]
+    form = 'Block' if value_token == 'block' else 'Scalar'
+
+    if value_token == 'other' and not effects(after):
+        outcome = dict(outcome, kind='skipped', value=form, reader_kind='Skipped', repeat='Unknown', nested=None,
+                       family=None, items=None)
+    elif outcome['kind'] == 'skipped' and value_token == 'block' and \
+            all(SKIP_FORMS.get(name) == 'Block' for name in names) and len(names) == len(effects(after)):
+        outcome = dict(outcome, value=form)
+
+    one_path = walk['leaves'] == 1 and not walk['unknown'] and not walk['truncated'] and \
+        not walk.get('repeated_calls') and not any(text.startswith('LOOP') for text in texts)
+    tested_first = tested is not None and not effects(before)
+    calls = [text for text in effects(after) if not text.startswith('STORE')]
+    others = [text for text in calls if text != outcome.get('call')]
+    inserts = lambda text: 'InsertAtEmplace<' in (callee(text) or {}).get('name', '')
+    reading = outcome.get('call')
+    reads_once = (reading in calls and not inserts(reading)) if calls else outcome['kind'] == 'skipped'
+    only_the_reading = reads_once and calls.count(reading) <= 1 and all(map(inserts, others))
+    reads_form = outcome['value'] == form and outcome['reader_kind'] not in (None, 'Unknown')
+    return {'value_token': value_token, 'kind': outcome['kind'], 'value': outcome['value'],
+            'reader_kind': outcome['reader_kind'], 'repeat': outcome['repeat'], 'family': outcome['family'],
+            'items': outcome['items'], 'nested': outcome['nested'],
+            'proved': one_path and tested_first and only_the_reading and reads_form,
+            'paths': {'leaves': walk['leaves'], 'unknown': walk['unknown'], 'truncated': walk['truncated']}}
 
 
 def inserted_element(names):

@@ -41,6 +41,17 @@ class CheckTests(unittest.TestCase):
         self.assertTrue(found[0].startswith("CText::ReadMember (0x1): complete is True"))
         self.assertIn('CMissing::ReadMember: 0 walked readers', found[-1])
 
+    def test_a_value_branch_without_the_expected_proof_is_a_mismatch(self):
+        branches = [{'value_token': 'block', 'proved': True, 'kind': 'list'},
+                    {'value_token': 'other', 'proved': False, 'kind': 'scalar'}]
+        document = {'readers': {'0x1': reader('CDesign::ReadMember', True, rows=[
+            {'key': 'upgrades_to', 'kind': 'list', 'nested': None, 'branches': branches}])}}
+        expectations = {'readers': [expectation('CDesign::ReadMember', rows={
+            'upgrades_to': {'branches': {'block': {'proved': True, 'kind': 'list'}, 'other': {'proved': True}}}})]}
+
+        self.assertEqual(mismatches(expectations, document),
+                         ["CDesign::ReadMember (0x1): row 'upgrades_to' other branch proved is False, expected True"])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1498,6 +1498,9 @@ pub enum ReaderKind {
     Keyword,
     /// The reader reads past the value, one scalar or a whole block, and keeps nothing.
     Skipped,
+    /// The key's presence stores a constant and the reader keeps no part of the value: every
+    /// accepted value, such as `no` for `yes`, has the same effect.
+    Presence,
     /// The value form is not established.
     Unknown,
 }

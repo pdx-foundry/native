@@ -148,10 +148,7 @@ def token_row(token, token_walk, walks, reference, constructors, yes_token):
 
 def branch_outcome(value_token, branch_walk, reference, constructors, yes_token):
     outcome = rows.classify(branch_walk['events'], reference, constructors, yes_token)
-    return {'value_token': value_token, 'kind': outcome['kind'], 'value': outcome['value'],
-            'reader_kind': outcome['reader_kind'], 'repeat': outcome['repeat'], 'nested': outcome['nested'],
-            'paths': {'leaves': branch_walk['leaves'], 'unknown': branch_walk['unknown'],
-                      'truncated': branch_walk['truncated']}}
+    return rows.value_branch(value_token, branch_walk, outcome)
 
 
 def nested_specs(reader):

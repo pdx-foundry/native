@@ -162,9 +162,12 @@ def check_row(check, path, row, readers, tokens):
         check.member(path + '.enum.unknown', row['enum']['unknown'], {'logs', 'silent'})
     for index, branch in enumerate(row['branches'] or []):
         branch_path = f'{path}.branches[{index}]'
-        if check.keys(branch_path, branch, ['value_token', 'kind', 'value', 'reader_kind', 'repeat', 'nested',
-                                            'paths']):
+        if check.keys(branch_path, branch, ['value_token', 'kind', 'value', 'reader_kind', 'repeat', 'family',
+                                            'items', 'nested', 'proved', 'paths']):
             check.member(branch_path + '.value_token', branch['value_token'], {'block', 'other'})
+            check.member(branch_path + '.value', branch['value'], VALUES)
+            check.member(branch_path + '.repeat', branch['repeat'], REPEATS)
+            check.type(branch_path + '.proved', branch['proved'], bool)
             check_nested(check, branch_path + '.nested', branch['nested'], readers)
 
 
