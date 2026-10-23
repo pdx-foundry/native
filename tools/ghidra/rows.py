@@ -113,9 +113,8 @@ def classify_paths(events, default_events, constructors, yes_token):
             not any(text.startswith(('CALL ', 'CALLIND', 'STORE')) and text not in default_events for text in plain):
         return row('default-routed')
 
-    # A one-byte store of the `yes` token is an inline Boolean (below), not a presence marker.
-    inline_boolean = any(f'val=#{yes_token:#x}' in text and 'size=1' in text
-                         for _, text in events if text.startswith('STORE '))
+    # An inline Boolean (below) is not a presence marker.
+    inline_boolean = any(stores_yes(text, yes_token) for _, text in events if text.startswith('STORE '))
     presence = None if inline_boolean else presence_row(events)
     if presence:
         return presence
@@ -242,7 +241,7 @@ def classify_paths(events, default_events, constructors, yes_token):
             return row('effect', 'Block', 'Block', repeat='Replace', always=is_always, family='Effect')
         if re.search(r'val=call:(CRootTrigger|CTrigger|CAndTrigger)::C', store):
             return row('trigger', 'Block', 'Block', repeat='Replace', always=is_always, family='Trigger')
-        if f'val=#{yes_token:#x}' in store and 'size=1' in store:
+        if stores_yes(store, yes_token):
             return row('scalar', 'Scalar', 'Boolean', repeat='Replace', always=is_always)
 
     constructed = constructed_class()
@@ -275,6 +274,11 @@ def classify_paths(events, default_events, constructors, yes_token):
     if stores:
         return row('store', always=stores[0][0])
     return row('unclassified')
+
+
+def stores_yes(store, yes_token):
+    """Whether a STORE event writes the `yes` token into one byte, which an inline Boolean does."""
+    return f'val=#{yes_token:#x}' in store and 'size=1' in store
 
 
 def presence_row(events):
