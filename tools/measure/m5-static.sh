@@ -56,12 +56,15 @@ extract() {
 }
 
 # Prints the commit of the checkout `$1`, marked when tracked files have uncommitted changes.
+# Callers use it in a command substitution, where `set -e` does not apply, so each step returns its
+# failure.
 revision() {
-  local directory=$1 commit
+  local directory=$1 commit changes
 
-  commit=$(git -C "$directory" rev-parse HEAD)
+  commit=$(git -C "$directory" rev-parse HEAD) || return 1
+  changes=$(git -C "$directory" status --porcelain --untracked-files=no) || return 1
 
-  if [ -n "$(git -C "$directory" status --porcelain --untracked-files=no)" ]; then
+  if [ -n "$changes" ]; then
     commit="$commit+uncommitted"
   fi
 
@@ -75,8 +78,11 @@ native_source() {
   local native=$1 run=$2
 
   if [ -d "$native" ]; then
+    local native_revision
+
     native_directory=$(cd "$native" && pwd)
-    echo "checkout $native_directory $(revision "$native_directory")" > "$run/native.txt"
+    native_revision=$(revision "$native_directory")
+    echo "checkout $native_directory $native_revision" > "$run/native.txt"
     return
   fi
 
@@ -163,13 +169,16 @@ print(json.dumps(dict(zip(keys, sys.argv[1:])), indent=2))' \
 
   local baseline=() references=()
 
-  if [ "$new_pin" = no ] && [ -d "$m5/accepted" ]; then
-    baseline=(--baseline "$m5/accepted/reports/covered")
-    references+=(--gate "$m5/accepted")
-  fi
+  # A new pin's inputs differ from every earlier run, so it compares with none.
+  if [ "$new_pin" = no ]; then
+    if [ -d "$m5/accepted" ]; then
+      baseline=(--baseline "$m5/accepted/reports/covered")
+      references+=(--gate "$m5/accepted")
+    fi
 
-  if [ "$new_pin" = no ] && [ -d "$m5/baseline" ]; then
-    references+=(--baseline "$m5/baseline")
+    if [ -d "$m5/baseline" ]; then
+      references+=(--baseline "$m5/baseline")
+    fi
   fi
 
   echo "Ledger" >&2
