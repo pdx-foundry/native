@@ -75,7 +75,11 @@ def check_tables(check, tables):
         check.type('tables.reader.key_text', tables['reader']['key_text'], int)
         check.type('tables.reader.value_token', tables['reader']['value_token'], int)
     exceptions = tables['manual_exceptions']
-    if check.keys('tables.manual_exceptions', exceptions, ['zero_mask_read_scope']):
+    if check.keys('tables.manual_exceptions', exceptions, ['zero_mask_read_scope', 'block_value_token']):
+        block = exceptions['block_value_token']
+        if check.keys('tables.manual_exceptions.block_value_token', block, ['value', 'source', 'written_by']):
+            check.type('tables.manual_exceptions.block_value_token.value', block['value'], int)
+            check.member('tables.manual_exceptions.block_value_token.written_by', block['written_by'], {'hand'})
         for index, exception in enumerate(exceptions['zero_mask_read_scope']):
             path = f'tables.manual_exceptions.zero_mask_read_scope[{index}]'
             if check.keys(path, exception, ['reader', 'block', 'keys', 'read_scope', 'decision', 'written_by']):

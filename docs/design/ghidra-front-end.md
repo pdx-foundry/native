@@ -194,8 +194,17 @@ walk has `null` and its name. This is a reader of M452, shortened:
 - `dispatch.default.kind` is `persistent` (`CPersistent::ReadMember`, which reports the key as
   unexpected), `log-and-skip`, `base-reader` (one other member reader, in `reader`), `entry` (the
   path of an entry reader), `return` (no call), or `helper` (anything else).
-  `dispatch.delegates` are the other member readers that the paths call; the export follows the
-  ones that token paths call, and not the extra readers of an unresolved default.
+  `dispatch.delegates` are the other member readers that the paths call (`{reader, name, walked}`);
+  the export follows the ones that token paths call, and not the extra readers of an unresolved
+  default. `dispatch.truncated` says that a walk of the reader reached its path budget.
+- A `return` default is not a rejection: `ReadMember` returns nothing that tells its caller that
+  the key was rejected, so such a default fails condition 2.
+- `nested`, in a row, a branch or `dispatch.delegates`, is `{reader, name, walked}`: the reader's
+  entry address when the export walked it, else `null` with the name or class that the row named.
+  The export follows nested readers for at most 12 rounds from the roots; a deeper reader is not
+  walked.
+- `registries` gives each registry's root readers, `{key, class, reader, error}`, from
+  `internals::registry_field_stops::root_readers`; `build` is the universal SHA-256.
 - An entry reader has one row with `token` and `key` `null`: the entry that it reads for any key.
 - `kind: store` says only that the token's path stores something. It never shows that a value is
   accepted.
@@ -213,7 +222,10 @@ walk has `null` and its name. This is a reader of M452, shortened:
 - The export never writes decompiler text.
 
 `tables.json` holds the token table, the scope types with their bits and public identities, the
-reader offsets of the key text and the value token, and the manual exceptions (D5(a)).
+reader offsets of the key text and the value token, and two manual exceptions written by hand: the
+D5(a) readers, and the lexer kind of a value token that opens a block (`3`, from
+[modifier blocks](../native/modifier-blocks.md#fixed-key-readers-sdk-675)), which the branch walks
+need and no table that Native reads holds.
 `provenance.json` holds the build's identity (universal and slice SHA-256, version label,
 architecture), the schema revisions, the Ghidra version, the SHA-256 of each export script, the
 date, and the tool that wrote each file.

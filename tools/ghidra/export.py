@@ -24,8 +24,6 @@ import time
 import rows
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# The lexer kind of a value token that opens a block, `{` (docs/native/modifier-blocks.md).
-BLOCK_VALUE_TOKEN = 3
 QUERIES_PER_RUN = 300
 # Rounds after which the export stops following nested readers; deeper readers stay unwalked.
 MAX_ROUNDS = 12
@@ -39,6 +37,7 @@ class Ghidra:
         self.project = self.project.removesuffix('.gpr')
         self.program = program
         self.reader = tables['reader']
+        self.block_token = tables['manual_exceptions']['block_value_token']['value']
         self.outdir = outdir
         self.runs = 0
 
@@ -64,7 +63,7 @@ class Ghidra:
                    '-process', self.program, '-noanalysis', '-readOnly', '-scriptPath', HERE,
                    '-postScript', 'Export.java', f'out={part}.out', f'list={part}.list',
                    f'key_text={self.reader["key_text"]}', f'value_token={self.reader["value_token"]}',
-                   f'block_token={BLOCK_VALUE_TOKEN}']
+                   f'block_token={self.block_token}']
         with open(part + '.log', 'w') as log:
             subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT, env=environment)
         if 'SCRIPT ERROR' in open(part + '.log', errors='replace').read():

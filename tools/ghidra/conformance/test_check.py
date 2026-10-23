@@ -1,6 +1,6 @@
 import unittest
 
-from check import mismatches
+from .check import mismatches
 
 
 def reader(name, complete, form='token-switch', failed=(), rows=()):

@@ -23,6 +23,11 @@ const ZERO_MASK_EXCEPTIONS: [(&str, &str); 2] = [
     ),
 ];
 
+/// The lexer kind of a value token that opens a block, `{`. Native reads no table that holds it;
+/// recorded by hand from `docs/native/modifier-blocks.md` (`description_parameters`). The export
+/// uses it to walk a row's block and other value branches.
+const BLOCK_VALUE_TOKEN: u64 = 3;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let usage = "usage: ghidra-inputs <installation> <tables.json> <roots.json>";
     let mut arguments = std::env::args().skip(1);
@@ -73,7 +78,14 @@ fn tables(native: &Native, version: &str) -> Result<Value, Box<dyn std::error::E
         "tokens": tables.tokens,
         "scope_types": tables.scope_types,
         "reader": tables.reader,
-        "manual_exceptions": {"zero_mask_read_scope": exceptions},
+        "manual_exceptions": {
+            "zero_mask_read_scope": exceptions,
+            "block_value_token": {
+                "value": BLOCK_VALUE_TOKEN,
+                "source": "docs/native/modifier-blocks.md#fixed-key-readers-sdk-675",
+                "written_by": "hand",
+            },
+        },
     }))
 }
 

@@ -13,7 +13,7 @@ library call: `cargo test` reads only the committed files.
 | `normalize.py` | It turns the raw export into `readers.json` and `provenance.json`, with the completeness of each reader, and prints the count of registries whose reader tree is complete. |
 | `schema.py` | The schema check of a build directory. |
 | `conformance/` | The expectations that an export of each build must meet (`m452.json`) and their check (`check.py`). |
-| `examples/ghidra-inputs` (Rust) | Writes `tables.json` (tokens, scope types, reader offsets, manual exceptions) and the root readers of each registry, from Native's own analysis. |
+| `examples/ghidra-inputs` (Rust) | Writes `tables.json` (tokens, scope types, reader offsets, manual exceptions) and the root readers of each registry, from Native's own analysis. The manual exceptions are written by hand: the D5(a) zero-mask readers, and the lexer kind of a value token that opens a block, which the export's branch walks need and Native reads from no table. |
 
 ## Setup
 
@@ -69,6 +69,8 @@ changes: `provenance.json` records the SHA-256 of `Export.java`, `export.py`, `r
 ## Tests
 
 ```sh
-cd tools/ghidra && python3 -m unittest test_normalize
-cd tools/ghidra/conformance && python3 -m unittest test_check
+python3 -m unittest discover -s tools/ghidra -p 'test_*.py'
+python3 tools/ghidra/schema.py builds/573e0f25
 ```
+
+CI runs both.

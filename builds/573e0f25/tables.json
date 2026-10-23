@@ -4,6 +4,11 @@
     "version": "Cygnus v4.5.2 (9776)"
   },
   "manual_exceptions": {
+    "block_value_token": {
+      "source": "docs/native/modifier-blocks.md#fixed-key-readers-sdk-675",
+      "value": 3,
+      "written_by": "hand"
+    },
     "zero_mask_read_scope": [
       {
         "block": true,
