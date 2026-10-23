@@ -33,7 +33,6 @@ const STORE_OPEN: &str = "The key's path stores a value through no shared reader
 const READER_OPEN: &str = "The reader export does not establish the field's reader.";
 const PATHS_OPEN: &str = "The reader export did not classify every path of the key.";
 const REPEAT_OPEN: &str = "The reader export does not establish repeat behavior.";
-const MEMBERS_OPEN: &str = "Nested fields remain unresolved.";
 const UNPROVED_MEMBERS: &str =
     "The reader export lists these nested fields, but its readers do not prove the block's keys.";
 const IDENTITY_OPEN: &str =
@@ -734,36 +733,41 @@ impl<'a> Merge<'a> {
 
     /// Fill the unresolved properties of Native's `field`, at `path`, from `row` of `owner`.
     fn fill(&mut self, field: &mut Field, owner: &ExportReader, row: &'a Row, path: &[String]) {
-        let mut answered = Answered::default();
-        let kind_before = field.reader.kind;
         let unconditional = !row.conditional
             && matches!(field.read.as_slice(), [alternative] if alternative.condition == FieldCondition::Always);
 
-        if unconditional {
-            let proved = self.proves(row);
+        // A conditional read can give each alternative its own reader and members; the export
+        // pairs none of them.
+        if !unconditional {
+            return;
+        }
 
-            if let Ok((reader, shape)) = reading(row) {
-                answered.storage |= fill_read(field, &reader, shape);
-            }
-            if field.domain == FieldDomain::Unknown
-                && field.reader.kind == ReaderKind::Keyword
-                && !self.native_gap_at(path, UNKNOWN_KEPT)
-                && let Some(domain) = listed_domain(row)
-            {
-                field.domain = FieldDomain::Listed(domain);
-                answered.domain = true;
-            }
-            if proved
-                && field.read_scope == GrammarProperty::Unresolved
-                && let Ok(scope) =
-                    self.export
-                        .read_scope(owner, row, field.reader.kind, &field.members)
-            {
-                field.read_scope = scope;
-                answered.read_scope = true;
-            }
+        let kind_before = field.reader.kind;
+        let proved = self.proves(row);
+        let mut answered = Answered {
+            proved,
+            ..Answered::default()
+        };
 
-            answered.proved = proved;
+        if let Ok((reader, shape)) = reading(row) {
+            answered.storage |= fill_read(field, &reader, shape);
+        }
+        if field.domain == FieldDomain::Unknown
+            && field.reader.kind == ReaderKind::Keyword
+            && !self.native_gap_at(path, UNKNOWN_KEPT)
+            && let Some(domain) = listed_domain(row)
+        {
+            field.domain = FieldDomain::Listed(domain);
+            answered.domain = true;
+        }
+        if proved
+            && field.read_scope == GrammarProperty::Unresolved
+            && let Ok(scope) = self
+                .export
+                .read_scope(owner, row, field.reader.kind, &field.members)
+        {
+            field.read_scope = scope;
+            answered.read_scope = true;
         }
 
         match &mut field.members {
@@ -787,13 +791,16 @@ impl<'a> Merge<'a> {
         let kind_filled = kind_before == ReaderKind::Unknown && field.reader.kind != kind_before;
 
         if answered.storage {
-            self.gaps.extend(storage_gap(field, &path.join(".")));
+            let repeat_reason = super::fields::unknown_repeat_reason(&field.reader);
+
+            self.gaps
+                .extend(storage_gap(field, &path.join("."), repeat_reason));
         }
-        if kind_filled && takes_lookup(field) && field.reference == FieldReference::NotEstablished {
+        if kind_filled && let Some((kind, detail)) = semantics_gap(field) {
             self.gaps.push(Gap {
-                kind: GapKind::ReaderSemantics,
+                kind,
                 subject: Some(field_subject(path)),
-                detail: LOOKUP_OPEN.into(),
+                detail: detail.into(),
             });
         }
 
@@ -863,6 +870,8 @@ impl<'a> Merge<'a> {
             .chain(read_scope.err());
 
         self.gaps.extend(added_field_gaps(&field, row, open, path));
+        self.gaps
+            .extend(storage_gap(&field, &path.join("."), REPEAT_OPEN));
         self.gaps
             .extend(self.unproved_members_gap(&field, row, path));
 
@@ -1013,6 +1022,25 @@ fn plain_reader(kind: ReaderKind, family: BlockFamily) -> Reader {
     }
 }
 
+/// The gap of what a field's reader kind promises and the export does not establish: a keyword
+/// domain, numeric conversion, or the lookup of a key reference.
+fn semantics_gap(field: &Field) -> Option<(GapKind, &'static str)> {
+    match field.reader.kind {
+        ReaderKind::Keyword if field.domain == FieldDomain::Unknown => {
+            Some((GapKind::ReaderSemantics, KEYWORD_DOMAIN_OPEN))
+        }
+        ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
+            if field.reader.numeric == GrammarProperty::Unresolved =>
+        {
+            Some((GapKind::NumericConversion, NUMERIC_OPEN))
+        }
+        _ if takes_lookup(field) && field.reference == FieldReference::NotEstablished => {
+            Some((GapKind::ReaderSemantics, LOOKUP_OPEN))
+        }
+        _ => None,
+    }
+}
+
 /// Whether the engine looks up the value of `field`, a key reference or a list of them.
 fn takes_lookup(field: &Field) -> bool {
     let items = match &field.members {
@@ -1125,28 +1153,8 @@ fn added_field_gaps(
         add(GapKind::UnresolvedPath, PATHS_OPEN);
     }
 
-    let storage: Vec<&str> = [
-        (field.shape.repeat == RepeatBehavior::Unknown).then_some(REPEAT_OPEN),
-        (field.members == FieldMembers::Unresolved && field.reader.family == BlockFamily::Unknown)
-            .then_some(MEMBERS_OPEN),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-
-    if !storage.is_empty() {
-        add(GapKind::UnresolvedStorage, &storage.join(" "));
-    }
-
-    match field.reader.kind {
-        ReaderKind::Keyword if field.domain == FieldDomain::Unknown => {
-            add(GapKind::ReaderSemantics, KEYWORD_DOMAIN_OPEN)
-        }
-        ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float => {
-            add(GapKind::NumericConversion, NUMERIC_OPEN)
-        }
-        ReaderKind::Reference => add(GapKind::ReaderSemantics, LOOKUP_OPEN),
-        _ => {}
+    if let Some((kind, detail)) = semantics_gap(field) {
+        add(kind, detail);
     }
 
     details

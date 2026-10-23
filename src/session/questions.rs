@@ -1186,7 +1186,9 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
             Some(parent) => format!("{parent}.{}", field.name),
             None => field.name.clone(),
         };
-        gaps.extend(storage_gap(field, &name));
+        let repeat_reason = super::fields::unknown_repeat_reason(&field.reader);
+
+        gaps.extend(storage_gap(field, &name, repeat_reason));
 
         match &field.members {
             crate::FieldMembers::Fields(children) => storage_gaps(children, Some(&name), gaps),
@@ -1198,11 +1200,10 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
     }
 }
 
-/// The storage gap of one field, named `name`: its repeat behavior is unknown, or no block family
-/// or attached grammar answers its members.
-pub(super) fn storage_gap(field: &Field, name: &str) -> Option<Gap> {
-    let repeat = (field.shape.repeat == crate::RepeatBehavior::Unknown)
-        .then(|| super::fields::unknown_repeat_reason(&field.reader));
+/// The storage gap of one field, named `name`: its repeat behavior is unknown, for
+/// `repeat_reason`, or no block family or attached grammar answers its members.
+pub(super) fn storage_gap(field: &Field, name: &str, repeat_reason: &str) -> Option<Gap> {
+    let repeat = (field.shape.repeat == crate::RepeatBehavior::Unknown).then_some(repeat_reason);
     let members = (matches!(field.members, crate::FieldMembers::Unresolved)
         && field.reader.family == crate::BlockFamily::Unknown)
         .then_some("Nested fields remain unresolved.");

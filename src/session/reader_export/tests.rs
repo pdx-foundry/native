@@ -478,3 +478,62 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
     assert_eq!(enabled.read_scope, GrammarProperty::Known(Vec::new()));
     assert_eq!(remaining, [READER_ALTERNATIVES_OPEN, "kept"]);
 }
+
+#[test]
+fn a_field_that_native_reads_under_conditions_keeps_its_open_members() {
+    let mut modification = identified_field("modification", FieldMembers::Unresolved);
+
+    modification.read = [true, false]
+        .map(|zero| FieldReadAlternative {
+            condition: FieldCondition::FieldZero {
+                path: vec!["other".into()],
+                zero,
+            },
+            outcome: FieldReadOutcome::Unresolved,
+        })
+        .to_vec();
+
+    let mut answer = native_answer(vec![modification], Vec::new());
+
+    export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("modification", json!({"kind": "persistent", "value": "Block",
+                                       "reader_kind": "Block", "conditional": true,
+                                       "nested": nested("0x2", "CModification::ReadMember")})),
+        ]),
+        "0x2": reader("CModification::ReadMember", vec![row("add", json!({}))]),
+    }))
+    .merge(REGISTRY, RootLayout::Owner, &mut answer);
+
+    let modification = field(&answer.value, "modification");
+
+    assert_eq!(modification.members, FieldMembers::Unresolved);
+    assert_eq!(modification.reader.kind, ReaderKind::Unknown);
+}
+
+#[test]
+fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
+    let mut answer = native_answer(
+        vec![identified_field("windup_time", FieldMembers::Unresolved)],
+        Vec::new(),
+    );
+
+    export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("windup_time", json!({"reader_kind": "FixedPoint"})),
+        ]),
+    }))
+    .merge(REGISTRY, RootLayout::Owner, &mut answer);
+
+    assert_eq!(
+        field(&answer.value, "windup_time").reader.kind,
+        ReaderKind::FixedPoint
+    );
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::NumericConversion
+                && gap.subject == Some(GapSubject::field("windup_time")))
+    );
+}
