@@ -1,5 +1,5 @@
 //! Static questions: answered from the executable, with no game process.
-use super::reader_export::{ReaderExport, RootLayout};
+use super::reader_export::{MemberReaders, ReaderExport, RootLayout};
 use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
@@ -318,9 +318,9 @@ impl Native {
         match self.bound().reader_export() {
             None => {}
             Some(Ok(export)) => {
-                let merging_members = self.merging_members(export)?;
+                let members = self.member_readers(export)?;
 
-                if export.merge(registry, layout, &merging_members, &mut answer) {
+                if export.merge(registry, layout, &members, &mut answer) {
                     self.set_requirements(registry, layout, &mut answer.value);
                 }
             }
@@ -337,18 +337,18 @@ impl Native {
         Ok(answer)
     }
 
-    /// The member readers of `export`'s persistent rows whose objects all keep themselves on a
-    /// persistent read ([`super::reader_export::merging_members`]); none when the executable's
-    /// vtables cannot be read. A changed executable is `Error::BuildChanged`.
-    fn merging_members(&self, export: &ReaderExport) -> Result<BTreeSet<String>, Error> {
+    /// What the objects of `export`'s member readers establish
+    /// ([`super::reader_export::member_readers`]); nothing when the executable's vtables cannot be
+    /// read. A changed executable is `Error::BuildChanged`.
+    fn member_readers(&self, export: &ReaderExport) -> Result<MemberReaders, Error> {
         match self.bound().analysis.member_holders() {
-            Ok(holders) => Ok(super::reader_export::merging_members(
-                export.persistent_members(),
+            Ok(holders) => Ok(super::reader_export::member_readers(
+                export.object_members(),
                 holders,
             )),
             Err(failure) => match error(Operation::RegistryFields, failure) {
                 Error::BuildChanged => Err(Error::BuildChanged),
-                _ => Ok(BTreeSet::new()),
+                _ => Ok(MemberReaders::default()),
             },
         }
     }

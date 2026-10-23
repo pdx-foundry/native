@@ -7,7 +7,7 @@
   "architecture": "aarch64"
  },
  "schemas": {
-  "readers.json": 1,
+  "readers.json": 2,
   "tables.json": 1,
   "provenance.json": 1
  },
@@ -16,10 +16,10 @@
   "language": "AARCH64:LE:64:AppleSilicon"
  },
  "export_scripts": {
-  "Export.java": "33bd9ad140eb196ee87e121e7204afe42ce9a1a1a0b213bb25f538cdd0454a36",
-  "export.py": "62815fd7538872f815ee8a24fea8a1a9fad48a6623a68cca9f54086e04881b79",
-  "rows.py": "57960c08f268f52f09ccc2076f9bd322b98c64a97217e96405527997e1dc3e8e",
-  "normalize.py": "366eb7f50cc88c4047567684e5781f3ea8c1bc80eee286c64140fac87b683a25"
+  "Export.java": "7991c0e7a7e94d55bd394c5cbc6c4f1411a8ba8f79eedfeb0b87ee5d618386ab",
+  "export.py": "8c533e142e904d8aa3b7d2d9acba1fd5f9972b6f45ae5481ef50dbd7a0669485",
+  "rows.py": "b45a98dfafb016f666f231ed411a06f59ad350499a4524abafeaa85c1c5a1e3c",
+  "normalize.py": "87987317815de87acac56910f0411a1abbbf48fed1c972ad6b5b17783b34c05e"
  },
  "date": "2026-10-23",
  "written_by": {

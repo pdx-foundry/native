@@ -15,7 +15,8 @@ import sys
 
 import rows
 
-SCHEMA = 1
+READERS_SCHEMA = 2
+PROVENANCE_SCHEMA = 1
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXPORT_FILES = ('Export.java', 'export.py', 'rows.py', 'normalize.py')
 RECOGNIZED_FORMS = ('token-switch', 'compare-chain', 'entry')
@@ -24,7 +25,7 @@ REJECTING_DEFAULTS = ('log-and-skip', 'persistent')
 # Row kinds that read the value through a nested reader; without one the row's reader is unresolved.
 NESTING_KINDS = ('persistent', 'serializer', 'object', 'object-list', 'entry', 'delegates')
 ROW_FIELDS = ('token', 'key', 'kind', 'value', 'reader_kind', 'repeat', 'conditional', 'family', 'items',
-              'branches', 'nested', 'scope_mask', 'enum', 'lookup', 'paths', 'store')
+              'branches', 'nested', 'scope_mask', 'enum', 'lookup', 'paths', 'store', 'callee')
 
 
 def normalize(export, tables):
@@ -38,7 +39,7 @@ def normalize(export, tables):
     mark_completeness(readers)
 
     return {
-        'schema': SCHEMA,
+        'schema': READERS_SCHEMA,
         'tool': 'ghidra-export',
         'build': tables['build']['executable'],
         'registries': registries(export['registries'], locate),
@@ -78,7 +79,7 @@ class Locator:
 
 
 def failed_record(entry, failure):
-    return {'name': None, 'class': None, 'walked': False, 'error': failure, 'dispatch': None,
+    return {'name': None, 'symbol': None, 'class': None, 'walked': False, 'error': failure, 'dispatch': None,
             'complete': False, 'incomplete_because': ['not-walked'], 'rows': [], 'default_routed': []}
 
 
@@ -102,7 +103,8 @@ def reader_record(reader, locate, tokens, enums):
         'loops': reader['loops'],
         'truncated': reader['truncated'],
     }
-    return {'name': reader['name'], 'class': rows.owner_class(reader['name']), 'walked': True, 'error': None,
+    return {'name': reader['name'], 'symbol': reader['symbol'], 'class': rows.owner_class(reader['name']),
+            'walked': True, 'error': None,
             'dispatch': dispatch, 'complete': None, 'incomplete_because': [], 'rows': table,
             'default_routed': routed}
 
@@ -262,14 +264,15 @@ def summary(document):
 def provenance(export, tables, files, date):
     program = export['program']
     return {
-        'schema': SCHEMA,
+        'schema': PROVENANCE_SCHEMA,
         'build': {
             'executable': tables['build']['executable'],
             'slice': program['sha256'],
             'version': tables['build']['version'],
             'architecture': 'aarch64' if program['language'].startswith('AARCH64:') else program['language'],
         },
-        'schemas': {'readers.json': SCHEMA, 'tables.json': tables['schema'], 'provenance.json': SCHEMA},
+        'schemas': {'readers.json': READERS_SCHEMA, 'tables.json': tables['schema'],
+                    'provenance.json': PROVENANCE_SCHEMA},
         'ghidra': {'version': program['ghidra'], 'language': program['language']},
         'export_scripts': files,
         'date': date,

@@ -160,14 +160,15 @@ walk has `null` and its name. This is a reader of M452, shortened:
 
 ```json
 {
-  "schema": 1, "tool": "ghidra-export", "build": "c621723d…",
+  "schema": 2, "tool": "ghidra-export", "build": "c621723d…",
   "registries": {
     "common/situations": {"roots": [{"key": "", "class": "CSituationType", "reader": "0x100b7e9cc",
                                      "error": null}], "error": null}
   },
   "readers": {
     "0x100b7e9cc": {
-      "name": "CSituationType::ReadMember", "class": "CSituationType", "walked": true, "error": null,
+      "name": "CSituationType::ReadMember", "symbol": "__ZN14CSituationType10ReadMemberER7CReaderi",
+      "class": "CSituationType", "walked": true, "error": null,
       "dispatch": {"form": "token-switch", "domain_enumerated": true,
                    "default": {"kind": "persistent", "reader": null, "followed": false},
                    "delegates": [], "key_text_read": false, "loops": 0, "truncated": false},
@@ -179,7 +180,9 @@ walk has `null` and its name. This is a reader of M452, shortened:
          "enum": {"converter": "TokenToEnum<EPolarityType>", "tokens": [11257, 11258, 12642],
                   "keys": ["positive", "negative", "neutral"], "complete": true, "unknown": "silent"},
          "lookup": null, "paths": {"leaves": 1, "unknown": 0, "truncated": false},
-         "store": {"offset": 2856, "size": 4}},
+         "store": {"offset": 2856, "size": 4},
+         "callee": {"name": "TokenToEnum<EPolarityType>", "address": "0x1006c6218",
+                    "symbol": "__Z11TokenToEnumI13EPolarityTypeET_RKi"}},
         {"token": 15660, "key": "stages", "kind": "object-list", "value": "Block", "…": "…",
          "nested": {"reader": "0x100b7c374", "name": "CSituationStage::ReadMember", "walked": true}}
       ]
@@ -229,6 +232,12 @@ walk has `null` and its name. This is a reader of M452, shortened:
   whether an unknown name falls back silently or logs.
 - `lookup` is the lookup function that a string member reaches at a use site (export phase 2).
 - `store` is the owner offset and size, for the fixture section and the census traces.
+- `callee`, in a row or a branch, is the call that reads the value: its name, entry address and
+  mangled symbol (`null` when the build keeps none), or `null` when no call reads it (a store, a
+  constructor, an insertion or an assignment). A reader's `symbol` is its own mangled symbol. The
+  loader demangles symbols into the walker's reader identities
+  ([registry fields](../native/registry-fields.md#the-reader-export-sdk-876)). `readers.json` has
+  schema 2 from SDK-889; `tables.json` and `provenance.json` stay at 1.
 - The export never writes decompiler text.
 
 `tables.json` holds the token table, the scope types with their bits and public identities, the
@@ -324,6 +333,13 @@ that Native's sweep lists is a key of the tree. The conditions that fail most of
 `default-unresolved` 49, `loop-cut` 45, `nested-unresolved` 34, `budget` 17,
 `default-base-incomplete` 14. If too few registries become `Complete` for the negative answers that
 Atlas needs, the next export work is these conditions by frequency, not a weaker contract.
+
+**Gate after SDK-889 (2026-10-23).** Each row now names its reading call, so export fields carry the
+walker's reader identities. The measure did not move (15,887; gained 0, lost 0) and no registry
+became `Complete`: the 33 partial registries with a complete tree keep gaps that are not about
+identity, such as numeric ranges, read scope on rows with unclassified paths, loader conditions,
+keyword fallbacks and evaluation contexts ([registry fields](../native/registry-fields.md#the-reader-export-sdk-876)).
+The gate of +300 claims did not pass on identity alone.
 
 ### The table evaluator (D9)
 

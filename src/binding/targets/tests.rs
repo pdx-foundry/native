@@ -66,9 +66,10 @@ fn each_catalogued_build_has_a_matching_build_directory() {
         assert_eq!(record.architecture, object::Architecture::Aarch64);
         assert_eq!(tables["build"]["executable"], record.executable);
         assert_eq!(readers["build"], record.executable);
-        for (file, schema) in [("tables.json", &tables), ("readers.json", &readers)] {
-            assert_eq!(provenance["schemas"][file], 1, "{file}");
-            assert_eq!(schema["schema"], 1, "{file}");
+        for (file, schema, revision) in [("tables.json", &tables, 1), ("readers.json", &readers, 2)]
+        {
+            assert_eq!(provenance["schemas"][file], revision, "{file}");
+            assert_eq!(schema["schema"], revision, "{file}");
         }
 
         let files = record

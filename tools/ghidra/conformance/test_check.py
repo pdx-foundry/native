@@ -16,12 +16,13 @@ class CheckTests(unittest.TestCase):
     def test_met_expectations_give_no_mismatch(self):
         document = {'readers': {
             '0x1': reader('CEntry::ReadMember', True, form='entry', rows=[{'key': None, 'kind': 'object-list',
-                                                                          'nested': {'name': 'CCulture::ReadMember'}}]),
+                                                                          'nested': {'name': 'CCulture::ReadMember'},
+                                                                          'callee': None}]),
             '0x2': reader('CText::ReadMember', False, form='key-text', failed=['dispatch-form', 'key-text-read']),
         }}
         expectations = {'readers': [
             expectation('CEntry::ReadMember', form='entry', complete=True,
-                        rows={'*': {'kind': 'object-list', 'nested': 'CCulture::ReadMember'}}),
+                        rows={'*': {'kind': 'object-list', 'nested': 'CCulture::ReadMember', 'callee': None}}),
             expectation('CText::ReadMember', complete=False, incomplete_because=['key-text-read']),
         ]}
 
@@ -45,12 +46,23 @@ class CheckTests(unittest.TestCase):
         branches = [{'value_token': 'block', 'proved': True, 'kind': 'list'},
                     {'value_token': 'other', 'proved': False, 'kind': 'scalar'}]
         document = {'readers': {'0x1': reader('CDesign::ReadMember', True, rows=[
-            {'key': 'upgrades_to', 'kind': 'list', 'nested': None, 'branches': branches}])}}
+            {'key': 'upgrades_to', 'kind': 'list', 'nested': None, 'callee': None, 'branches': branches}])}}
         expectations = {'readers': [expectation('CDesign::ReadMember', rows={
             'upgrades_to': {'branches': {'block': {'proved': True, 'kind': 'list'}, 'other': {'proved': True}}}})]}
 
         self.assertEqual(mismatches(expectations, document),
                          ["CDesign::ReadMember (0x1): row 'upgrades_to' other branch proved is False, expected True"])
+
+    def test_a_row_read_by_another_call_is_a_mismatch(self):
+        callee = {'name': 'TokenToEnum<EOther>', 'address': '0x2', 'symbol': None}
+        document = {'readers': {'0x1': reader('CSituationType::ReadMember', True, rows=[
+            {'key': 'category', 'kind': 'enum', 'nested': None, 'callee': callee}])}}
+        expectations = {'readers': [expectation('CSituationType::ReadMember', rows={
+            'category': {'callee': 'TokenToEnum<EPolarityType>'}})]}
+
+        self.assertEqual(mismatches(expectations, document), [
+            "CSituationType::ReadMember (0x1): row 'category' reading call is 'TokenToEnum<EOther>', "
+            "expected 'TokenToEnum<EPolarityType>'"])
 
 
 if __name__ == '__main__':

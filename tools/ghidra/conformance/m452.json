@@ -41,14 +41,19 @@
   },
   {
    "reader": "CSituationType::ReadMember",
-   "why": "`stages` reads its block in a statement loop (ReadSimpleStatement) that the walk follows, so the loop is not cut.",
+   "why": "`stages` reads its block in a statement loop (ReadSimpleStatement) that the walk follows, so the loop is not cut. `category` is read by its token converter, and `stages` by no call of its own: the loop inserts each stage.",
    "expect": {
     "complete": true,
     "loops": 0,
     "rows": {
      "stages": {
       "kind": "object-list",
-      "nested": "CSituationStage::ReadMember"
+      "nested": "CSituationStage::ReadMember",
+      "callee": null
+     },
+     "category": {
+      "kind": "enum",
+      "callee": "TokenToEnum<EPolarityType>"
      }
     }
    }

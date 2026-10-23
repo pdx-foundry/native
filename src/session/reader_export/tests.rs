@@ -11,7 +11,7 @@ fn row(key: &str, facts: Value) -> Value {
         "token": 1, "key": key, "kind": "scalar", "value": "Scalar", "reader_kind": "Boolean",
         "repeat": "Replace", "conditional": false, "family": null, "items": null,
         "branches": null, "nested": null, "scope_mask": null, "enum": null, "lookup": null,
-        "paths": {"leaves": 1, "unknown": 0, "truncated": false}, "store": null
+        "paths": {"leaves": 1, "unknown": 0, "truncated": false}, "store": null, "callee": null
     });
 
     for (name, value) in facts.as_object().unwrap() {
@@ -24,8 +24,8 @@ fn row(key: &str, facts: Value) -> Value {
 /// A complete reader that rejects a key it does not enumerate, with `rows`.
 fn reader(name: &str, rows: Vec<Value>) -> Value {
     json!({
-        "name": name, "class": name.trim_end_matches("::ReadMember"), "walked": true,
-        "error": null,
+        "name": name, "symbol": null, "class": name.trim_end_matches("::ReadMember"),
+        "walked": true, "error": null,
         "dispatch": {"form": "token-switch", "domain_enumerated": true,
                      "default": {"kind": "persistent", "reader": null, "followed": false},
                      "delegates": [], "key_text_read": false, "loops": 0, "truncated": false},
@@ -41,7 +41,7 @@ fn nested(entry: &str, name: &str) -> Value {
 /// An export whose registry roots at the reader `0x1`, with `readers` by entry.
 fn export(readers: Value) -> ReaderExport {
     let readers = json!({
-        "schema": 1, "tool": "ghidra-export", "build": "test",
+        "schema": 2, "tool": "ghidra-export", "build": "test",
         "registries": {REGISTRY: {"roots": [{"key": "", "class": "CThing", "reader": "0x1",
                                             "error": null}], "error": null}},
         "readers": readers
@@ -65,8 +65,16 @@ fn export(readers: Value) -> ReaderExport {
 }
 
 /// The member readers whose objects keep themselves on a persistent read: the settings block's.
-fn settings_merges() -> BTreeSet<String> {
-    BTreeSet::from(["CSettings::ReadMember".to_owned()])
+fn settings_merges() -> MemberReaders {
+    MemberReaders {
+        merging: BTreeSet::from(["CSettings::ReadMember".to_owned()]),
+        ids: BTreeMap::new(),
+    }
+}
+
+/// A reading call of `symbol`, as the export names it.
+fn callee(symbol: &str) -> Value {
+    json!({"name": "callee", "address": "0x100", "symbol": symbol})
 }
 
 /// Native's answer with no field and only the method's own limit.
@@ -200,7 +208,7 @@ fn a_complete_tree_gives_a_complete_answer_with_only_the_exported_keys() {
     );
     assert_eq!(names(&answer.value), ["enabled", "settings"]);
     assert_eq!(names(members(field(&answer.value, "settings"))), ["size"]);
-    assert_eq!(answer.source.method, "registry-fields/ghidra-v1");
+    assert_eq!(answer.source.method, "registry-fields/ghidra-v2");
     assert_eq!(answer.source.basis, Basis::StaticAnalysis);
 }
 
@@ -388,7 +396,12 @@ fn a_persistent_read_into_the_owner_merges_a_repeat() {
 fn a_persistent_read_whose_object_may_reset_keeps_its_repeat_open() {
     let mut answer = native_tree();
 
-    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &BTreeSet::new(), &mut answer);
+    export(complete_tree()).merge(
+        REGISTRY,
+        RootLayout::Owner,
+        &MemberReaders::default(),
+        &mut answer,
+    );
 
     assert_eq!(
         field(&answer.value, "settings").shape.repeat,
@@ -446,7 +459,7 @@ fn branch(value_token: &str, proved: bool, facts: Value) -> Value {
     let mut branch = json!({
         "value_token": value_token, "proved": proved, "kind": "scalar", "value": "Scalar",
         "reader_kind": "Boolean", "repeat": "Replace", "family": null, "items": null,
-        "nested": null, "paths": {"leaves": 1, "unknown": 0, "truncated": false}
+        "nested": null, "paths": {"leaves": 1, "unknown": 0, "truncated": false}, "callee": null
     });
 
     for (name, value) in facts.as_object().unwrap() {
@@ -473,11 +486,18 @@ fn boolean_branch(proved: bool) -> Value {
 
 #[test]
 fn proved_value_branches_give_one_alternative_for_each_value_form() {
+    let uniform = "__ZN7CReader11ReadUniformI7CStringEEvR9CPdxArrayIT_iE";
+    let mut list = list_branch(true);
+    let mut boolean = boolean_branch(true);
+
+    list["callee"] = callee(uniform);
+    boolean["callee"] = callee("__ZN7CReader4ReadERb");
+
     let answer = merged_into_nothing(&export(json!({
         "0x1": reader("CThing::ReadMember", vec![
             row("upgrades", json!({"value": "Any", "reader_kind": null, "conditional": true,
                                    "paths": {"leaves": 2, "unknown": 2, "truncated": false},
-                                   "branches": [list_branch(true), boolean_branch(true)]})),
+                                   "branches": [list, boolean]})),
         ]),
     })));
     let upgrades = field(&answer.value, "upgrades");
@@ -486,11 +506,13 @@ fn proved_value_branches_give_one_alternative_for_each_value_form() {
         .iter()
         .map(|alternative| &alternative.condition)
         .collect();
-    let kinds: Vec<_> = upgrades
+    let readers: Vec<_> = upgrades
         .read
         .iter()
         .map(|alternative| match &alternative.outcome {
-            FieldReadOutcome::Read { reader, shape } => (reader.kind, shape.value),
+            FieldReadOutcome::Read { reader, shape } => {
+                (reader.kind, shape.value, reader.id.clone())
+            }
             other => panic!("{other:?}"),
         })
         .collect();
@@ -509,13 +531,22 @@ fn proved_value_branches_give_one_alternative_for_each_value_form() {
         ]
     );
     assert_eq!(
-        kinds,
+        readers,
         [
-            (ReaderKind::Block, ValueShape::Block),
-            (ReaderKind::Boolean, ValueShape::Scalar),
+            (
+                ReaderKind::Block,
+                ValueShape::Block,
+                Some(ReaderId::from_callee(&display_name(uniform)))
+            ),
+            (
+                ReaderKind::Boolean,
+                ValueShape::Scalar,
+                Some(ReaderId::from_callee("CReader::Read(bool&)"))
+            ),
         ]
     );
     assert_eq!(upgrades.reader.kind, ReaderKind::Unknown);
+    assert_eq!(upgrades.reader.id, None);
     assert_eq!(upgrades.shape.value, ValueShape::Any);
     assert_eq!(
         upgrades.members,
@@ -703,8 +734,9 @@ fn a_store_row_is_a_field_with_an_unresolved_read_and_a_gap() {
     );
 }
 
-#[test]
-fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays_open() {
+/// Native's `enabled` field with no shared reader, merged with a Boolean row of `facts` that names
+/// its reading call, and the gaps that stay at the field.
+fn merged_unidentified(facts: Value) -> (Field, Vec<String>) {
     let unresolved = Field {
         name: "enabled".into(),
         reader: plain_reader(ReaderKind::Unknown, BlockFamily::Unknown),
@@ -747,25 +779,50 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
         ],
     );
 
-    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
+    let mut facts = facts;
 
-    let enabled = field(&answer.value, "enabled");
-    let remaining: Vec<_> = answer
+    facts["callee"] = callee("__ZN7CReader4ReadERb");
+    export(json!({
+        "0x1": reader("CThing::ReadMember", vec![row("enabled", facts)]),
+    }))
+    .merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
+
+    let remaining = answer
         .gaps
         .iter()
         .filter(|gap| gap.subject == Some(GapSubject::field("enabled")))
-        .map(|gap| gap.detail.as_str())
+        .map(|gap| gap.detail.clone())
         .collect();
 
+    (field(&answer.value, "enabled").clone(), remaining)
+}
+
+#[test]
+fn a_native_gap_that_the_export_answers_is_removed_with_the_named_reader() {
+    let (enabled, remaining) = merged_unidentified(json!({}));
+
     assert_eq!(enabled.reader.kind, ReaderKind::Boolean);
+    assert_eq!(
+        enabled.reader.id,
+        Some(ReaderId::from_callee("CReader::Read(bool&)"))
+    );
     assert_eq!(enabled.read_scope, GrammarProperty::Known(Vec::new()));
     assert_eq!(
         remaining,
-        [
-            READER_ALTERNATIVES_OPEN,
-            "Scoped destination vtable is not established.",
-            "kept"
-        ]
+        ["Scoped destination vtable is not established.", "kept"]
+    );
+}
+
+#[test]
+fn a_reading_that_some_path_may_miss_names_no_reader() {
+    let (enabled, remaining) =
+        merged_unidentified(json!({"paths": {"leaves": 2, "unknown": 1, "truncated": false}}));
+
+    assert_eq!(enabled.reader.kind, ReaderKind::Boolean);
+    assert_eq!(enabled.reader.id, None);
+    assert!(
+        remaining.iter().any(|gap| gap == READER_ALTERNATIVES_OPEN),
+        "{remaining:?}"
     );
 }
 
@@ -829,7 +886,7 @@ fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
 }
 
 #[test]
-fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
+fn a_member_reader_merges_and_is_named_only_as_every_object_with_it_agrees() {
     let holder = |read: Option<&str>, hook: &str| MemberHolder {
         member: "CBase::ReadMember(CReader&, int)".into(),
         reader: read.map(|read| crate::engine::analysis::fields::ConcreteReader {
@@ -849,15 +906,33 @@ fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
         Some("CPersistent::Read(CReader&)"),
         "CDerived::InitPostRead(CString const&, int, int)",
     );
+    let own_read = holder(Some("CDerived::Read(CReader&)"), base_hook);
     let unread = holder(None, base_hook);
     let members = || BTreeSet::from(["CBase::ReadMember", "CUnheld::ReadMember"]);
+    let readers = |holders: &[MemberHolder]| member_readers(members(), holders);
+    let base_id = super::super::fields::concrete_reader_id(
+        "CPersistent::Read(CReader&)",
+        "CBase::ReadMember(CReader&, int)",
+    );
 
     assert_eq!(
-        merging_members(members(), &[base()]),
+        readers(&[base()]).merging,
         BTreeSet::from(["CBase::ReadMember".to_owned()])
     );
-    assert!(merging_members(members(), &[base(), overridden_hook]).is_empty());
-    assert!(merging_members(members(), &[base(), unread]).is_empty());
+    assert_eq!(
+        readers(&[base()]).ids,
+        BTreeMap::from([("CBase::ReadMember".to_owned(), base_id.clone())])
+    );
+
+    let overridden = readers(&[base(), overridden_hook]);
+
+    assert!(overridden.merging.is_empty());
+    assert_eq!(overridden.ids.get("CBase::ReadMember"), Some(&base_id));
+    assert!(readers(&[base(), own_read]).ids.is_empty());
+
+    let unread = readers(&[base(), unread]);
+
+    assert!(unread.merging.is_empty() && unread.ids.is_empty());
 }
 
 fn delegating(facts: Value) -> Answer<Vec<Field>> {
@@ -1138,4 +1213,56 @@ fn a_native_field_that_takes_a_list_pair_reads_in_no_scope_and_no_container() {
         AcceptedCategories::NotApplicable
     );
     assert!(!answer.gaps.contains(&container_gap), "{:?}", answer.gaps);
+}
+
+#[test]
+fn a_serializer_is_named_by_its_member_reader_as_the_walker_names_it() {
+    let serializer = |key: &str, entry: &str| {
+        row(
+            key,
+            json!({"kind": "serializer", "value": "Block", "reader_kind": "Block",
+                        "repeat": "Unknown", "nested": nested(entry, "CTerm::CSerializer::ReadMember")}),
+        )
+    };
+    let mut member = reader(
+        "CTerm::CSerializer::ReadMember",
+        vec![row("value", json!({}))],
+    );
+    let mut keyless = reader("CPersistent::ReadMember", Vec::new());
+
+    member["symbol"] = json!("__ZN5CTerm11CSerializer10ReadMemberER7CReaderi");
+    keyless["symbol"] = json!("__ZN11CPersistent10ReadMemberER7CReaderi");
+
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![serializer("term", "0x2"), serializer("modifier", "0x3")]),
+        "0x2": member,
+        "0x3": keyless,
+    })));
+
+    assert_eq!(
+        field(&answer.value, "term").reader.id,
+        Some(ReaderId::from_callee(
+            "CTerm::CSerializer::ReadMember(CReader&, int)"
+        ))
+    );
+    assert_eq!(field(&answer.value, "modifier").reader.id, None);
+}
+
+#[test]
+fn each_file_must_have_the_schema_that_this_release_reads() {
+    let files = |readers: u32, tables: u32| {
+        let readers = json!({"schema": readers, "tool": "ghidra-export", "build": "test",
+                             "registries": {}, "readers": {}});
+        let tables = json!({"schema": tables, "scope_types": [],
+                            "manual_exceptions": {"zero_mask_read_scope": []}});
+
+        ExportFiles {
+            readers: Box::leak(readers.to_string().into_boxed_str()),
+            tables: Box::leak(tables.to_string().into_boxed_str()),
+        }
+    };
+
+    assert!(ReaderExport::parse(files(2, 1)).is_ok());
+    assert!(ReaderExport::parse(files(1, 1)).is_err());
+    assert!(ReaderExport::parse(files(2, 2)).is_err());
 }
