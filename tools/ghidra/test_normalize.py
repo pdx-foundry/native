@@ -280,6 +280,17 @@ class RowTests(unittest.TestCase):
             outcome = rows.value_branch('other', branch, rows.classify(branch['events'], [], {}, 1))
             self.assertFalse(outcome['proved'], continuation)
 
+    def test_an_insertion_alone_or_a_repeated_read_proves_no_branch(self):
+        insert = branch_walk(['VALUEBRANCH', 'CALL CPdxArray<CString,int>::InsertAtEmplace<> '
+                                             '(CPdxArray<CString,int> * this, int param_1) a1=this+0x140'])
+        self.assertFalse(rows.value_branch('block', insert, rows.classify(insert['events'], [], {}, 1))['proved'])
+
+        persistent = branch_walk(['VALUEBRANCH', 'CALL CReader::Read (CReader * this, CPersistent * param_1) '
+                                                 'a2=this+0x48'])
+        persistent['repeated_calls'] = True
+        outcome = rows.value_branch('block', persistent, rows.classify(persistent['events'], [], {0x48: '0x30'}, 1))
+        self.assertFalse(outcome['proved'])
+
     def test_a_path_that_constructs_a_string_in_the_owner_is_no_presence_row(self):
         events = [(True, 'CALL CString::CString (CString * this, char * param_1) a1=this+0x48'),
                   (True, 'STORE this+0x50 size=1 val=#0x1')]

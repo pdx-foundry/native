@@ -483,11 +483,14 @@ public class Export extends GhidraScript {
 			Set<String> union = new LinkedHashSet<>();
 			Set<String> always = null;
 			int unknown = 0;
+			// The union keeps one copy of each event, so it records whether a path makes the same
+			// call twice: a value branch that reads twice is no proof of one reading.
+			boolean repeatedCalls = false;
 			for (List<String> leaf : leaves) {
 				Set<String> events = new LinkedHashSet<>();
 				for (String event : leaf) {
 					if (event.equals("?T") || event.equals("?F")) unknown++;
-					else events.add(event);
+					else if (!events.add(event) && event.startsWith("CALL")) repeatedCalls = true;
 				}
 				union.addAll(events);
 				if (always == null) always = new LinkedHashSet<>(events);
@@ -505,6 +508,7 @@ public class Export extends GhidraScript {
 			result.addProperty("unknown", unknown);
 			result.addProperty("truncated", budget <= 0);
 			result.addProperty("value_test", union.contains("VALUETEST"));
+			result.addProperty("repeated_calls", repeatedCalls);
 			result.add("events", events);
 			return result;
 		}

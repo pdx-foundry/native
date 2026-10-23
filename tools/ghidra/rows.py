@@ -298,7 +298,9 @@ def value_branch(value_token, walk, outcome):
     A branch is proved when its walk has one path with no cut loop, that path reads and stores
     nothing before the value test, and after it reads the branch's form with one call: a block for
     the block's value token and one scalar for any other. The only other call after the test may
-    be an array insertion that makes the element that the call reads into. A block branch that only skips the block, and a scalar
+    be an array insertion that makes the element that the call reads into; an insertion alone reads
+    nothing. A path that makes one call twice (`repeated_calls`, which the walk records because its
+    events keep one copy of each) is no proof. A block branch that only skips the block, and a scalar
     branch that calls and stores nothing, keep nothing (`Skipped`): the reader holds a scalar
     value's token already."""
     texts = [text for _, text in walk['events']]
@@ -316,12 +318,14 @@ def value_branch(value_token, walk, outcome):
         outcome = dict(outcome, value=form)
 
     one_path = walk['leaves'] == 1 and not walk['unknown'] and not walk['truncated'] and \
-        not any(text.startswith('LOOP') for text in texts)
+        not walk.get('repeated_calls') and not any(text.startswith('LOOP') for text in texts)
     tested_first = tested is not None and not effects(before)
     calls = [text for text in effects(after) if not text.startswith('STORE')]
     others = [text for text in calls if text != outcome.get('call')]
     inserts = lambda text: 'InsertAtEmplace<' in (callee(text) or {}).get('name', '')
-    only_the_reading = calls.count(outcome.get('call')) <= 1 and all(map(inserts, others))
+    reading = outcome.get('call')
+    reads_once = (reading in calls and not inserts(reading)) if calls else outcome['kind'] == 'skipped'
+    only_the_reading = reads_once and calls.count(reading) <= 1 and all(map(inserts, others))
     reads_form = outcome['value'] == form and outcome['reader_kind'] not in (None, 'Unknown')
     return {'value_token': value_token, 'kind': outcome['kind'], 'value': outcome['value'],
             'reader_kind': outcome['reader_kind'], 'repeat': outcome['repeat'], 'family': outcome['family'],
