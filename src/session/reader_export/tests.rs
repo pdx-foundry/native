@@ -1066,3 +1066,39 @@ fn a_native_reader_whose_kind_the_export_fills_takes_the_facts_of_that_kind() {
         assert_eq!(reader.scoped_operand, GrammarProperty::Known(None));
     }
 }
+
+#[test]
+fn a_pair_takes_its_container_and_entry_contexts_from_its_block_form() {
+    let trigger = branch(
+        "block",
+        true,
+        json!({"kind": "trigger", "value": "Block", "reader_kind": "Block", "family": "Trigger"}),
+    );
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("potential", json!({"value": "Any", "reader_kind": null,
+                                    "branches": [trigger, boolean_branch(true)]})),
+            row("design", json!({"token": 2, "value": "Any", "reader_kind": null,
+                                 "branches": [list_branch(true), boolean_branch(true)]})),
+        ]),
+    })));
+    let details_at = |name: &str| -> Vec<&str> {
+        answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.subject == Some(GapSubject::field(name)))
+            .map(|gap| gap.detail.as_str())
+            .collect()
+    };
+
+    assert_eq!(
+        field(&answer.value, "potential").accepted_categories,
+        AcceptedCategories::NotApplicable
+    );
+    assert!(details_at("potential").contains(&ENTRY_CONTEXTS_OPEN));
+    assert_eq!(
+        field(&answer.value, "design").accepted_categories,
+        AcceptedCategories::NotApplicable
+    );
+    assert!(!details_at("design").contains(&ENTRY_CONTEXTS_OPEN));
+}

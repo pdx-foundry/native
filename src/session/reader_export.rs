@@ -630,7 +630,10 @@ impl ExportReader {
             // A delegate reads the key at this level; any other nested reader, a value branch's
             // included, reads its block.
             for outcome in row.outcomes() {
-                let Some(entry) = outcome.nested.as_ref().and_then(|nested| nested.reader.as_deref())
+                let Some(entry) = outcome
+                    .nested
+                    .as_ref()
+                    .and_then(|nested| nested.reader.as_deref())
                 else {
                     continue;
                 };
@@ -843,7 +846,12 @@ impl<'a> Merge<'a> {
     /// The gap of a root trigger, effect or weight block whose family the export establishes: the
     /// walker's entry-context analysis ran before the merge, so its contexts are not established.
     /// `family` is the family of `field`'s block reader: its one reader's, or its block form's.
-    fn entry_context_gap(&self, family: BlockFamily, field: &Field, path: &[String]) -> Option<Gap> {
+    fn entry_context_gap(
+        &self,
+        family: BlockFamily,
+        field: &Field,
+        path: &[String],
+    ) -> Option<Gap> {
         let root = self.ancestors.len() == 1;
 
         (root
@@ -1247,7 +1255,10 @@ impl Reading {
     /// the read scope and block family; the other form reads one scalar, in no scope.
     fn block_reader(&self) -> &Reader {
         match self {
-            Self::One((reader, _)) | Self::ByValueForm { block: (reader, _), .. } => reader,
+            Self::One((reader, _))
+            | Self::ByValueForm {
+                block: (reader, _), ..
+            } => reader,
         }
     }
 
