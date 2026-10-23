@@ -352,11 +352,17 @@ public class Export extends GhidraScript {
 					int labelled = labels == null ? 0 : labels.length;
 					boolean guarded = labelled == targets.length - 1;
 					boolean aligned = !labelWarning && (labelled == targets.length || guarded);
-					switchCases.put(table.getSwitchAddress(), cases);
-					if (aligned && guarded) switchDefaults.put(table.getSwitchAddress(), targets[targets.length - 1]);
-					enumerated.addAll(cases.keySet());
+					// A switch on another value than the token, such as a local enumeration, has
+					// labels that are no tokens: the walks take each of its destinations.
+					boolean onToken = switchesOnToken(table.getSwitchAddress());
+					if (onToken) {
+						switchCases.put(table.getSwitchAddress(), cases);
+						if (aligned && guarded) switchDefaults.put(table.getSwitchAddress(), targets[targets.length - 1]);
+						enumerated.addAll(cases.keySet());
+					}
 					JsonObject entry = new JsonObject();
 					entry.addProperty("at", hex(table.getSwitchAddress()));
+					entry.addProperty("on_token", onToken);
 					entry.addProperty("labels_known", aligned);
 					entry.addProperty("default", guarded);
 					entry.addProperty("cases", labelled);
@@ -390,6 +396,31 @@ public class Export extends GhidraScript {
 			result.addProperty("ordered_compares", orderedCompares);
 			result.add("walks", walks);
 			return result;
+		}
+
+		/** Whether the indirect branch at `at` computes its destination from the walked token. */
+		private boolean switchesOnToken(Address at) {
+			for (PcodeBlockBasic block : high.getBasicBlocks()) {
+				var ops = block.getIterator();
+				while (ops.hasNext()) {
+					PcodeOp op = ops.next();
+					if (op.getOpcode() == PcodeOp.BRANCHIND && op.getSeqnum().getTarget().equals(at)) {
+						return dependsOnToken(op.getInput(0), 0, new HashSet<>());
+					}
+				}
+			}
+			return false;
+		}
+
+		private boolean dependsOnToken(Varnode v, int depth, Set<Varnode> seen) {
+			if (depth > 16 || v.isConstant() || !seen.add(v)) return false;
+			if (tokenOffset(v, 0) != UNKNOWN) return true;
+			PcodeOp def = v.getDef();
+			if (def == null) return false;
+			for (int i = 0; i < def.getNumInputs(); i++) {
+				if (dependsOnToken(def.getInput(i), depth + 1, seen)) return true;
+			}
+			return false;
 		}
 
 		/** Every constant that a path compares the token with for equality; count the ordered compares. */

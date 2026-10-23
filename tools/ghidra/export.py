@@ -85,7 +85,10 @@ def constructor_map(constructors):
 
 
 def primary_vtables(constructors):
-    return sorted({store['address'] for constructor in constructors for store in constructor['vtables']})
+    """The vtables that a class's constructors store at the object's start: its own address points,
+    not those of its members or secondary bases."""
+    return sorted({store['address'] for constructor in constructors for store in constructor['vtables']
+                   if store['offset'] == 0})
 
 
 def walk_reader(walk, constructors, yes_token):

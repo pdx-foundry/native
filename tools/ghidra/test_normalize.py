@@ -25,7 +25,7 @@ def raw_row(token, kind='scalar', nested=None, **fields):
 
 def raw_reader(name, entry, table, form='token-switch', default=('persistent', None), delegates=(), **fields):
     reader = {'name': name, 'entry': entry, 'source': 'key', 'form': form,
-              'switches': [{'at': '0x1', 'labels_known': True, 'cases': len(table)}],
+              'switches': [{'at': '0x1', 'on_token': True, 'labels_known': True, 'cases': len(table)}],
               'compared': [row['token'] for row in table if row['token'] is not None],
               'default': {'kind': default[0], 'reader': default[1]}, 'delegates': list(delegates),
               'token_delegates': [],
@@ -59,6 +59,15 @@ class CompletenessTests(unittest.TestCase):
         reader = document['readers']['0x10']
         self.assertTrue(reader['complete'])
         self.assertEqual([row['key'] for row in reader['rows']], ['name', 'icon'])
+
+    def test_only_a_switch_on_the_token_must_have_known_labels(self):
+        switches = [{'at': '0x1', 'on_token': False, 'labels_known': False, 'cases': 3}]
+        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10)], switches=switches)
+        self.assertTrue(normalize.normalize(export_of(owner), tables())['readers']['0x10']['complete'])
+
+        switches[0]['on_token'] = True
+        reader = normalize.normalize(export_of(owner), tables())['readers']['0x10']
+        self.assertEqual(reader['incomplete_because'], ['domain-not-enumerated'])
 
     def test_default_routed_tokens_leave_the_rows(self):
         owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10), raw_row(11, kind='default-routed')])
@@ -201,6 +210,23 @@ class RowTests(unittest.TestCase):
         result = rows.classify(trigger, [], {}, 0x3ff8)
         self.assertEqual((result['kind'], result['family']), ('trigger', 'Trigger'))
         self.assertEqual(rows.scope_mask_of(result), 0)
+
+    def test_a_templated_trigger_reader_replaces_and_a_direct_one_stays_unknown(self):
+        templated = [(True, 'CALL NParserUtil::ReadTrigger<CRootTrigger> (CReader * param_1, CRootTrigger * param_2, '
+                            'EScopeType param_3) a2=this+0x2f0')]
+        direct = [(True, 'CALL CTrigger::Read (CTrigger * this, CReader * param_1, EScopeType param_2) a1=this+0x40')]
+        self.assertEqual(rows.classify(templated, [], {}, 1)['repeat'], 'Replace')
+        self.assertEqual(rows.classify(direct, [], {}, 1)['repeat'], 'Unknown')
+
+    def test_a_constructed_object_on_one_path_is_conditional(self):
+        events = [(False, 'CALL CStage::CStage (CStage * this)'), (False, 'CALLIND slot+0x20')]
+        result = rows.classify(events, [], {}, 1)
+        self.assertEqual((result['kind'], result['nested'], result['conditional']), ('object', 'class:CStage', True))
+
+    def test_a_class_without_a_named_reader_is_found_only_through_its_own_vtable(self):
+        constructors = [{'entry': '0x1', 'members': [],
+                         'vtables': [{'offset': 0, 'address': '0x100'}, {'offset': 56, 'address': '0x200'}]}]
+        self.assertEqual(export_module.primary_vtables(constructors), ['0x100'])
 
     def test_a_script_value_is_a_weight_family_row(self):
         events = [(True, 'CALL CReader::Read (CReader * this, CPersistent * param_1) a2=this+0x40')]

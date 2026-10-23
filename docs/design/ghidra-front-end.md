@@ -199,6 +199,10 @@ walk has `null` and its name. This is a reader of M452, shortened:
   default. `dispatch.truncated` says that a walk of the reader reached its path budget.
 - A `return` default is not a rejection: `ReadMember` returns nothing that tells its caller that
   the key was rejected, so such a default fails condition 2.
+- Only a switch whose destination the walk proves to depend on the token adds its labels to the
+  enumerated tokens; the walks take every destination of another switch.
+- A class without a member reader by name is resolved only through slot 5 of the vtable that its
+  constructors store at the object's start, never a member's or a secondary base's.
 - `nested`, in a row, a branch or `dispatch.delegates`, is `{reader, name, walked}`: the reader's
   entry address when the export walked it, else `null` with the name or class that the row named.
   The export follows nested readers for at most 12 rounds from the roots; a deeper reader is not
@@ -301,10 +305,13 @@ the root readers of ten of the 19 registries that Native answers `Complete` (`as
 
 ### The M452 export
 
-The export of 2026-10-22 walks 275 readers in about 100 seconds; 166 are complete. Of the 187
-registries under `common/` and `events`, 181 have root readers, and **55 have a complete reader
-tree** under the whole-block contract: every reader from the roots down is complete, rejects the
-keys that it does not enumerate, and is not an entry reader. For each of the 55, every root field
+The export of 2026-10-23 walks 275 readers in about 100 seconds; 166 are complete. Of the 187
+registries under `common/` and `events`, 181 have root readers that Native names; for 3 of them
+(`script_values`, `scripted_effects`, `scripted_triggers`) the owner has no named `ReadMember` and
+no member reader in slot 5 of the vtable at its object's start, so the export finds none. **52
+registries have a complete reader tree** under the whole-block contract: every reader from the
+roots down is complete, rejects the keys that it does not enumerate, and is not an entry reader.
+For each of the 52, every root field
 that Native's sweep lists is a key of the tree. The conditions that fail most often, by reader:
 `default-unresolved` 49, `loop-cut` 45, `nested-unresolved` 34, `budget` 17,
 `default-base-incomplete` 14. If too few registries become `Complete` for the negative answers that

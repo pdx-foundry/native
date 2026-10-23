@@ -94,7 +94,7 @@ def reader_record(reader, locate, tokens, enums):
     delegates = [locate.nested(name) for name in reader['delegates']]
     dispatch = {
         'form': reader['form'],
-        'domain_enumerated': all(switch['labels_known'] for switch in reader['switches'])
+        'domain_enumerated': all(switch['labels_known'] for switch in reader['switches'] if switch['on_token'])
         and all(str(token) in tokens for token in reader['compared']),
         'default': default,
         'delegates': delegates,

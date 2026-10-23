@@ -36,6 +36,9 @@ SCALAR_TYPES = {
 }
 TRIGGER = re.compile(r'ReadTrigger|^CTrigger::Read$|^CAndTrigger::Read')
 EFFECT = re.compile(r'ReadEffect|^CEffect::Read$')
+# `NParserUtil::ReadTrigger<T>` and `ReadEffect<T>` delete the block's previous contents before they
+# read (registry-fields.md, repeat behavior); `CTrigger::Read` and `CEffect::Read` merge.
+CLEARING_READER = re.compile(r'::Read(Trigger|Effect)<')
 SKIP_CONSTRUCTOR = ('CString::', 'CPdxLogFileAndLine::', 'CToken::', 'CEventTarget::', 'std::')
 
 
@@ -114,13 +117,15 @@ def classify_paths(events, default_events, constructors, yes_token):
         'CPersistent::Read' in names
 
     def constructed_class():
-        for name in names:
-            if is_constructor(name) and not name.startswith(SKIP_CONSTRUCTOR):
-                return name.rsplit('::', 1)[0]
-        for name in names:
-            match = re.match(r'(?:std::make_shared\S*?<|PdxMakeScopedPtr<)([\w:]+(?:<[^<>]*>)?)', name)
+        """The class that the paths construct, with whether its construction is on every path and
+        the constructing call's event."""
+        for is_always, call, text in calls:
+            if is_constructor(call['name']) and not call['name'].startswith(SKIP_CONSTRUCTOR):
+                return call['name'].rsplit('::', 1)[0], is_always, text
+        for is_always, call, text in calls:
+            match = re.match(r'(?:std::make_shared\S*?<|PdxMakeScopedPtr<)([\w:]+(?:<[^<>]*>)?)', call['name'])
             if match:
-                return match.group(1)
+                return match.group(1), is_always, text
         return None
 
     scalar_read = any(call['name'] == 'CReader::Read' and 'CPersistent' not in call['proto'] for _, call, _ in calls)
@@ -181,11 +186,11 @@ def classify_paths(events, default_events, constructors, yes_token):
         if name.startswith('NParserUtil::ReadKeyReference'):
             return row('keyref', 'Scalar', 'Reference', repeat='Replace', always=is_always, call=text)
         if TRIGGER.search(name):
-            fresh = name.endswith('::CRootTrigger')
+            fresh = name.endswith('::CRootTrigger') or CLEARING_READER.search(name)
             return row('trigger', 'Block', 'Block', repeat='Replace' if fresh else 'Unknown', always=is_always,
                        family='Trigger', call=text)
         if EFFECT.search(name):
-            fresh = name.endswith('::CRootEffect')
+            fresh = name.endswith('::CRootEffect') or CLEARING_READER.search(name)
             return row('effect', 'Block', 'Block', repeat='Replace' if fresh else 'Unknown', always=is_always,
                        family='Effect', call=text)
         if name.endswith('::ReadEntry'):
@@ -199,7 +204,7 @@ def classify_paths(events, default_events, constructors, yes_token):
             if element in ('CString', 'int', 'uint'):
                 return row('list', 'Block', 'Block', repeat='Accumulate', always=is_always,
                            items='String' if element == 'CString' else 'Integer', call=text)
-            if element and (virtual_read or constructed_class()):
+            if element and (virtual_read or constructed_class() is not None):
                 return row('object-list', 'Block', 'Block', repeat='Accumulate', always=is_always,
                            nested='class:' + element, call=text)
         if name.startswith('std::shared_ptr<') and '::operator=' in name:
@@ -225,24 +230,25 @@ def classify_paths(events, default_events, constructors, yes_token):
         if f'val=#{yes_token:#x}' in store and 'size=1' in store:
             return row('scalar', 'Scalar', 'Boolean', repeat='Replace', always=is_always)
 
-    made = constructed_class()
-    if made and virtual_read:
+    constructed = constructed_class()
+    if constructed and virtual_read:
+        made, is_always, made_call = constructed
         cls = unwrap(made)
         if cls == 'CRootTrigger':
-            return row('trigger', 'Block', 'Block', repeat='Replace', family='Trigger')
+            return row('trigger', 'Block', 'Block', repeat='Replace', always=is_always, family='Trigger')
         if cls == 'CRootEffect':
-            return row('effect', 'Block', 'Block', repeat='Replace', family='Effect')
+            return row('effect', 'Block', 'Block', repeat='Replace', always=is_always, family='Effect')
         stored = any('val=call:' in store and ('operator.new' in store or made in store) for _, store in stores)
-        made_call = next((text for _, call, text in calls if call['name'].startswith(made)), None)
-        return row('object', 'Block', 'Block', repeat='Replace' if stored else 'Unknown', nested='class:' + cls,
-                   call=made_call)
-    delegated = next(((call, text) for _, call, text in calls if call['name'].endswith('::ReadMember')), None)
+        return row('object', 'Block', 'Block', repeat='Replace' if stored else 'Unknown', always=is_always,
+                   nested='class:' + cls, call=made_call)
+    delegated = next(((is_always, call, text) for is_always, call, text in calls
+                      if call['name'].endswith('::ReadMember')), None)
     if delegated:
-        return row('delegates', nested=delegated[0]['name'], call=delegated[1])
-    helper = next(((call, text) for _, call, text in calls if re.search(r'::Read\w*$', call['name']) and
+        return row('delegates', always=delegated[0], nested=delegated[1]['name'], call=delegated[2])
+    helper = next(((is_always, text) for is_always, call, text in calls if re.search(r'::Read\w*$', call['name']) and
                    not call['name'].startswith(('CReader::', 'CPersistent::'))), None)
     if helper:
-        return row('helper', call=helper[1])
+        return row('helper', always=helper[0], call=helper[1])
     for is_always, store in stores:
         if 'val=call:' in store and re.search(r'Database::Get|::Get\w+\b', store):
             return row('lookup', 'Scalar', None, repeat='Replace', always=is_always)
