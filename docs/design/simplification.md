@@ -128,3 +128,14 @@ the numeric scanner boundary, is in the specification and on the
     the engine, but a compiler that types `limit` in the enclosing scope rejects it. In the installed
     game, all 10 `scaled_modifier` uses (in `common/special_projects`) state `scope = this`, so
     vanilla content has no false error.
+
+## Decisions of 2026-10-22
+
+The [Ghidra front end](ghidra-front-end.md) design replaces the walker with a versioned Ghidra
+export, step by step, and later splits the package into build, facts and game crates behind this
+facade. It keeps every item in [What stays](#what-stays).
+
+- **D3, build inputs.** A per-build data directory with provenance is a build input, like the
+  census; it is not an evidence archive. Its `provenance.json` identifies the build and the tools
+  that wrote the directory; no answer carries an artifact hash or a descriptor. The committed facts
+  files hold typed rows, addresses and names, never decompiled code.

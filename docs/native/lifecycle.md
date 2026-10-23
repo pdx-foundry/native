@@ -67,6 +67,34 @@ supervisor to kill it, without publishing a safe pause. `src/protocol/hooks.rs` 
 hook names. Game-free checks are `tools/observation/test_worker.py` and `test_protocol.py`, plus
 the fake-worker supervisor test.
 
+## Static analysis in a session
+
+A live session runs static analysis in the caller before launch and again in the supervisor; the
+supervisor trusts no caller address. The [Ghidra front end](../design/ghidra-front-end.md#what-the-runtime-takes-from-the-static-side)
+moves each value below into the build directory. Until a value moves, a change to the code that
+derives it is a change to live code.
+
+| Value | Runs in | Derived by |
+| --- | --- | --- |
+| Loader entry and key storage offset of each observed registry | Supervisor: `ExecutionPlan::registry_bindings` (`binding.rs:368`, `:200`) | Discovery (`named_candidates`, `initial_loader`) and `families::item_key_offset` through `registry_key_offset` (`binding/analysis.rs:389`) |
+| Ordinary fixture loader hooks | Supervisor: `ExecutionPlan::ordinary_fixture` (`binding.rs:505`) | `fixture_loader` (`binding/analysis.rs:821`): discovery, `loader_reader_call`, `reader_constructor_call` |
+| Ordinary fixture field storage | Supervisor: `ordinary_fixture` (`binding.rs:524`) | `fixture_registry_fields` (`binding/analysis.rs:862`): `fields::analyze`, the reference, scoped numeric and numeric facts, `normalized_fields`, `fixture_storage_binding` and `scoped_fixture_storage` (`:1149`, `:1185`); `FixtureQuestionStorage::resolve` (`protocol/observation.rs:570`) reads the public `Reader` |
+| Inline fixture loader and nested fixture fields | Supervisor: `ExecutionPlan::fixture_setup` (`binding.rs:572`) | `inline_fixture` (`binding/analysis/fixtures.rs:23`): `verify_inline_loader`'s instruction checks, `fields::analyze`, `member_storage` (`:224`, a direct interpreter walk), `nested_fixture_storage` (`:138`, a second `fields::analyze` at `:188`) and the `InlineFixtureRecipe` pins |
+| Fixture validation entry | Supervisor: `fixture_setup` (`binding.rs:565`) | A symbol lookup |
+| Modifier table layout, instance globals and item key offsets | Supervisor: `ExecutionPlan::observer` (`binding.rs:588`) through `modifier_table_binding` (`binding.rs:236`) | `modifier_table::derive` (`binding/analysis.rs:374`), symbol lookups and `registry_key_offset` for each registry |
+| Scope bit of each scope identity | Supervisor: `observer` through `script_scopes` (`binding.rs:135`) | `scopes::scopes`, the table evaluator |
+| Static tables of the loaded modifier join | Caller: `Native::start_game` (`session.rs:227`) through `modifier_join` (`session/loaded_modifiers.rs:53`) | `modifiers::analyze`, `families::analyze` and `modifiers::category_names` |
+| Duration receivers of a script check | Caller: `Game::check_script` (`game.rs:236`) through `Game::duration_receivers` (`game.rs:274`) and `script_durations::duration_receivers` (`session/script_durations.rs:23`) | `grammar::analyze` through `registered_grammar`, on the grammar input, numeric and scoped numeric facts that `prepare_script_durations` (`binding/analysis.rs:1567`, called at `session.rs:185`) computed before launch |
+| Script-check calls, object sizes, vtable writes, logger entry; fixture hook sites | Supervisor | Literal recipe data (`m452_script_checks`, `m452_fixture`) |
+
+`Game` keeps its `Arc<Binding>` (`game.rs:101`, `:165`) only for the duration receivers.
+
+**Integrity during a session.** The supervisor hashes the executable before it spawns the game
+(`spawn_observed`, `binding.rs:638`) and again in `finish_session` (`execution/supervisor.rs:316`),
+which fails the session when the executable changed. Nothing hashes it while the session is
+paused: the duration receivers use the facts that were verified before launch. The hash after the
+session is the backstop. Keep both checks.
+
 ## Early parsing requires a different owner
 
 An independent process is the game's real parent and starts the debugger worker. Darwin

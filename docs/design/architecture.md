@@ -1,5 +1,9 @@
 # Native technical design: knowledge ownership and target composition
 
+This page describes the code as it is. The approved [Ghidra front end](ghidra-front-end.md) design
+replaces the static walker with a per-build export and splits the package; this page changes as
+each of its steps lands.
+
 ## Design position
 
 Native has one public API and one place that assembles the implementation for an exact build. A
@@ -39,7 +43,8 @@ tests/                    public-API tests; parity (static_questions.rs, parity/
                           suites are ignored and need STELLARIS_PATH; expected/ and population/ hold the
                           tracked expected output; locality.rs is the locality gate
 examples/                 the inspector, the field sweep and the population reporters
-tools/                    knowledge bundles, worker protocol tests, profiling and population comparison
+tools/                    knowledge bundles, worker protocol tests, profiling, population comparison and
+                          the Milestone 5 static measure
 docs/                     specification, design, roadmap and engine knowledge pages
 ```
 
