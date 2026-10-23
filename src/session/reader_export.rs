@@ -745,6 +745,8 @@ struct Answered {
     replaced_storage: Option<Gap>,
     /// The conditions of the field's read alternatives.
     conditions: bool,
+    /// The field's block family shows that it reads no modifier container.
+    container: bool,
 }
 
 /// One merge of the export into an answer.
@@ -1019,16 +1021,6 @@ impl<'a> Merge<'a> {
         };
         let (scope_kind, block_family) = (block_reader.kind, block_reader.family);
 
-        if proved
-            && field.read_scope == GrammarProperty::Unresolved
-            && let Ok(scope) = self
-                .export
-                .read_scope(owner, row, scope_kind, &field.members)
-        {
-            field.read_scope = scope;
-            answered.read_scope = true;
-        }
-
         let block = row.block_outcome();
 
         match &mut field.members {
@@ -1047,6 +1039,25 @@ impl<'a> Merge<'a> {
                 }
             }
             _ => {}
+        }
+
+        // The read scope of a block of bare values follows from its members, so it comes after
+        // them.
+        if proved
+            && field.read_scope == GrammarProperty::Unresolved
+            && let Ok(scope) = self
+                .export
+                .read_scope(owner, row, scope_kind, &field.members)
+        {
+            field.read_scope = scope;
+            answered.read_scope = true;
+        }
+
+        if field.accepted_categories == AcceptedCategories::Unresolved
+            && super::fields::accepted_categories(block_family) == AcceptedCategories::NotApplicable
+        {
+            field.accepted_categories = AcceptedCategories::NotApplicable;
+            answered.container = true;
         }
 
         let read_filled = forms_filled
@@ -1185,6 +1196,7 @@ impl<'a> Merge<'a> {
             GapKind::UnresolvedPath => {
                 answered.proved && answers_key_gap(gap)
                     || answered.read_scope && detail.starts_with(READ_SCOPE_PREFIX)
+                    || answered.container && detail == super::container_masks::CONTAINER_OPEN
             }
             GapKind::ReaderSemantics => {
                 answered.proved && detail == VALUE_FORM_OPEN

@@ -191,7 +191,9 @@ does not list, `build_outside_gravity_well`, `construction_blocks_and_blocked_by
 are `Any` with an unresolved condition, because their paths test the value's token. A reader whose kind the export gives
 (the added `Block` readers, `prerequisites`, and the `String` readers of `variable_string`) has
 `numeric` and `scoped_operand` `Known(None)`: the merge gives such a reader the facts of its kind,
-as Native's numeric pass does, because the merge runs after that pass.
+as Native's numeric pass does, because the merge runs after that pass. A field whose block family the merge
+establishes as one that reads no modifier container, such as the `String` `variable_string`, has
+`accepted_categories` `NotApplicable`, and its container gap is removed.
 
 **Unlisted keys read by hand.** Twenty keys outside the export's tokens under registries whose
 tree proves its keys, read in the decompiled readers: `common/governments` `election_candidates`

@@ -1102,3 +1102,40 @@ fn a_pair_takes_its_container_and_entry_contexts_from_its_block_form() {
     );
     assert!(!details_at("design").contains(&ENTRY_CONTEXTS_OPEN));
 }
+
+#[test]
+fn a_native_field_that_takes_a_list_pair_reads_in_no_scope_and_no_container() {
+    let block = FieldReadOutcome::Read {
+        reader: plain_reader(ReaderKind::Block, BlockFamily::NotApplicable),
+        shape: FieldShape {
+            value: ValueShape::Block,
+            repeat: RepeatBehavior::Unknown,
+        },
+    };
+    let (upgrades, condition_gap) =
+        unresolved_conditions("upgrades", [FieldReadOutcome::Unresolved, block]);
+    let container_gap = Gap {
+        kind: GapKind::UnresolvedPath,
+        subject: Some(GapSubject::path(&["upgrades".to_owned()])),
+        detail: super::super::container_masks::CONTAINER_OPEN.into(),
+    };
+    let export = export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("upgrades", json!({"value": "Any", "reader_kind": null,
+                                   "branches": [list_branch(true), boolean_branch(true)]})),
+        ]),
+    }));
+    let mut answer = native_answer(vec![upgrades], vec![condition_gap, container_gap.clone()]);
+
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
+
+    let upgrades = field(&answer.value, "upgrades");
+
+    assert!(matches!(upgrades.members, FieldMembers::Items { .. }));
+    assert_eq!(upgrades.read_scope, GrammarProperty::Known(Vec::new()));
+    assert_eq!(
+        upgrades.accepted_categories,
+        AcceptedCategories::NotApplicable
+    );
+    assert!(!answer.gaps.contains(&container_gap), "{:?}", answer.gaps);
+}

@@ -6847,7 +6847,7 @@
      "uses": []
     },
     {
-     "accepted_categories": "Unresolved",
+     "accepted_categories": "NotApplicable",
      "domain": "Unknown",
      "entry_contexts": [],
      "members": "None",
@@ -7106,7 +7106,7 @@
      "uses": []
     },
     {
-     "accepted_categories": "Unresolved",
+     "accepted_categories": "NotApplicable",
      "domain": "Unknown",
      "entry_contexts": [],
      "members": "None",
