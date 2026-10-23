@@ -4,6 +4,7 @@ pub(crate) use analysis::{
     VerifiedAnalysis, loader_names, scoped_operand_decoder, unique_named_candidate,
 };
 mod binary;
+pub(crate) use binary::receivers::MemberHolder;
 mod compose;
 mod groups;
 pub mod inspect;
@@ -195,6 +196,21 @@ impl Binding {
             .map_or(crate::FieldRequirement::Unknown, |census| {
                 census.requirement(registry, field)
             })
+    }
+
+    /// The build's reader export, parsed on first use, or why it could not be read. `None` when
+    /// the build has no build directory.
+    pub(crate) fn reader_export(
+        &self,
+    ) -> Option<&Result<crate::session::reader_export::ReaderExport, String>> {
+        let operation = self.operation.as_ref()?;
+        let files = operation.reader_export?;
+
+        Some(
+            operation
+                .parsed_export
+                .get_or_init(|| crate::session::reader_export::ReaderExport::parse(files)),
+        )
     }
 
     pub(crate) fn registry_bindings(

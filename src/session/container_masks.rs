@@ -42,6 +42,10 @@ pub(super) fn attach(
     }
 }
 
+/// The gap detail of a field whose modifier container is not established.
+pub(super) const CONTAINER_OPEN: &str =
+    "Whether the field reads a modifier container, and its categories, are not established.";
+
 /// Give a gap to each unresolved container of `values` and their members, at any depth, that no
 /// gap names yet. Runs after every level's containers are attached.
 pub(super) fn state_unresolved(values: &[Field], gaps: &mut Vec<Gap>) {
@@ -172,12 +176,7 @@ fn state_unresolved_at(field: &Field, parent: &[String], gaps: &mut Vec<Gap>) {
     path.push(field.name.clone());
 
     if field.accepted_categories == AcceptedCategories::Unresolved && !named(gaps, &path) {
-        push(
-            gaps,
-            &path,
-            "Whether the field reads a modifier container, and its categories, are not established."
-                .into(),
-        );
+        push(gaps, &path, CONTAINER_OPEN.into());
     }
 
     let members = match &field.members {

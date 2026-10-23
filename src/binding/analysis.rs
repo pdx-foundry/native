@@ -46,6 +46,7 @@ pub(crate) struct BoundAnalysis {
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
+    member_holders: OnceLock<Result<Vec<binary::receivers::MemberHolder>, AnalysisError>>,
     modifier_nodes: OnceLock<
         Result<crate::engine::analysis::modifier_nodes::ModifierNodeResult, AnalysisError>,
     >,
@@ -1013,6 +1014,7 @@ impl BoundAnalysis {
             triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
+            member_holders: OnceLock::new(),
             modifier_nodes: OnceLock::new(),
             category_input: OnceLock::new(),
             names: OnceLock::new(),
@@ -1491,6 +1493,22 @@ impl BoundAnalysis {
                 Ok(crate::engine::analysis::scoped_numeric::analyze(&input))
             })
             .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The member reader of every vtable address point in the executable, with the point's
+    /// persistent reader (`Read`, member reader, post-read hooks), or `None` when the point's
+    /// `Read` slot names no persistent read.
+    pub(crate) fn member_holders(
+        &self,
+    ) -> Result<&[binary::receivers::MemberHolder], AnalysisError> {
+        let verified = self.verified()?;
+
+        self.member_holders
+            .get_or_init(|| {
+                binary::receivers::member_holders(&verified.image(), verified.persistent)
+            })
+            .as_deref()
             .map_err(Clone::clone)
     }
 

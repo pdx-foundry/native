@@ -41,8 +41,8 @@ fn catalogue_order_cannot_break_a_duplicate_match() {
 }
 
 /// Each catalogued build has its build directory, `builds/<slice prefix>/`: its provenance names
-/// the build, its files carry the schema revisions that this release reads, and every reader that
-/// a registry roots at is in `readers.json`.
+/// the build, its files carry the schema revisions that this release reads, the compiled-in reader
+/// export loads, and every reader that a registry roots at is in `readers.json`.
 #[test]
 fn each_catalogued_build_has_a_matching_build_directory() {
     for record in records::CATALOGUE {
@@ -69,6 +69,14 @@ fn each_catalogued_build_has_a_matching_build_directory() {
         for (file, schema) in [("tables.json", &tables), ("readers.json", &readers)] {
             assert_eq!(provenance["schemas"][file], 1, "{file}");
             assert_eq!(schema["schema"], 1, "{file}");
+        }
+
+        let files = record
+            .recipe
+            .reader_export
+            .expect("a compiled-in reader export");
+        if let Err(failure) = crate::session::reader_export::ReaderExport::parse(files) {
+            panic!("{failure}");
         }
 
         let walked = readers["readers"].as_object().unwrap();

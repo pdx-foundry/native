@@ -457,7 +457,7 @@ const LEXER_MATCH: &str =
 
 /// Why the read scope of a block that a weight entry reads with scope mask 0 is outside the
 /// method (decision D5a, a recorded exception in `docs/design/simplification.md`).
-const ZERO_MASK: &str = "Read with scope mask 0; the engine checks the scope later, when it \
+pub(super) const ZERO_MASK: &str = "Read with scope mask 0; the engine checks the scope later, when it \
                          validates the block, which the method does not report.";
 
 /// Give the key the value kind that every read alternative shares, when its readers differ but

@@ -1,4 +1,5 @@
 //! Static questions: answered from the executable, with no game process.
+use super::reader_export::{ReaderExport, RootLayout};
 use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
@@ -300,7 +301,77 @@ impl Native {
             return Ok(answer);
         }
 
-        self.registry_field_run(registry).map(|run| run.answer)
+        let run = self.registry_field_run(registry)?;
+        let layout = root_layout(&run.result);
+
+        self.with_reader_export(registry, layout, run.answer)
+    }
+
+    /// `answer`, Native's registry field answer, filled from the build's reader export. A build
+    /// without one keeps the answer. A changed executable is `Error::BuildChanged`.
+    pub(crate) fn with_reader_export(
+        &self,
+        registry: &str,
+        layout: RootLayout,
+        mut answer: Answer<Vec<Field>>,
+    ) -> Result<Answer<Vec<Field>>, Error> {
+        match self.bound().reader_export() {
+            None => {}
+            Some(Ok(export)) => {
+                let merging_members = self.merging_members(export)?;
+
+                if export.merge(registry, layout, &merging_members, &mut answer) {
+                    self.set_requirements(registry, layout, &mut answer.value);
+                }
+            }
+            Some(Err(failure)) => {
+                answer.gaps.push(Gap {
+                    kind: GapKind::UnreadableInput,
+                    subject: Some(GapSubject::registry(registry)),
+                    detail: format!("The build's reader export could not be read: {failure}"),
+                });
+                answer.completeness = Completeness::from_gaps(&answer.gaps);
+            }
+        }
+
+        Ok(answer)
+    }
+
+    /// The member readers of `export`'s persistent rows whose objects all keep themselves on a
+    /// persistent read ([`super::reader_export::merging_members`]); none when the executable's
+    /// vtables cannot be read. A changed executable is `Error::BuildChanged`.
+    fn merging_members(&self, export: &ReaderExport) -> Result<BTreeSet<String>, Error> {
+        match self.bound().analysis.member_holders() {
+            Ok(holders) => Ok(super::reader_export::merging_members(
+                export.persistent_members(),
+                holders,
+            )),
+            Err(failure) => match error(Operation::RegistryFields, failure) {
+                Error::BuildChanged => Err(Error::BuildChanged),
+                _ => Ok(BTreeSet::new()),
+            },
+        }
+    }
+
+    /// Set each definition field's requirement from the build's census. A loader root's fields
+    /// are root statements, such as event kinds, and each statement is a definition: the census
+    /// answers its members, not the statement.
+    fn set_requirements(&self, registry: &str, layout: RootLayout, fields: &mut [Field]) {
+        for field in fields {
+            match layout {
+                RootLayout::Owner => {
+                    field.requirement = self.bound().field_requirement(registry, &field.name);
+                }
+                RootLayout::Statements => {
+                    if let crate::FieldMembers::Fields(members) = &mut field.members {
+                        for member in members {
+                            member.requirement =
+                                self.bound().field_requirement(registry, &member.name);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// The public registry field answer, with the method's own result that it is derived from.
@@ -316,17 +387,7 @@ impl Native {
             answer.completeness = Completeness::from_gaps(&answer.gaps);
         }
 
-        for field in &mut answer.value {
-            // A loader root's fields are root statements, such as event kinds, and each statement
-            // is a definition: the census answers its members, not the statement.
-            if result.loader.is_none() {
-                field.requirement = self.bound().field_requirement(registry, &field.name);
-            } else if let crate::FieldMembers::Fields(members) = &mut field.members {
-                for member in members {
-                    member.requirement = self.bound().field_requirement(registry, &member.name);
-                }
-            }
-        }
+        self.set_requirements(registry, root_layout(&result), &mut answer.value);
 
         Ok(RegistryFieldRun {
             answer,
@@ -784,6 +845,14 @@ fn attach_at_every_depth(
     }
 }
 
+/// How the answer of `result`'s registry holds its owner's fields.
+pub(super) fn root_layout(result: &RegistryFieldResult) -> RootLayout {
+    match result.loader {
+        Some(_) => RootLayout::Statements,
+        None => RootLayout::Owner,
+    }
+}
+
 /// `gap` with a field or key path subject moved below `parent`.
 fn below(mut gap: Gap, parent: &[String]) -> Gap {
     if parent.is_empty() {
@@ -927,6 +996,22 @@ fn key_order_detail(order: &KeyOrder) -> String {
     )
 }
 
+/// The details of the registry field gaps that the reader export can answer
+/// ([`super::reader_export`]).
+pub(super) const READER_ALTERNATIVES_OPEN: &str =
+    "The field's alternatives do not establish one shared reader.";
+pub(super) const VALUE_FORM_OPEN: &str =
+    "The shared reader is identified, but its broad value form is not established.";
+pub(super) const READER_JOIN_OPEN: &str =
+    "The field's reader could not be established on at least one path.";
+pub(super) const TOKEN_PATH_OPEN: &str =
+    "A path through the registry's reader could not be followed to its end.";
+pub(super) const UNNAMED_PATHS: &str = "reader paths have no recovered literal field name; \
+    anonymous or dynamic keys remain unresolved.";
+pub(super) const KEYWORD_DOMAIN_OPEN: &str = "The keyword domain is not established.";
+pub(super) const CONDITION_OPEN: &str =
+    "A loader condition remains unresolved; its outcome is retained separately.";
+
 /// What the registry field method leaves out for every registry.
 fn method_scope_gap(registry: &str) -> Gap {
     Gap {
@@ -987,7 +1072,7 @@ fn normalized_gaps(
         if built.reader.kind == ReaderKind::Keyword && built.domain == crate::FieldDomain::Unknown {
             let detail = match result.keyword_domains.get(&field.token) {
                 Some(Err(detail)) => detail,
-                _ => "The keyword domain is not established.",
+                _ => KEYWORD_DOMAIN_OPEN,
             };
             gaps.push(Gap {
                 kind: GapKind::ReaderSemantics,
@@ -1012,14 +1097,10 @@ fn normalized_gaps(
                 GapKind::UnreadableInput,
                 "A function or name table that the method needs could not be read.",
             ),
-            FieldGapKind::ReaderJoin => (
-                GapKind::UnresolvedReader,
-                "The field's reader could not be established on at least one path.",
-            ),
-            FieldGapKind::UnresolvedTokenPath | FieldGapKind::TokenPartition => (
-                GapKind::UnresolvedPath,
-                "A path through the registry's reader could not be followed to its end.",
-            ),
+            FieldGapKind::ReaderJoin => (GapKind::UnresolvedReader, READER_JOIN_OPEN),
+            FieldGapKind::UnresolvedTokenPath | FieldGapKind::TokenPartition => {
+                (GapKind::UnresolvedPath, TOKEN_PATH_OPEN)
+            }
             FieldGapKind::RuntimeSelection => (
                 GapKind::UnresolvedCondition,
                 "Use-time analysis covers local Boolean selections only; enclosing context, other callers and bounded or unsupported paths remain unresolved.",
@@ -1059,7 +1140,7 @@ fn normalized_gaps(
         gaps.push(Gap {
             kind: GapKind::UnnamedField,
             subject: Some(GapSubject::registry(registry)),
-            detail: format!("{unnamed} reader paths have no recovered literal field name; anonymous or dynamic keys remain unresolved."),
+            detail: format!("{unnamed} {UNNAMED_PATHS}"),
         });
     }
     for field in fields {
@@ -1071,9 +1152,7 @@ fn normalized_gaps(
             gaps.push(Gap {
                 kind: GapKind::UnresolvedCondition,
                 subject: Some(GapSubject::field(&field.name)),
-                detail:
-                    "A loader condition remains unresolved; its outcome is retained separately."
-                        .into(),
+                detail: CONDITION_OPEN.into(),
             });
         }
     }
@@ -1125,19 +1204,9 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
             Some(parent) => format!("{parent}.{}", field.name),
             None => field.name.clone(),
         };
-        let repeat = (field.shape.repeat == crate::RepeatBehavior::Unknown)
-            .then(|| super::fields::unknown_repeat_reason(&field.reader));
-        let members = (matches!(field.members, crate::FieldMembers::Unresolved)
-            && field.reader.family == crate::BlockFamily::Unknown)
-            .then_some("Nested fields remain unresolved.");
-        let detail: Vec<&str> = repeat.into_iter().chain(members).collect();
-        if !detail.is_empty() {
-            gaps.push(Gap {
-                kind: GapKind::UnresolvedStorage,
-                subject: Some(GapSubject::field(&name)),
-                detail: detail.join(" "),
-            });
-        }
+        let repeat_reason = super::fields::unknown_repeat_reason(&field.reader);
+
+        gaps.extend(storage_gap(field, &name, repeat_reason));
 
         match &field.members {
             crate::FieldMembers::Fields(children) => storage_gaps(children, Some(&name), gaps),
@@ -1149,20 +1218,30 @@ fn storage_gaps(fields: &[Field], parent: Option<&str>, gaps: &mut Vec<Gap>) {
     }
 }
 
+/// The storage gap of one field, named `name`: its repeat behavior is unknown, for
+/// `repeat_reason`, or no block family or attached grammar answers its members.
+pub(super) fn storage_gap(field: &Field, name: &str, repeat_reason: &str) -> Option<Gap> {
+    let repeat = (field.shape.repeat == crate::RepeatBehavior::Unknown).then_some(repeat_reason);
+    let members = (matches!(field.members, crate::FieldMembers::Unresolved)
+        && field.reader.family == crate::BlockFamily::Unknown)
+        .then_some("Nested fields remain unresolved.");
+    let detail: Vec<&str> = repeat.into_iter().chain(members).collect();
+
+    (!detail.is_empty()).then(|| Gap {
+        kind: GapKind::UnresolvedStorage,
+        subject: Some(GapSubject::field(name)),
+        detail: detail.join(" "),
+    })
+}
+
 /// The gap that a field's reader leaves: no identity means that the field's paths did not
 /// establish one shared reader, and an identity with an unknown kind means that the value form is
 /// not established.
 fn reader_gap(reader: &crate::Reader) -> Option<(GapKind, &'static str)> {
     if reader.id.is_none() {
-        Some((
-            GapKind::UnresolvedReader,
-            "The field's alternatives do not establish one shared reader.",
-        ))
+        Some((GapKind::UnresolvedReader, READER_ALTERNATIVES_OPEN))
     } else if reader.kind == ReaderKind::Unknown {
-        Some((
-            GapKind::ReaderSemantics,
-            "The shared reader is identified, but its broad value form is not established.",
-        ))
+        Some((GapKind::ReaderSemantics, VALUE_FORM_OPEN))
     } else {
         None
     }

@@ -19,6 +19,10 @@ pub(super) struct ResolvedObservation {
     pub loader_databases: &'static [groups::LoaderDatabase],
     pub default_registries: &'static [&'static str],
     pub field_requirements: Option<&'static super::requirements::RequirementCensus>,
+    pub reader_export: Option<crate::session::reader_export::ExportFiles>,
+    /// `reader_export`, parsed on first use.
+    pub parsed_export:
+        std::sync::OnceLock<Result<crate::session::reader_export::ReaderExport, String>>,
 }
 
 impl ResolvedObservation {
@@ -71,6 +75,8 @@ fn assemble(
         loader_databases: recipe.loader_databases,
         default_registries: recipe.default_registries,
         field_requirements: recipe.field_requirements,
+        reader_export: recipe.reader_export,
+        parsed_export: std::sync::OnceLock::new(),
         fixture: recipe.fixture.map(|bind| bind()),
         script_checks: recipe.script_checks.map(|bind| bind()),
     })

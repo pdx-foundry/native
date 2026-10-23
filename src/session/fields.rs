@@ -176,18 +176,22 @@ fn repeat(
         ReaderKind::ScopedNumeric if callee == "CVariableValue::Read(CReader&, EScopeType)" => {
             RepeatBehavior::Merges
         }
-        // The persistent read of a weight or modifier block keeps the object: a weight block
-        // keeps its entries and a modifier block its fixed keys.
-        ReaderKind::Block
-            if matches!(reader.family, BlockFamily::Weight | BlockFamily::Modifier) =>
-        {
-            RepeatBehavior::Merges
-        }
-        ReaderKind::Block if persistent.is_some_and(keeps_persistent_object) => {
+        ReaderKind::Block if persistent_read_merges(reader.family, persistent) => {
             RepeatBehavior::Merges
         }
         _ => RepeatBehavior::Unknown,
     }
+}
+
+/// Whether a repeated persistent read of a block of `family`, into an object whose persistent
+/// reader is `persistent`, merges into the object. The persistent read of a weight or modifier
+/// block keeps the object: a weight block keeps its entries and a modifier block its fixed keys.
+pub(super) fn persistent_read_merges(
+    family: BlockFamily,
+    persistent: Option<&ConcreteReader>,
+) -> bool {
+    matches!(family, BlockFamily::Weight | BlockFamily::Modifier)
+        || persistent.is_some_and(keeps_persistent_object)
 }
 
 /// Whether the persistent read of `reader` keeps the object it reads into. `CPersistent::Read`
@@ -875,7 +879,7 @@ fn reads_no_container(embedded: &EmbeddedField) -> bool {
 
 /// A field's container categories before the container pass: a modifier reader reads a
 /// container, an unknown reader may, and an established reader of another family does not.
-fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
+pub(super) fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
     match family {
         BlockFamily::Modifier | BlockFamily::TriggeredModifier | BlockFamily::Unknown => {
             AcceptedCategories::Unresolved

@@ -39,11 +39,16 @@ const EMITTED: u64 = 1;
 const CONVERTED: u64 = 2;
 
 /// Why a keyword field has no listed domain.
-const UNKNOWN_KEPT: &str = "An unknown name keeps the converter's fallback with no diagnostic.";
+pub(crate) const UNKNOWN_KEPT: &str =
+    "An unknown name keeps the converter's fallback with no diagnostic.";
 const CALLER_UNRESOLVED: &str = "A path of the caller could not be followed for some value.";
 const UNNAMED_VALUE: &str = "An accepted value has no single literal name.";
 const THROUGH_SERIALIZER: &str =
     "The caller reads the owner through a serializer, which the domain walk does not follow.";
+/// The reasons that leave a domain unknown because the walk stopped, not because the engine keeps
+/// an unknown name.
+pub(crate) const OPEN_DOMAIN_REASONS: [&str; 3] =
+    [CALLER_UNRESOLVED, UNNAMED_VALUE, THROUGH_SERIALIZER];
 
 /// The domain of each keyword field that the member reader `member` reads, by the field's token:
 /// its accepted names, sorted, or why they are not established.
