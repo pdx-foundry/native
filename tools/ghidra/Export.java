@@ -412,15 +412,40 @@ public class Export extends GhidraScript {
 			return false;
 		}
 
+		/**
+		 * Whether v is computed from the token by the steps that index a jump table: a constant
+		 * offset, a constant scale, a width change, a load of the table entry, and the addition of
+		 * the table's constant base. Any other step, such as a mask, a shift right or a call, means
+		 * that the switch's labels are not token identities.
+		 */
 		private boolean dependsOnToken(Varnode v, int depth, Set<Varnode> seen) {
 			if (depth > 16 || v.isConstant() || !seen.add(v)) return false;
 			if (tokenOffset(v, 0) != UNKNOWN) return true;
 			PcodeOp def = v.getDef();
 			if (def == null) return false;
-			for (int i = 0; i < def.getNumInputs(); i++) {
-				if (dependsOnToken(def.getInput(i), depth + 1, seen)) return true;
+			switch (def.getOpcode()) {
+				case PcodeOp.COPY, PcodeOp.CAST, PcodeOp.INT_ZEXT, PcodeOp.INT_SEXT -> {
+					return dependsOnToken(def.getInput(0), depth + 1, seen);
+				}
+				case PcodeOp.LOAD -> {
+					return dependsOnToken(def.getInput(1), depth + 1, seen);
+				}
+				case PcodeOp.SUBPIECE -> {
+					return def.getInput(1).getOffset() == 0 && dependsOnToken(def.getInput(0), depth + 1, seen);
+				}
+				case PcodeOp.INT_ADD, PcodeOp.INT_SUB, PcodeOp.INT_MULT, PcodeOp.INT_LEFT, PcodeOp.PTRADD, PcodeOp.PTRSUB -> {
+					Varnode variable = null;
+					for (int i = 0; i < def.getNumInputs(); i++) {
+						if (def.getInput(i).isConstant()) continue;
+						if (variable != null) return false;
+						variable = def.getInput(i);
+					}
+					return variable != null && dependsOnToken(variable, depth + 1, seen);
+				}
+				default -> {
+					return false;
+				}
 			}
-			return false;
 		}
 
 		/** Every constant that a path compares the token with for equality; count the ordered compares. */

@@ -199,8 +199,10 @@ walk has `null` and its name. This is a reader of M452, shortened:
   default. `dispatch.truncated` says that a walk of the reader reached its path budget.
 - A `return` default is not a rejection: `ReadMember` returns nothing that tells its caller that
   the key was rejected, so such a default fails condition 2.
-- Only a switch whose destination the walk proves to depend on the token adds its labels to the
-  enumerated tokens; the walks take every destination of another switch.
+- Only a switch whose destination the walk proves to be the token with constant offsets, a constant
+  scale, a width change, a table load and a constant base adds its labels to the enumerated
+  tokens. A switch on anything else, such as a masked token, a local enumeration or a call's
+  result, has no token labels: the walks take every destination.
 - A class without a member reader by name is resolved only through slot 5 of the vtable that its
   constructors store at the object's start, never a member's or a secondary base's.
 - `nested`, in a row, a branch or `dispatch.delegates`, is `{reader, name, walked}`: the reader's
