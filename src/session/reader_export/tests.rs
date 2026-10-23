@@ -64,9 +64,9 @@ fn export(readers: Value) -> ReaderExport {
     .unwrap()
 }
 
-/// The classes whose persistent read keeps the object: the nested settings block's.
-fn kept_objects() -> BTreeSet<String> {
-    BTreeSet::from(["CSettings".to_owned()])
+/// The member readers whose objects keep themselves on a persistent read: the settings block's.
+fn settings_merges() -> BTreeSet<String> {
+    BTreeSet::from(["CSettings::ReadMember".to_owned()])
 }
 
 /// Native's answer with no field and only the method's own limit.
@@ -141,7 +141,7 @@ fn native_tree() -> Answer<Vec<Field>> {
 fn merged(export: &ReaderExport) -> Answer<Vec<Field>> {
     let mut answer = native_tree();
 
-    assert!(export.merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer));
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
 
     answer
 }
@@ -150,7 +150,7 @@ fn merged(export: &ReaderExport) -> Answer<Vec<Field>> {
 fn merged_into_nothing(export: &ReaderExport) -> Answer<Vec<Field>> {
     let mut answer = native_answer(Vec::new(), Vec::new());
 
-    assert!(export.merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer));
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
 
     answer
 }
@@ -282,7 +282,7 @@ fn a_native_complete_answer_is_kept_when_the_export_tree_is_incomplete() {
 
     answer.gaps.retain(|gap| gap.kind == GapKind::OutsideMethod);
     answer.completeness = Completeness::Complete;
-    export(readers).merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
+    export(readers).merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
 
     assert!(
         answer
@@ -385,7 +385,7 @@ fn a_persistent_read_into_the_owner_merges_a_repeat() {
 }
 
 #[test]
-fn a_persistent_read_whose_class_may_reset_keeps_its_repeat_open() {
+fn a_persistent_read_whose_object_may_reset_keeps_its_repeat_open() {
     let mut answer = native_tree();
 
     export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &BTreeSet::new(), &mut answer);
@@ -502,7 +502,7 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
         ],
     );
 
-    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
+    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
 
     let enabled = field(&answer.value, "enabled");
     let remaining: Vec<_> = answer
@@ -541,7 +541,7 @@ fn a_field_that_native_reads_under_conditions_keeps_its_open_members() {
         ]),
         "0x2": reader("CModification::ReadMember", vec![row("add", json!({}))]),
     }))
-    .merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
+    .merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
 
     let modification = field(&answer.value, "modification");
 
@@ -561,7 +561,7 @@ fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
             row("windup_time", json!({"reader_kind": "FixedPoint"})),
         ]),
     }))
-    .merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
+    .merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer);
 
     assert_eq!(
         field(&answer.value, "windup_time").reader.kind,
@@ -574,4 +574,33 @@ fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
             .any(|gap| gap.kind == GapKind::NumericConversion
                 && gap.subject == Some(GapSubject::field("windup_time")))
     );
+}
+
+#[test]
+fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
+    let object = |read: &str, hook: &str| ConcreteReader {
+        read: read.into(),
+        member: "CBase::ReadMember(CReader&, int)".into(),
+        post_read: [
+            Some("CPersistent::InitPostRead()".into()),
+            Some(hook.into()),
+        ],
+        family: BlockFamily::Unknown,
+        delegate: None,
+    };
+    let base = object(
+        "CPersistent::Read(CReader&)",
+        "CPersistent::InitPostRead(CString const&, int, int)",
+    );
+    let derived = object(
+        "CPersistent::Read(CReader&)",
+        "CDerived::InitPostRead(CString const&, int, int)",
+    );
+    let members = || BTreeSet::from(["CBase::ReadMember", "CUnread::ReadMember"]);
+
+    assert_eq!(
+        merging_members(members(), std::slice::from_ref(&base)),
+        BTreeSet::from(["CBase::ReadMember".to_owned()])
+    );
+    assert!(merging_members(members(), &[base, derived]).is_empty());
 }

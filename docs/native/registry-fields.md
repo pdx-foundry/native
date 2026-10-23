@@ -63,11 +63,13 @@ other callers of the walker's run, such as derived names, use the walker's answe
   `Unresolved` with a `read-scope: no-literal-mask` gap, as the walker's `no-scope-parameter`. The
   D5(a) readers keep `Unresolved` with their `OutsideMethod` gap.
 - `Merges`: a `persistent` row that reads into the owner's own member merges a repeat only when
-  the walker's [repeat rule](#repeat-behavior) for a persistent read holds for the class of its
-  nested reader, read from the class's vtable (`session/fields.rs`, `persistent_read_merges`): the
-  class is a weight or modifier block, or its `Read` is `CPersistent::Read` or
-  `CPersistentName::Read` with the base's two post-read hooks. When the vtable cannot be read, the
-  repeat stays `Unknown` with its storage gap.
+  the walker's [repeat rule](#repeat-behavior) for a persistent read (`session/fields.rs`,
+  `persistent_read_merges`) holds for every vtable whose member slot holds the row's nested member
+  reader: the object is a weight or modifier block, or its `Read` is `CPersistent::Read` or
+  `CPersistentName::Read` with the base's two post-read hooks. The export does not name the
+  object's own class, and a derived object can inherit the member reader and override a hook, so
+  every holder must pass. When no readable vtable holds it, the repeat stays `Unknown` with its
+  storage gap.
 - **Limit: reader identity.** Rows do not name the reader call, so the export cannot give a
   `ReaderId`, and a key that only the export reads keeps its answer partial. Carrying the reader's
   name in each row (a schema change) removes the limit.

@@ -11,11 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
+use super::fields::persistent_read_merges;
 use super::questions::{
     CONDITION_OPEN, KEYWORD_DOMAIN_OPEN, READER_JOIN_OPEN, TOKEN_PATH_OPEN, UNNAMED_PATHS,
     VALUE_FORM_OPEN, storage_gap,
 };
-use crate::engine::analysis::fields::{OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
+use crate::engine::analysis::fields::{ConcreteReader, OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
 use crate::{
     AcceptedCategories, Answer, BlockFamily, Completeness, Field, FieldCondition, FieldDomain,
     FieldMembers, FieldReadAlternative, FieldReadOutcome, FieldReference, FieldRequirement,
@@ -105,7 +106,6 @@ struct ExportRoot {
 #[derive(Debug, Deserialize)]
 struct ExportReader {
     name: Option<String>,
-    class: Option<String>,
     walked: bool,
     dispatch: Option<Dispatch>,
     complete: bool,
@@ -251,33 +251,27 @@ impl ReaderExport {
         Ok(export)
     }
 
-    /// The classes that a persistent row reads into the owner's own member: the classes whose
-    /// `Read` and post-read hooks decide whether a repeat merges.
-    pub(crate) fn persistent_classes(&self) -> BTreeSet<&str> {
+    /// The member readers, such as `CSettings::ReadMember`, that a persistent row reads the
+    /// owner's own member with. The `Read` and post-read hooks of every object with one of them
+    /// decide whether a repeat merges.
+    pub(crate) fn persistent_members(&self) -> BTreeSet<&str> {
         self.readers
             .values()
             .flat_map(|reader| &reader.rows)
             .filter(|row| row.kind == RowKind::Persistent)
-            .filter_map(|row| self.nested_class(row))
+            .filter_map(walked_member)
             .collect()
     }
 
-    /// The class of the walked reader that `row` reads its value with.
-    fn nested_class(&self, row: &Row) -> Option<&str> {
-        let entry = row.nested.as_ref()?.reader.as_deref()?;
-
-        self.readers.get(entry)?.class.as_deref()
-    }
-
     /// Fill `answer`, Native's registry field answer for `registry`, from the export, and stamp
-    /// the merged method. `kept_objects` are the [`Self::persistent_classes`] whose persistent
-    /// read keeps the object, so that a repeat merges. The answer stays unchanged, and the result
+    /// the merged method. `merging_members` are the [`Self::persistent_members`] whose objects
+    /// all keep themselves on a persistent read, so that a repeat merges. The answer stays unchanged, and the result
     /// is `false`, when the export has no root reader for the registry.
     pub(crate) fn merge(
         &self,
         registry: &str,
         layout: RootLayout,
-        kept_objects: &BTreeSet<String>,
+        merging_members: &BTreeSet<String>,
         answer: &mut Answer<Vec<Field>>,
     ) -> bool {
         let Some(roots) = self.roots(registry) else {
@@ -285,7 +279,7 @@ impl ReaderExport {
         };
         let native_complete = answer.completeness == Completeness::Complete;
         let native_gaps = std::mem::take(&mut answer.gaps);
-        let mut merge = Merge::new(self, &native_gaps, kept_objects);
+        let mut merge = Merge::new(self, &native_gaps, merging_members);
 
         for root in roots {
             let Some(entry) = root.reader.as_deref() else {
@@ -635,8 +629,8 @@ struct Answered {
 struct Merge<'a> {
     export: &'a ReaderExport,
     native_gaps: &'a [Gap],
-    /// The classes whose persistent read keeps the object.
-    kept_objects: &'a BTreeSet<String>,
+    /// The member readers whose objects all keep themselves on a persistent read.
+    merging_members: &'a BTreeSet<String>,
     /// What the export answers, by field path.
     answered: BTreeMap<Vec<String>, Answered>,
     /// The gaps of added fields and the storage gaps computed again.
@@ -650,12 +644,12 @@ impl<'a> Merge<'a> {
     fn new(
         export: &'a ReaderExport,
         native_gaps: &'a [Gap],
-        kept_objects: &'a BTreeSet<String>,
+        merging_members: &'a BTreeSet<String>,
     ) -> Self {
         Self {
             export,
             native_gaps,
-            kept_objects,
+            merging_members,
             answered: BTreeMap::new(),
             gaps: Vec::new(),
             ancestors: Vec::new(),
@@ -756,13 +750,10 @@ impl<'a> Merge<'a> {
     }
 
     /// What `row` establishes about reading its value, with `Merges` for a persistent read into
-    /// the owner's own member whose class keeps the object.
+    /// the owner's own member whose objects keep themselves.
     fn reading(&self, row: &Row) -> Result<(Reader, FieldShape), OpenRead> {
         let keeps_object = row.kind == RowKind::Persistent
-            && self
-                .export
-                .nested_class(row)
-                .is_some_and(|class| self.kept_objects.contains(class));
+            && walked_member(row).is_some_and(|member| self.merging_members.contains(member));
 
         reading(row, keeps_object)
     }
@@ -1043,6 +1034,35 @@ fn reading(row: &Row, keeps_object: bool) -> Result<(Reader, FieldShape), OpenRe
             gap: (GapKind::UnresolvedReader, READER_OPEN),
         }),
     }
+}
+
+/// The `members` whose objects all keep themselves on a persistent read, by the walker's rule
+/// checked on each of `readers` (every vtable's persistent reader) that holds the member. A member
+/// that no reader holds is not one: the check cannot run.
+pub(crate) fn merging_members(
+    members: BTreeSet<&str>,
+    readers: &[ConcreteReader],
+) -> BTreeSet<String> {
+    members
+        .into_iter()
+        .filter(|member| {
+            let mut objects = readers
+                .iter()
+                .filter(|reader| reader.member.strip_suffix("(CReader&, int)") == Some(*member))
+                .peekable();
+
+            objects.peek().is_some()
+                && objects.all(|reader| persistent_read_merges(reader.family, Some(reader)))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The name of the walked member reader that `row` reads its value with.
+fn walked_member(row: &Row) -> Option<&str> {
+    let nested = row.nested.as_ref()?;
+
+    nested.reader.is_some().then_some(nested.name.as_str())
 }
 
 fn family(row: &Row, kind: ReaderKind) -> BlockFamily {

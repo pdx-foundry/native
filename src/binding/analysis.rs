@@ -46,6 +46,8 @@ pub(crate) struct BoundAnalysis {
     >,
     scoped_numeric: OnceLock<Result<crate::engine::analysis::scoped_numeric::Facts, AnalysisError>>,
     block_facts: OnceLock<Result<BlockFacts, AnalysisError>>,
+    persistent_readers:
+        OnceLock<Result<Vec<crate::engine::analysis::fields::ConcreteReader>, AnalysisError>>,
     modifier_nodes: OnceLock<
         Result<crate::engine::analysis::modifier_nodes::ModifierNodeResult, AnalysisError>,
     >,
@@ -282,16 +284,6 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
-    /// The persistent reader of each of `classes` that its vtable names: its `Read`, member
-    /// reader and post-read hooks.
-    pub(crate) fn class_readers<'a>(
-        &self,
-        classes: impl IntoIterator<Item = &'a str>,
-    ) -> Result<BTreeMap<String, crate::engine::analysis::fields::ConcreteReader>, AnalysisError>
-    {
-        binary::receivers::class_readers(&self.image(), self.persistent, classes)
-    }
-
     /// The verified executable with the facts that the catalog derived from it.
     fn image(&self) -> binary::references::Image<'_> {
         binary::references::Image {
@@ -1023,6 +1015,7 @@ impl BoundAnalysis {
             triggered_modifiers: OnceLock::new(),
             scoped_numeric: OnceLock::new(),
             block_facts: OnceLock::new(),
+            persistent_readers: OnceLock::new(),
             modifier_nodes: OnceLock::new(),
             category_input: OnceLock::new(),
             names: OnceLock::new(),
@@ -1505,6 +1498,21 @@ impl BoundAnalysis {
     }
 
     /// The contexts of registry field blocks, derived once from the verified executable.
+    /// The persistent reader of every vtable address point in the executable: its `Read`, member
+    /// reader and post-read hooks.
+    pub(crate) fn persistent_readers(
+        &self,
+    ) -> Result<&[crate::engine::analysis::fields::ConcreteReader], AnalysisError> {
+        let verified = self.verified()?;
+
+        self.persistent_readers
+            .get_or_init(|| {
+                binary::receivers::persistent_readers(&verified.image(), verified.persistent)
+            })
+            .as_deref()
+            .map_err(Clone::clone)
+    }
+
     pub(crate) fn block_facts(&self) -> Result<&BlockFacts, AnalysisError> {
         let verified = self.verified()?;
         self.block_facts

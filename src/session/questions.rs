@@ -318,9 +318,9 @@ impl Native {
         match self.bound().reader_export() {
             None => {}
             Some(Ok(export)) => {
-                let kept_objects = self.kept_objects(export);
+                let merging_members = self.merging_members(export);
 
-                if export.merge(registry, layout, &kept_objects, &mut answer) {
+                if export.merge(registry, layout, &merging_members, &mut answer) {
                     self.set_requirements(registry, layout, &mut answer.value);
                 }
             }
@@ -337,23 +337,16 @@ impl Native {
         answer
     }
 
-    /// The classes of `export`'s persistent rows whose persistent read keeps the object, by the
-    /// walker's rule for a persistent read: a class whose vtable cannot be read is not one.
-    fn kept_objects(&self, export: &ReaderExport) -> BTreeSet<String> {
-        let Ok(verified) = self.bound().analysis.verified() else {
-            return BTreeSet::new();
-        };
-        let Ok(readers) = verified.class_readers(export.persistent_classes()) else {
-            return BTreeSet::new();
-        };
-
-        readers
-            .into_iter()
-            .filter(|(_, reader)| {
-                super::fields::persistent_read_merges(reader.family, Some(reader))
-            })
-            .map(|(class, _)| class)
-            .collect()
+    /// The member readers of `export`'s persistent rows whose objects all keep themselves on a
+    /// persistent read ([`super::reader_export::merging_members`]); none when the executable's
+    /// vtables cannot be read.
+    fn merging_members(&self, export: &ReaderExport) -> BTreeSet<String> {
+        match self.bound().analysis.persistent_readers() {
+            Ok(readers) => {
+                super::reader_export::merging_members(export.persistent_members(), readers)
+            }
+            Err(_) => BTreeSet::new(),
+        }
     }
 
     /// Set each definition field's requirement from the build's census. A loader root's fields

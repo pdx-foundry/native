@@ -172,26 +172,24 @@ pub(super) fn constructor_calls(
     Ok(calls)
 }
 
-/// The persistent reader at the primary address point of each class's vtable, for the classes
-/// whose vtable and slots have unique symbols.
-pub(in crate::binding) fn class_readers<'a>(
+/// The persistent reader at every address point of every vtable whose read and member slots have
+/// unique symbols.
+pub(in crate::binding) fn persistent_readers(
     image: &Image<'_>,
     recipe: &PersistentRecipe,
-    classes: impl IntoIterator<Item = &'a str>,
-) -> Result<BTreeMap<String, crate::engine::analysis::fields::ConcreteReader>, AnalysisError> {
+) -> Result<Vec<crate::engine::analysis::fields::ConcreteReader>, AnalysisError> {
     let data = super::language::constant_data(image.bytes, image.pointers, image.bound_slots)?;
     let symbols = image.index.over(image.symbols);
     let names = Names::new(image.symbols);
     let name = |address: u64| names.unique(address).map(str::to_owned);
 
-    Ok(classes
-        .into_iter()
-        .filter_map(|class| {
-            let point = *symbols.vtable_group(&data, class)?.address_points.get(&0)?;
-            let reader = concrete_reader(recipe, image.pointers, point, &name)?;
-
-            Some((class.to_owned(), reader))
-        })
+    Ok(image
+        .symbols
+        .iter()
+        .filter_map(|symbol| symbol.name.strip_prefix("vtable for "))
+        .filter_map(|class| symbols.vtable_group(&data, class))
+        .flat_map(|group| group.address_points.into_values())
+        .filter_map(|point| concrete_reader(recipe, image.pointers, point, &name))
         .collect())
 }
 
