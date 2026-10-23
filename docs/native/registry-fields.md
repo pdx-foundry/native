@@ -45,7 +45,9 @@ other callers of the walker's run, such as derived names, use the walker's answe
   (`ReaderSemantics`), a `branches` row (`ValueShape::Any`, reader `Unknown`, `ReaderSemantics`),
   a condition, unclassified paths, repeat or members, the keyword domain, numeric conversion, a key
   reference's lookup, and the read scope. An added field is therefore never complete.
-- Nested fields come only from a reader that dispatches on the key's token and lists a key. A
+- A block reader (a root or nested reader) that lists no key proves no keys (`no-listed-key`),
+  though the export marks it complete. Nested fields come only from a reader that dispatches on
+  the key's token and lists a key. A
   serializer whose member reader is `CPersistent::ReadMember` reads its values through its own
   `Read`, which the export does not walk, so its block keeps unresolved members. Nested fields that
   come from a tree that does not prove its keys carry an `UnresolvedStorage` gap. A
@@ -60,10 +62,11 @@ other callers of the walker's run, such as derived names, use the walker's answe
   or a list of values reads in no scope. A persistent or object block has no literal mask and keeps
   `Unresolved` with a `read-scope: no-literal-mask` gap, as the walker's `no-scope-parameter`. The
   D5(a) readers keep `Unresolved` with their `OutsideMethod` gap.
-- **Limit: `Merges`.** A `persistent` row that reads into the owner's own member gets `Merges`.
-  The export does not read the object's `Read` override or its post-read hooks, which the walker's
-  [persistent rule](#repeat-behavior) checks. Change the rule when a nested object with its own
-  hook resets on a repeat.
+- `Merges`: a `persistent` row that reads into the owner's own member merges a repeat only when
+  the [persistent rule](#repeat-behavior) holds for the class of its nested reader: the class's
+  vtable names `CPersistent::Read` or `CPersistentName::Read` and the base's two post-read hooks
+  (`session/fields.rs`, `keeps_persistent_object`). When the vtable cannot be read, the repeat stays
+  `Unknown` with its storage gap.
 - **Limit: reader identity.** Rows do not name the reader call, so the export cannot give a
   `ReaderId`, and a key that only the export reads keeps its answer partial. Carrying the reader's
   name in each row (a schema change) removes the limit.

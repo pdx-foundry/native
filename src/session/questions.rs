@@ -1,5 +1,5 @@
 //! Static questions: answered from the executable, with no game process.
-use super::reader_export::RootLayout;
+use super::reader_export::{ReaderExport, RootLayout};
 use super::{Backend, Native};
 use crate::answer::{
     Answer, Basis, BuildId, Completeness, Declaration, DeclarationKind, DeclaredScopes, Error,
@@ -318,7 +318,9 @@ impl Native {
         match self.bound().reader_export() {
             None => {}
             Some(Ok(export)) => {
-                if export.merge(registry, layout, &mut answer) {
+                let kept_objects = self.kept_objects(export);
+
+                if export.merge(registry, layout, &kept_objects, &mut answer) {
                     self.set_requirements(registry, layout, &mut answer.value);
                 }
             }
@@ -333,6 +335,23 @@ impl Native {
         }
 
         answer
+    }
+
+    /// The classes of `export`'s persistent rows whose persistent read keeps the object, by the
+    /// rule of the walker's repeat behavior: a class whose vtable cannot be read is not one.
+    fn kept_objects(&self, export: &ReaderExport) -> BTreeSet<String> {
+        let Ok(verified) = self.bound().analysis.verified() else {
+            return BTreeSet::new();
+        };
+        let Ok(readers) = verified.class_readers(export.persistent_classes()) else {
+            return BTreeSet::new();
+        };
+
+        readers
+            .into_iter()
+            .filter(|(_, reader)| super::fields::keeps_persistent_object(reader))
+            .map(|(class, _)| class)
+            .collect()
     }
 
     /// Set each definition field's requirement from the build's census. A loader root's fields

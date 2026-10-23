@@ -64,6 +64,11 @@ fn export(readers: Value) -> ReaderExport {
     .unwrap()
 }
 
+/// The classes whose persistent read keeps the object: the nested settings block's.
+fn kept_objects() -> BTreeSet<String> {
+    BTreeSet::from(["CSettings".to_owned()])
+}
+
 /// Native's answer with no field and only the method's own limit.
 fn native_answer(fields: Vec<Field>, gaps: Vec<Gap>) -> Answer<Vec<Field>> {
     let mut gaps = gaps;
@@ -136,7 +141,7 @@ fn native_tree() -> Answer<Vec<Field>> {
 fn merged(export: &ReaderExport) -> Answer<Vec<Field>> {
     let mut answer = native_tree();
 
-    assert!(export.merge(REGISTRY, RootLayout::Owner, &mut answer));
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer));
 
     answer
 }
@@ -145,7 +150,7 @@ fn merged(export: &ReaderExport) -> Answer<Vec<Field>> {
 fn merged_into_nothing(export: &ReaderExport) -> Answer<Vec<Field>> {
     let mut answer = native_answer(Vec::new(), Vec::new());
 
-    assert!(export.merge(REGISTRY, RootLayout::Owner, &mut answer));
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer));
 
     answer
 }
@@ -277,7 +282,7 @@ fn a_native_complete_answer_is_kept_when_the_export_tree_is_incomplete() {
 
     answer.gaps.retain(|gap| gap.kind == GapKind::OutsideMethod);
     answer.completeness = Completeness::Complete;
-    export(readers).merge(REGISTRY, RootLayout::Owner, &mut answer);
+    export(readers).merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
 
     assert!(
         answer
@@ -380,6 +385,39 @@ fn a_persistent_read_into_the_owner_merges_a_repeat() {
 }
 
 #[test]
+fn a_persistent_read_whose_class_may_reset_keeps_its_repeat_open() {
+    let mut answer = native_tree();
+
+    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &BTreeSet::new(), &mut answer);
+
+    assert_eq!(
+        field(&answer.value, "settings").shape.repeat,
+        RepeatBehavior::Unknown
+    );
+    assert!(
+        answer
+            .gaps
+            .iter()
+            .any(|gap| gap.kind == GapKind::UnresolvedStorage
+                && gap.subject == Some(GapSubject::field("settings")))
+    );
+}
+
+#[test]
+fn a_block_reader_that_lists_no_key_proves_no_keys() {
+    let mut readers = complete_tree();
+
+    readers["0x2"] = reader("CPersistent::ReadMember", Vec::new());
+
+    let export = export(readers);
+    let failures = export.tree_failures(export.roots(REGISTRY).unwrap());
+
+    assert!(failures.iter().any(|failure| failure.path == ["settings"]
+        && failure.conditions.contains(&"no-listed-key".to_owned())));
+    assert!(!export.proves_tree("0x2"));
+}
+
+#[test]
 fn a_row_that_tests_the_value_token_is_any_with_an_unknown_reader_and_a_gap() {
     let answer = merged_into_nothing(&export(json!({
         "0x1": reader("CThing::ReadMember", vec![
@@ -464,7 +502,7 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
         ],
     );
 
-    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &mut answer);
+    export(complete_tree()).merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
 
     let enabled = field(&answer.value, "enabled");
     let remaining: Vec<_> = answer
@@ -503,7 +541,7 @@ fn a_field_that_native_reads_under_conditions_keeps_its_open_members() {
         ]),
         "0x2": reader("CModification::ReadMember", vec![row("add", json!({}))]),
     }))
-    .merge(REGISTRY, RootLayout::Owner, &mut answer);
+    .merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
 
     let modification = field(&answer.value, "modification");
 
@@ -523,7 +561,7 @@ fn a_numeric_reader_that_the_export_classifies_keeps_a_conversion_gap() {
             row("windup_time", json!({"reader_kind": "FixedPoint"})),
         ]),
     }))
-    .merge(REGISTRY, RootLayout::Owner, &mut answer);
+    .merge(REGISTRY, RootLayout::Owner, &kept_objects(), &mut answer);
 
     assert_eq!(
         field(&answer.value, "windup_time").reader.kind,

@@ -282,6 +282,16 @@ pub(crate) struct VerifiedAnalysis<'a> {
 }
 
 impl VerifiedAnalysis<'_> {
+    /// The persistent reader of each of `classes` that its vtable names: its `Read`, member
+    /// reader and post-read hooks.
+    pub(crate) fn class_readers<'a>(
+        &self,
+        classes: impl IntoIterator<Item = &'a str>,
+    ) -> Result<BTreeMap<String, crate::engine::analysis::fields::ConcreteReader>, AnalysisError>
+    {
+        binary::receivers::class_readers(&self.image(), self.persistent, classes)
+    }
+
     /// The verified executable with the facts that the catalog derived from it.
     fn image(&self) -> binary::references::Image<'_> {
         binary::references::Image {

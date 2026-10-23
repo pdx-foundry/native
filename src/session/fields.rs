@@ -195,7 +195,7 @@ fn repeat(
 /// `CPersistentName::Read` clears its key and variables but keeps `literal`. A hook other than
 /// the base's empty one is not read, so it keeps the rule from applying. A validated assumption
 /// stands behind the rule: a member reader changes only the storage of the key it reads.
-fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
+pub(super) fn keeps_persistent_object(reader: &ConcreteReader) -> bool {
     const KEEPING_READS: [&str; 2] = [
         "CPersistent::Read(CReader&)",
         "CPersistentName::Read(CReader&)",
