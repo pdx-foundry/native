@@ -352,10 +352,18 @@ public class Export extends GhidraScript {
 					int labelled = labels == null ? 0 : labels.length;
 					boolean guarded = labelled == targets.length - 1;
 					boolean aligned = !labelWarning && (labelled == targets.length || guarded);
-					// A switch on another value than the token, such as a local enumeration, has
-					// labels that are no tokens: the walks take each of its destinations.
-					boolean onToken = switchesOnToken(table.getSwitchAddress());
+					// A switch on another value than the token plus a constant, such as a masked
+					// token, a lookup or a local enumeration, has labels that are no tokens: the
+					// walks take each of its destinations. A label of a switch on token + k is the
+					// token label - k.
+					long offset = switchOffset(table.getSwitchAddress());
+					boolean onToken = offset != UNKNOWN;
 					if (onToken) {
+						Map<Long, Address> tokenCases = new HashMap<>();
+						for (Map.Entry<Long, Address> label : cases.entrySet()) {
+							tokenCases.put(label.getKey() - offset, label.getValue());
+						}
+						cases = tokenCases;
 						switchCases.put(table.getSwitchAddress(), cases);
 						if (aligned && guarded) switchDefaults.put(table.getSwitchAddress(), targets[targets.length - 1]);
 						enumerated.addAll(cases.keySet());
@@ -398,52 +406,46 @@ public class Export extends GhidraScript {
 			return result;
 		}
 
-		/** Whether the indirect branch at `at` computes its destination from the walked token. */
-		private boolean switchesOnToken(Address at) {
+		/**
+		 * The offset k when the switch at `at` switches on the walked token plus k, or UNKNOWN. The
+		 * decompiler folds a jump table's normalization into the branch, so its input is the
+		 * switched value itself; only value-preserving steps may lie between it and the token.
+		 */
+		private long switchOffset(Address at) {
 			for (PcodeBlockBasic block : high.getBasicBlocks()) {
 				var ops = block.getIterator();
 				while (ops.hasNext()) {
 					PcodeOp op = ops.next();
 					if (op.getOpcode() == PcodeOp.BRANCHIND && op.getSeqnum().getTarget().equals(at)) {
-						return dependsOnToken(op.getInput(0), 0, new HashSet<>());
+						return preservedTokenOffset(op.getInput(0), 0);
 					}
 				}
 			}
-			return false;
+			return UNKNOWN;
 		}
 
-		/**
-		 * Whether v is computed from the token by the steps that index a jump table: a constant
-		 * offset, a constant scale, a width change, a load of the table entry, and the addition of
-		 * the table's constant base. Any other step, such as a mask, a shift right or a call, means
-		 * that the switch's labels are not token identities.
-		 */
-		private boolean dependsOnToken(Varnode v, int depth, Set<Varnode> seen) {
-			if (depth > 16 || v.isConstant() || !seen.add(v)) return false;
-			if (tokenOffset(v, 0) != UNKNOWN) return true;
+		/** v == token + k through copies, widenings and constant offsets only: returns k, or UNKNOWN. */
+		private long preservedTokenOffset(Varnode v, int depth) {
+			if (depth > 12 || v.getSize() < 4) return UNKNOWN;
+			if (keyReader ? tokenVars.contains(v) : wordOffset(v, 0, true) == 0) return 0;
 			PcodeOp def = v.getDef();
-			if (def == null) return false;
+			if (def == null) return UNKNOWN;
 			switch (def.getOpcode()) {
 				case PcodeOp.COPY, PcodeOp.CAST, PcodeOp.INT_ZEXT, PcodeOp.INT_SEXT -> {
-					return dependsOnToken(def.getInput(0), depth + 1, seen);
-				}
-				case PcodeOp.LOAD -> {
-					return dependsOnToken(def.getInput(1), depth + 1, seen);
+					return preservedTokenOffset(def.getInput(0), depth + 1);
 				}
 				case PcodeOp.SUBPIECE -> {
-					return def.getInput(1).getOffset() == 0 && dependsOnToken(def.getInput(0), depth + 1, seen);
+					return def.getInput(1).getOffset() == 0 ? preservedTokenOffset(def.getInput(0), depth + 1) : UNKNOWN;
 				}
-				case PcodeOp.INT_ADD, PcodeOp.INT_SUB, PcodeOp.INT_MULT, PcodeOp.INT_LEFT, PcodeOp.PTRADD, PcodeOp.PTRSUB -> {
-					Varnode variable = null;
-					for (int i = 0; i < def.getNumInputs(); i++) {
-						if (def.getInput(i).isConstant()) continue;
-						if (variable != null) return false;
-						variable = def.getInput(i);
-					}
-					return variable != null && dependsOnToken(variable, depth + 1, seen);
+				case PcodeOp.INT_ADD, PcodeOp.INT_SUB -> {
+					if (!def.getInput(1).isConstant()) return UNKNOWN;
+					long base = preservedTokenOffset(def.getInput(0), depth + 1);
+					if (base == UNKNOWN) return UNKNOWN;
+					long constant = signed(def.getInput(1));
+					return def.getOpcode() == PcodeOp.INT_ADD ? base + constant : base - constant;
 				}
 				default -> {
-					return false;
+					return UNKNOWN;
 				}
 			}
 		}
