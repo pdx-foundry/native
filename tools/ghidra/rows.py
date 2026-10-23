@@ -113,7 +113,10 @@ def classify_paths(events, default_events, constructors, yes_token):
             not any(text.startswith(('CALL ', 'CALLIND', 'STORE')) and text not in default_events for text in plain):
         return row('default-routed')
 
-    presence = presence_row(events)
+    # A one-byte store of the `yes` token is an inline Boolean (below), not a presence marker.
+    inline_boolean = any(f'val=#{yes_token:#x}' in text and 'size=1' in text
+                         for _, text in events if text.startswith('STORE '))
+    presence = None if inline_boolean else presence_row(events)
     if presence:
         return presence
 

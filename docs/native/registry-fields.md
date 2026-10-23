@@ -185,7 +185,9 @@ test](#current-sweep)), the token itself, or a number from `CToken::GetInt`.
 additions, each class read by hand: `prerequisites` reads a block through a serializer (`Block`;
 its members stay unresolved, because the serializer's member reader is `CPersistent::ReadMember`);
 `dismantle_cost` and `resources` gain `produces`, `upkeep`, `logistics` and `cost`, the keys of
-`CEconomicUnitTemplate::CSerializer::ReadMember`; `cycle_title` and `cycle_desc` read
+`CEconomicUnitTemplate::CSerializer::ReadMember`, each a `Block` reader whose `numeric` and
+`scoped_operand` are `Known(None)` (a reader that the merge makes takes the facts of its kind, as
+Native's numeric pass gives them); `cycle_title` and `cycle_desc` read
 `variable_string` as a `String` (`CPersistentName::ReadMember`); and three root keys that the walker
 does not list, `build_outside_gravity_well`, `construction_blocks_and_blocked_by` and `build_type`,
 are `Any` with an unresolved condition, because their paths test the value's token. A reader whose kind the export gives

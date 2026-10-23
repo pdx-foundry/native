@@ -242,6 +242,11 @@ class RowTests(unittest.TestCase):
         skipped = [(True, 'CALL CReader::SkipToken (CReader * this)')] + marker
         self.assertEqual(rows.classify(skipped, [], {}, 0x3ff8)['value'], 'Any')
 
+    def test_a_one_byte_store_of_the_yes_token_is_an_inline_boolean(self):
+        events = [(True, 'STORE this+0x40 size=1 val=#0x3ff8')]
+        result = rows.classify(events, [], {}, 0x3ff8)
+        self.assertEqual((result['kind'], result['reader_kind']), ('scalar', 'Boolean'))
+
     def test_a_store_that_reads_the_value_or_a_path_that_reports_is_no_presence_row(self):
         tested = [(True, 'STORE this+0x5fa size=1 val=eq(reader+0x278,#0x3ff8)')]
         self.assertEqual(rows.classify(tested, [], {}, 0x3ff8)['kind'], 'store')
