@@ -75,7 +75,7 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
         let entry_contexts = entry_contexts(&run, native.block_facts()?);
         let layout = super::questions::root_layout(&run.result);
         Ok(Run {
-            answer: native.with_reader_export(registry, layout, run.answer),
+            answer: native.with_reader_export(registry, layout, run.answer)?,
             result: std::sync::Arc::unwrap_or_clone(run.result),
             entry_contexts,
         })

@@ -37,6 +37,8 @@ const PATHS_OPEN: &str = "The reader export did not classify every path of the k
 const REPEAT_OPEN: &str = "The reader export does not establish repeat behavior.";
 const UNPROVED_MEMBERS: &str =
     "The reader export lists these nested fields, but its readers do not prove the block's keys.";
+const ENTRY_CONTEXTS_OPEN: &str =
+    "The reader export establishes this block, but not the contexts that evaluate it.";
 const IDENTITY_OPEN: &str =
     "The reader export establishes the value form, not the shared reader's identity.";
 const NUMERIC_OPEN: &str = "The reader export does not establish numeric conversion.";
@@ -200,6 +202,16 @@ enum RowKind {
     Unclassified,
 }
 
+impl RowKind {
+    /// Whether a row of this kind reads its value as a block with its nested reader.
+    fn reads_block(self) -> bool {
+        matches!(
+            self,
+            Self::Persistent | Self::Serializer | Self::Object | Self::ObjectList | Self::Entry
+        )
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct Branch {
     nested: Option<Nested>,
@@ -324,6 +336,28 @@ impl ReaderExport {
     /// the rows of its base readers for keys that it does not read itself. A key that the base
     /// reads is a field: delegation is not rejection.
     fn table(&self, entry: &str) -> Vec<(&ExportReader, &Row)> {
+        self.own_table(entry)
+            .into_iter()
+            .map(|(reader, row)| self.delegated_row(row).unwrap_or((reader, row)))
+            .collect()
+    }
+
+    /// The row that reads `row`'s key in the reader that `row` delegates the key to, at the same
+    /// level: the delegate reads the key's value itself, not a block of its own.
+    fn delegated_row(&self, row: &Row) -> Option<(&ExportReader, &Row)> {
+        if row.kind != RowKind::Delegates {
+            return None;
+        }
+
+        let entry = row.nested.as_ref()?.reader.as_deref()?;
+
+        self.own_table(entry)
+            .into_iter()
+            .find(|(_, delegated)| delegated.key == row.key && delegated.kind != RowKind::Delegates)
+    }
+
+    /// [`Self::table`] before delegated rows are resolved.
+    fn own_table(&self, entry: &str) -> Vec<(&ExportReader, &Row)> {
         let mut rows = Vec::new();
         let mut keys = BTreeSet::new();
         let mut seen = BTreeSet::new();
@@ -569,9 +603,14 @@ impl ExportReader {
                     .filter_map(|branch| branch.nested.as_ref()),
             );
             let key = row.key.clone().unwrap_or_default();
+            // A delegate reads the key at this level; any other nested reader reads its block.
+            let (nested_path, reads_block) = match row.kind {
+                RowKind::Delegates => (path.to_vec(), false),
+                _ => ([path, std::slice::from_ref(&key)].concat(), true),
+            };
 
             for entry in nested.filter_map(|nested| nested.reader.as_deref()) {
-                readers.push((entry, [path, std::slice::from_ref(&key)].concat(), true));
+                readers.push((entry, nested_path.clone(), reads_block));
             }
         }
 
@@ -622,8 +661,9 @@ struct Answered {
     domain: bool,
     /// The read scope.
     read_scope: bool,
-    /// The field's storage changed, so its storage gap is computed again.
-    storage: bool,
+    /// The walker's storage gap of the field, when the export filled a storage property: it is
+    /// computed again. Another storage gap at the path stays.
+    replaced_storage: Option<Gap>,
 }
 
 /// One merge of the export into an answer.
@@ -711,11 +751,30 @@ impl<'a> Merge<'a> {
     /// `CPersistent::ReadMember` reads its values through its own `Read`, which the export does
     /// not walk.
     fn nested_entry(&self, row: &'a Row) -> Option<&'a str> {
+        if !row.kind.reads_block() {
+            return None;
+        }
+
         let entry = row.nested.as_ref()?.reader.as_deref()?;
         let reader = self.export.readers.get(entry)?;
 
         (!self.ancestors.contains(&entry) && reader.reads_keys() && reader.lists_keys())
             .then_some(entry)
+    }
+
+    /// The gap of a root trigger, effect or weight block whose family the export establishes: the
+    /// walker's entry-context analysis ran before the merge, so its contexts are not established.
+    fn entry_context_gap(&self, field: &Field, path: &[String]) -> Option<Gap> {
+        let root = self.ancestors.len() == 1;
+
+        (root
+            && super::field_entries::takes_entry_contexts(field.reader.family)
+            && field.entry_contexts.is_empty())
+        .then(|| Gap {
+            kind: GapKind::UnresolvedPath,
+            subject: Some(field_subject(path)),
+            detail: ENTRY_CONTEXTS_OPEN.into(),
+        })
     }
 
     /// The gap of a field whose nested fields come from a reader tree that does not prove its
@@ -788,6 +847,14 @@ impl<'a> Merge<'a> {
         }
 
         let kind_before = field.reader.kind;
+        let family_before = field.reader.family;
+        let name = path.join(".");
+        let storage_before = storage_gap(
+            field,
+            &name,
+            super::fields::unknown_repeat_reason(&field.reader),
+        );
+        let mut storage_changed = false;
         let proved = self.proves(row);
         let mut answered = Answered {
             proved,
@@ -795,7 +862,7 @@ impl<'a> Merge<'a> {
         };
 
         if let Ok((reader, shape)) = self.reading(row) {
-            answered.storage |= fill_read(field, &reader, shape);
+            storage_changed |= fill_read(field, &reader, shape);
         }
         if field.domain == FieldDomain::Unknown
             && field.reader.kind == ReaderKind::Keyword
@@ -825,7 +892,7 @@ impl<'a> Merge<'a> {
                 field.members = self.members(row, path);
 
                 if field.members != FieldMembers::Unresolved {
-                    answered.storage = true;
+                    storage_changed = true;
                     self.gaps
                         .extend(self.unproved_members_gap(field, row, path));
                 }
@@ -835,11 +902,11 @@ impl<'a> Merge<'a> {
 
         let kind_filled = kind_before == ReaderKind::Unknown && field.reader.kind != kind_before;
 
-        if answered.storage {
+        if storage_changed {
             let repeat_reason = super::fields::unknown_repeat_reason(&field.reader);
 
-            self.gaps
-                .extend(storage_gap(field, &path.join("."), repeat_reason));
+            self.gaps.extend(storage_gap(field, &name, repeat_reason));
+            answered.replaced_storage = storage_before;
         }
         if kind_filled && let Some((kind, detail)) = semantics_gap(field) {
             self.gaps.push(Gap {
@@ -847,6 +914,9 @@ impl<'a> Merge<'a> {
                 subject: Some(field_subject(path)),
                 detail: detail.into(),
             });
+        }
+        if family_before == BlockFamily::Unknown {
+            self.gaps.extend(self.entry_context_gap(field, path));
         }
 
         self.answered.insert(path.to_vec(), answered);
@@ -888,11 +958,7 @@ impl<'a> Merge<'a> {
             }
             _ => FieldDomain::Unknown,
         };
-        let accepted_categories = if is_scalar(reader.kind) {
-            AcceptedCategories::NotApplicable
-        } else {
-            AcceptedCategories::Unresolved
-        };
+        let accepted_categories = super::fields::accepted_categories(reader.family);
         let field = Field {
             name: path.last().cloned().unwrap_or_default(),
             reader,
@@ -918,6 +984,15 @@ impl<'a> Merge<'a> {
             .extend(storage_gap(&field, &path.join("."), REPEAT_OPEN));
         self.gaps
             .extend(self.unproved_members_gap(&field, row, path));
+        self.gaps.extend(self.entry_context_gap(&field, path));
+
+        if field.accepted_categories == AcceptedCategories::Unresolved {
+            self.gaps.push(Gap {
+                kind: GapKind::UnresolvedPath,
+                subject: Some(field_subject(path)),
+                detail: super::container_masks::CONTAINER_OPEN.into(),
+            });
+        }
 
         field
     }
@@ -955,7 +1030,7 @@ impl<'a> Merge<'a> {
                     || answered.domain
                         && (detail == KEYWORD_DOMAIN_OPEN || OPEN_DOMAIN_REASONS.contains(&detail))
             }
-            GapKind::UnresolvedStorage => answered.storage,
+            GapKind::UnresolvedStorage => answered.replaced_storage.as_ref() == Some(gap),
             _ => false,
         }
     }

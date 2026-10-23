@@ -879,7 +879,7 @@ fn reads_no_container(embedded: &EmbeddedField) -> bool {
 
 /// A field's container categories before the container pass: a modifier reader reads a
 /// container, an unknown reader may, and an established reader of another family does not.
-fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
+pub(super) fn accepted_categories(family: BlockFamily) -> AcceptedCategories {
     match family {
         BlockFamily::Modifier | BlockFamily::TriggeredModifier | BlockFamily::Unknown => {
             AcceptedCategories::Unresolved

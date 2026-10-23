@@ -304,21 +304,21 @@ impl Native {
         let run = self.registry_field_run(registry)?;
         let layout = root_layout(&run.result);
 
-        Ok(self.with_reader_export(registry, layout, run.answer))
+        self.with_reader_export(registry, layout, run.answer)
     }
 
     /// `answer`, Native's registry field answer, filled from the build's reader export. A build
-    /// without one keeps the answer.
+    /// without one keeps the answer. A changed executable is `Error::BuildChanged`.
     pub(crate) fn with_reader_export(
         &self,
         registry: &str,
         layout: RootLayout,
         mut answer: Answer<Vec<Field>>,
-    ) -> Answer<Vec<Field>> {
+    ) -> Result<Answer<Vec<Field>>, Error> {
         match self.bound().reader_export() {
             None => {}
             Some(Ok(export)) => {
-                let merging_members = self.merging_members(export);
+                let merging_members = self.merging_members(export)?;
 
                 if export.merge(registry, layout, &merging_members, &mut answer) {
                     self.set_requirements(registry, layout, &mut answer.value);
@@ -334,18 +334,22 @@ impl Native {
             }
         }
 
-        answer
+        Ok(answer)
     }
 
     /// The member readers of `export`'s persistent rows whose objects all keep themselves on a
     /// persistent read ([`super::reader_export::merging_members`]); none when the executable's
-    /// vtables cannot be read.
-    fn merging_members(&self, export: &ReaderExport) -> BTreeSet<String> {
+    /// vtables cannot be read. A changed executable is `Error::BuildChanged`.
+    fn merging_members(&self, export: &ReaderExport) -> Result<BTreeSet<String>, Error> {
         match self.bound().analysis.member_holders() {
-            Ok(holders) => {
-                super::reader_export::merging_members(export.persistent_members(), holders)
-            }
-            Err(_) => BTreeSet::new(),
+            Ok(holders) => Ok(super::reader_export::merging_members(
+                export.persistent_members(),
+                holders,
+            )),
+            Err(failure) => match error(Operation::RegistryFields, failure) {
+                Error::BuildChanged => Err(Error::BuildChanged),
+                _ => Ok(BTreeSet::new()),
+            },
         }
     }
 

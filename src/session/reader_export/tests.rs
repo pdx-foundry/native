@@ -496,7 +496,11 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
             gap(GapKind::UnresolvedPath, "read-scope: reader-path"),
             gap(
                 GapKind::UnresolvedStorage,
-                "Repeat behavior waits for one shared reader.",
+                "Repeat behavior waits for one shared reader. Nested fields remain unresolved.",
+            ),
+            gap(
+                GapKind::UnresolvedStorage,
+                "Scoped destination vtable is not established.",
             ),
             gap(GapKind::NumericConversion, "kept"),
         ],
@@ -514,7 +518,14 @@ fn a_native_gap_that_the_export_answers_is_removed_and_the_reader_identity_stays
 
     assert_eq!(enabled.reader.kind, ReaderKind::Boolean);
     assert_eq!(enabled.read_scope, GrammarProperty::Known(Vec::new()));
-    assert_eq!(remaining, [READER_ALTERNATIVES_OPEN, "kept"]);
+    assert_eq!(
+        remaining,
+        [
+            READER_ALTERNATIVES_OPEN,
+            "Scoped destination vtable is not established.",
+            "kept"
+        ]
+    );
 }
 
 #[test]
@@ -606,4 +617,58 @@ fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
     );
     assert!(merging_members(members(), &[base(), overridden_hook]).is_empty());
     assert!(merging_members(members(), &[base(), unread]).is_empty());
+}
+
+#[test]
+fn a_delegated_key_is_read_at_its_own_level() {
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("description", json!({"kind": "delegates", "value": null, "reader_kind": null,
+                                      "nested": nested("0x2", "CDescription::ReadMember")})),
+        ]),
+        "0x2": reader("CDescription::ReadMember", vec![
+            row("description", json!({})),
+            row("description_parameters", json!({"token": 2})),
+        ]),
+    })));
+    let description = field(&answer.value, "description");
+
+    assert_eq!(names(&answer.value), ["description"]);
+    assert_eq!(description.reader.kind, ReaderKind::Boolean);
+    assert_eq!(description.members, FieldMembers::None);
+}
+
+#[test]
+fn an_added_block_states_its_open_container_and_entry_contexts() {
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("potential", json!({"kind": "trigger", "value": "Block", "reader_kind": "Block",
+                                    "family": "Trigger", "scope_mask": 0})),
+            row("list", json!({"token": 2, "kind": "list", "value": "Block",
+                               "reader_kind": "Block", "items": "String"})),
+            row("object", json!({"token": 3, "kind": "object", "value": "Block",
+                                 "reader_kind": "Block"})),
+        ]),
+    })));
+    let details_at = |name: &str| -> Vec<&str> {
+        answer
+            .gaps
+            .iter()
+            .filter(|gap| gap.subject == Some(GapSubject::field(name)))
+            .map(|gap| gap.detail.as_str())
+            .collect()
+    };
+
+    for name in ["potential", "list"] {
+        assert_eq!(
+            field(&answer.value, name).accepted_categories,
+            AcceptedCategories::NotApplicable
+        );
+    }
+    assert!(details_at("potential").contains(&ENTRY_CONTEXTS_OPEN));
+    assert_eq!(
+        field(&answer.value, "object").accepted_categories,
+        AcceptedCategories::Unresolved
+    );
+    assert!(details_at("object").contains(&super::super::container_masks::CONTAINER_OPEN));
 }
