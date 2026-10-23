@@ -137,53 +137,105 @@ the inline `common/special_projects` cases and the nested `fleet_power` numeric 
 
 ### Tools
 
-- `tools/ghidra/Export.java` and `tools/ghidra/export.py` read a Ghidra project; `normalize.py`
-  turns the raw export into `readers.json`; `conformance/` holds the expectations and the check;
-  `README.md` holds the setup (Ghidra 12.1.4, OpenJDK 25, 8 GB heap, about 18 minutes of analysis
-  for each build, a 1.4 GB project) and the procedure for a build.
+- `tools/ghidra/Export.java` and `tools/ghidra/export.py` read a Ghidra project; `rows.py`
+  classifies the walked events; `normalize.py` turns the raw export into `readers.json` and
+  `provenance.json`; `schema.py` checks a build directory; `conformance/` holds the expectations
+  and the check; [`README.md`](../../tools/ghidra/README.md) holds the setup (Ghidra 12.1.4,
+  OpenJDK 25, 8 GB heap, about 18 minutes of analysis for each build, a 1.4 GB project) and the
+  procedure for a build.
+- `examples/ghidra-inputs` writes `tables.json` and each registry's root readers from Native's own
+  analysis (`internals::build_tables`, `internals::registry_field_stops::root_readers`).
 - The Ghidra project, the binary slice and the raw export are a local cache in the private Ghidra
   workspace. They are never committed. Only the normalized file is.
-- Token identities come from Native's own lexer-table reader, through `tables.json`.
+- Token identities come from Native's own lexer-table reader (`GetTokenArray()`), through
+  `tables.json`.
 - Ghidra is never a dependency of a library call. `cargo test` in CI loads the committed directory.
 
 ### Export schema
 
-Each reader has a dispatch summary, a completeness flag with the failed conditions, and rows:
+`readers.json` has the registries, each with the readers of its root keys, and the readers. Each
+reader has a dispatch summary, a completeness flag with the failed conditions, and rows. A
+registry or a nested reader names a reader by its entry address; a reader that the export did not
+walk has `null` and its name. This is a reader of M452, shortened:
 
 ```json
 {
-  "schema": 1,
+  "schema": 1, "tool": "ghidra-export", "build": "c621723d…",
+  "registries": {
+    "common/situations": {"roots": [{"key": "", "class": "CSituationType", "reader": "0x100b7e9cc",
+                                     "error": null}], "error": null}
+  },
   "readers": {
-    "0x100dec6a0": {
-      "name": "CAIAttitude::ReadMember", "class": "CAIAttitude",
-      "walked": true, "error": null,
+    "0x100b7e9cc": {
+      "name": "CSituationType::ReadMember", "class": "CSituationType", "walked": true, "error": null,
       "dispatch": {"form": "token-switch", "domain_enumerated": true,
-                   "default": {"kind": "base-reader", "reader": "0x1000a0000", "followed": true},
-                   "key_text_read": false, "loops": 0},
-      "complete": true, "incomplete_because": [],
+                   "default": {"kind": "persistent", "reader": null, "followed": false},
+                   "delegates": [], "key_text_read": false, "loops": 0, "truncated": false},
+      "complete": true, "incomplete_because": [], "default_routed": [11637, 11638],
       "rows": [
-        {"token": 225, "key": "type", "kind": "store", "value": null, "reader_kind": null,
-         "repeat": "Unknown", "conditional": false,
-         "branches": null, "nested": null, "scope_mask": null, "enum": null, "lookup": null,
-         "paths": {"leaves": 1, "unknown": 0, "truncated": false},
-         "store": {"offset": 80, "size": 4}}
-      ],
-      "default_routed": [11561, 11562]
+        {"token": 794, "key": "category", "kind": "enum", "value": "Scalar", "reader_kind": "Keyword",
+         "repeat": "Replace", "conditional": false, "family": null, "items": null, "branches": null,
+         "nested": null, "scope_mask": null,
+         "enum": {"converter": "TokenToEnum<EPolarityType>", "tokens": [11257, 11258, 12642],
+                  "keys": ["positive", "negative", "neutral"], "complete": true, "unknown": "silent"},
+         "lookup": null, "paths": {"leaves": 1, "unknown": 0, "truncated": false},
+         "store": {"offset": 2856, "size": 4}},
+        {"token": 15660, "key": "stages", "kind": "object-list", "value": "Block", "…": "…",
+         "nested": {"reader": "0x100b7c374", "name": "CSituationStage::ReadMember", "walked": true}}
+      ]
     }
   }
 }
 ```
 
+- `dispatch.form` is `token-switch`, `compare-chain` or `entry` (the recognized forms), `key-text`
+  (a reader that compares or looks up the key's text), or `value-token` (a reader that tests the
+  value's token, such as `ReadEntry`).
+- `dispatch.default.kind` is `persistent` (`CPersistent::ReadMember`, which reports the key as
+  unexpected), `log-and-skip`, `base-reader` (one other member reader, in `reader`), `entry` (the
+  path of an entry reader), `return` (no call), or `helper` (anything else).
+  `dispatch.delegates` are the other member readers that the paths call (`{reader, name, walked}`);
+  the export follows the ones that token paths call, and not the extra readers of an unresolved
+  default. `dispatch.truncated` says that a walk of the reader reached its path budget.
+- A `return` default is not a rejection: `ReadMember` returns nothing that tells its caller that
+  the key was rejected, so such a default fails condition 2.
+- Only a switch on the token plus a constant adds its labels, less that constant, to the enumerated
+  tokens: the decompiler folds the table's normalization into the branch, and between its input
+  and the token the walk accepts only copies, widenings and constant offsets. A switch on anything
+  else, such as a masked or narrowed token, a lookup, or a local enumeration, has no token labels:
+  the walks take every destination.
+- A class without a member reader by name is resolved only through slot 5 of the vtable that its
+  constructors store at the object's start, never a member's or a secondary base's.
+- `nested`, in a row, a branch or `dispatch.delegates`, is `{reader, name, walked}`: the reader's
+  entry address when the export walked it, else `null` with the name or class that the row named.
+  The export follows nested readers for at most 12 rounds from the roots; a deeper reader is not
+  walked.
+- `registries` gives each registry's root readers, `{key, class, reader, error}`, from
+  `internals::registry_field_stops::root_readers`; `build` is the universal SHA-256.
+- An entry reader has one row with `token` and `key` `null`: the entry that it reads for any key.
 - `kind: store` says only that the token's path stores something. It never shows that a value is
   accepted.
-- `branches` keeps each outcome of a row whose path tests the value's token: reader kind, value
-  shape, repeat and nested reader.
-- `scope_mask` is the literal mask given to `ReadTrigger`, `ReadEffect` and the weight readers.
+- `family` is `Trigger`, `Effect`, or `Weight` (a script value); `items` is the item kind of a
+  list.
+- `branches` keeps each outcome of a row whose path tests the value's token, for a block value
+  token and for any other: kind, value shape, reader kind, repeat and nested reader. The proofs that
+  turn them into paired answers are step 3b.
+- `scope_mask` is the literal `EScopeType` argument of the row's reading call, such as
+  `ReadTrigger`, `ReadEffect` or a weight reader; `null` when the argument is not a literal.
 - `enum` is the `TokenToEnum<E>` table of a keyword row: the accepted tokens, their text, and
   whether an unknown name falls back silently or logs.
 - `lookup` is the lookup function that a string member reaches at a use site (export phase 2).
 - `store` is the owner offset and size, for the fixture section and the census traces.
 - The export never writes decompiler text.
+
+`tables.json` holds the token table, the scope types with their bits and public identities, the
+reader offsets of the key text and the value token, and two manual exceptions written by hand: the
+D5(a) readers, and the lexer kind of a value token that opens a block (`3`, from
+[modifier blocks](../native/modifier-blocks.md#fixed-key-readers-sdk-675)), which the branch walks
+need and no table that Native reads holds.
+`provenance.json` holds the build's identity (universal and slice SHA-256, version label,
+architecture), the schema revisions, the Ghidra version, the SHA-256 of each export script, the
+date, and the tool that wrote each file.
 
 ### Completeness
 
@@ -203,7 +255,14 @@ when all of these hold:
 5. No path reads the key text, except in entry mode.
 6. Every nested reader that a row names was resolved (by name or by vtable slot 5) and walked.
 
-`incomplete_because` lists the conditions that fail.
+`incomplete_because` lists the conditions that fail: `dispatch-form`, `domain-not-enumerated` (1);
+`default-unresolved`, `default-base-unfollowed`, `default-base-incomplete` (2); `budget`,
+`loop-cut` (3); `delegate-unfollowed`, `delegate-incomplete` (4); `key-text-read` (5);
+`nested-unresolved` (6); and `not-walked` for a reader that the export could not walk. A row that
+reads its value into an object (`persistent`, `serializer`, `object`, `object-list`, `entry`)
+without a resolved reader fails condition 6. A default path's value token is any token that the
+reader does not enumerate: the walk decides an equality with an enumerated token, follows the
+switch's default destination and both ways of any other test.
 
 ### The whole-block contract (D10)
 
@@ -237,6 +296,29 @@ default calls a helper, the `CTriggeredEventDescription<T>::ReadEntry` family, a
 that Native answers completely now (complete). A new export must match each expectation before it
 is committed. This tests how the exporter makes the flags; the loader's negative control (a cut
 reader gives `Partial`) tests only how they are used.
+
+On M452 the unnamed cases are: the unfollowed delegate, `CSwappable<SPopJobTypeSwap>::CSerializer`,
+whose default path calls `CSwappableBase::ReadMember` beside its serializer's reader (no token path
+of M452 calls a reader that the export does not follow); the default that calls a helper,
+`CAgreementPreset::ReadMember` (`CAgreementTermData::SetPresetData`); and the ten complete readers,
+the root readers of ten of the 19 registries that Native answers `Complete` (`asteroid_belts`,
+`colony_automation_categories`, `deposit_categories`, `ethic_categories`,
+`game_concept_categories`, `leader_tiers`, `missions/mission_categories`, `policy_categories`,
+`resolution_categories`, `timeline_events`). For all 19 the export lists the same keys as Native.
+
+### The M452 export
+
+The export of 2026-10-23 walks 275 readers in about 100 seconds; 166 are complete. Of the 187
+registries under `common/` and `events`, 181 have root readers that Native names; for 3 of them
+(`script_values`, `scripted_effects`, `scripted_triggers`) the owner has no named `ReadMember` and
+no member reader in slot 5 of the vtable at its object's start, so the export finds none. **52
+registries have a complete reader tree** under the whole-block contract: every reader from the
+roots down is complete, rejects the keys that it does not enumerate, and is not an entry reader.
+For each of the 52, every root field
+that Native's sweep lists is a key of the tree. The conditions that fail most often, by reader:
+`default-unresolved` 49, `loop-cut` 45, `nested-unresolved` 34, `budget` 17,
+`default-base-incomplete` 14. If too few registries become `Complete` for the negative answers that
+Atlas needs, the next export work is these conditions by frequency, not a weaker contract.
 
 ### The table evaluator (D9)
 

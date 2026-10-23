@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 pub(crate) use loaded_modifiers::ModifierJoin;
 
+pub mod build_tables;
 mod callbacks;
 pub mod command_grammar_stops;
 mod container_masks;

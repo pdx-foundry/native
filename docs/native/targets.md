@@ -20,6 +20,11 @@ and which releases Native keeps. SDK-557 is the update rehearsal on the next bui
 replaced the M451-hotfix record, pins and expected output in place (in Git at `04e80d8`). The
 ignored exact-build tests and the `tests/expected/*m452` directories check M452.
 
+Each catalogued build has a facts directory, `builds/<first 8 hex digits of the slice SHA-256>/`
+(`builds/573e0f25/` for M452), made by the [Ghidra export](../../tools/ghidra/README.md). A test
+fails when a catalogued build has none, or when its `provenance.json` names another build. A new
+build's port includes its export.
+
 A port is whole. Every exact-build recipe carries a `DeclarationRecipe`, and every `Binding` holds a
 `BoundAnalysis`. A new build cannot be ported in part, for example with its observation parts
 only. A build that lacks either has no record in the catalogue.

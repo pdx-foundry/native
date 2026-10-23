@@ -21,3 +21,6 @@ jobs:
       - run: python -m unittest discover -s tools/observation -p 'test_*.py'
       - run: python -m unittest discover -s tools/population -p 'test_*.py'
       - run: python -m unittest discover -s tools/measure -p 'test_*.py'
+      - run: python -m unittest discover -s tools/ghidra -p 'test_*.py'
+      - run: python tools/ghidra/schema.py builds/573e0f25
+      - run: python tools/ghidra/conformance/check.py tools/ghidra/conformance/m452.json builds/573e0f25/readers.json

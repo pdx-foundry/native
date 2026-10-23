@@ -18,8 +18,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Native;
 use super::field_entries;
-use super::questions::RegistryFieldRun;
+use super::questions::{RegistryFieldRun, error};
 use crate::binding::BlockFacts;
+use crate::engine::analysis::fields::FieldInput;
 use crate::{Answer, Error, Field, Gap, Operation};
 
 pub use crate::engine::analysis::callbacks::blocks::{Block, EntryRun};
@@ -77,6 +78,71 @@ pub fn run(native: &Native, registry: &str) -> Result<Run, Error> {
             entry_contexts,
         })
     })
+}
+
+/// One reader of a registry's root keys. The Ghidra export walks the registry from these readers.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RootReader {
+    /// The root key that the loader reserves for `class`; empty for the registry's owner.
+    pub key: String,
+    /// The class of the items that the reader reads.
+    pub class: String,
+    /// The reader's demangled signature.
+    pub reader: String,
+    /// The reader's entry address, when the symbol table names the reader.
+    pub address: Option<u64>,
+}
+
+/// The readers of `registry`'s root keys: the root reader of the registry's owner, then the member
+/// reader of each class that the loader reserves a root key for. The owner's root reader is its
+/// member reader, its serializer's, or its base class's, as the registry field method selects. A
+/// registry with no one owner is an error, as for `Native::registry_fields`.
+pub fn root_readers(native: &Native, registry: &str) -> Result<Vec<RootReader>, Error> {
+    let operation = Operation::RegistryFields;
+    native.method_result(operation, || {
+        let name = registry.trim_end_matches('/');
+        let analysis = &native.bound().analysis;
+        let verified = analysis.verified().map_err(|e| error(operation, e))?;
+        let Some(Ok(owner)) = verified.registry_owner(name) else {
+            return Err(native.unanswered_registry(operation, registry));
+        };
+        let keyed = verified
+            .database_schedule()
+            .map(|schedule| schedule.keyed_classes(name))
+            .unwrap_or_default();
+        let classes = std::iter::once(("", owner)).chain(keyed);
+
+        classes
+            .map(|(key, class)| {
+                let input = analysis
+                    .registry_field_input(&verified, name, class)
+                    .map_err(|e| error(operation, e))?;
+
+                Ok(root_reader(key, &input))
+            })
+            .collect()
+    })
+}
+
+/// The reader that the registry field method starts its walk of `input`'s owner from.
+fn root_reader(key: &str, input: &FieldInput) -> RootReader {
+    let reader = match (&input.serializer, &input.base_root) {
+        (Some(serializer), _) => serializer.reader.clone(),
+        (None, Some(base)) => base.reader.clone(),
+        (None, None) => format!("{}::ReadMember(CReader&, int)", input.owner),
+    };
+    let address = input
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == reader)
+        .map(|symbol| symbol.address);
+
+    RootReader {
+        key: key.to_owned(),
+        class: input.owner.clone(),
+        reader,
+        address,
+    }
 }
 
 /// The block method's findings for the owner of `run`'s registry.
