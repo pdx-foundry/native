@@ -619,18 +619,44 @@ fn a_member_reader_merges_only_when_every_object_with_it_keeps_itself() {
     assert!(merging_members(members(), &[base(), unread]).is_empty());
 }
 
-#[test]
-fn a_delegated_key_is_read_at_its_own_level() {
-    let answer = merged_into_nothing(&export(json!({
-        "0x1": reader("CThing::ReadMember", vec![
-            row("description", json!({"kind": "delegates", "value": null, "reader_kind": null,
-                                      "nested": nested("0x2", "CDescription::ReadMember")})),
-        ]),
+fn delegating(facts: Value) -> Answer<Vec<Field>> {
+    let mut delegation = json!({"kind": "delegates", "value": null, "reader_kind": null,
+                                "nested": nested("0x2", "CDescription::ReadMember")});
+
+    for (name, value) in facts.as_object().unwrap() {
+        delegation[name] = value.clone();
+    }
+
+    merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![row("description", delegation)]),
         "0x2": reader("CDescription::ReadMember", vec![
             row("description", json!({})),
             row("description_parameters", json!({"token": 2})),
         ]),
-    })));
+    })))
+}
+
+#[test]
+fn an_uncertain_delegation_keeps_the_key_unresolved() {
+    for facts in [
+        json!({"conditional": true}),
+        json!({"paths": {"leaves": 2, "unknown": 1, "truncated": false}}),
+    ] {
+        let answer = delegating(facts);
+        let description = field(&answer.value, "description");
+
+        assert_eq!(
+            description.reader.kind,
+            ReaderKind::Unknown,
+            "{description:?}"
+        );
+        assert_eq!(description.read[0].outcome, FieldReadOutcome::Unresolved);
+    }
+}
+
+#[test]
+fn a_delegated_key_is_read_at_its_own_level() {
+    let answer = delegating(json!({}));
     let description = field(&answer.value, "description");
 
     assert_eq!(names(&answer.value), ["description"]);

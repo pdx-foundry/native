@@ -343,9 +343,13 @@ impl ReaderExport {
     }
 
     /// The row that reads `row`'s key in the reader that `row` delegates the key to, at the same
-    /// level: the delegate reads the key's value itself, not a block of its own.
+    /// level: the delegate reads the key's value itself, not a block of its own. Only a delegation
+    /// on every path, with every path classified, is resolved: the delegate's row keeps neither
+    /// the delegation's condition nor its open paths.
     fn delegated_row(&self, row: &Row) -> Option<(&ExportReader, &Row)> {
-        if row.kind != RowKind::Delegates {
+        let certain = !row.conditional && row.paths.unknown == 0 && !row.paths.truncated;
+
+        if row.kind != RowKind::Delegates || !certain {
             return None;
         }
 

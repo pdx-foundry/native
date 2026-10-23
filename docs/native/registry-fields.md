@@ -47,9 +47,10 @@ other callers of the walker's run, such as derived names, use the walker's answe
   reference's lookup, the read scope, an unresolved modifier container (an added block with no
   known family), and the entry contexts of a root trigger, effect or weight block (the walker's
   entry-context analysis runs before the merge). An added field is therefore never complete.
-- A `delegates` row passes its key to another member reader at the same level: the merge reads
-  the key through that reader's row for the key, and the contract walks the delegate at the key's
-  own path. Only a row that reads a block (`persistent`, `serializer`, `object`, `object-list`,
+- A `delegates` row passes its key to another member reader at the same level: when the
+  delegation is unconditional and every path of it is classified, the merge reads the key through
+  that reader's row for the key; otherwise the key's reader stays unresolved. The contract walks
+  the delegate at the key's own path. Only a row that reads a block (`persistent`, `serializer`, `object`, `object-list`,
   `entry`) expands nested fields.
 - A block reader (a root or nested reader) that lists no key proves no keys (`no-listed-key`),
   though the export marks it complete. Nested fields come only from a reader that dispatches on
