@@ -240,9 +240,10 @@ reader gives `Partial`) tests only how they are used.
 
 ### The table evaluator (D9)
 
-Five methods evaluate compiled switches for results, not destinations: category keys return
-masks, modifier categories build strings, defines recover arguments at reader calls, localization
-runs constructors, getters and link functions, and scopes evaluate the keyword switch. The live
+Six methods evaluate compiled code for results, not destinations: category keys return masks,
+modifier categories build strings, defines recover arguments at reader calls, localization runs
+constructors, getters and link functions, scopes evaluate the keyword switch, and modifier nodes
+run the node constructors for their category masks and the words they initialize. The live
 modifier join names observed masks through the same category function. Jump tables alone cannot
 give these results. These methods keep `decode.rs` and the core of `evaluate/` as the table
 evaluator in `pdx-facts`. The export has no `switches` section.
@@ -355,8 +356,8 @@ method modules that run their own walk on the interpreter (`modifier_blocks/`, `
 `declarations/`, `modifier_nodes/`, `loader_rules.rs`, `expansions/`, `scoped_numeric/`,
 `numeric/`) are listed by operation in [discovery](../native/discovery.md). The runtime callers are on the
 [lifecycle page](../native/lifecycle.md#static-analysis-in-a-session). The table below lists each
-entry point of the shared modules with every caller outside them, and two direct interpreter
-walks that no method page owns; test code is left out.
+entry point of the shared modules with every caller outside them, and two more interpreter walks
+that other code depends on; test code is left out.
 
 | Entry point | What it runs | Callers |
 | --- | --- | --- |
@@ -373,7 +374,7 @@ walks that no method page owns; test code is left out.
 | `grammar::analyze` (`grammar.rs:199`) | The command grammar walk of one factory | `registered_grammar` (`session/grammar.rs:67`) for `Native::command_grammar` (`session/grammar.rs:59`), `internals::command_grammar_stops` (`session/command_grammar_stops.rs:197`) and the duration receivers of `Game::check_script` (`session/script_durations.rs:53`) |
 | `grammar::targets`, `grammar::forms` types | Target getters and value forms | `internals::target_getters` (`session/target_getters.rs:2`), `session/{grammar,command_grammar_stops,scoped_numeric,read_scope,durations}.rs` |
 | `member_storage` (`binding/analysis/fixtures.rs:224`) | A direct interpreter walk of a member reader for one token, to the reader that stores it | The inline fixture key (`fixtures.rs:53`) and nested fixture fields (`fixtures.rs:194`); the fixture section replaces it in step 5a |
-| `modifier_nodes::analyze` (through `BoundAnalysis::modifier_node_result`, `binding/analysis.rs:1673`) | Interpreter runs of the modifier node constructors | `Native::modifier_nodes` (`session/modifier_nodes.rs:31`) and the registry field input (`binding/analysis.rs:982`, the initialized words). No migration step names it yet; until one does, it keeps `evaluate/` |
+| `modifier_nodes::analyze` (through `BoundAnalysis::modifier_node_result`, `binding/analysis.rs:1673`) | Interpreter runs of the modifier node constructors | `Native::modifier_nodes` (`session/modifier_nodes.rs:31`) and the registry field input (`binding/analysis.rs:982`, the initialized words). It is a [table evaluator](#the-table-evaluator-d9) method and keeps `evaluate/` under that retirement condition |
 | `evaluate::Machine` and `stop` | The interpreter and its stops | Every method module above; `families::item_key_offset` and `modifier_table::derive` for the runtime; `internals::inspect` (`binding/inspect.rs:25`) and `internals::trace_causes` |
 
 Two dependencies run the other way and the migration must keep them: the registry field input takes
