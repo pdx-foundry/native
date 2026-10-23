@@ -406,8 +406,12 @@
        "id": null,
        "kind": "Block",
        "family": "Unknown",
-       "numeric": "Unresolved",
-       "scoped_operand": "Unresolved"
+       "numeric": {
+        "Known": null
+       },
+       "scoped_operand": {
+        "Known": null
+       }
       },
       "shape": {
        "repeat": "Unknown",
@@ -422,8 +426,12 @@
    "id": null,
    "kind": "Block",
    "family": "Unknown",
-   "numeric": "Unresolved",
-   "scoped_operand": "Unresolved"
+   "numeric": {
+    "Known": null
+   },
+   "scoped_operand": {
+    "Known": null
+   }
   },
   "reference": "NotEstablished",
   "requirement": "Optional",
@@ -6853,8 +6861,12 @@
           "id": null,
           "kind": "String",
           "family": "NotApplicable",
-          "numeric": "Unresolved",
-          "scoped_operand": "Unresolved"
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -6869,8 +6881,12 @@
       "id": null,
       "kind": "String",
       "family": "NotApplicable",
-      "numeric": "Unresolved",
-      "scoped_operand": "Unresolved"
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "requirement": "Unknown",
@@ -7104,8 +7120,12 @@
           "id": null,
           "kind": "String",
           "family": "NotApplicable",
-          "numeric": "Unresolved",
-          "scoped_operand": "Unresolved"
+          "numeric": {
+           "Known": null
+          },
+          "scoped_operand": {
+           "Known": null
+          }
          },
          "shape": {
           "repeat": "Replace",
@@ -7120,8 +7140,12 @@
       "id": null,
       "kind": "String",
       "family": "NotApplicable",
-      "numeric": "Unresolved",
-      "scoped_operand": "Unresolved"
+      "numeric": {
+       "Known": null
+      },
+      "scoped_operand": {
+       "Known": null
+      }
      },
      "reference": "NotEstablished",
      "requirement": "Unknown",
