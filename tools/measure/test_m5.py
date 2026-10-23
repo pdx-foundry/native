@@ -1,6 +1,6 @@
 import unittest
 
-from m5 import compare, measure, mismatched_inputs
+from m5 import acceptance_refusal, compare, measure, mismatched_inputs
 
 
 def claim(identity, file, owner="engine_fact"):
@@ -42,6 +42,23 @@ class MeasureTests(unittest.TestCase):
         current = {"native": "two", "atlas_commit": "x", "recording_sha256": "r2"}
 
         self.assertEqual(mismatched_inputs(reference, current), ["recording_sha256"])
+
+    def test_runs_of_other_installed_content_do_not_compare(self):
+        reference = {"content_sha256": "c1"}
+        current = {"content_sha256": "c2"}
+
+        self.assertIn("content_sha256", mismatched_inputs(reference, current))
+
+
+class AcceptanceTests(unittest.TestCase):
+    def test_only_a_run_that_passed_against_the_current_accepted_run_is_accepted(self):
+        passed = {"gate": {"run": "main", "passed": True, "lost": 0}}
+
+        self.assertIsNone(acceptance_refusal(passed, "main"))
+        self.assertIsNotNone(acceptance_refusal(passed, "newer"))
+        self.assertIsNotNone(acceptance_refusal({}, "main"))
+        self.assertIsNotNone(acceptance_refusal(
+            {"gate": {"run": "main", "passed": False, "lost": 3}}, "main"))
 
 
 if __name__ == "__main__":

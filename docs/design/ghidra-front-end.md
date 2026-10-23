@@ -352,10 +352,11 @@ with pin checks. Atlas's census probe becomes a `tools/census/` program on `pdx-
 stops) and the member walk built on it: `fields/`, `readers.rs`, `receivers/` and `grammar/`. The
 method modules that run their own walk on the interpreter (`modifier_blocks/`, `weight_blocks/`,
 `durations/`, `names/`, `dynamic_names/`, `families/`, `callbacks/`, `references/`,
-`declarations/`, `loader_rules.rs`, `expansions/`, `scoped_numeric/`, `numeric/`) are listed by
-operation in [discovery](../native/discovery.md). The runtime callers are on the
+`declarations/`, `modifier_nodes/`, `loader_rules.rs`, `expansions/`, `scoped_numeric/`,
+`numeric/`) are listed by operation in [discovery](../native/discovery.md). The runtime callers are on the
 [lifecycle page](../native/lifecycle.md#static-analysis-in-a-session). The table below lists each
-entry point of the shared modules and every caller outside them; test code is left out.
+entry point of the shared modules with every caller outside them, and two direct interpreter
+walks that no method page owns; test code is left out.
 
 | Entry point | What it runs | Callers |
 | --- | --- | --- |
@@ -371,6 +372,8 @@ entry point of the shared modules and every caller outside them; test code is le
 | `receivers` (`install_vtables`, `accept_entered_path`, `join_byte_traces`, `ConstructorCalls`, `ConstructorImage`) | Constructor and vtable state for a walk | `fields/persistent.rs`, `fields/records.rs:545`, `declarations/receiver.rs:10`, `declarations.rs:17`, `weight_blocks.rs:992`, `grammar/numeric.rs:113` |
 | `grammar::analyze` (`grammar.rs:199`) | The command grammar walk of one factory | `registered_grammar` (`session/grammar.rs:67`) for `Native::command_grammar` (`session/grammar.rs:59`), `internals::command_grammar_stops` (`session/command_grammar_stops.rs:197`) and the duration receivers of `Game::check_script` (`session/script_durations.rs:53`) |
 | `grammar::targets`, `grammar::forms` types | Target getters and value forms | `internals::target_getters` (`session/target_getters.rs:2`), `session/{grammar,command_grammar_stops,scoped_numeric,read_scope,durations}.rs` |
+| `member_storage` (`binding/analysis/fixtures.rs:224`) | A direct interpreter walk of a member reader for one token, to the reader that stores it | The inline fixture key (`fixtures.rs:53`) and nested fixture fields (`fixtures.rs:194`); the fixture section replaces it in step 5a |
+| `modifier_nodes::analyze` (through `BoundAnalysis::modifier_node_result`, `binding/analysis.rs:1673`) | Interpreter runs of the modifier node constructors | `Native::modifier_nodes` (`session/modifier_nodes.rs:31`) and the registry field input (`binding/analysis.rs:982`, the initialized words). No migration step names it yet; until one does, it keeps `evaluate/` |
 | `evaluate::Machine` and `stop` | The interpreter and its stops | Every method module above; `families::item_key_offset` and `modifier_table::derive` for the runtime; `internals::inspect` (`binding/inspect.rs:25`) and `internals::trace_causes` |
 
 Two dependencies run the other way and the migration must keep them: the registry field input takes
@@ -409,14 +412,16 @@ read only), takes a static snapshot (`pdx-atlas snapshot --static`) with the ses
 live recording of the same build, runs `pdx-atlas ledger` with the accepted run's `covered/` as its
 baseline, and counts the Atlas-owned claims under `common/` and `events/` (owners `engine_fact` and
 `content_derived`; 24,610 at the pin). Each run makes two comparisons with the same recording,
-config revision and Atlas commit; the analyzer refuses a reference run with other inputs:
+config revision, Atlas commit, build and installed content; the analyzer refuses a reference run
+with other inputs:
 
 - **Gate:** against the accepted result, which is the last merged change. Lost must be 0.
 - **Cumulative:** against the frozen baseline at the Atlas pin, to report progress.
 
 ```sh
 tools/measure/m5-static.sh run <name> <native commit or checkout>  # measure, gate, cumulative
-tools/measure/m5-static.sh accept <name>    # after the change merges; its gate must have passed
+tools/measure/m5-static.sh accept <name>    # after the change merges; it passed its gate against
+                                            # the current accepted run
 tools/measure/m5-static.sh freeze <name>    # a new baseline, at a pin move only
 ```
 

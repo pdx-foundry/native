@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Measure one Atlas static run for Milestone 5 and compare it with earlier runs.
 
-Usage: python3 -I m5.py RUN [--gate ACCEPTED_RUN] [--baseline FROZEN_RUN]
+Usage: python3 -I m5.py measure RUN [--gate ACCEPTED_RUN] [--baseline FROZEN_RUN]
+       python3 -I m5.py accept RUN --accepted ACCEPTED_RUN
 
 RUN holds `inputs.json` and the ledger's `reports/`. The measure counts the Atlas-owned claims
 (owners `engine_fact` and `content_derived`) of the config files under `common/` and `events/`.
-The gate fails when a claim that the accepted run covers is not covered. Writes `measure.json`,
-`covered.txt` (the covered measure claims) and `gaps.md` into RUN; exits 1 when the gate fails.
+The gate fails when a claim that the accepted run covers is not covered. `measure` writes
+`measure.json`, `covered.txt` (the covered measure claims) and `gaps.md` into RUN and exits 1 when
+the gate fails. `accept` exits 1 unless RUN passed its gate against the current accepted run.
 """
 
 import argparse
@@ -19,7 +21,8 @@ ATLAS_OWNED = ("engine_fact", "content_derived")
 MEASURED_FILES = ("common/", "events/")
 
 # A comparison needs the same Atlas, config, recording and build; only Native may differ.
-SHARED_INPUTS = ("atlas_commit", "config_revision", "recording_sha256", "config_sha256", "target")
+SHARED_INPUTS = ("atlas_commit", "config_revision", "recording_sha256", "config_sha256", "target",
+                 "content_sha256")
 
 
 def measure(ledger, coverage):
@@ -91,6 +94,7 @@ def read_run(run):
 
     inputs["config_sha256"] = coverage["config_sha256"]
     inputs["target"] = coverage["target"]
+    inputs["content_sha256"] = coverage["content"]["sha256"]
 
     return inputs, ledger, coverage
 
@@ -110,13 +114,51 @@ def comparison(label, reference_run, inputs, covered):
             "lost": len(delta["lost"]), "lost_claims": delta["lost"]}
 
 
+def acceptance_refusal(measure_result, accepted_run_name):
+    """Why a run cannot become the accepted result, or None when it can."""
+    gate = measure_result.get("gate")
+
+    if gate is None:
+        return "it has no gate"
+
+    if gate["run"] != accepted_run_name:
+        return f"its gate compared it with {gate['run']}, and the accepted run is {accepted_run_name}"
+
+    if not gate["passed"]:
+        return f"it lost {gate['lost']} claims"
+
+    return None
+
+
+def accept(arguments):
+    """Exits 1 when the run cannot become the accepted result."""
+    measure_result = json.loads((arguments.run / "measure.json").read_text())
+    refusal = acceptance_refusal(measure_result, arguments.accepted.resolve().name)
+
+    if refusal:
+        sys.exit(f"{arguments.run.name} cannot be accepted: {refusal}")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("run", type=Path)
-    parser.add_argument("--gate", type=Path, help="the accepted run; lost must be 0")
-    parser.add_argument("--baseline", type=Path, help="the frozen baseline run")
+    commands = parser.add_subparsers(dest="command", required=True)
+    measuring = commands.add_parser("measure")
+    measuring.add_argument("run", type=Path)
+    measuring.add_argument("--gate", type=Path, help="the accepted run; lost must be 0")
+    measuring.add_argument("--baseline", type=Path, help="the frozen baseline run")
+    accepting = commands.add_parser("accept")
+    accepting.add_argument("run", type=Path)
+    accepting.add_argument("--accepted", type=Path, required=True)
     arguments = parser.parse_args()
 
+    if arguments.command == "accept":
+        accept(arguments)
+    else:
+        report(arguments)
+
+
+def report(arguments):
+    """Measures the run, compares it, and writes its results."""
     inputs, ledger, coverage = read_run(arguments.run)
     covered, open_claims = measure(ledger, coverage)
     atlas_owned = coverage["totals"]["atlas_owned"]
