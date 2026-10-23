@@ -157,10 +157,10 @@ def local_conditions(reader):
 
 
 def unresolved_nested(row):
-    nested = [row['nested']] + [branch['nested'] for branch in row['branches'] or []]
-    if any(spec and not spec['walked'] for spec in nested):
-        return True
-    return row['kind'] in NESTING_KINDS and row['nested'] is None
+    """Whether the row, or one of its value branches, reads into an object without a walked reader."""
+    return any((outcome['nested'] is not None and not outcome['nested']['walked'])
+               or (outcome['kind'] in NESTING_KINDS and outcome['nested'] is None)
+               for outcome in [row] + (row['branches'] or []))
 
 
 def delegate_specs(reader):
@@ -260,7 +260,7 @@ def summary(document):
     }
 
 
-def provenance(export, tables, files):
+def provenance(export, tables, files, date):
     program = export['program']
     return {
         'schema': SCHEMA,
@@ -273,7 +273,7 @@ def provenance(export, tables, files):
         'schemas': {'readers.json': SCHEMA, 'tables.json': tables['schema'], 'provenance.json': SCHEMA},
         'ghidra': {'version': program['ghidra'], 'language': program['language']},
         'export_scripts': files,
-        'date': datetime.date.today().isoformat(),
+        'date': date,
         'written_by': {'readers.json': 'ghidra-export', 'tables.json': tables['tool'],
                        'provenance.json': 'ghidra-export'},
     }
@@ -321,7 +321,8 @@ def main():
 
     with open(os.path.join(directory, 'readers.json'), 'w') as file:
         file.write(readers_text(document))
-    write_json(os.path.join(directory, 'provenance.json'), provenance(export, tables, files))
+    today = datetime.date.today().isoformat()
+    write_json(os.path.join(directory, 'provenance.json'), provenance(export, tables, files, today))
     print(json.dumps(summary(document), indent=1))
 
 

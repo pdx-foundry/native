@@ -75,6 +75,25 @@ class CompletenessTests(unittest.TestCase):
         self.assertEqual(reader['dispatch']['delegates'],
                          [{'reader': None, 'name': 'CNotWalked::ReadMember', 'walked': False}])
 
+    def test_a_token_path_that_calls_an_unwalked_member_reader_fails_the_delegate_condition(self):
+        events = [(True, 'CALL CBase::ReadMember (CReader * param_1, int param_2) a1=this+0x8')]
+        delegate = rows.classify(events, ['CALL CPersistent::ReadMember (CReader * param_1, int param_2)'], {}, 1)
+        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10, **delegate)])
+        reader = normalize.normalize(export_of(owner), tables())['readers']['0x10']
+
+        self.assertEqual((delegate['kind'], delegate['nested']), ('delegates', 'CBase::ReadMember'))
+        self.assertEqual(reader['incomplete_because'], ['delegate-unfollowed', 'nested-unresolved'])
+
+    def test_a_value_branch_that_reads_an_object_without_a_reader_fails_the_nested_condition(self):
+        branch = {'value_token': 'block', 'kind': 'persistent', 'value': 'Block', 'reader_kind': 'Block',
+                  'repeat': 'Unknown', 'nested': None, 'paths': {'leaves': 1, 'unknown': 0, 'truncated': False}}
+        scalar = dict(branch, value_token='other', kind='scalar', value='Scalar', reader_kind='String')
+        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10, value='Any', branches=[branch, scalar])])
+        document = normalize.normalize(export_of(owner, registries=[registry('common/x', '0x10')]), tables())
+
+        self.assertEqual(document['readers']['0x10']['incomplete_because'], ['nested-unresolved'])
+        self.assertEqual(normalize.summary(document)['complete_registry_trees'], 0)
+
     def test_the_key_text_outside_an_entry_reader_and_an_unwalked_nested_reader_fail(self):
         owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(13, kind='persistent', nested='class:CStage')],
                            key_text_read=True)
@@ -121,6 +140,14 @@ class RowTests(unittest.TestCase):
         self.assertEqual(rows.default_kind([call('CPreset::SetPresetData'), call('CPersistent::ReadMember')]),
                          ('helper', None))
         self.assertEqual(rows.default_kind([]), ('return', None))
+
+    def test_a_default_rejects_only_when_its_deciding_call_is_on_every_path(self):
+        persistent = 'CALL CPersistent::ReadMember (CReader * param_1, int param_2)'
+        self.assertEqual(rows.default_kind([(False, persistent)]), ('helper', None))
+        self.assertEqual(rows.default_kind([(False, 'CALL CBase::ReadMember (CReader * param_1, int param_2)')]),
+                         ('helper', None))
+        self.assertEqual(rows.default_kind([(True, 'CALL CString::CString (CString * this, char * param_1)')]),
+                         ('helper', None))
 
     def test_a_statement_loop_is_recognized_and_a_byte_loop_is_not(self):
         self.assertTrue(rows.recognized_loop(['CALLIND slot+0x10 on=reader', 'CString::CString']))

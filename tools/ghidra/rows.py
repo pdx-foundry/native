@@ -17,10 +17,13 @@ import re
 NOT_FOLLOWED = ('CEffect::', 'CTrigger::', 'CPersistent::', 'CRootTrigger::', 'CRootEffect::',
                 'CScriptableValue', 'CPdxLogFileAndLine', 'std::')
 PERSISTENT_BASE = 'CPersistent::ReadMember'
-LOG_CALLS = ('CPdxLogFileAndLine::', 'CReader::ReportUnexpected', 'CReader::GetFileLocationDescription',
+# Calls that only build or log a message, or guard the stack, and change no script state.
+AUXILIARY_CALLS = ('CPdxLogFileAndLine::', 'CReader::ReportUnexpected', 'CReader::GetFileLocationDescription',
              'CLogger::', 'CLogStream::', 'CString::CString', 'CString::~CString',
              'CPdxCommonStringAllocator::deallocate', 'operator+', '___stack_chk_fail')
 SKIP_CALLS = ('CReader::Skip',)
+# Calls that report or log a key, so that a path that makes one rejects the key.
+REJECT_CALLS = ('CReader::ReportUnexpected', 'CPdxLogFileAndLine::operator()', 'CLogger::Log')
 TEXT_COMPARES = ('_memcmp', '_strcmp', '_strncmp', 'strcmp', 'CString::operator==')
 # A loop body that calls one of these reads a list or the reader's statements: the walk followed it.
 LOOP_HELPERS = re.compile(r'ReadUniform|InsertAtEmplace|^CReader::Read|^CReader::ParseAdvancedStatement|on=reader$')
@@ -153,8 +156,7 @@ def classify_paths(events, default_events, constructors, yes_token):
                     return row('serializer', 'Block', 'Block', always=is_always,
                                nested='class:' + made.rsplit('::', 1)[0], call=text)
                 destination = arguments.get('a2', '')
-                element = next((match.group(1) for match in (re.match(r'CPdxArray<([\w:]+(?:<[^<>]*>)?),int>::InsertAtEmplace<', n)
-                                                              for n in names) if match), None)
+                element = inserted_element(names)
                 if not destination.startswith('this+') and element:
                     return row('object-list', 'Block', 'Block', repeat='Accumulate', always=is_always,
                                nested='class:' + element, call=text)
@@ -234,6 +236,9 @@ def classify_paths(events, default_events, constructors, yes_token):
         made_call = next((text for _, call, text in calls if call['name'].startswith(made)), None)
         return row('object', 'Block', 'Block', repeat='Replace' if stored else 'Unknown', nested='class:' + cls,
                    call=made_call)
+    delegated = next(((call, text) for _, call, text in calls if call['name'].endswith('::ReadMember')), None)
+    if delegated:
+        return row('delegates', nested=delegated[0]['name'], call=delegated[1])
     helper = next(((call, text) for _, call, text in calls if re.search(r'::Read\w*$', call['name']) and
                    not call['name'].startswith(('CReader::', 'CPersistent::'))), None)
     if helper:
@@ -241,40 +246,51 @@ def classify_paths(events, default_events, constructors, yes_token):
     for is_always, store in stores:
         if 'val=call:' in store and re.search(r'Database::Get|::Get\w+\b', store):
             return row('lookup', 'Scalar', None, repeat='Replace', always=is_always)
-    delegated = next(((call, text) for _, call, text in calls if call['name'].endswith('::ReadMember')), None)
-    if delegated:
-        return row('delegates', nested=delegated[0]['name'], call=delegated[1])
     for is_always, store in stores:
         if ('val=call:' in store or 'val=load' in store) and 'CString::CString' in names:
             return row('lookup', 'Scalar', None, repeat='Replace', always=is_always)
-    if any(LOG_CALLS[0] in text for text in texts):
+    if any('CPdxLogFileAndLine::' in text for text in texts):
         return row('logged')
     if stores:
         return row('store', always=stores[0][0])
     return row('unclassified')
 
 
+def inserted_element(names):
+    """The element class of the first insertion into an array of objects that the paths call."""
+    for name in names:
+        match = re.match(r'CPdxArray<([\w:]+(?:<[^<>]*>)?),int>::InsertAtEmplace<', name)
+        if match:
+            return match.group(1)
+    return None
+
+
 def default_kind(events):
     """What the default path does with a token that the reader does not enumerate: `persistent`
-    (only `CPersistent::ReadMember`), `base-reader` (one other member reader, with the reader's
-    name), `log-and-skip`, `return` (no call), `miss` (a switch with no default), or `helper`."""
+    (`CPersistent::ReadMember`, which reports the key as unexpected), `base-reader` (one other
+    member reader, with the reader's name), `log-and-skip` (a report or log call), `return` (no
+    call), `miss` (a switch with no default), or `helper`. The call that decides the kind must be on
+    every path; a path that does neither leaves the default a `helper`."""
     texts = [text for _, text in events]
     if 'SWITCHMISS' in texts:
         return 'miss', None
-    calls = [callee(text) for text in texts if text.startswith('CALL ')]
-    calls = [call['name'] for call in calls if call]
+    always = {text for is_always, text in events if is_always}
+    calls = [(text in always, callee(text)) for text in texts if text.startswith('CALL ')]
+    calls = [(is_always, call['name']) for is_always, call in calls if call]
+    names = [name for _, name in calls]
+    on_every_path = {name for is_always, name in calls if is_always}
     other = [text for text in texts if text.startswith(('CALLIND', 'STORE', 'LOOP'))]
     members = member_calls(events)
-    rest = [name for name in calls if not name.endswith('::ReadMember') and not name.startswith(LOG_CALLS + SKIP_CALLS)]
+    rest = [name for name in names if not name.endswith('::ReadMember') and not name.startswith(AUXILIARY_CALLS + SKIP_CALLS)]
     if other or rest or len(members) > 1:
         return 'helper', None
     if members:
-        return 'base-reader', members[0]
-    if PERSISTENT_BASE in calls:
-        return 'persistent', None
-    if calls:
+        return ('base-reader', members[0]) if members[0] in on_every_path else ('helper', None)
+    if PERSISTENT_BASE in names:
+        return ('persistent', None) if PERSISTENT_BASE in on_every_path else ('helper', None)
+    if any(name.startswith(REJECT_CALLS) for name in on_every_path):
         return 'log-and-skip', None
-    return 'return', None
+    return ('return', None) if not names else ('helper', None)
 
 
 def member_calls(events):

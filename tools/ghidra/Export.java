@@ -54,6 +54,9 @@ public class Export extends GhidraScript {
 	/** Leaves that one token's walk may reach before it stops and reports itself truncated. */
 	private static final int PATH_BUDGET = 512;
 	private static final long UNKNOWN = Long.MIN_VALUE;
+	/** The decompiler's warnings for a switch case whose label it could not compute. */
+	private static final List<String> LABEL_WARNINGS =
+		List.of("Bad switch case", "Calculation of case label failed", "may not be properly labeled as switch case");
 	/** Functions whose call on a path means a log message. */
 	private static final String[] LOG_CALLS = {"CPdxLogFileAndLine::", "CReader::ReportUnexpected", "CLogger::"};
 
@@ -269,6 +272,8 @@ public class Export extends GhidraScript {
 		private final Set<Varnode> readerVars = new HashSet<>();
 		private final Set<Varnode> tokenVars = new HashSet<>();
 		private final boolean keyReader;
+		/** Whether the decompiler warned that it could not label a switch case. */
+		private final boolean labelWarning;
 		private final Map<Address, PcodeBlockBasic> blockAt = new HashMap<>();
 		private final Map<Address, Map<Long, Address>> switchCases = new HashMap<>();
 		private final Map<Address, Address> switchDefaults = new HashMap<>();
@@ -287,7 +292,10 @@ public class Export extends GhidraScript {
 
 		ReaderWalk(Function function) {
 			this.function = function;
-			this.high = decompile(function).getHighFunction();
+			DecompileResults results = decompile(function);
+			this.high = results.getHighFunction();
+			String code = results.getDecompiledFunction() == null ? "" : results.getDecompiledFunction().getC();
+			this.labelWarning = LABEL_WARNINGS.stream().anyMatch(code::contains);
 			keyReader = !function.getName().equals("ReadEntry");
 			assignArgumentRegisters();
 			for (PcodeBlockBasic block : high.getBasicBlocks()) blockAt.put(block.getStart(), block);
@@ -337,14 +345,21 @@ public class Export extends GhidraScript {
 					for (int i = 0; labels != null && i < targets.length && i < labels.length; i++) {
 						cases.put((long) labels[i], targets[i]);
 					}
+					// The decompiler leaves out the label of an entry with none: the default guard,
+					// which it appends last, or a case whose label it could not compute, which it
+					// warns about. Only a table with no such warning and at most the last entry
+					// unlabelled has labels that line up with its destinations.
+					int labelled = labels == null ? 0 : labels.length;
+					boolean guarded = labelled == targets.length - 1;
+					boolean aligned = !labelWarning && (labelled == targets.length || guarded);
 					switchCases.put(table.getSwitchAddress(), cases);
-					if (targets.length > 0) switchDefaults.put(table.getSwitchAddress(), targets[targets.length - 1]);
+					if (aligned && guarded) switchDefaults.put(table.getSwitchAddress(), targets[targets.length - 1]);
 					enumerated.addAll(cases.keySet());
 					JsonObject entry = new JsonObject();
 					entry.addProperty("at", hex(table.getSwitchAddress()));
-					// The last destination is the default's; every other one has a label.
-					entry.addProperty("labels_known", labels != null && labels.length >= targets.length - 1);
-					entry.addProperty("cases", targets.length - 1);
+					entry.addProperty("labels_known", aligned);
+					entry.addProperty("default", guarded);
+					entry.addProperty("cases", labelled);
 					switches.add(entry);
 				}
 			}
@@ -947,7 +962,7 @@ public class Export extends GhidraScript {
 		if (decompiler == null) {
 			decompiler = new DecompInterface();
 			decompiler.setOptions(new DecompileOptions());
-			decompiler.toggleCCode(false);
+			decompiler.toggleCCode(true);
 			decompiler.toggleSyntaxTree(true);
 			decompiler.openProgram(currentProgram);
 		}
