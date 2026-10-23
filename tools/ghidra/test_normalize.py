@@ -1,9 +1,18 @@
 import unittest
 
+import export as export_module
 import normalize
 import rows
 
 TOKENS = {'10': 'name', '11': 'icon', '12': 'potential', '13': 'stages'}
+
+
+def call(name):
+    return f'CALL {name} (CReader * param_1, int param_2)'
+
+
+def walk(events):
+    return {'leaves': 1, 'unknown': 0, 'truncated': False, 'value_test': False, 'events': events}
 
 
 def raw_row(token, kind='scalar', nested=None, **fields):
@@ -19,6 +28,7 @@ def raw_reader(name, entry, table, form='token-switch', default=('persistent', N
               'switches': [{'at': '0x1', 'labels_known': True, 'cases': len(table)}],
               'compared': [row['token'] for row in table if row['token'] is not None],
               'default': {'kind': default[0], 'reader': default[1]}, 'delegates': list(delegates),
+              'token_delegates': [],
               'key_text_read': False, 'loops': 0, 'truncated': False, 'rows': table}
     reader.update(fields)
     return reader
@@ -78,11 +88,27 @@ class CompletenessTests(unittest.TestCase):
     def test_a_token_path_that_calls_an_unwalked_member_reader_fails_the_delegate_condition(self):
         events = [(True, 'CALL CBase::ReadMember (CReader * param_1, int param_2) a1=this+0x8')]
         delegate = rows.classify(events, ['CALL CPersistent::ReadMember (CReader * param_1, int param_2)'], {}, 1)
-        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10, **delegate)])
+        owner = raw_reader('COwner::ReadMember', '0x10', [raw_row(10, **delegate)], delegates=['CBase::ReadMember'])
         reader = normalize.normalize(export_of(owner), tables())['readers']['0x10']
 
         self.assertEqual((delegate['kind'], delegate['nested']), ('delegates', 'CBase::ReadMember'))
         self.assertEqual(reader['incomplete_because'], ['delegate-unfollowed', 'nested-unresolved'])
+
+    def test_every_member_reader_that_a_token_path_calls_is_a_delegate(self):
+        export = {'name': 'COwner::ReadMember', 'entry': '0x10', 'source': 'key', 'switches': [], 'compared': [10, 11],
+                  'walks': {
+                      'default': walk([(True, call('CPersistent::ReadMember'))]),
+                      '10': walk([(True, call('CFirst::ReadMember')), (True, call('CSecond::ReadMember'))]),
+                      '11': walk([(True, 'CALL CReader::Read (CReader * this, CString * param_1, bool param_2) '
+                                         'a2=this+0x10'), (True, call('CThird::ReadMember'))]),
+                  }}
+        reader = export_module.walk_reader(export, {}, 1)
+        first = raw_reader('CFirst::ReadMember', '0x20', [raw_row(12)])
+        document = normalize.normalize(export_of(reader, first), tables())
+
+        self.assertEqual(reader['delegates'], ['CFirst::ReadMember', 'CSecond::ReadMember', 'CThird::ReadMember'])
+        self.assertEqual(export_module.nested_specs(reader) >= set(reader['delegates']), True)
+        self.assertIn('delegate-unfollowed', document['readers']['0x10']['incomplete_because'])
 
     def test_a_value_branch_that_reads_an_object_without_a_reader_fails_the_nested_condition(self):
         branch = {'value_token': 'block', 'kind': 'persistent', 'value': 'Block', 'reader_kind': 'Block',

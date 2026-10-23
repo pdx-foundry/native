@@ -164,10 +164,9 @@ def unresolved_nested(row):
 
 
 def delegate_specs(reader):
-    """The member readers that a reader delegates to: the ones its default path calls besides its
-    base reader, and the ones a token path calls."""
-    rows_delegates = [row['nested'] for row in reader['rows'] if row['kind'] == 'delegates']
-    return reader['dispatch']['delegates'] + rows_delegates
+    """The member readers that a reader delegates to: every member reader that one of its paths
+    calls, except its default's base reader, `CPersistent::ReadMember` and itself."""
+    return reader['dispatch']['delegates']
 
 
 def dependencies(reader):

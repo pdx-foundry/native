@@ -103,12 +103,16 @@ def walk_reader(walk, constructors, yes_token):
         token_rows.append(token_row(None, walks['default'], walks, [], constructors, yes_token))
     kind, base = ('entry', None) if entry_form else rows.default_kind(walks['default']['events'])
     delegates = [name for name in rows.member_calls(walks['default']['events']) if name != base]
+    token_delegates = sorted({name for label, token_walk in walks.items() if label != 'default'
+                              for name in rows.member_calls(token_walk['events'])
+                              if name not in (base, walk['name'])} - set(delegates))
     loops = rows.loop_bodies(every)
     return {
         'name': walk['name'], 'entry': walk['entry'], 'source': walk['source'], 'form': form,
         'switches': walk['switches'], 'compared': walk['compared'],
         'default': {'kind': kind, 'reader': base},
-        'delegates': delegates,
+        'delegates': delegates + token_delegates,
+        'token_delegates': token_delegates,
         'key_text_read': any(text == 'KEYTEXT' for _, text in every),
         'loops': sum(1 for body in loops if not rows.recognized_loop(body)),
         'truncated': any(token_walk['truncated'] for token_walk in walks.values()),
@@ -150,8 +154,9 @@ def branch_outcome(value_token, branch_walk, reference, constructors, yes_token)
 
 def nested_specs(reader):
     """The readers that one walked reader leads the export to: the nested readers of its rows and
-    branches, and the base reader of its default path."""
-    specs = set()
+    branches, the member readers that its token paths call, and the base reader of its default path.
+    The export does not follow the other readers that an unresolved default calls."""
+    specs = set(reader['token_delegates'])
     for token_row in reader['rows']:
         candidates = [token_row['nested']] + [branch['nested'] for branch in token_row['branches'] or []]
         specs.update(spec for spec in candidates if spec and not spec.startswith('vt:'))
