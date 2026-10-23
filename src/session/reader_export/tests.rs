@@ -418,18 +418,18 @@ fn a_block_reader_that_lists_no_key_proves_no_keys() {
 }
 
 #[test]
-fn a_row_that_tests_the_value_token_is_any_with_an_unknown_reader_and_a_gap() {
+fn a_row_whose_value_branches_are_not_both_proved_is_any_with_an_unknown_reader_and_a_gap() {
     let answer = merged_into_nothing(&export(json!({
         "0x1": reader("CThing::ReadMember", vec![
             row("design", json!({"value": "Any", "reader_kind": null,
-                                 "branches": [{"value_token": "block", "kind": "object"},
-                                              {"value_token": "other", "kind": "scalar"}]})),
+                                 "branches": [list_branch(true), boolean_branch(false)]})),
         ]),
     })));
     let design = field(&answer.value, "design");
 
     assert_eq!(design.shape.value, ValueShape::Any);
     assert_eq!(design.reader.kind, ReaderKind::Unknown);
+    assert_eq!(design.read.len(), 1);
     assert_eq!(design.read[0].outcome, FieldReadOutcome::Unresolved);
     assert!(
         answer
@@ -439,6 +439,247 @@ fn a_row_that_tests_the_value_token_is_any_with_an_unknown_reader_and_a_gap() {
                 && gap.subject == Some(GapSubject::field("design"))
                 && gap.detail == BRANCHES_OPEN)
     );
+}
+
+/// A value branch for `value_token` that reads with `facts`, which the export proves or not.
+fn branch(value_token: &str, proved: bool, facts: Value) -> Value {
+    let mut branch = json!({
+        "value_token": value_token, "proved": proved, "kind": "scalar", "value": "Scalar",
+        "reader_kind": "Boolean", "repeat": "Replace", "family": null, "items": null,
+        "nested": null, "paths": {"leaves": 1, "unknown": 0, "truncated": false}
+    });
+
+    for (name, value) in facts.as_object().unwrap() {
+        branch[name] = value.clone();
+    }
+
+    branch
+}
+
+/// A block branch that reads a list of strings.
+fn list_branch(proved: bool) -> Value {
+    branch(
+        "block",
+        proved,
+        json!({"kind": "list", "value": "Block", "reader_kind": "Block", "items": "String",
+               "repeat": "Accumulate"}),
+    )
+}
+
+/// A scalar branch that reads a Boolean.
+fn boolean_branch(proved: bool) -> Value {
+    branch("other", proved, json!({}))
+}
+
+#[test]
+fn proved_value_branches_give_one_alternative_for_each_value_form() {
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("upgrades", json!({"value": "Any", "reader_kind": null, "conditional": true,
+                                   "paths": {"leaves": 2, "unknown": 2, "truncated": false},
+                                   "branches": [list_branch(true), boolean_branch(true)]})),
+        ]),
+    })));
+    let upgrades = field(&answer.value, "upgrades");
+    let conditions: Vec<_> = upgrades
+        .read
+        .iter()
+        .map(|alternative| &alternative.condition)
+        .collect();
+    let kinds: Vec<_> = upgrades
+        .read
+        .iter()
+        .map(|alternative| match &alternative.outcome {
+            FieldReadOutcome::Read { reader, shape } => (reader.kind, shape.value),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.subject == Some(GapSubject::field("upgrades")))
+        .map(|gap| gap.detail.as_str())
+        .collect();
+
+    assert_eq!(
+        conditions,
+        [
+            &FieldCondition::ValueForm { block: true },
+            &FieldCondition::ValueForm { block: false },
+        ]
+    );
+    assert_eq!(
+        kinds,
+        [
+            (ReaderKind::Block, ValueShape::Block),
+            (ReaderKind::Boolean, ValueShape::Scalar),
+        ]
+    );
+    assert_eq!(upgrades.reader.kind, ReaderKind::Unknown);
+    assert_eq!(upgrades.shape.value, ValueShape::Any);
+    assert_eq!(
+        upgrades.members,
+        FieldMembers::Items {
+            reader: plain_reader(ReaderKind::String, BlockFamily::NotApplicable)
+        }
+    );
+    assert!(gaps.contains(&READER_ALTERNATIVES_OPEN), "{gaps:?}");
+    assert!(
+        !gaps.contains(&BRANCHES_OPEN)
+            && !gaps.contains(&CONDITION_OPEN)
+            && !gaps.contains(&PATHS_OPEN),
+        "{gaps:?}"
+    );
+}
+
+/// A field of Native's answer with two alternatives under unresolved conditions, with
+/// `outcomes`, and Native's gap for them.
+fn unresolved_conditions(name: &str, outcomes: [FieldReadOutcome; 2]) -> (Field, Gap) {
+    let mut field = identified_field(name, FieldMembers::Unresolved);
+
+    field.reader.id = None;
+    field.read = outcomes
+        .into_iter()
+        .map(|outcome| FieldReadAlternative {
+            condition: FieldCondition::Unresolved,
+            outcome,
+        })
+        .collect();
+
+    let gap = Gap {
+        kind: GapKind::UnresolvedCondition,
+        subject: Some(GapSubject::field(name)),
+        detail: CONDITION_OPEN.into(),
+    };
+
+    (field, gap)
+}
+
+#[test]
+fn native_alternatives_under_unresolved_conditions_take_the_value_forms_that_they_fit() {
+    let block = FieldReadOutcome::Read {
+        reader: plain_reader(ReaderKind::Block, BlockFamily::NotApplicable),
+        shape: FieldShape {
+            value: ValueShape::Block,
+            repeat: RepeatBehavior::Unknown,
+        },
+    };
+    let integer = FieldReadOutcome::Read {
+        reader: plain_reader(ReaderKind::Integer, BlockFamily::NotApplicable),
+        shape: FieldShape {
+            value: ValueShape::Scalar,
+            repeat: RepeatBehavior::Replace,
+        },
+    };
+    let (upgrades, upgrades_gap) =
+        unresolved_conditions("upgrades", [FieldReadOutcome::Unresolved, block.clone()]);
+    let (count, count_gap) = unresolved_conditions("count", [block, integer]);
+    let branches = |token| {
+        json!({"token": token, "value": "Any", "reader_kind": null,
+               "branches": [list_branch(true), boolean_branch(true)]})
+    };
+    let export = export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("upgrades", branches(1)),
+            row("count", branches(2)),
+        ]),
+    }));
+    let mut answer = native_answer(vec![upgrades, count], vec![upgrades_gap, count_gap]);
+
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
+
+    let upgrades = field(&answer.value, "upgrades");
+    let read: Vec<_> = upgrades
+        .read
+        .iter()
+        .map(|alternative| match &alternative.outcome {
+            FieldReadOutcome::Read { reader, .. } => (alternative.condition.clone(), reader.kind),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let condition_gaps: Vec<_> = answer
+        .gaps
+        .iter()
+        .filter(|gap| gap.kind == GapKind::UnresolvedCondition)
+        .filter_map(|gap| gap.subject.clone())
+        .collect();
+
+    assert_eq!(
+        read,
+        [
+            (
+                FieldCondition::ValueForm { block: false },
+                ReaderKind::Boolean
+            ),
+            (FieldCondition::ValueForm { block: true }, ReaderKind::Block),
+        ]
+    );
+    assert_eq!(upgrades.shape.value, ValueShape::Any);
+    // An integer outcome fits neither form of a block and a Boolean, so `count` keeps its
+    // unresolved conditions.
+    assert!(
+        field(&answer.value, "count")
+            .read
+            .iter()
+            .all(|alternative| alternative.condition == FieldCondition::Unresolved)
+    );
+    assert_eq!(condition_gaps, [GapSubject::field("count")]);
+}
+
+#[test]
+fn native_value_branches_are_filled_only_where_native_names_no_shared_reader() {
+    let export = export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("enabled", json!({"value": "Any", "reader_kind": null,
+                                  "branches": [list_branch(true), boolean_branch(true)]})),
+            row("settings", json!({"token": 2, "value": "Any", "reader_kind": null,
+                                   "branches": [list_branch(true), boolean_branch(true)]})),
+        ]),
+    }));
+    let mut enabled = identified_field("enabled", FieldMembers::Unresolved);
+    let identified = identified_field("settings", FieldMembers::Unresolved);
+
+    enabled.reader.id = None;
+
+    let mut answer = native_answer(vec![enabled, identified], Vec::new());
+
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
+
+    let conditions = |name| {
+        field(&answer.value, name)
+            .read
+            .iter()
+            .map(|alternative| alternative.condition.clone())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        conditions("enabled"),
+        [
+            FieldCondition::ValueForm { block: true },
+            FieldCondition::ValueForm { block: false },
+        ]
+    );
+    assert_eq!(conditions("settings"), [FieldCondition::Always]);
+}
+
+#[test]
+fn a_presence_row_reads_no_value_and_keeps_no_block() {
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("marked", json!({"kind": "presence", "reader_kind": "Presence",
+                                 "store": {"offset": 8, "size": 1}})),
+        ]),
+    })));
+    let marked = field(&answer.value, "marked");
+
+    assert_eq!(marked.reader.kind, ReaderKind::Presence);
+    assert!(matches!(&marked.read[..], [alternative]
+        if alternative.condition == FieldCondition::Always
+            && matches!(&alternative.outcome, FieldReadOutcome::Read { reader, .. }
+                if reader.kind == ReaderKind::Presence)));
+    assert_eq!(marked.members, FieldMembers::None);
+    assert_eq!(marked.read_scope, GrammarProperty::Known(Vec::new()));
 }
 
 #[test]
@@ -697,4 +938,131 @@ fn an_added_block_states_its_open_container_and_entry_contexts() {
         AcceptedCategories::Unresolved
     );
     assert!(details_at("object").contains(&super::super::container_masks::CONTAINER_OPEN));
+}
+
+#[test]
+fn a_scalar_reference_and_a_block_of_references_take_the_forms_of_their_shapes() {
+    let reference = |value| FieldReadOutcome::Read {
+        reader: plain_reader(ReaderKind::Reference, BlockFamily::NotApplicable),
+        shape: FieldShape {
+            value,
+            repeat: RepeatBehavior::Unknown,
+        },
+    };
+    let (targets, gap) = unresolved_conditions(
+        "targets",
+        [reference(ValueShape::Scalar), reference(ValueShape::Block)],
+    );
+    let export = export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("targets", json!({"value": "Any", "reader_kind": null, "branches": [
+                branch("block", true, json!({"kind": "list", "value": "Block",
+                                             "reader_kind": "Reference", "items": "Reference",
+                                             "repeat": "Accumulate"})),
+                branch("other", true, json!({"kind": "keyref", "reader_kind": "Reference"})),
+            ]})),
+        ]),
+    }));
+    let mut answer = native_answer(vec![targets], vec![gap]);
+
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
+
+    let conditions: Vec<_> = field(&answer.value, "targets")
+        .read
+        .iter()
+        .map(|alternative| alternative.condition.clone())
+        .collect();
+
+    assert_eq!(
+        conditions,
+        [
+            FieldCondition::ValueForm { block: false },
+            FieldCondition::ValueForm { block: true },
+        ]
+    );
+}
+
+#[test]
+fn proved_branches_that_keep_nothing_read_in_no_scope_with_their_kind_facts() {
+    let skipped = |value_token, value| {
+        branch(
+            value_token,
+            true,
+            json!({"kind": "skipped", "value": value, "reader_kind": "Skipped",
+                   "repeat": "Unknown"}),
+        )
+    };
+    let answer = merged_into_nothing(&export(json!({
+        "0x1": reader("CThing::ReadMember", vec![
+            row("legacy", json!({"value": "Any", "reader_kind": null,
+                                 "branches": [skipped("block", "Block"), skipped("other", "Scalar")]})),
+        ]),
+    })));
+    let legacy = field(&answer.value, "legacy");
+
+    assert_eq!(legacy.read_scope, GrammarProperty::Known(Vec::new()));
+    assert!(legacy.read.iter().all(|alternative| matches!(
+        &alternative.outcome,
+        FieldReadOutcome::Read { reader, .. }
+            if reader.numeric == GrammarProperty::Known(None)
+                && reader.scoped_operand == GrammarProperty::Known(None)
+    )));
+    assert!(
+        !answer
+            .gaps
+            .iter()
+            .any(|gap| gap.detail.starts_with(READ_SCOPE_PREFIX)),
+        "{:?}",
+        answer.gaps
+    );
+}
+
+#[test]
+fn a_pair_is_not_merged_over_a_known_condition_or_a_shared_reader() {
+    let pair = |token| {
+        json!({"token": token, "value": "Any", "reader_kind": null,
+               "branches": [list_branch(true), boolean_branch(true)]})
+    };
+    let export = export(json!({
+        "0x1": reader("CThing::ReadMember", vec![row("flagged", pair(1)), row("shared", pair(2))]),
+    }));
+    let mut flagged = identified_field("flagged", FieldMembers::Unresolved);
+    let condition = FieldCondition::FieldZero {
+        path: vec!["enabled".into()],
+        zero: false,
+    };
+
+    flagged.reader.id = None;
+    flagged.read[0].condition = condition.clone();
+
+    let shared = identified_field("shared", FieldMembers::Unresolved);
+    let value_form_gap = Gap {
+        kind: GapKind::ReaderSemantics,
+        subject: Some(GapSubject::field("shared")),
+        detail: VALUE_FORM_OPEN.into(),
+    };
+    let mut answer = native_answer(vec![flagged, shared], vec![value_form_gap.clone()]);
+
+    assert!(export.merge(REGISTRY, RootLayout::Owner, &settings_merges(), &mut answer));
+    assert_eq!(field(&answer.value, "flagged").read[0].condition, condition);
+    assert_eq!(
+        field(&answer.value, "shared").read[0].condition,
+        FieldCondition::Always
+    );
+    assert!(answer.gaps.contains(&value_form_gap), "{:?}", answer.gaps);
+}
+
+#[test]
+fn a_native_reader_whose_kind_the_export_fills_takes_the_facts_of_that_kind() {
+    let answer = merged(&export(complete_tree()));
+    let enabled = field(&answer.value, "enabled");
+    let FieldReadOutcome::Read { reader, .. } = &enabled.read[0].outcome else {
+        panic!("{:?}", enabled.read);
+    };
+
+    for reader in [&enabled.reader, reader] {
+        assert_eq!(reader.kind, ReaderKind::Boolean);
+        assert_eq!(reader.numeric, GrammarProperty::Known(None));
+        assert_eq!(reader.scoped_operand, GrammarProperty::Known(None));
+    }
 }

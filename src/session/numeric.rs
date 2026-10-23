@@ -132,6 +132,7 @@ fn attach_reader_facts(reader: &mut Reader, facts: &NumericFacts) -> ReaderLimit
         | ReaderKind::Target
         | ReaderKind::Keyword
         | ReaderKind::Skipped
+        | ReaderKind::Presence
         | ReaderKind::Block => GrammarProperty::Known(None),
         _ => GrammarProperty::Unresolved,
     };

@@ -187,6 +187,69 @@
     "default": "persistent",
     "loops": 0
    }
+  },
+  {
+   "reader": "CShipDesign::ReadMember",
+   "why": "`upgrades_to` tests the value's token first: a block reads a string list into +0x140, any other value appends one string to it. `alliance_ship_design` reads a Boolean into +0x114 and then runs the same test, so the test is not the first thing that its path does and neither branch is proved (registry-fields.md 'The reader export').",
+   "expect": {
+    "rows": {
+     "upgrades_to": {
+      "branches": {
+       "block": {
+        "proved": true,
+        "kind": "list",
+        "items": "String"
+       },
+       "other": {
+        "proved": true,
+        "kind": "scalar",
+        "reader_kind": "String"
+       }
+      }
+     },
+     "alliance_ship_design": {
+      "branches": {
+       "block": {
+        "proved": false
+       },
+       "other": {
+        "proved": false
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "reader": "CShipSize::ReadMember",
+   "why": "`hero_ship` tests the value's token first: a block is a persistent object read, any other value a Boolean.",
+   "expect": {
+    "rows": {
+     "hero_ship": {
+      "branches": {
+       "block": {
+        "proved": true,
+        "kind": "persistent"
+       },
+       "other": {
+        "proved": true,
+        "reader_kind": "Boolean"
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "reader": "CEvent::ReadMember",
+   "why": "`fire_only_once` stores whether the value's token is `yes`: it reads the value, so it is a store and not a presence marker.",
+   "expect": {
+    "rows": {
+     "fire_only_once": {
+      "kind": "store"
+     }
+    }
+   }
   }
  ]
 }

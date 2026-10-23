@@ -550,6 +550,9 @@ public class Export extends GhidraScript {
 					visit((PcodeBlockBasic) block.getFalseOut(), block, fallen, onPath, leaves);
 				}
 				else {
+					// A value branch walk marks where its value test decides the path, so that the
+					// export can tell what the path does before the test from what the branch does.
+					if (keyReader && valueWalk != 0 && readsValueToken(last.getInput(1), 0)) local.add("VALUEBRANCH");
 					visit((PcodeBlockBasic) (condition != 0 ? block.getTrueOut() : block.getFalseOut()), block, local, onPath,
 						leaves);
 				}

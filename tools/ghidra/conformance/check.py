@@ -56,6 +56,21 @@ def reader_mismatches(expect, reader):
         nested = (row['nested'] or {}).get('name')
         if 'nested' in row_expect and nested != row_expect['nested']:
             problems.append(f'row {key!r} nested reader is {nested!r}, expected {row_expect["nested"]!r}')
+        problems.extend(branch_mismatches(key, row_expect.get('branches', {}), row.get('branches') or []))
+    return problems
+
+
+def branch_mismatches(key, expect, branches):
+    """The value branches of row `key` that do not have the expected facts, by value token."""
+    by_token = {branch['value_token']: branch for branch in branches}
+    problems = []
+    for value_token, facts in expect.items():
+        branch = by_token.get(value_token)
+        if branch is None:
+            problems.append(f'row {key!r} has no {value_token!r} branch')
+            continue
+        problems.extend(f'row {key!r} {value_token} branch {fact} is {branch[fact]!r}, expected {expected!r}'
+                        for fact, expected in facts.items() if branch[fact] != expected)
     return problems
 
 

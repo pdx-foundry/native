@@ -13,8 +13,8 @@ use serde::Deserialize;
 
 use super::fields::persistent_read_merges;
 use super::questions::{
-    CONDITION_OPEN, KEYWORD_DOMAIN_OPEN, READER_JOIN_OPEN, TOKEN_PATH_OPEN, UNNAMED_PATHS,
-    VALUE_FORM_OPEN, storage_gap,
+    CONDITION_OPEN, KEYWORD_DOMAIN_OPEN, READER_ALTERNATIVES_OPEN, READER_JOIN_OPEN,
+    TOKEN_PATH_OPEN, UNNAMED_PATHS, VALUE_FORM_OPEN, storage_gap,
 };
 use crate::binding::MemberHolder;
 use crate::engine::analysis::fields::{OPEN_DOMAIN_REASONS, UNKNOWN_KEPT};
@@ -29,8 +29,8 @@ use crate::{
 const SCHEMA: u32 = 1;
 
 const READ_SCOPE_PREFIX: &str = "read-scope: ";
-const BRANCHES_OPEN: &str = "The key's path tests the value's token: a block and a bare value are \
-                             read in different ways, which the reader export does not pair.";
+const BRANCHES_OPEN: &str = "The key's path tests the value's token, and the reader export does not \
+                             prove how it reads a block and a bare value.";
 const STORE_OPEN: &str = "The key's path stores a value through no shared reader.";
 const READER_OPEN: &str = "The reader export does not establish the field's reader.";
 const PATHS_OPEN: &str = "The reader export did not classify every path of the key.";
@@ -162,19 +162,27 @@ struct Nested {
 #[derive(Debug, Deserialize)]
 struct Row {
     key: Option<String>,
-    kind: RowKind,
-    value: Option<ValueShape>,
-    reader_kind: Option<ReaderKind>,
-    repeat: RepeatBehavior,
+    /// What the key's paths read, taken together.
+    #[serde(flatten)]
+    outcome: Outcome,
     conditional: bool,
-    family: Option<BlockFamily>,
-    items: Option<ReaderKind>,
     branches: Option<Vec<Branch>>,
-    nested: Option<Nested>,
     scope_mask: Option<u64>,
     #[serde(rename = "enum")]
     keywords: Option<KeywordTable>,
     paths: Paths,
+}
+
+/// What a row's paths, or one of its value branches, read.
+#[derive(Debug, Deserialize)]
+struct Outcome {
+    kind: RowKind,
+    value: Option<ValueShape>,
+    reader_kind: Option<ReaderKind>,
+    repeat: RepeatBehavior,
+    family: Option<BlockFamily>,
+    items: Option<ReaderKind>,
+    nested: Option<Nested>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -196,6 +204,7 @@ enum RowKind {
     Entry,
     Skipped,
     Store,
+    Presence,
     Delegates,
     Helper,
     Logged,
@@ -212,9 +221,22 @@ impl RowKind {
     }
 }
 
+/// One outcome of a row whose path tests the value's token.
 #[derive(Debug, Deserialize)]
 struct Branch {
-    nested: Option<Nested>,
+    value_token: ValueToken,
+    /// Whether the export proves what this branch reads.
+    proved: bool,
+    #[serde(flatten)]
+    outcome: Outcome,
+}
+
+/// The value token of a value branch: a block's, or any other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ValueToken {
+    Block,
+    Other,
 }
 
 /// The `TokenToEnum<E>` table of a keyword row.
@@ -271,7 +293,8 @@ impl ReaderExport {
         self.readers
             .values()
             .flat_map(|reader| &reader.rows)
-            .filter(|row| row.kind == RowKind::Persistent)
+            .flat_map(Row::outcomes)
+            .filter(|outcome| outcome.kind == RowKind::Persistent)
             .filter_map(walked_member)
             .collect()
     }
@@ -349,15 +372,15 @@ impl ReaderExport {
     fn delegated_row(&self, row: &Row) -> Option<(&ExportReader, &Row)> {
         let certain = !row.conditional && row.paths.unknown == 0 && !row.paths.truncated;
 
-        if row.kind != RowKind::Delegates || !certain {
+        if row.outcome.kind != RowKind::Delegates || !certain {
             return None;
         }
 
-        let entry = row.nested.as_ref()?.reader.as_deref()?;
+        let entry = row.outcome.nested.as_ref()?.reader.as_deref()?;
 
-        self.own_table(entry)
-            .into_iter()
-            .find(|(_, delegated)| delegated.key == row.key && delegated.kind != RowKind::Delegates)
+        self.own_table(entry).into_iter().find(|(_, delegated)| {
+            delegated.key == row.key && delegated.outcome.kind != RowKind::Delegates
+        })
     }
 
     /// [`Self::table`] before delegated rows are resolved.
@@ -466,6 +489,7 @@ impl ReaderExport {
                         .is_some_and(|key| exception.keys.contains(key));
                 let block = exception.block
                     && row
+                        .outcome
                         .nested
                         .as_ref()
                         .is_some_and(|nested| nested.name == exception.reader);
@@ -600,25 +624,76 @@ impl ExportReader {
         readers.extend(at_path.map(|entry| (entry, path.to_vec(), false)));
 
         for row in &self.rows {
-            let nested = row.nested.iter().chain(
-                row.branches
-                    .iter()
-                    .flatten()
-                    .filter_map(|branch| branch.nested.as_ref()),
-            );
             let key = row.key.clone().unwrap_or_default();
-            // A delegate reads the key at this level; any other nested reader reads its block.
-            let (nested_path, reads_block) = match row.kind {
-                RowKind::Delegates => (path.to_vec(), false),
-                _ => ([path, std::slice::from_ref(&key)].concat(), true),
-            };
+            let key_path = [path, std::slice::from_ref(&key)].concat();
 
-            for entry in nested.filter_map(|nested| nested.reader.as_deref()) {
-                readers.push((entry, nested_path.clone(), reads_block));
+            // A delegate reads the key at this level; any other nested reader, a value branch's
+            // included, reads its block.
+            for outcome in row.outcomes() {
+                let Some(entry) = outcome
+                    .nested
+                    .as_ref()
+                    .and_then(|nested| nested.reader.as_deref())
+                else {
+                    continue;
+                };
+
+                match outcome.kind {
+                    RowKind::Delegates => readers.push((entry, path.to_vec(), false)),
+                    _ => readers.push((entry, key_path.clone(), true)),
+                }
             }
         }
 
         readers
+    }
+}
+
+impl Row {
+    /// The row's own outcome and the outcome of each of its value branches.
+    fn outcomes(&self) -> impl Iterator<Item = &Outcome> {
+        let branches = self.branches.iter().flatten();
+
+        std::iter::once(&self.outcome).chain(branches.map(|branch| &branch.outcome))
+    }
+
+    /// The outcomes of the two value branches, the block's and then any other value's, when the
+    /// export proves both.
+    fn value_forms(&self) -> Option<(&Outcome, &Outcome)> {
+        let [block, other] = self.branches.as_deref()? else {
+            return None;
+        };
+        let proved = block.value_token == ValueToken::Block
+            && other.value_token == ValueToken::Other
+            && block.proved
+            && other.proved;
+
+        proved.then_some((&block.outcome, &other.outcome))
+    }
+
+    /// The outcomes that the key's reading comes from: its proved value branches, or its own.
+    fn read_outcomes(&self) -> Vec<&Outcome> {
+        match self.value_forms() {
+            Some((block, other)) => vec![block, other],
+            None => vec![&self.outcome],
+        }
+    }
+
+    /// The outcome whose block gives the field's members: the proved block branch, or the row's
+    /// own outcome.
+    fn block_outcome(&self) -> &Outcome {
+        self.value_forms().map_or(&self.outcome, |(block, _)| block)
+    }
+
+    /// Whether every path of the key reaches its reading. Proved value branches cover every path:
+    /// each has one path, and the value test is the only test that they decide.
+    fn unconditional(&self) -> bool {
+        !self.conditional || self.value_forms().is_some()
+    }
+
+    /// Whether the export classified every path of the key.
+    fn paths_classified(&self) -> bool {
+        self.value_forms().is_some() || (self.paths.unknown == 0 && !self.paths.truncated)
     }
 }
 
@@ -668,6 +743,8 @@ struct Answered {
     /// The walker's storage gap of the field, when the export filled a storage property: it is
     /// computed again. Another storage gap at the path stays.
     replaced_storage: Option<Gap>,
+    /// The conditions of the field's read alternatives.
+    conditions: bool,
 }
 
 /// One merge of the export into an answer.
@@ -750,16 +827,16 @@ impl<'a> Merge<'a> {
         self.ancestors.pop();
     }
 
-    /// The walked reader that `row` reads the keys of its block with, unless it is being merged
-    /// already. A reader that lists no key gives no members: a serializer whose member reader is
-    /// `CPersistent::ReadMember` reads its values through its own `Read`, which the export does
-    /// not walk.
-    fn nested_entry(&self, row: &'a Row) -> Option<&'a str> {
-        if !row.kind.reads_block() {
+    /// The walked reader that `outcome` reads the keys of its block with, unless it is being
+    /// merged already. Only an outcome that reads a block has one. A reader that lists no key
+    /// gives no members: a serializer whose member reader is `CPersistent::ReadMember` reads its
+    /// values through its own `Read`, which the export does not walk.
+    fn nested_entry(&self, outcome: &'a Outcome) -> Option<&'a str> {
+        if !outcome.kind.reads_block() {
             return None;
         }
 
-        let entry = row.nested.as_ref()?.reader.as_deref()?;
+        let entry = outcome.nested.as_ref()?.reader.as_deref()?;
         let reader = self.export.readers.get(entry)?;
 
         (!self.ancestors.contains(&entry) && reader.reads_keys() && reader.lists_keys())
@@ -768,11 +845,17 @@ impl<'a> Merge<'a> {
 
     /// The gap of a root trigger, effect or weight block whose family the export establishes: the
     /// walker's entry-context analysis ran before the merge, so its contexts are not established.
-    fn entry_context_gap(&self, field: &Field, path: &[String]) -> Option<Gap> {
+    /// `family` is the family of `field`'s block reader: its one reader's, or its block form's.
+    fn entry_context_gap(
+        &self,
+        family: BlockFamily,
+        field: &Field,
+        path: &[String],
+    ) -> Option<Gap> {
         let root = self.ancestors.len() == 1;
 
         (root
-            && super::field_entries::takes_entry_contexts(field.reader.family)
+            && super::field_entries::takes_entry_contexts(family)
             && field.entry_contexts.is_empty())
         .then(|| Gap {
             kind: GapKind::UnresolvedPath,
@@ -783,8 +866,13 @@ impl<'a> Merge<'a> {
 
     /// The gap of a field whose nested fields come from a reader tree that does not prove its
     /// keys: the list can miss a key.
-    fn unproved_members_gap(&self, field: &Field, row: &Row, path: &[String]) -> Option<Gap> {
-        let entry = row.nested.as_ref()?.reader.as_deref()?;
+    fn unproved_members_gap(
+        &self,
+        field: &Field,
+        outcome: &Outcome,
+        path: &[String],
+    ) -> Option<Gap> {
+        let entry = outcome.nested.as_ref()?.reader.as_deref()?;
 
         (matches!(field.members, FieldMembers::Fields(_)) && !self.export.proves_tree(entry)).then(
             || Gap {
@@ -795,8 +883,8 @@ impl<'a> Merge<'a> {
         )
     }
 
-    fn members(&mut self, row: &'a Row, path: &[String]) -> FieldMembers {
-        if let Some(entry) = self.nested_entry(row) {
+    fn members(&mut self, outcome: &'a Outcome, path: &[String]) -> FieldMembers {
+        if let Some(entry) = self.nested_entry(outcome) {
             let mut children = Vec::new();
 
             self.level(&mut children, entry, path);
@@ -804,52 +892,85 @@ impl<'a> Merge<'a> {
             return FieldMembers::Fields(children);
         }
 
-        match (row.items, row.reader_kind) {
+        match (outcome.items, outcome.reader_kind) {
             (Some(items), _) => FieldMembers::Items {
                 reader: plain_reader(items, BlockFamily::NotApplicable),
             },
-            (None, Some(kind)) if is_scalar(kind) => FieldMembers::None,
+            (None, Some(kind)) if keeps_no_block(kind) => FieldMembers::None,
             _ => FieldMembers::Unresolved,
         }
     }
 
-    /// What `row` establishes about reading its value, with `Merges` for a persistent read into
-    /// the owner's own member whose objects keep themselves.
-    fn reading(&self, row: &Row) -> Result<(Reader, FieldShape), OpenRead> {
-        let keeps_object = row.kind == RowKind::Persistent
-            && walked_member(row).is_some_and(|member| self.merging_members.contains(member));
+    /// What `row` establishes about reading its value. A row whose path tests the value's token
+    /// is read only through its two proved value branches.
+    fn reading(&self, row: &Row) -> Result<Reading, OpenRead> {
+        if row.branches.is_none() {
+            return self.outcome_reading(&row.outcome).map(Reading::One);
+        }
 
-        reading(row, keeps_object)
+        let forms = row
+            .value_forms()
+            .map(|(block, other)| (self.outcome_reading(block), self.outcome_reading(other)));
+
+        match forms {
+            Some((Ok(block), Ok(other))) => Ok(Reading::ByValueForm { block, other }),
+            _ => Err(OpenRead {
+                shape: FieldShape {
+                    value: ValueShape::Any,
+                    ..self.shape(&row.outcome)
+                },
+                gap: (GapKind::ReaderSemantics, BRANCHES_OPEN),
+            }),
+        }
     }
 
-    /// Whether the export proves `row` completely: one unconditional reading, every path
-    /// classified, and the keys of its nested reader's tree.
+    /// What `outcome` establishes about reading a value.
+    fn outcome_reading(&self, outcome: &Outcome) -> Result<(Reader, FieldShape), OpenRead> {
+        let shape = self.shape(outcome);
+
+        match (outcome.kind, outcome.reader_kind) {
+            (RowKind::Store, _) => Err(OpenRead {
+                shape,
+                gap: (GapKind::ReaderSemantics, STORE_OPEN),
+            }),
+            (_, Some(kind)) if kind != ReaderKind::Unknown => {
+                Ok((plain_reader(kind, family(outcome, kind)), shape))
+            }
+            _ => Err(OpenRead {
+                shape,
+                gap: (GapKind::UnresolvedReader, READER_OPEN),
+            }),
+        }
+    }
+
+    /// The shape that `outcome` reads, with `Merges` for a persistent read into the owner's own
+    /// member whose objects keep themselves.
+    fn shape(&self, outcome: &Outcome) -> FieldShape {
+        let keeps_object = outcome.kind == RowKind::Persistent
+            && walked_member(outcome).is_some_and(|member| self.merging_members.contains(member));
+
+        outcome_shape(outcome, keeps_object)
+    }
+
+    /// Whether the export proves `row` completely: a reading on every path, every path
+    /// classified, and the keys of the trees of its nested readers.
     fn proves(&self, row: &Row) -> bool {
-        let nested_proved = row.nested.as_ref().is_none_or(|nested| {
-            nested
-                .reader
-                .as_deref()
-                .is_some_and(|entry| self.export.proves_tree(entry))
+        let nested_proved = row.read_outcomes().into_iter().all(|outcome| {
+            outcome.nested.as_ref().is_none_or(|nested| {
+                nested
+                    .reader
+                    .as_deref()
+                    .is_some_and(|entry| self.export.proves_tree(entry))
+            })
         });
 
-        !row.conditional
-            && row.paths.unknown == 0
-            && !row.paths.truncated
-            && self.reading(row).is_ok()
-            && nested_proved
+        row.unconditional() && row.paths_classified() && self.reading(row).is_ok() && nested_proved
     }
 
     /// Fill the unresolved properties of Native's `field`, at `path`, from `row` of `owner`.
     fn fill(&mut self, field: &mut Field, owner: &ExportReader, row: &'a Row, path: &[String]) {
-        let unconditional = !row.conditional
+        let unconditional = row.unconditional()
             && matches!(field.read.as_slice(), [alternative] if alternative.condition == FieldCondition::Always);
-
-        // A conditional read can give each alternative its own reader and members; the export
-        // pairs none of them.
-        if !unconditional {
-            return;
-        }
-
         let kind_before = field.reader.kind;
         let family_before = field.reader.family;
         let name = path.join(".");
@@ -858,15 +979,29 @@ impl<'a> Merge<'a> {
             &name,
             super::fields::unknown_repeat_reason(&field.reader),
         );
-        let mut storage_changed = false;
-        let proved = self.proves(row);
+        let reading = self.reading(row);
+        let forms_filled = match &reading {
+            Ok(Reading::ByValueForm { block, other }) => fill_value_forms(field, block, other),
+            _ => false,
+        };
+
+        // A conditional read can give each alternative its own reader and members; the export
+        // pairs them only by the value's form.
+        if !unconditional && !forms_filled {
+            return;
+        }
+
+        let mut storage_changed = forms_filled;
+        // A proved pair answers the field only where its alternatives were installed.
+        let proved = self.proves(row) && (forms_filled || matches!(reading, Ok(Reading::One(_))));
         let mut answered = Answered {
             proved,
+            conditions: forms_filled,
             ..Answered::default()
         };
 
-        if let Ok((reader, shape)) = self.reading(row) {
-            storage_changed |= fill_read(field, &reader, shape);
+        if let Ok(Reading::One((reader, shape))) = &reading {
+            storage_changed |= fill_read(field, reader, *shape);
         }
         if field.domain == FieldDomain::Unknown
             && field.reader.kind == ReaderKind::Keyword
@@ -876,35 +1011,46 @@ impl<'a> Merge<'a> {
             field.domain = FieldDomain::Listed(domain);
             answered.domain = true;
         }
+        // A pair's block reader decides its read scope and block family; the other form reads one
+        // scalar.
+        let block_reader = match &reading {
+            Ok(reading) if forms_filled => reading.block_reader().clone(),
+            _ => field.reader.clone(),
+        };
+        let (scope_kind, block_family) = (block_reader.kind, block_reader.family);
+
         if proved
             && field.read_scope == GrammarProperty::Unresolved
             && let Ok(scope) = self
                 .export
-                .read_scope(owner, row, field.reader.kind, &field.members)
+                .read_scope(owner, row, scope_kind, &field.members)
         {
             field.read_scope = scope;
             answered.read_scope = true;
         }
 
+        let block = row.block_outcome();
+
         match &mut field.members {
             FieldMembers::Fields(children) => {
-                if let Some(entry) = self.nested_entry(row) {
+                if let Some(entry) = self.nested_entry(block) {
                     self.level(children, entry, path);
                 }
             }
             FieldMembers::Unresolved => {
-                field.members = self.members(row, path);
+                field.members = self.members(block, path);
 
                 if field.members != FieldMembers::Unresolved {
                     storage_changed = true;
                     self.gaps
-                        .extend(self.unproved_members_gap(field, row, path));
+                        .extend(self.unproved_members_gap(field, block, path));
                 }
             }
             _ => {}
         }
 
-        let kind_filled = kind_before == ReaderKind::Unknown && field.reader.kind != kind_before;
+        let read_filled = forms_filled
+            || (kind_before == ReaderKind::Unknown && field.reader.kind != kind_before);
 
         if storage_changed {
             let repeat_reason = super::fields::unknown_repeat_reason(&field.reader);
@@ -912,15 +1058,17 @@ impl<'a> Merge<'a> {
             self.gaps.extend(storage_gap(field, &name, repeat_reason));
             answered.replaced_storage = storage_before;
         }
-        if kind_filled && let Some((kind, detail)) = semantics_gap(field) {
-            self.gaps.push(Gap {
-                kind,
-                subject: Some(field_subject(path)),
-                detail: detail.into(),
-            });
+        if read_filled {
+            self.gaps
+                .extend(semantics_gaps(field).into_iter().map(|(kind, detail)| Gap {
+                    kind,
+                    subject: Some(field_subject(path)),
+                    detail: detail.into(),
+                }));
         }
         if family_before == BlockFamily::Unknown {
-            self.gaps.extend(self.entry_context_gap(field, path));
+            self.gaps
+                .extend(self.entry_context_gap(block_family, field, path));
         }
 
         self.answered.insert(path.to_vec(), answered);
@@ -929,45 +1077,53 @@ impl<'a> Merge<'a> {
     /// The field that `row` of `owner` reads at `path`, which Native does not list, with a gap
     /// for each property that the export leaves unresolved.
     fn added_field(&mut self, owner: &ExportReader, row: &'a Row, path: &[String]) -> Field {
-        let (reader, shape, outcome, open) = match self.reading(row) {
-            Ok((reader, shape)) => (
-                reader.clone(),
-                shape,
-                FieldReadOutcome::Read { reader, shape },
-                None,
+        let condition = if row.unconditional() {
+            FieldCondition::Always
+        } else {
+            FieldCondition::Unresolved
+        };
+        let reading = self.reading(row);
+        let (reader, shape, read) = match &reading {
+            Ok(reading) => (
+                reading.reader(),
+                reading.shape(),
+                reading.alternatives(condition),
             ),
             Err(open) => (
                 plain_reader(ReaderKind::Unknown, BlockFamily::Unknown),
                 open.shape,
-                FieldReadOutcome::Unresolved,
-                Some(open.gap),
+                vec![FieldReadAlternative {
+                    condition,
+                    outcome: FieldReadOutcome::Unresolved,
+                }],
             ),
         };
         // The export names no reader identity, so an added field has none: Native's rule for a
         // field without one is an `UnresolvedReader` gap.
-        let identity = match open {
-            Some((GapKind::UnresolvedReader, _)) => None,
+        let open = reading.as_ref().err().map(|open| open.gap);
+        let identity = match (&reading, open) {
+            (_, Some((GapKind::UnresolvedReader, _))) => None,
+            (Ok(Reading::ByValueForm { .. }), _) => {
+                Some((GapKind::UnresolvedReader, READER_ALTERNATIVES_OPEN))
+            }
             _ => Some((GapKind::UnresolvedReader, IDENTITY_OPEN)),
         };
-        let condition = if row.conditional {
-            FieldCondition::Unresolved
-        } else {
-            FieldCondition::Always
-        };
-        let members = self.members(row, path);
-        let read_scope = self.export.read_scope(owner, row, reader.kind, &members);
+        let members = self.members(row.block_outcome(), path);
+        let block_reader = reading.as_ref().map_or(&reader, Reading::block_reader);
+        let (scope_kind, block_family) = (block_reader.kind, block_reader.family);
+        let read_scope = self.export.read_scope(owner, row, scope_kind, &members);
         let domain = match reader.kind {
             ReaderKind::Keyword => {
                 listed_domain(row).map_or(FieldDomain::Unknown, FieldDomain::Listed)
             }
             _ => FieldDomain::Unknown,
         };
-        let accepted_categories = super::fields::accepted_categories(reader.family);
+        let accepted_categories = super::fields::accepted_categories(block_family);
         let field = Field {
             name: path.last().cloned().unwrap_or_default(),
             reader,
             shape,
-            read: vec![FieldReadAlternative { condition, outcome }],
+            read,
             members,
             domain,
             uses: Vec::new(),
@@ -987,8 +1143,9 @@ impl<'a> Merge<'a> {
         self.gaps
             .extend(storage_gap(&field, &path.join("."), REPEAT_OPEN));
         self.gaps
-            .extend(self.unproved_members_gap(&field, row, path));
-        self.gaps.extend(self.entry_context_gap(&field, path));
+            .extend(self.unproved_members_gap(&field, row.block_outcome(), path));
+        self.gaps
+            .extend(self.entry_context_gap(block_family, &field, path));
 
         if field.accepted_categories == AcceptedCategories::Unresolved {
             self.gaps.push(Gap {
@@ -1035,6 +1192,7 @@ impl<'a> Merge<'a> {
                         && (detail == KEYWORD_DOMAIN_OPEN || OPEN_DOMAIN_REASONS.contains(&detail))
             }
             GapKind::UnresolvedStorage => answered.replaced_storage.as_ref() == Some(gap),
+            GapKind::UnresolvedCondition => answered.conditions && detail == CONDITION_OPEN,
             _ => false,
         }
     }
@@ -1073,46 +1231,97 @@ struct OpenRead {
     gap: (GapKind, &'static str),
 }
 
-/// What `row` establishes about reading its value; `keeps_object` says that a repeat of its
-/// persistent read merges into the object. A row that tests the value's token
-/// (`branches`) and a row that only stores (`store`) stay open; step 3b replaces those two arms
-/// when the exporter proves their outcomes.
-fn reading(row: &Row, keeps_object: bool) -> Result<(Reader, FieldShape), OpenRead> {
+/// What a row establishes about reading its value.
+enum Reading {
+    /// One reader of every value.
+    One((Reader, FieldShape)),
+    /// The path tests the value's token: a block and any other value are read in different ways.
+    ByValueForm {
+        block: (Reader, FieldShape),
+        other: (Reader, FieldShape),
+    },
+}
+
+impl Reading {
+    /// The field's shared reader: none is established for two readers.
+    fn reader(&self) -> Reader {
+        match self {
+            Self::One((reader, _)) => reader.clone(),
+            Self::ByValueForm { .. } => plain_reader(ReaderKind::Unknown, BlockFamily::Unknown),
+        }
+    }
+
+    /// The reader that reads the field's block: the one reader, or the block form's. It decides
+    /// the read scope and block family; the other form reads one scalar, in no scope.
+    fn block_reader(&self) -> &Reader {
+        match self {
+            Self::One((reader, _))
+            | Self::ByValueForm {
+                block: (reader, _), ..
+            } => reader,
+        }
+    }
+
+    /// The value form and repeat behavior that every alternative agrees on.
+    fn shape(&self) -> FieldShape {
+        match self {
+            Self::One((_, shape)) => *shape,
+            Self::ByValueForm { block, other } => FieldShape {
+                value: ValueShape::Any,
+                repeat: agreed_repeat(block.1, other.1),
+            },
+        }
+    }
+
+    /// The field's read alternatives; one reading holds where `condition` does.
+    fn alternatives(&self, condition: FieldCondition) -> Vec<FieldReadAlternative> {
+        let read = |(reader, shape): &(Reader, FieldShape)| FieldReadOutcome::Read {
+            reader: reader.clone(),
+            shape: *shape,
+        };
+
+        match self {
+            Self::One(one) => vec![FieldReadAlternative {
+                condition,
+                outcome: read(one),
+            }],
+            Self::ByValueForm { block, other } => vec![
+                FieldReadAlternative {
+                    condition: FieldCondition::ValueForm { block: true },
+                    outcome: read(block),
+                },
+                FieldReadAlternative {
+                    condition: FieldCondition::ValueForm { block: false },
+                    outcome: read(other),
+                },
+            ],
+        }
+    }
+}
+
+fn agreed_repeat(first: FieldShape, second: FieldShape) -> RepeatBehavior {
+    if first.repeat == second.repeat {
+        first.repeat
+    } else {
+        RepeatBehavior::Unknown
+    }
+}
+
+/// The shape that `outcome` reads; `keeps_object` says that a repeat of its persistent read
+/// merges into the object.
+fn outcome_shape(outcome: &Outcome, keeps_object: bool) -> FieldShape {
     // A read into another engine type, such as a vector, can take a block.
-    let value = match row.kind {
+    let value = match outcome.kind {
         RowKind::ScalarOther => ValueShape::Unknown,
-        _ => row.value.unwrap_or(ValueShape::Unknown),
+        _ => outcome.value.unwrap_or(ValueShape::Unknown),
     };
-    let shape = FieldShape {
+
+    FieldShape {
         value,
-        repeat: match row.repeat {
+        repeat: match outcome.repeat {
             RepeatBehavior::Unknown if keeps_object => RepeatBehavior::Merges,
             repeat => repeat,
         },
-    };
-
-    if row.branches.is_some() {
-        return Err(OpenRead {
-            shape: FieldShape {
-                value: ValueShape::Any,
-                ..shape
-            },
-            gap: (GapKind::ReaderSemantics, BRANCHES_OPEN),
-        });
-    }
-
-    match (row.kind, row.reader_kind) {
-        (RowKind::Store, _) => Err(OpenRead {
-            shape,
-            gap: (GapKind::ReaderSemantics, STORE_OPEN),
-        }),
-        (_, Some(kind)) if kind != ReaderKind::Unknown => {
-            Ok((plain_reader(kind, family(row, kind)), shape))
-        }
-        _ => Err(OpenRead {
-            shape,
-            gap: (GapKind::UnresolvedReader, READER_OPEN),
-        }),
     }
 }
 
@@ -1144,68 +1353,100 @@ pub(crate) fn merging_members(
         .collect()
 }
 
-/// The name of the walked member reader that `row` reads its value with.
-fn walked_member(row: &Row) -> Option<&str> {
-    let nested = row.nested.as_ref()?;
+/// The name of the walked member reader that `outcome` reads its value with.
+fn walked_member(outcome: &Outcome) -> Option<&str> {
+    let nested = outcome.nested.as_ref()?;
 
     nested.reader.is_some().then_some(nested.name.as_str())
 }
 
-fn family(row: &Row, kind: ReaderKind) -> BlockFamily {
-    match row.family {
+fn family(outcome: &Outcome, kind: ReaderKind) -> BlockFamily {
+    match outcome.family {
         Some(family) => family,
-        None if kind == ReaderKind::Block && row.items.is_none() => BlockFamily::Unknown,
+        None if kind == ReaderKind::Block && outcome.items.is_none() => BlockFamily::Unknown,
         None => BlockFamily::NotApplicable,
     }
 }
 
+/// A reader of `kind` with no identity. The merge runs after Native's numeric pass, so the
+/// reader takes the facts that its kind alone establishes here.
 fn plain_reader(kind: ReaderKind, family: BlockFamily) -> Reader {
-    Reader {
+    let mut reader = Reader {
         numeric: GrammarProperty::Unresolved,
         scoped_operand: GrammarProperty::Unresolved,
         id: None,
         kind,
         family,
-    }
+    };
+
+    super::numeric::attach_kind_facts(&mut reader);
+
+    reader
 }
 
-/// The gap of what a field's reader kind promises and the export does not establish: a keyword
-/// domain, numeric conversion, or the lookup of a key reference.
-fn semantics_gap(field: &Field) -> Option<(GapKind, &'static str)> {
-    match field.reader.kind {
+/// The gaps of what the readers of `field`, its shared reader and the reader of each read
+/// alternative, promise and the export does not establish.
+fn semantics_gaps(field: &Field) -> Vec<(GapKind, &'static str)> {
+    let alternatives = field
+        .read
+        .iter()
+        .filter_map(|alternative| match &alternative.outcome {
+            FieldReadOutcome::Read { reader, .. } => Some(reader),
+            _ => None,
+        });
+    let mut gaps = Vec::new();
+
+    for gap in std::iter::once(&field.reader)
+        .chain(alternatives)
+        .filter_map(|reader| semantics_gap(reader, field))
+    {
+        if !gaps.contains(&gap) {
+            gaps.push(gap);
+        }
+    }
+
+    gaps
+}
+
+/// The gap of what `reader`, a reader of `field`, promises and the export does not establish: a
+/// keyword domain, numeric conversion, or the lookup of a key reference.
+fn semantics_gap(reader: &Reader, field: &Field) -> Option<(GapKind, &'static str)> {
+    match reader.kind {
         ReaderKind::Keyword if field.domain == FieldDomain::Unknown => {
             Some((GapKind::ReaderSemantics, KEYWORD_DOMAIN_OPEN))
         }
         ReaderKind::Integer | ReaderKind::FixedPoint | ReaderKind::Float
-            if field.reader.numeric == GrammarProperty::Unresolved =>
+            if reader.numeric == GrammarProperty::Unresolved =>
         {
             Some((GapKind::NumericConversion, NUMERIC_OPEN))
         }
-        _ if takes_lookup(field) && field.reference == FieldReference::NotEstablished => {
+        _ if takes_lookup(reader, field) && field.reference == FieldReference::NotEstablished => {
             Some((GapKind::ReaderSemantics, LOOKUP_OPEN))
         }
         _ => None,
     }
 }
 
-/// Whether the engine looks up the value of `field`, a key reference or a list of them.
-fn takes_lookup(field: &Field) -> bool {
+/// Whether the engine looks up the value that `reader` reads for `field`: a key reference, or a
+/// list of them.
+fn takes_lookup(reader: &Reader, field: &Field) -> bool {
     let items = match &field.members {
         FieldMembers::Items { reader } => Some(reader.kind),
         _ => None,
     };
 
-    field.reader.kind == ReaderKind::Reference || items == Some(ReaderKind::Reference)
+    reader.kind == ReaderKind::Reference || items == Some(ReaderKind::Reference)
 }
 
-/// Whether a field with reader `kind` and `members` reads its value in no scope: a scalar, or a
-/// block of bare values.
+/// Whether a field with reader `kind` and `members` reads its value in no scope: a scalar, a
+/// value that it keeps nothing of, or a block of bare values.
 fn reads_no_scope(kind: ReaderKind, members: &FieldMembers) -> bool {
-    matches!(members, FieldMembers::Items { .. }) || is_scalar(kind)
+    matches!(members, FieldMembers::Items { .. }) || keeps_no_block(kind)
 }
 
-/// Whether a reader of `kind` reads one scalar value.
-fn is_scalar(kind: ReaderKind) -> bool {
+/// Whether a reader of `kind` keeps no block: it reads one scalar value, or keeps nothing of the
+/// value.
+fn keeps_no_block(kind: ReaderKind) -> bool {
     matches!(
         kind,
         ReaderKind::Boolean
@@ -1215,6 +1456,8 @@ fn is_scalar(kind: ReaderKind) -> bool {
             | ReaderKind::String
             | ReaderKind::Reference
             | ReaderKind::Keyword
+            | ReaderKind::Skipped
+            | ReaderKind::Presence
     )
 }
 
@@ -1264,9 +1507,116 @@ fn fill_read(field: &mut Field, reader: &Reader, shape: FieldShape) -> bool {
     before != (field.reader.clone(), field.shape)
 }
 
+/// Give the read alternatives of Native's `field` the export's proved value forms, which read
+/// `block` and `other`. Native's one unconditional, unresolved alternative of a field without a
+/// shared reader becomes the pair. Native's two alternatives under unresolved conditions take the value-form
+/// conditions when their outcomes fit the pair one to one: an outcome fits a form when it is
+/// unresolved or reads the form's reader kind and value shape. Returns whether the alternatives
+/// changed.
+fn fill_value_forms(
+    field: &mut Field,
+    block: &(Reader, FieldShape),
+    other: &(Reader, FieldShape),
+) -> bool {
+    let shape = FieldShape {
+        value: ValueShape::Any,
+        repeat: agreed_repeat(block.1, other.1),
+    };
+    let filled = match field.read.as_mut_slice() {
+        [alternative] => {
+            let unresolved = alternative.condition == FieldCondition::Always
+                && alternative.outcome == FieldReadOutcome::Unresolved
+                && field.reader.id.is_none()
+                && field.reader.kind == ReaderKind::Unknown;
+
+            if unresolved {
+                field.read = Reading::ByValueForm {
+                    block: block.clone(),
+                    other: other.clone(),
+                }
+                .alternatives(FieldCondition::Always);
+            }
+
+            unresolved
+        }
+        [first, second] => resolve_value_forms([first, second], block, other),
+        _ => false,
+    };
+
+    if filled {
+        fill_shape(&mut field.shape, shape);
+    }
+
+    filled
+}
+
+/// Give `alternatives`, two alternatives under unresolved conditions, the value-form conditions
+/// of the forms that their outcomes fit, and fill their unresolved outcomes from the export.
+fn resolve_value_forms(
+    [first, second]: [&mut FieldReadAlternative; 2],
+    block: &(Reader, FieldShape),
+    other: &(Reader, FieldShape),
+) -> bool {
+    // The two forms read different value shapes, so a read outcome fits at most one of them.
+    // Only two unresolved outcomes fit both orders, and those take the same answers either way.
+    let fits = |alternative: &FieldReadAlternative, (reader, shape): &(Reader, FieldShape)| {
+        alternative.condition == FieldCondition::Unresolved
+            && match &alternative.outcome {
+                FieldReadOutcome::Unresolved => true,
+                FieldReadOutcome::Read {
+                    reader: native,
+                    shape: native_shape,
+                } => native.kind == reader.kind && native_shape.value == shape.value,
+                _ => false,
+            }
+    };
+    let forms = if fits(first, block) && fits(second, other) {
+        [(true, block), (false, other)]
+    } else if fits(first, other) && fits(second, block) {
+        [(false, other), (true, block)]
+    } else {
+        return false;
+    };
+
+    for (alternative, (block, (reader, shape))) in [first, second].into_iter().zip(forms) {
+        alternative.condition = FieldCondition::ValueForm { block };
+
+        match &mut alternative.outcome {
+            FieldReadOutcome::Read {
+                reader: native,
+                shape: native_shape,
+            } => {
+                fill_reader(native, reader);
+                fill_shape(native_shape, *shape);
+            }
+            outcome => {
+                *outcome = FieldReadOutcome::Read {
+                    reader: reader.clone(),
+                    shape: *shape,
+                }
+            }
+        }
+    }
+
+    true
+}
+
+/// Fill the unknown kind and family of Native's reader from the export's. A kind that the merge
+/// establishes also gives the numeric and scoped-operand facts of that kind, where Native's
+/// numeric pass left them unresolved.
 fn fill_reader(native: &mut Reader, export: &Reader) {
     if native.kind == ReaderKind::Unknown {
+        let mut kind_facts = export.clone();
+
+        super::numeric::attach_kind_facts(&mut kind_facts);
         native.kind = export.kind;
+
+        if native.numeric == GrammarProperty::Unresolved {
+            native.numeric = kind_facts.numeric;
+        }
+        if native.scoped_operand == GrammarProperty::Unresolved {
+            native.scoped_operand = kind_facts.scoped_operand;
+        }
     }
     if native.family == BlockFamily::Unknown {
         native.family = export.family;
@@ -1293,14 +1643,14 @@ fn added_field_gaps(
     let mut details: Vec<(GapKind, String)> = open.into_iter().collect();
     let mut add = |kind, detail: &str| details.push((kind, detail.to_owned()));
 
-    if row.conditional {
+    if !row.unconditional() {
         add(GapKind::UnresolvedCondition, CONDITION_OPEN);
     }
-    if row.paths.unknown > 0 || row.paths.truncated {
+    if !row.paths_classified() {
         add(GapKind::UnresolvedPath, PATHS_OPEN);
     }
 
-    if let Some((kind, detail)) = semantics_gap(field) {
+    for (kind, detail) in semantics_gaps(field) {
         add(kind, detail);
     }
 

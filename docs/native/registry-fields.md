@@ -42,16 +42,44 @@ other callers of the walker's run, such as derived names, use the walker's answe
   establish one shared reader.` stays: the export names no reader identity.
 - A field that it adds has no reader identity, so it has an `UnresolvedReader` gap, as any field
   without one. It also gets a gap for each other property that it leaves open: a `store` row
-  (`ReaderSemantics`), a `branches` row (`ValueShape::Any`, reader `Unknown`, `ReaderSemantics`),
-  a condition, unclassified paths, repeat or members, the keyword domain, numeric conversion, a key
-  reference's lookup, the read scope, an unresolved modifier container (an added block with no
-  known family), and the entry contexts of a root trigger, effect or weight block (the walker's
+  (`ReaderSemantics`), a `branches` row whose branches are not both proved (`ValueShape::Any`,
+  reader `Unknown`, `ReaderSemantics`), a condition, unclassified paths, repeat or members, the
+  keyword domain, numeric conversion, a key reference's lookup, the read scope, an unresolved
+  modifier container (an added block with no known family; a value-form pair takes its block
+  form's family), and the entry contexts of a root trigger, effect or weight block (the walker's
   entry-context analysis runs before the merge). An added field is therefore never complete.
 - A `delegates` row passes its key to another member reader at the same level: when the
   delegation is unconditional and every path of it is classified, the merge reads the key through
   that reader's row for the key; otherwise the key's reader stays unresolved. The contract walks
-  the delegate at the key's own path. Only a row that reads a block (`persistent`, `serializer`, `object`, `object-list`,
-  `entry`) expands nested fields.
+  the delegate at the key's own path. Only a row or value branch that reads a block (`persistent`, `serializer`, `object`,
+  `object-list`, `entry`) expands nested fields.
+- Value forms. A row whose path tests the value's token gets one read alternative for each form,
+  `FieldCondition::ValueForm { block: true }` and `{ block: false }`, only when the export proves
+  both branches (`proved`): the branch walk has one path, the path reads and stores nothing
+  before the value test (the `VALUEBRANCH` marker of `Export.java`), reports nothing after it, and
+  then reads a block for the block's value token and one scalar for any other. The field's reader
+  is then `Unknown` with the gap `The field's alternatives do not establish one shared reader.`,
+  and its members come from the block branch. A block branch that only calls `SkipBody` and a
+  scalar branch that calls and stores nothing keep nothing (`Skipped`). The merge gives a Native
+  field the pair in two cases. Native's one unresolved alternative of a field without a shared
+  reader becomes the pair. Native's two alternatives under unresolved conditions, which the
+  walker gives a value-token test, take the value-form conditions when their outcomes fit the
+  pair one to one (an outcome fits a form when it is unresolved or reads the form's reader kind and
+  value shape); the merge fills their unresolved outcomes and removes the condition gap. Pitfall:
+  the walker and the export are two analyses of one function, so this match assumes that the
+  walker's two alternatives are the two value branches; an outcome that fits neither form stops
+  it. A scalar key reference and a block of them share the kind `Reference`, so the kind alone
+  could pair them backwards.
+- Branch proof pitfalls: the walk records a cut loop as one leaf, so a branch with a `LOOP` event
+  is not proved, and a branch whose path calls another reader after the read is not proved.
+- A path that only stores the literal `yes` token into one byte, with no value test and no read
+  call, is an unresolved `store` row: a `Boolean` needs the value test (`eq(reader+0x278, yes)`),
+  and `Presence` needs proof that the literal does not stand in for a read. M452 has no such row.
+- Presence. A row is `presence` (`ReaderKind::Presence`) only when every path calls nothing but a
+  known skip (`SkipToken`, `SkipBody`), tests neither the value's token nor the key's text, and
+  stores only constants. A `CString` constructor can copy the value's text into the owner, so it
+  rules a presence row out. A `store` row claims only
+  that the path stores something: it is never evidence that a value is accepted.
 - A block reader (a root or nested reader) that lists no key proves no keys (`no-listed-key`),
   though the export marks it complete. Nested fields come only from a reader that dispatches on
   the key's token and lists a key. A
@@ -99,7 +127,43 @@ with `CReader::Read(bool&)`, stores the byte in the design-owner word at `+0x114
 `upgrades_to` (`0x36d7`): a block value reads a string list into `+0x140`, and any other value
 appends one more string to that list and reads the value text into it. The value test belongs to
 the shared continuation, not to the Boolean read, so `Scalar` stays. A consequence for content:
-`alliance_ship_design = yes` also adds `yes` to the design's `upgrades_to` list.
+`alliance_ship_design = yes` also adds `yes` to the design's `upgrades_to` list. The export's
+branches of `alliance_ship_design` are not proved, because the Boolean read comes before the value
+test; the branches of `upgrades_to`, whose path starts with the test, are (a list of strings for a
+block, one appended string for any other value). The conformance file checks both.
+
+**Value forms and presence on M452.** The export proves both value branches of 17 rows. Three
+read each form differently: `common/pop_categories` `can_change_category` and
+`common/ship_sizes` `hero_ship` (a persistent block, or a Boolean), and
+`common/global_ship_designs` `upgrades_to` (a list of strings, or one appended string). The other
+14 skip a block and keep nothing of a scalar, such as `common/edicts` `edict_cap_usage`. No row
+is a presence row.
+
+Of these 17 fields, the four `common/game_scenarios` `galaxy` members (`design`, `ftl`,
+`logistic_ceiling`, `xeno_compatibility_enabled`) are fields that only the export lists. The walker
+lists the other 13 with two alternatives under unresolved conditions, and the merge gives them the
+value-form conditions. Read by hand in the private Ghidra workspace, each walker pair is the export's
+pair: the walker's one condition is the value-token test (`ldr w8,[reader,#0x278]`, `cmp w8,#0x3`,
+`b.ne`), its `zero: false` path (the block's token 3) ends at the block branch's reading call, and
+its `zero: true` path at the scalar branch's:
+
+| Field | Test | Block path ends at | Scalar path ends at |
+| --- | --- | --- | --- |
+| `buildings` `is_colony` | `0x1000d108c` | `0x1000d10a8` `b CReader::SkipBody` | `0x1000d1788` `ret`, no read |
+| `edicts` `edict_cap_usage` | `0x1004511f8` | `0x100451210` `b CReader::SkipBody` | `0x1004510c4` `ret`, no read |
+| `federation_perks` `triggered_modifier` | `0x10051f224` | `0x10051f23c` `b CReader::SkipBody` | `0x10051f42c` `ret`, no read |
+| `global_ship_designs` `hide_size`, `owned_upgrade`, `parent` | `0x1011bda5c` | `0x1011bda78` `b CReader::SkipBody` | `0x1011bd704` `ret`, no read |
+| `global_ship_designs` `upgrades_to` | `0x1011bd6e0` | `0x1011bd6ec` `bl CReader::ReadUniform<CString>` | `0x1011bdae4` `bl CPdxArray<CString,int>::InsertAtEmplace<>`, then the string read |
+| `leader_classes` `ai_weight_for_planet_assignment`, `default_category` | `0x1008f7760` | `0x1008f7784` `b CReader::SkipBody` | `0x1008f7c24` `ret`, no read |
+| `pop_categories` `can_change_category` | `0x100a6f85c` | `0x100a6f878` `b CReader::Read(CPersistent&)` | `0x100a6f8b0` `b CReader::Read(bool&)` |
+| `ship_sizes` `hero_ship` | `0x1011ecb98` | `0x1011ecba4` `bl CReader::Read(CPersistent&)` | `0x1011ecf90` `ret` after `CReader::Read(bool&)` and its store |
+| `traits` `forced_happiness`, `triggered_background_planet_pop_group_modifier` | `0x100ce8140` | `0x100ce8168` `b CReader::SkipBody` | `0x100ce9244` `ret`, no read |
+
+For the ten fields whose walker outcomes are both unresolved, the merge replaces both outcomes from
+the export, so the order of the walker's alternatives decides nothing; on M452 the walker lists
+the block path first in each. The `store` rows of M452 read the value: they store
+whether the value's token is `yes` (`eq(reader+0x278, yes)`, the walker's [`yes`
+test](#current-sweep)), the token itself, or a number from `CToken::GetInt`.
 
 **Other differences on M452** (the walker's answer stays):
 
@@ -124,7 +188,10 @@ its members stay unresolved, because the serializer's member reader is `CPersist
 `CEconomicUnitTemplate::CSerializer::ReadMember`; `cycle_title` and `cycle_desc` read
 `variable_string` as a `String` (`CPersistentName::ReadMember`); and three root keys that the walker
 does not list, `build_outside_gravity_well`, `construction_blocks_and_blocked_by` and `build_type`,
-are `Any` with an unresolved condition, because their paths test the value's token.
+are `Any` with an unresolved condition, because their paths test the value's token. A reader whose kind the export gives
+(the added `Block` readers, `prerequisites`, and the `String` readers of `variable_string`) has
+`numeric` and `scoped_operand` `Known(None)`: the merge gives such a reader the facts of its kind,
+as Native's numeric pass does, because the merge runs after that pass.
 
 **Unlisted keys read by hand.** Twenty keys outside the export's tokens under registries whose
 tree proves its keys, read in the decompiled readers: `common/governments` `election_candidates`

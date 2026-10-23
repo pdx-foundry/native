@@ -214,12 +214,15 @@ walk has `null` and its name. This is a reader of M452, shortened:
   `internals::registry_field_stops::root_readers`; `build` is the universal SHA-256.
 - An entry reader has one row with `token` and `key` `null`: the entry that it reads for any key.
 - `kind: store` says only that the token's path stores something. It never shows that a value is
-  accepted.
+  accepted. `kind: presence` (`reader_kind: Presence`) is a path that reads no part of the value,
+  reports nothing and stores only constants.
 - `family` is `Trigger`, `Effect`, or `Weight` (a script value); `items` is the item kind of a
   list.
 - `branches` keeps each outcome of a row whose path tests the value's token, for a block value
-  token and for any other: kind, value shape, reader kind, repeat and nested reader. The proofs that
-  turn them into paired answers are step 3b.
+  token and for any other: kind, value shape, reader kind, repeat, family, list items, nested
+  reader, and `proved`. A branch is proved when its walk has one path, the path reads and stores
+  nothing before the value test, reports nothing after it, and reads the branch's form: a block for
+  the block's token, one scalar for any other.
 - `scope_mask` is the literal `EScopeType` argument of the row's reading call, such as
   `ReadTrigger`, `ReadEffect` or a weight reader; `null` when the argument is not a literal.
 - `enum` is the `TokenToEnum<E>` table of a keyword row: the accepted tokens, their text, and
@@ -352,8 +355,10 @@ the trees to the public types at question time:
 | Persistent read into a member that is not reset | `RepeatBehavior::Merges` | yes | |
 | Row `scope_mask` | `Field.read_scope: Known(types)` through `tables.json`; mask 0 is `Known([])`, except for the D5(a) readers (below) | yes | |
 | Whole-block completeness | `Completeness::Complete` under the contract; a Native gap that the export answers is removed | yes | |
-| Row with `branches` | `ValueShape::Any`, reader `Unknown`, a gap: Atlas accepts one `Always` alternative only | yes | 3b: `FieldCondition::ValueForm { block }` with two `FieldReadAlternative`s (D4) |
-| Row `kind: store` | The field exists; `FieldReadOutcome::Unresolved` with a `ReaderSemantics` gap | yes | 3b: `ReaderKind::Presence` only where the exporter proves that the path reads no value and stores a constant (D4) |
+| Row with `branches`, both proved | `FieldCondition::ValueForm { block }` with two `FieldReadAlternative`s | 3b (D4) | Atlas reads the pair |
+| Row with `branches`, not both proved | `ValueShape::Any`, reader `Unknown`, a gap | yes | |
+| Row `kind: presence` | `ReaderKind::Presence` | 3b (D4) | Atlas reads the form |
+| Row `kind: store` | The field exists; `FieldReadOutcome::Unresolved` with a `ReaderSemantics` gap | yes | |
 | Row `conditional` | `FieldCondition::Unresolved` | yes | Phase 2: `FieldZero` or `FieldKeyword` |
 | A field that Native has and the export does not | The existing `Field` | Step 3 only adds | Step 4's field-level union keeps it |
 

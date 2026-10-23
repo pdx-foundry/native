@@ -124,6 +124,18 @@ for contexts and scope types.
   the modifier block's `name`. The value can be one scalar or a whole block, so its
   `FieldShape.value` is `ValueShape::Any`, its members are `None` and its `numeric` is
   `Known(None)`.
+- `ReaderKind::Presence` identifies a key whose presence stores a constant: the reader keeps no
+  part of the value, so every accepted value has the same effect. Its members are `None` and its
+  `numeric` is `Known(None)`. A registry field has it only where the build's reader export proves
+  that the key's path reads no value (it skips the value or calls no reader) and stores only
+  constants.
+- `FieldCondition::ValueForm { block }` is a condition on the field's own value as written: a
+  block, or any other value. A field whose reader tests the value's token has one
+  `FieldReadAlternative` for each form, with the reader of that form. Its `reader` is then the
+  `Unknown` kind with no identity, its `FieldShape.value` is `Any`, and its `members` describe
+  the block form. A registry field has the pair only where the reader export proves each branch:
+  the path tests the value's token before it reads or stores anything, and each branch reads its
+  form on one path. A branch that keeps nothing of its value is `Skipped`.
 - `FieldShape.repeat` gives what a second successful read does to storage, on the field and on
   each `FieldReadOutcome::Read` alternative: `Replace` (the last occurrence is stored),
   `Accumulate` (each occurrence adds an entry), `Merges` (a repeat is accepted; it replaces some
